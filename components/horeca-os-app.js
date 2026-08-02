@@ -23,6 +23,7 @@ const routeViews = {
   "/reviews": "reviews",
   "/marketing": "marketing",
   "/ai": "assistant",
+  "/gebruikers": "users",
 };
 
 export default function HorecaOsApp() {
@@ -152,6 +153,7 @@ export default function HorecaOsApp() {
     recipes: canUseFeature("foodcost:read"),
     suppliers: canUseFeature("foodcost:read"),
     assistant: canUseFeature("ai:use"),
+    users: canUseFeature("users:read") || canUseFeature("users:manage"),
   }), [canUseFeature]);
   const openTasks = data.tasks.filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
@@ -184,6 +186,7 @@ export default function HorecaOsApp() {
           <NavLink href="/reviews" active={activeView === "reviews"}>Reviews</NavLink>
           <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
+          {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
         </nav>
         <button className="nav logout" onClick={() => supabase.auth.signOut()}>Uitloggen</button>
       </aside>
@@ -239,6 +242,7 @@ export default function HorecaOsApp() {
         {activeView === "reviews" && <EmptyModule eyebrow="Social intelligence" title="Reviews" description="Review-inzichten worden hier samengebracht zodra de eerste reviewbron is gekoppeld." />}
         {activeView === "marketing" && <EmptyModule eyebrow="CommerciÃ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
+        {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
       </main>
     </div>
   );
@@ -313,6 +317,100 @@ function Assistant({ workspaceId, businessId, session, conversations, onRefresh 
         <div className="messages">{!chat.length && <Empty text="Stel een vraag. De assistent gebruikt alleen gegevens die jij binnen deze werkruimte mag zien." />}{chat.map((item) => <div className={`messageBubble ${item.role}`} key={item.id}>{item.content}</div>)}</div>
         {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "Analyserenâ€¦" : "Versturen"}</button></form>
       </article></section></>;
+}
+
+function UsersAdmin({ workspaceId, session }) {
+  const [adminData, setAdminData] = useState({ users: [], roles: [], businesses: [], locations: [] });
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [adminMessage, setAdminMessage] = useState("");
+  const [adminError, setAdminError] = useState("");
+
+  const loadUsers = useCallback(async () => {
+    setLoadingUsers(true); setAdminError("");
+    const response = await fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const result = await response.json();
+    if (!response.ok) setAdminError(result.error || "Gebruikers konden niet worden geladen.");
+    else setAdminData(result);
+    setLoadingUsers(false);
+  }, [session.access_token, workspaceId]);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  async function submitAdminAction(payload) {
+    setAdminMessage(""); setAdminError("");
+    const response = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ ...payload, workspaceId }),
+    });
+    const result = await response.json();
+    if (!response.ok) { setAdminError(result.error || "De actie kon niet worden uitgevoerd."); return false; }
+    setAdminMessage(result.message || "Opgeslagen.");
+    await loadUsers();
+    return true;
+  }
+
+  async function inviteUser(formData) {
+    const form = Object.fromEntries(formData);
+    await submitAdminAction({
+      action: "invite",
+      email: form.email,
+      fullName: form.fullName,
+      roleId: form.roleId,
+      businessId: form.businessId || null,
+      locationId: null,
+    });
+  }
+
+  async function updateUser(formData) {
+    const form = Object.fromEntries(formData);
+    await submitAdminAction({
+      action: "replace-assignment",
+      userId: form.userId,
+      roleId: form.roleId,
+      businessId: form.businessId || null,
+      locationId: null,
+    });
+  }
+
+  const roleName = (assignment) => assignment?.role?.name || "Geen rol";
+  const businessName = (id) => adminData.businesses.find((item) => item.id === id)?.name || "Alle vestigingen";
+
+  return <>
+    <section className="pageIntro"><p className="eyebrow">Toegangsbeheer</p><h2>Gebruikers & rollen</h2><p>Nodig medewerkers uit en bepaal per gebruiker de rol en vestigingsscope.</p></section>
+    {adminMessage && <div className="notice successNotice">{adminMessage}</div>}
+    {adminError && <div className="notice">{adminError}</div>}
+    <section className="userAdminGrid">
+      <article className="panel invitePanel">
+        <div className="panelHead"><div><h2>Gebruiker uitnodigen</h2><p>De gebruiker ontvangt een beveiligde uitnodiging per e-mail.</p></div></div>
+        <form action={inviteUser} className="stack">
+          <label>Naam<input name="fullName" type="text" autoComplete="name" placeholder="Voor- en achternaam" /></label>
+          <label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label>
+          <label>Rol<select name="roleId" required defaultValue=""><option value="" disabled>Kies een rol</option>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+          <label>Toegang<select name="businessId" defaultValue=""><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+          <button className="primary" disabled={loadingUsers}>Uitnodiging versturen</button>
+        </form>
+      </article>
+      <article className="panel usersPanel">
+        <div className="panelHead"><div><h2>Actieve en uitgenodigde gebruikers</h2><p>{adminData.users.length} gebruiker(s) binnen deze werkruimte.</p></div></div>
+        {loadingUsers && <Empty text="Gebruikers laden…" />}
+        {!loadingUsers && !adminData.users.length && <Empty text="Nog geen gebruikers gevonden." />}
+        <div className="userList">{adminData.users.map((user) => {
+          const assignment = user.assignments[0];
+          return <form action={updateUser} className="userRow" key={user.id}>
+            <input type="hidden" name="userId" value={user.id} />
+            <div className="userIdentity"><strong>{user.fullName || user.email}</strong><span>{user.email}</span><small>{user.confirmed ? "Actief" : "Uitnodiging verstuurd"}</small></div>
+            <label>Rol<select name="roleId" required defaultValue={assignment?.role_id || ""}>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+            <label>Toegang<select name="businessId" defaultValue={assignment?.business_id || ""}><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+            <div className="userScope"><span>{roleName(assignment)}</span><small>{businessName(assignment?.business_id)}</small></div>
+            <button className="secondaryButton">Opslaan</button>
+          </form>;
+        })}</div>
+      </article>
+    </section>
+  </>;
 }
 
 function getDateRanges(now) {
