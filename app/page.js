@@ -54,7 +54,10 @@ export default function Home() {
     from.setDate(from.getDate() - 30);
 
     const results = await Promise.all([
-      supabase.from("tasks").select("*").order("created_at", { ascending: true }),
+      supabase
+        .from("tasks")
+        .select("*, assignee:profiles!tasks_assigned_to_fkey(full_name)")
+        .order("created_at", { ascending: true }),
       supabase.from("businesses").select("*").order("name"),
       supabase.from("decisions").select("*").order("decided_on", { ascending: false }).limit(50),
       supabase.from("events").select("*").gte("starts_at", today.toISOString()).order("starts_at").limit(8),
@@ -170,7 +173,7 @@ export default function Home() {
                   <b>{task.title}</b>
                   <span>{priorityLabel[task.priority] || task.priority} · {statusLabel[task.status] || task.status}</span>
                 </div>
-                <span className="pill">{task.owner_name || "Nog niet toegewezen"}</span>
+                <span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span>
               </div>
             ))}
           </Panel>
@@ -196,7 +199,7 @@ export default function Home() {
             {data.products.map((product, index) => (
               <div className="rankRow" key={product.id || `${product.product_name}-${index}`}>
                 <span className="rank">{index + 1}</span>
-                <b>{product.product_name || product.name || "Onbekend product"}</b>
+                <b>{product.product_name || "Onbekend product"}</b>
                 <strong>{number(product.quantity)}</strong>
               </div>
             ))}
