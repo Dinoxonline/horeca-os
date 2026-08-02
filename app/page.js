@@ -61,7 +61,7 @@ export default function Home() {
       supabase.from("sales_daily").select("*").gte("sales_date", isoDate(from)).order("sales_date", { ascending: false }),
       supabase.from("product_sales").select("*").order("quantity", { ascending: false }).limit(8),
       supabase.from("security_checks").select("*").order("label"),
-      supabase.from("integrations").select("*").order("name"),
+      supabase.from("integrations").select("*").order("provider"),
     ]);
 
     const names = ["tasks", "businesses", "decisions", "events", "sales", "products", "security", "integrations"];
@@ -207,7 +207,7 @@ export default function Home() {
             {data.integrations.map((integration) => (
               <div className="systemRow" key={integration.id}>
                 <div>
-                  <b>{integration.name}</b>
+                  <b>{integration.provider}</b>
                   <span>{integration.last_synced_at ? `Laatste sync ${formatDate(integration.last_synced_at)}` : "Nog niet gesynchroniseerd"}</span>
                 </div>
                 <span className={`status ${String(integration.status).toLowerCase()}`}>
