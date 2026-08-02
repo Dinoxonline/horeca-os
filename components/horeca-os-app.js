@@ -24,6 +24,7 @@ const routeViews = {
   "/marketing": "marketing",
   "/ai": "assistant",
   "/gebruikers": "users",
+  "/beveiliging": "security",
 };
 
 export default function HorecaOsApp() {
@@ -34,6 +35,8 @@ export default function HorecaOsApp() {
   const [message, setMessage] = useState("");
   const [memberships, setMemberships] = useState([]);
   const [roleAssignments, setRoleAssignments] = useState([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [mfaState, setMfaState] = useState({ loading: true, currentLevel: null, nextLevel: null, factors: [] });
   const [workspaceId, setWorkspaceId] = useState("");
   const [businessId, setBusinessId] = useState("all");
   const [data, setData] = useState(emptyData);
@@ -71,9 +74,11 @@ export default function HorecaOsApp() {
   useEffect(() => {
     if (!session || !workspaceId) {
       setRoleAssignments([]);
+      setRolesLoading(false);
       return;
     }
     let active = true;
+    setRolesLoading(true);
     supabase
       .from("user_role_assignments")
       .select("business_id, location_id, role:roles!inner(role_key, role_permissions(permission))")
@@ -83,12 +88,38 @@ export default function HorecaOsApp() {
         if (!active) return;
         if (error) {
           setRoleAssignments([]);
+          setRolesLoading(false);
           return;
         }
         setRoleAssignments(rows || []);
+        setRolesLoading(false);
       });
     return () => { active = false; };
   }, [session, workspaceId]);
+
+  const refreshMfa = useCallback(async () => {
+    if (!session) {
+      setMfaState({ loading: false, currentLevel: null, nextLevel: null, factors: [] });
+      return;
+    }
+    const [aalResult, factorResult] = await Promise.all([
+      supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+      supabase.auth.mfa.listFactors(),
+    ]);
+    if (aalResult.error || factorResult.error) {
+      setMfaState({ loading: false, currentLevel: null, nextLevel: null, factors: [], error: aalResult.error?.message || factorResult.error?.message });
+      return;
+    }
+    setMfaState({
+      loading: false,
+      currentLevel: aalResult.data.currentLevel,
+      nextLevel: aalResult.data.nextLevel,
+      factors: factorResult.data.totp || [],
+      error: "",
+    });
+  }, [session]);
+
+  useEffect(() => { refreshMfa(); }, [refreshMfa]);
 
   const loadData = useCallback(async () => {
     if (!workspaceId) return;
@@ -154,7 +185,10 @@ export default function HorecaOsApp() {
     suppliers: canUseFeature("foodcost:read"),
     assistant: canUseFeature("ai:use"),
     users: canUseFeature("users:read") || canUseFeature("users:manage"),
+    security: true,
   }), [canUseFeature]);
+  const mfaRequired = useMemo(() => roleAssignments.some((assignment) => ["owner", "manager"].includes(assignment.role?.role_key)), [roleAssignments]);
+  const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
   const openTasks = data.tasks.filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
   const priorities = [...openTasks].sort((a, b) => (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9)).slice(0, 6);
@@ -172,6 +206,13 @@ export default function HorecaOsApp() {
   if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
   if (!session) return <LoginScreen signIn={signIn} message={message} />;
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
+  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
+  if (mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
+    return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
+  }
+  if (mfaRequired && !verifiedMfaFactor) {
+    return <MfaEnrollment required onComplete={refreshMfa} />;
+  }
 
   return (
     <div className="shell">
@@ -187,6 +228,7 @@ export default function HorecaOsApp() {
           <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
+          <NavLink href="/beveiliging" active={activeView === "security"}>Beveiliging</NavLink>
         </nav>
         <button className="nav logout" onClick={() => supabase.auth.signOut()}>Uitloggen</button>
       </aside>
@@ -243,6 +285,7 @@ export default function HorecaOsApp() {
         {activeView === "marketing" && <EmptyModule eyebrow="CommerciÃ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
+        {activeView === "security" && <SecuritySettings required={mfaRequired} mfaState={mfaState} onRefresh={refreshMfa} />}
       </main>
     </div>
   );
@@ -317,6 +360,109 @@ function Assistant({ workspaceId, businessId, session, conversations, onRefresh 
         <div className="messages">{!chat.length && <Empty text="Stel een vraag. De assistent gebruikt alleen gegevens die jij binnen deze werkruimte mag zien." />}{chat.map((item) => <div className={`messageBubble ${item.role}`} key={item.id}>{item.content}</div>)}</div>
         {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "Analyserenâ€¦" : "Versturen"}</button></form>
       </article></section></>;
+}
+
+function MfaChallenge({ factor, onComplete }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
+  async function verifyMfa(event) {
+    event.preventDefault();
+    if (!factor) { setError("Geen geverifieerde authenticator gevonden."); return; }
+    setVerifying(true); setError("");
+    const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.trim() });
+    if (verifyError) { setError("De code is ongeldig of verlopen."); setVerifying(false); return; }
+    await onComplete();
+    setVerifying(false);
+  }
+
+  return <main className="authPage"><section className="authCard mfaCard">
+    <div className="brand dark">Horeca OS</div>
+    <p className="eyebrow">Tweestapsverificatie</p><h1>Voer je beveiligingscode in</h1>
+    <p>Open je authenticator-app en vul de actuele zescijferige code in.</p>
+    {error && <div className="notice">{error}</div>}
+    <form onSubmit={verifyMfa} className="stack">
+      <label>Beveiligingscode<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
+      <button className="primary" disabled={verifying}>{verifying ? "Controleren…" : "Veilig inloggen"}</button>
+    </form>
+    <button className="textButton" onClick={() => supabase.auth.signOut()}>Terug naar inloggen</button>
+  </section></main>;
+}
+
+function MfaEnrollment({ required = false, onComplete, onCancel }) {
+  const [enrollment, setEnrollment] = useState(null);
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" }).then(({ data, error: enrollError }) => {
+      if (!active) return;
+      if (enrollError) setError(enrollError.message);
+      else setEnrollment({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
+    });
+    return () => { active = false; };
+  }, []);
+
+  async function confirmEnrollment(event) {
+    event.preventDefault();
+    if (!enrollment) return;
+    setVerifying(true); setError("");
+    const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: enrollment.id, code: code.trim() });
+    if (verifyError) { setError("De code is ongeldig. Controleer de authenticator-app en probeer opnieuw."); setVerifying(false); return; }
+    await onComplete();
+    setVerifying(false);
+  }
+
+  async function cancelEnrollment() {
+    if (enrollment?.id) await supabase.auth.mfa.unenroll({ factorId: enrollment.id });
+    onCancel?.();
+  }
+
+  return <main className={required ? "authPage" : ""}><section className={required ? "authCard mfaCard" : "panel mfaSetupPanel"}>
+    <p className="eyebrow">Accountbeveiliging</p><h1>{required ? "Stel tweestapsverificatie in" : "Authenticator koppelen"}</h1>
+    <p>{required ? "Voor Eigenaren en Managers is een tweede beveiligingsstap verplicht." : "Scan de QR-code met Google Authenticator, Microsoft Authenticator of 1Password."}</p>
+    {error && <div className="notice">{error}</div>}
+    {!enrollment && !error && <p>Beveiligde QR-code voorbereiden…</p>}
+    {enrollment && <form onSubmit={confirmEnrollment} className="stack">
+      <div className="mfaQr"><img src={enrollment.qr} alt="QR-code voor de authenticator-app" /></div>
+      <details><summary>QR-code werkt niet?</summary><p>Voer deze sleutel handmatig in:</p><code className="mfaSecret">{enrollment.secret}</code></details>
+      <label>Code uit authenticator<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
+      <button className="primary" disabled={verifying}>{verifying ? "Activeren…" : "2FA activeren"}</button>
+    </form>}
+    {!required && <button className="textButton" onClick={cancelEnrollment}>Annuleren</button>}
+    {required && <button className="textButton" onClick={() => supabase.auth.signOut()}>Uitloggen</button>}
+  </section></main>;
+}
+
+function SecuritySettings({ required, mfaState, onRefresh }) {
+  const [settingUp, setSettingUp] = useState(false);
+  const [message, setMessage] = useState("");
+  const verified = mfaState.factors.filter((factor) => factor.status === "verified");
+
+  async function removeFactor(factorId) {
+    setMessage("");
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) { setMessage("De authenticator kon niet worden verwijderd."); return; }
+    await supabase.auth.refreshSession();
+    await onRefresh();
+    setMessage("Tweestapsverificatie is uitgeschakeld.");
+  }
+
+  if (settingUp) return <MfaEnrollment onComplete={async () => { await onRefresh(); setSettingUp(false); setMessage("Tweestapsverificatie is actief."); }} onCancel={() => setSettingUp(false)} />;
+
+  return <>
+    <section className="pageIntro"><p className="eyebrow">Accountbeveiliging</p><h2>Tweestapsverificatie</h2><p>Bescherm je account met een code uit een authenticator-app.</p></section>
+    {message && <div className="notice successNotice">{message}</div>}
+    <section className="panel securityPanel">
+      <div className="securityStatus"><div><strong>{verified.length ? "2FA is actief" : "2FA is niet ingesteld"}</strong><p>{required ? "Verplicht voor jouw rol." : "Optioneel voor jouw rol, maar sterk aanbevolen."}</p></div><span className={verified.length ? "status connected" : "status pending"}>{verified.length ? "Beveiligd" : "Niet actief"}</span></div>
+      {!verified.length && <button className="primary" onClick={() => setSettingUp(true)}>Authenticator koppelen</button>}
+      {verified.map((factor) => <div className="factorRow" key={factor.id}><div><strong>{factor.friendly_name || "Authenticator-app"}</strong><small>Geverifieerde TOTP-factor</small></div>{!required && <button className="secondaryButton" onClick={() => removeFactor(factor.id)}>Verwijderen</button>}</div>)}
+      {required && verified.length > 0 && <p className="securityHint">Omdat jouw rol verhoogde rechten heeft, kan 2FA niet vanuit de app worden uitgeschakeld.</p>}
+    </section>
+  </>;
 }
 
 function UsersAdmin({ workspaceId, session }) {
