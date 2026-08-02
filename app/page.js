@@ -60,7 +60,7 @@ export default function Home() {
       supabase.from("events").select("*").gte("starts_at", today.toISOString()).order("starts_at").limit(8),
       supabase.from("sales_daily").select("*").gte("sales_date", isoDate(from)).order("sales_date", { ascending: false }),
       supabase.from("product_sales").select("*").order("quantity", { ascending: false }).limit(8),
-      supabase.from("security_checks").select("*").order("check_name"),
+      supabase.from("security_checks").select("*").order("label"),
       supabase.from("integrations").select("*").order("name"),
     ]);
 
