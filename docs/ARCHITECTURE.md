@@ -16,6 +16,10 @@ Belangrijkste tabellen:
 - workspace_members
 - profiles
 - businesses
+- business_locations
+- roles
+- role_permissions
+- user_role_assignments
 - tasks
 - decisions
 - events
@@ -38,6 +42,8 @@ Belangrijkste tabellen:
 - e-mailbevestiging actief
 - gebruikers worden handmatig door een beheerder toegevoegd
 - rollen: owner, manager, employee, viewer
+- uitbreidbare workspace-rollen met optionele bedrijfs- en vestigingsscope
+- autorisatie komt uit databasetabellen en nooit uit bewerkbare user metadata
 
 ## Integraties
 
