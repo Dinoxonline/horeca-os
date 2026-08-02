@@ -1,0 +1,9 @@
+{
+  "name": "horeca-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Managementplatform voor Caribbean Corner en Grandcaf\u00e9 Het Plein",
+  "scripts": {
+    "check:secrets": "echo \"Controleer handmatig dat geen secrets zijn gecommit\""
+  }
+}
