@@ -24,6 +24,8 @@
 - `products`
 - `recipes`
 - `recipe_items`
+- `ingredients`
+- `menu_items`
 
 ## Verkoop
 
