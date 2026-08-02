@@ -404,7 +404,7 @@ function SalesCard({ label, period }) {
 }
 
 function LoginScreen({ signIn, message }) {
-  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Veilig inloggen</h1><p>Managementplatform voor jouw horecabedrijven</p>{message && <div className="notice">{message}</div>}<form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" minLength="12" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form><small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
+  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Veilig inloggen</h1><p>Managementplatform voor jouw horecabedrijven</p>{message && <div className="notice">{message}</div>}<form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form><small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
 }
 
 function Card({ label, value, sub, tone = "normal" }) { return <article className={`card ${tone}`}><span>{label}</span><strong>{value ?? 0}</strong><small>{sub}</small></article>; }
@@ -425,3 +425,4 @@ function daysBetween(start, end) { return Math.round((startOfDay(end) - startOfD
 function isoDate(date) { const local = startOfDay(date); return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`; }
 function parseDate(value) { const [year, month, day] = value.split("-").map(Number); return new Date(year, month - 1, day); }
 function formatDate(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+
