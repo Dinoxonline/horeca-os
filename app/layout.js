@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./modules.css";
 
 export const metadata = {
   title: "Horeca OS",
