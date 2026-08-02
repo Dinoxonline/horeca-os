@@ -1,9 +1,17 @@
 {
   "name": "horeca-os",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Managementplatform voor Caribbean Corner en Grandcaf\u00e9 Het Plein",
   "scripts": {
-    "check:secrets": "echo \"Controleer handmatig dat geen secrets zijn gecommit\""
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
+    "next": "15.5.21",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }

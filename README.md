@@ -1,71 +1,33 @@
-# Horeca OS
+# Horeca OS — Next.js App
 
-Centraal managementplatform voor:
+Werkende Next.js-broncode voor de Horeca OS-productieapp.
 
-- Caribbean Corner
-- Grandcafé Het Plein
-- toekomstige horecaformules en vestigingen
+## Installatie
 
-## Doel
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
-Horeca OS brengt agenda, taken, omzet, producten, recepturen, leveranciers, HACCP, reviews, marketing en managementinformatie samen in één veilige omgeving.
+## Vereiste environment variables
 
-## Huidige status
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
 
-- Supabase-productiedatabase actief
-- beveiligde eigenaarstoegang
-- Row Level Security actief
-- openbare registratie uitgeschakeld
-- Outlook-agenda-import ingericht
-- Appsmen-basisdata ingericht
-- producten- en recepturenstructuur ingericht
-- audit logging ingericht
-- dagelijkse logische back-up ingericht
-- Vercel-productieomgeving actief
+Plaats deze waarden niet in GitHub. Voeg ze toe in Vercel onder:
 
-## Productie-URL
+`Project Settings → Environment Variables`
 
-`https://horeca-os-le-club.vercel.app`
+## Productie
 
-## Technische basis
+De app is bedoeld om vanuit GitHub automatisch naar Vercel te deployen.
 
-- Frontend: Next.js
-- Database en authenticatie: Supabase
-- Hosting: Vercel
-- Versiebeheer: GitHub
-- Automatisering: ChatGPT-taken en later server-side jobs
+## Beveiliging
 
-## Veiligheid
-
-Plaats nooit wachtwoorden, service-role keys, API-geheimen of databasewachtwoorden in deze repository.
-
-Gebruik uitsluitend:
-
-- `.env.local` voor lokaal gebruik
-- Vercel Environment Variables voor productie
-- Supabase Secrets voor Edge Functions
-
-## Hoofdmodules
-
-1. CEO Dashboard
-2. Taken en besluiten
-3. Agenda en evenementen
-4. Omzet en verkoopdata
-5. Producten en recepturen
-6. Voorraad en bestellijsten
-7. Leveranciers
-8. HACCP
-9. Personeel
-10. Reviews
-11. Marketing
-12. Security Center
-13. AI-directeur
-
-## Eerstvolgende prioriteiten
-
-1. Bestaande Vercel-code synchroniseren met deze repository
-2. Vercel aan GitHub koppelen
-3. Security Center zichtbaar maken in de webapp
-4. Producten- en recepturenmodule zichtbaar maken
-5. Outlook via Microsoft Graph volledig automatisch koppelen
-6. Appsmen-import automatiseren
+- geen openbaar registratieformulier
+- Supabase RLS blijft leidend
+- publishable key mag in de frontend worden gebruikt
+- service-role key mag nooit in deze repository of browsercode komen
