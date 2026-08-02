@@ -60,6 +60,20 @@ Nog te inventariseren.
 ### Brevo
 Nog te koppelen voor campagnes en rapportages.
 
+## Social Intelligence Hub
+
+De Sprint 2-integratielaag is provider-onafhankelijk en ondersteunt in eerste instantie:
+
+- Google Business Profile voor locaties, reviews en reviewreacties;
+- Meta voor Facebook en Instagram;
+- TikTok voor content, reacties en statistieken;
+- Brevo voor contacten, nieuwsbrieven en campagneprestaties.
+
+Alle gegevens blijven gescoped op workspace en, waar van toepassing, bedrijf en
+vestiging. Externe accounts verwijzen alleen naar een server-side secretnaam; tokens
+en API-sleutels worden nooit in publieke tabellen opgeslagen. Reviewreacties blijven
+concept totdat een bevoegde gebruiker ze expliciet goedkeurt.
+
 ## Back-ups
 
 Dagelijkse logische snapshots worden maximaal 30 dagen bewaard.

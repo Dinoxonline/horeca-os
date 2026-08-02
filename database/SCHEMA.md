@@ -33,6 +33,16 @@
 ## Klantbeleving
 
 - `reviews`
+- `review_response_drafts`
+
+## Social Intelligence
+
+- `integration_accounts`
+- `integration_sync_jobs`
+- `integration_event_receipts`
+- `social_content_items`
+- `social_conversations`
+- `social_messages`
 
 ## Beveiliging
 
@@ -52,3 +62,6 @@
 - ieder recept hoort bij één workspace en bevat meerdere recipe_items
 - iedere recipe_item verwijst naar één product
 - iedere verkoopregel hoort bij een workspace en eventueel een bedrijf
+- ieder extern account hoort bij een workspace en eventueel een bedrijf/vestiging
+- ieder geïmporteerd providerobject heeft een unieke externe sleutel voor idempotentie
+- reviewreacties vereisen menselijke goedkeuring voordat publicatie is toegestaan
