@@ -74,6 +74,14 @@ vestiging. Externe accounts verwijzen alleen naar een server-side secretnaam; to
 en API-sleutels worden nooit in publieke tabellen opgeslagen. Reviewreacties blijven
 concept totdat een bevoegde gebruiker ze expliciet goedkeurt.
 
+## Foodcost Engine
+
+De foodcostketen is `supplier -> product -> ingredient -> recipe item -> recipe -> menu item`.
+De bestaande inkoop- en recepttabellen worden uitsluitend additief uitgebreid. Kostinputs
+blijven genormaliseerd en gescoped via workspace, bedrijf en optionele vestiging. De actuele
+foodcost wordt uit bronprijzen berekend en niet als verouderingsgevoelig totaal opgeslagen.
+Deze fundering activeert geen leveranciers-, factuur- of POS-koppeling.
+
 ## Back-ups
 
 Dagelijkse logische snapshots worden maximaal 30 dagen bewaard.
