@@ -18,6 +18,7 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
   const [memberships, setMemberships] = useState([]);
+  const [roleAssignments, setRoleAssignments] = useState([]);
   const [workspaceId, setWorkspaceId] = useState("");
   const [businessId, setBusinessId] = useState("all");
   const [data, setData] = useState(emptyData);
@@ -51,6 +52,28 @@ export default function Home() {
       });
     return () => { active = false; };
   }, [session]);
+
+  useEffect(() => {
+    if (!session || !workspaceId) {
+      setRoleAssignments([]);
+      return;
+    }
+    let active = true;
+    supabase
+      .from("user_role_assignments")
+      .select("business_id, location_id, role:roles!inner(role_key, role_permissions(permission))")
+      .eq("user_id", session.user.id)
+      .eq("workspace_id", workspaceId)
+      .then(({ data: rows, error }) => {
+        if (!active) return;
+        if (error) {
+          setRoleAssignments([]);
+          return;
+        }
+        setRoleAssignments(rows || []);
+      });
+    return () => { active = false; };
+  }, [session, workspaceId]);
 
   const loadData = useCallback(async () => {
     if (!workspaceId) return;
@@ -101,6 +124,21 @@ export default function Home() {
   const analytics = useMemo(() => buildSalesAnalytics(data.sales, data.products, new Date()), [data.sales, data.products]);
   const activeWorkspace = memberships.find((membership) => membership.workspace_id === workspaceId);
   const activeBusiness = data.businesses.find((business) => business.id === businessId);
+  const canUseFeature = useCallback((permission) => {
+    if (activeWorkspace?.role === "owner") return true;
+    return roleAssignments.some((assignment) => {
+      const businessMatches = !assignment.business_id || businessId === "all" || assignment.business_id === businessId;
+      const permissions = assignment.role?.role_permissions?.map((item) => item.permission) || [];
+      return businessMatches && (assignment.role?.role_key === "owner" || permissions.includes(permission));
+    });
+  }, [activeWorkspace?.role, businessId, roleAssignments]);
+  const featureVisibility = useMemo(() => ({
+    foodcost: canUseFeature("foodcost:read"),
+    products: canUseFeature("foodcost:read"),
+    recipes: canUseFeature("foodcost:read"),
+    suppliers: canUseFeature("foodcost:read"),
+    assistant: canUseFeature("ai:use"),
+  }), [canUseFeature]);
   const openTasks = data.tasks.filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
   const priorities = [...openTasks].sort((a, b) => (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9)).slice(0, 6);
@@ -108,6 +146,10 @@ export default function Home() {
   const securityWarnings = Math.max(data.security.length - securityOk, 0);
   const connectedIntegrations = data.integrations.filter((item) => String(item.status).toLowerCase() === "connected").length;
   const foodcost = useMemo(() => buildFoodcostAnalytics(data), [data]);
+
+  useEffect(() => {
+    if (activeView !== "dashboard" && !featureVisibility[activeView]) setActiveView("dashboard");
+  }, [activeView, featureVisibility]);
 
   async function signIn(formData) {
     setMessage("");
@@ -125,11 +167,11 @@ export default function Home() {
         <div className="brand">Horeca OS</div>
         <nav>
           <NavButton active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")}>CEO Home</NavButton>
-          <NavButton active={activeView === "foodcost"} onClick={() => setActiveView("foodcost")}>Foodcost</NavButton>
-          <NavButton active={activeView === "products"} onClick={() => setActiveView("products")}>Producten</NavButton>
-          <NavButton active={activeView === "recipes"} onClick={() => setActiveView("recipes")}>Recepturen</NavButton>
-          <NavButton active={activeView === "suppliers"} onClick={() => setActiveView("suppliers")}>Leveranciers</NavButton>
-          <NavButton active={activeView === "assistant"} onClick={() => setActiveView("assistant")}>AI-assistent</NavButton>
+          {featureVisibility.foodcost && <NavButton active={activeView === "foodcost"} onClick={() => setActiveView("foodcost")}>Foodcost</NavButton>}
+          {featureVisibility.products && <NavButton active={activeView === "products"} onClick={() => setActiveView("products")}>Producten</NavButton>}
+          {featureVisibility.recipes && <NavButton active={activeView === "recipes"} onClick={() => setActiveView("recipes")}>Recepturen</NavButton>}
+          {featureVisibility.suppliers && <NavButton active={activeView === "suppliers"} onClick={() => setActiveView("suppliers")}>Leveranciers</NavButton>}
+          {featureVisibility.assistant && <NavButton active={activeView === "assistant"} onClick={() => setActiveView("assistant")}>AI-assistent</NavButton>}
         </nav>
         <button className="nav logout" onClick={() => supabase.auth.signOut()}>Uitloggen</button>
       </aside>
@@ -178,11 +220,11 @@ export default function Home() {
         <section className="panel ai"><div><p className="eyebrow light">AI-directieadvies</p><h2>{buildAdvice({ criticalTasks, sales: analytics.today, events: data.events, securityWarnings })}</h2></div><div className="aiMeta"><span>Live database</span><span>Tenantfilter actief</span><span>Dagelijkse back-up</span></div></section>
         </>}
 
-        {activeView === "foodcost" && <FoodcostDashboard analytics={foodcost} />}
-        {activeView === "products" && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} />}
-        {activeView === "recipes" && <RecipeOverview analytics={foodcost} />}
-        {activeView === "suppliers" && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
-        {activeView === "assistant" && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
+        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
+        {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} />}
+        {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview analytics={foodcost} />}
+        {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
+        {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
       </main>
     </div>
   );
