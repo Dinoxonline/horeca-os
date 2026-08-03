@@ -101,6 +101,13 @@ export async function POST(request) {
       const fullName = `${firstName} ${lastName}`.trim();
       if (!firstName || !lastName) return jsonError("Voornaam en achternaam zijn verplicht.", 400);
       if (!email || !email.includes("@")) return jsonError("Vul een geldig e-mailadres in.", 400);
+      const robuustRoles = cleanChoiceList(body.robuustRoles, ROBUUST_ROLES);
+      const functions = cleanChoiceList(body.functions, EMPLOYEE_FUNCTIONS);
+      const competencies = cleanText(body.competencies, 1000).split(",").map((item) => item.trim()).filter(Boolean).slice(0, 30);
+      const wageType = ["hourly", "monthly"].includes(body.wageType) ? body.wageType : null;
+      const ranking = Number.isInteger(Number(body.ranking)) ? Math.max(-1, Number(body.ranking)) : 10;
+      const wageAmount = body.wageAmount === "" || body.wageAmount == null ? null : Number(body.wageAmount);
+      if (wageAmount != null && (!Number.isFinite(wageAmount) || wageAmount < 0)) return jsonError("Vul een geldig loonbedrag in.", 400);
 
       const redirectTo = process.env.NEXT_PUBLIC_SITE_URL || new URL("/dashboard", request.url).toString();
       const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
@@ -132,17 +139,48 @@ export async function POST(request) {
         first_name: firstName,
         last_name: lastName,
         email,
+        employee_number: cleanNullable(body.employeeNumber, 80),
+        phone: cleanNullable(body.phone, 40),
+        employment_start: cleanDate(body.employmentStart),
+        employment_end: cleanDate(body.employmentEnd),
+        address: cleanNullable(body.address, 200),
+        postal_code: cleanNullable(body.postalCode, 20),
+        city: cleanNullable(body.city, 100),
+        birthplace: cleanNullable(body.birthplace, 100),
+        competencies,
+        robuust_roles: robuustRoles,
+        functions,
+        wage_type: wageType,
+        ranking,
+        active: ranking !== -1,
+        external_provider: "robuust",
+        external_employee_id: cleanNullable(body.externalEmployeeId, 120),
+        sync_status: body.externalEmployeeId ? "pending" : "not_linked",
         created_by: context.user.id,
         updated_by: context.user.id,
       }).select("id").single();
       if (employeeError) throw employeeError;
+
+      const { error: sensitiveError } = await admin.rpc("upsert_employee_sensitive", {
+        p_employee_id: employee.id,
+        p_birth_date: cleanDate(body.birthDate),
+        p_bsn: cleanNullable(body.bsn, 20),
+        p_iban: cleanNullable(body.iban, 40),
+        p_pin_code: cleanNullable(body.pinCode, 40),
+        p_wage_amount: wageAmount,
+      });
+      if (sensitiveError) throw sensitiveError;
 
       const { error: employeeAuditError } = await admin.from("employee_profile_audit").insert({
         workspace_id: workspaceId,
         employee_id: employee.id,
         actor_id: context.user.id,
         action: "created",
-        changed_fields: ["first_name", "last_name", "email"],
+        changed_fields: [
+          "first_name", "last_name", "email", "employee_number", "phone", "employment_start", "employment_end",
+          "address", "postal_code", "city", "birthplace", "birth_date", "competencies", "robuust_roles",
+          "functions", "wage_type", "wage_amount", "bsn", "iban", "pin_code", "ranking", "external_employee_id",
+        ],
       });
       if (employeeAuditError) throw employeeAuditError;
 
@@ -156,7 +194,7 @@ export async function POST(request) {
       });
       if (assignmentResult.error) throw assignmentResult.error;
 
-      return NextResponse.json({ ok: true, message: "Gebruiker is aangemaakt en de veilige activatielink is verstuurd." });
+      return NextResponse.json({ ok: true, message: "Medewerker, account en volledig personeelsdossier zijn aangemaakt. De activatielink is verstuurd." });
     }
 
     if (action === "replace-assignment") {
