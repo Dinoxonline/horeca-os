@@ -288,8 +288,7 @@ async function requireUserManager(request) {
   const { data, error } = await supabase.auth.getUser(token);
   const user = data?.user;
   if (error || !user) return { error: jsonError("Sessie is verlopen.", 401) };
-  const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assuranceError || assurance?.currentLevel !== "aal2") {
+  if (verifiedTokenAal(token) !== "aal2") {
     return { error: jsonError("Bevestig eerst je tweestapsverificatie.", 403) };
   }
 
@@ -311,6 +310,16 @@ async function requireUserManager(request) {
   });
   if (!allowed) return { error: jsonError("Geen toegang tot gebruikersbeheer.", 403) };
   return { user, workspaceId };
+}
+
+function verifiedTokenAal(token) {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).aal || null;
+  } catch {
+    return null;
+  }
 }
 
 async function readWorkspaceId(request) {
