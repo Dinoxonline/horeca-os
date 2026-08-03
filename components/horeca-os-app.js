@@ -24,6 +24,7 @@ const routeViews = {
   "/marketing": "marketing",
   "/ai": "assistant",
   "/gebruikers": "users",
+  "/koppelingen": "integrations",
   "/beveiliging": "security",
 };
 
@@ -185,6 +186,7 @@ export default function HorecaOsApp() {
     suppliers: canUseFeature("foodcost:read"),
     assistant: canUseFeature("ai:use"),
     users: canUseFeature("users:read") || canUseFeature("users:manage"),
+    integrations: canUseFeature("integrations:manage"),
     security: true,
   }), [canUseFeature]);
   const mfaRequired = useMemo(() => roleAssignments.some((assignment) => ["owner", "manager"].includes(assignment.role?.role_key)), [roleAssignments]);
@@ -228,6 +230,7 @@ export default function HorecaOsApp() {
           <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
+          {featureVisibility.integrations && <NavLink href="/koppelingen" active={activeView === "integrations"}>Koppelingen</NavLink>}
           <NavLink href="/beveiliging" active={activeView === "security"}>Beveiliging</NavLink>
         </nav>
         <button className="nav logout" onClick={() => supabase.auth.signOut()}>Uitloggen</button>
@@ -285,6 +288,7 @@ export default function HorecaOsApp() {
         {activeView === "marketing" && <EmptyModule eyebrow="CommerciÃ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
+        {activeView === "integrations" && featureVisibility.integrations && <RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} />}
         {activeView === "security" && <SecuritySettings required={mfaRequired} mfaState={mfaState} onRefresh={refreshMfa} />}
       </main>
     </div>
@@ -461,6 +465,62 @@ function SecuritySettings({ required, mfaState, onRefresh }) {
       {!verified.length && <button className="primary" onClick={() => setSettingUp(true)}>Authenticator koppelen</button>}
       {verified.map((factor) => <div className="factorRow" key={factor.id}><div><strong>{factor.friendly_name || "Authenticator-app"}</strong><small>Geverifieerde TOTP-factor</small></div>{!required && <button className="secondaryButton" onClick={() => removeFactor(factor.id)}>Verwijderen</button>}</div>)}
       {required && verified.length > 0 && <p className="securityHint">Omdat jouw rol verhoogde rechten heeft, kan 2FA niet vanuit de app worden uitgeschakeld.</p>}
+    </section>
+  </>;
+}
+
+function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
+  const [accounts, setAccounts] = useState([]);
+  const [integrationMessage, setIntegrationMessage] = useState("");
+  const [integrationError, setIntegrationError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  const loadAccounts = useCallback(async () => {
+    const response = await fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    const result = await response.json();
+    if (response.ok) setAccounts(result.accounts || []);
+    else setIntegrationError(result.error || "Koppelingen konden niet worden geladen.");
+  }, [session.access_token, workspaceId]);
+
+  useEffect(() => { loadAccounts(); }, [loadAccounts]);
+
+  async function connectRobuust(formData) {
+    setConnecting(true); setIntegrationMessage(""); setIntegrationError("");
+    const form = Object.fromEntries(formData);
+    const response = await fetch("/api/integrations/robuust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ workspaceId, businessId: form.businessId, pid: form.pid, apiKey: form.apiKey }),
+    });
+    const result = await response.json();
+    if (response.ok) { setIntegrationMessage(result.message); await loadAccounts(); }
+    else setIntegrationError(result.error || "Robuust kon niet worden gekoppeld.");
+    setConnecting(false);
+  }
+
+  const statusLabel = { connected: "Verbonden", pending: "Controleren", degraded: "Aandacht nodig", not_configured: "Niet ingesteld", revoked: "Ingetrokken" };
+  return <>
+    <section className="pageIntro"><p className="eyebrow">Databronnen</p><h2>Koppelingen</h2><p>Verbind externe systemen via gecontroleerde, traceerbare gegevensstromen.</p></section>
+    {integrationMessage && <div className="notice successNotice">{integrationMessage}</div>}
+    {integrationError && <div className="notice">{integrationError}</div>}
+    <section className="integrationGrid">
+      <article className="panel integrationSetup">
+        <div className="integrationBrand"><div className="integrationLogo">R</div><div><h2>Robuust</h2><p>Kassa, reserveringen en operationele data</p></div></div>
+        <div className="scopeBanner"><strong>Eerste fase: alleen lezen</strong><span>Horeca OS valideert nu het partnerbedrijf. We schrijven nog niets terug naar Robuust.</span></div>
+        <form action={connectRobuust} className="stack">
+          <label>Horeca OS-vestiging<select name="businessId" required defaultValue=""><option value="" disabled>Kies een vestiging</option>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label>
+          <label>Robuust PID<input name="pid" required placeholder="Jouw Robuust bedrijfs-ID" autoComplete="off" /></label>
+          <label>Robuust API-sleutel<input name="apiKey" type="password" required autoComplete="new-password" placeholder="Eenmalig invoeren" /></label>
+          <div className="sensitiveNote"><strong>Versleuteld</strong><span>De API-sleutel wordt opgeslagen in Supabase Vault en verschijnt daarna niet meer op het scherm.</span></div>
+          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controleren…" : "Robuust verbinden"}</button>
+        </form>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>Officiële Robuust Reserveringen-API.</p></div></div>
+        {!accounts.length && <Empty text="Nog geen Robuust-koppeling ingesteld." />}
+        {accounts.map((account) => <div className="connectionRow" key={account.id}><div><strong>{account.display_name || "Robuust"}</strong><span>PID: {account.external_account_id}</span><small>{account.last_synced_at ? `Gecontroleerd op ${formatDate(account.last_synced_at)}` : "Nog niet gecontroleerd"}</small></div><span className={`status ${account.connection_status}`}>{statusLabel[account.connection_status] || account.connection_status}</span></div>)}
+        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>✓ Partnerbedrijf herkennen</span><span>✓ Beschikbaarheid van reserveringen controleren</span><span>– Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
+      </article>
     </section>
   </>;
 }
