@@ -231,8 +231,10 @@ export async function POST(request) {
       if (existingError) throw existingError;
       if (!existing) profilePayload.created_by = context.user.id;
 
-      const { data: employee, error: profileError } = await admin.from("employee_profiles")
-        .upsert(profilePayload, { onConflict: "workspace_id,user_id" }).select("id").single();
+      const profileQuery = existing
+        ? admin.from("employee_profiles").update(profilePayload).eq("id", existing.id).select("id").single()
+        : admin.from("employee_profiles").insert(profilePayload).select("id").single();
+      const { data: employee, error: profileError } = await profileQuery;
       if (profileError) throw profileError;
 
       const { data: currentRows, error: currentError } = await admin.rpc("get_employee_sensitive", { p_employee_id: employee.id });
