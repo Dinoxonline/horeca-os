@@ -288,6 +288,10 @@ async function requireUserManager(request) {
   const { data, error } = await supabase.auth.getUser(token);
   const user = data?.user;
   if (error || !user) return { error: jsonError("Sessie is verlopen.", 401) };
+  const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError || assurance?.currentLevel !== "aal2") {
+    return { error: jsonError("Bevestig eerst je tweestapsverificatie.", 403) };
+  }
 
   const workspaceId = request.method === "GET"
     ? request.nextUrl.searchParams.get("workspaceId")
