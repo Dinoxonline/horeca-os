@@ -501,7 +501,8 @@ function UsersAdmin({ workspaceId, session }) {
   async function inviteUser(formData) {
     const form = Object.fromEntries(formData);
     await submitAdminAction({
-      action: "invite", email: form.email, fullName: form.fullName, roleId: form.roleId,
+      action: "invite", email: form.email, firstName: form.firstName, lastName: form.lastName,
+      fullName: `${form.firstName || ""} ${form.lastName || ""}`.trim(), roleId: form.roleId,
       businessId: form.businessId || null, locationId: null,
     });
   }
@@ -533,13 +534,14 @@ function UsersAdmin({ workspaceId, session }) {
     {adminError && <div className="notice">{adminError}</div>}
     <section className="userAdminGrid">
       <article className="panel invitePanel">
-        <div className="panelHead"><div><h2>Gebruiker uitnodigen</h2><p>De gebruiker ontvangt een beveiligde uitnodiging per e-mail.</p></div></div>
+        <div className="panelHead"><div><h2>Nieuwe gebruiker aanmaken</h2><p>Maak het account en basispersoneelsdossier aan. De gebruiker kiest zelf veilig een wachtwoord via e-mail.</p></div></div>
         <form action={inviteUser} className="stack">
-          <label>Naam<input name="fullName" type="text" autoComplete="name" placeholder="Voor- en achternaam" /></label>
+          <div className="splitFields"><label>Voornaam<input name="firstName" type="text" required autoComplete="given-name" /></label><label>Achternaam<input name="lastName" type="text" required autoComplete="family-name" /></label></div>
           <label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label>
           <label>Horeca OS-rol<select name="roleId" required defaultValue=""><option value="" disabled>Kies een rol</option>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
           <label>Toegang<select name="businessId" defaultValue=""><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-          <button className="primary" disabled={loadingUsers}>Uitnodiging versturen</button>
+          <div className="sensitiveNote"><strong>Veilige activatie</strong><span>Er wordt geen tijdelijk wachtwoord gedeeld. De gebruiker ontvangt een persoonlijke activatielink.</span></div>
+          <button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduld…" : "Gebruiker aanmaken"}</button>
         </form>
       </article>
       <article className="panel usersPanel">
