@@ -501,23 +501,26 @@ function UsersAdmin({ workspaceId, session }) {
   async function inviteUser(formData) {
     const form = Object.fromEntries(formData);
     await submitAdminAction({
-      action: "invite",
-      email: form.email,
-      fullName: form.fullName,
-      roleId: form.roleId,
-      businessId: form.businessId || null,
-      locationId: null,
+      action: "invite", email: form.email, fullName: form.fullName, roleId: form.roleId,
+      businessId: form.businessId || null, locationId: null,
     });
   }
 
   async function updateUser(formData) {
     const form = Object.fromEntries(formData);
     await submitAdminAction({
-      action: "replace-assignment",
-      userId: form.userId,
-      roleId: form.roleId,
-      businessId: form.businessId || null,
-      locationId: null,
+      action: "replace-assignment", userId: form.userId, roleId: form.roleId,
+      businessId: form.businessId || null, locationId: null,
+    });
+  }
+
+  async function saveEmployee(formData) {
+    const form = Object.fromEntries(formData);
+    return submitAdminAction({
+      ...form,
+      action: "save-employee",
+      robuustRoles: formData.getAll("robuustRoles"),
+      functions: formData.getAll("functions"),
     });
   }
 
@@ -525,7 +528,7 @@ function UsersAdmin({ workspaceId, session }) {
   const businessName = (id) => adminData.businesses.find((item) => item.id === id)?.name || "Alle vestigingen";
 
   return <>
-    <section className="pageIntro"><p className="eyebrow">Toegangsbeheer</p><h2>Gebruikers & rollen</h2><p>Nodig medewerkers uit en bepaal per gebruiker de rol en vestigingsscope.</p></section>
+    <section className="pageIntro"><p className="eyebrow">Toegangs- en personeelsbeheer</p><h2>Gebruikers & rollen</h2><p>Beheer Horeca OS-toegang en het Robuust-personeelsdossier afzonderlijk en veilig.</p></section>
     {adminMessage && <div className="notice successNotice">{adminMessage}</div>}
     {adminError && <div className="notice">{adminError}</div>}
     <section className="userAdminGrid">
@@ -534,7 +537,7 @@ function UsersAdmin({ workspaceId, session }) {
         <form action={inviteUser} className="stack">
           <label>Naam<input name="fullName" type="text" autoComplete="name" placeholder="Voor- en achternaam" /></label>
           <label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label>
-          <label>Rol<select name="roleId" required defaultValue=""><option value="" disabled>Kies een rol</option>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+          <label>Horeca OS-rol<select name="roleId" required defaultValue=""><option value="" disabled>Kies een rol</option>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
           <label>Toegang<select name="businessId" defaultValue=""><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
           <button className="primary" disabled={loadingUsers}>Uitnodiging versturen</button>
         </form>
@@ -545,18 +548,71 @@ function UsersAdmin({ workspaceId, session }) {
         {!loadingUsers && !adminData.users.length && <Empty text="Nog geen gebruikers gevonden." />}
         <div className="userList">{adminData.users.map((user) => {
           const assignment = user.assignments[0];
-          return <form action={updateUser} className="userRow" key={user.id}>
-            <input type="hidden" name="userId" value={user.id} />
-            <div className="userIdentity"><strong>{user.fullName || user.email}</strong><span>{user.email}</span><small>{user.confirmed ? "Actief" : "Uitnodiging verstuurd"}</small></div>
-            <label>Rol<select name="roleId" required defaultValue={assignment?.role_id || ""}>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
-            <label>Toegang<select name="businessId" defaultValue={assignment?.business_id || ""}><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-            <div className="userScope"><span>{roleName(assignment)}</span><small>{businessName(assignment?.business_id)}</small></div>
-            <button className="secondaryButton">Opslaan</button>
-          </form>;
+          return <div className="userBlock" key={user.id}>
+            <form action={updateUser} className="userRow">
+              <input type="hidden" name="userId" value={user.id} />
+              <div className="userIdentity"><strong>{user.fullName || user.email}</strong><span>{user.email}</span><small>{user.confirmed ? "Actief" : "Uitnodiging verstuurd"}</small></div>
+              <label>Horeca OS-rol<select name="roleId" required defaultValue={assignment?.role_id || ""}>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+              <label>Toegang<select name="businessId" defaultValue={assignment?.business_id || ""}><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+              <div className="userScope"><span>{roleName(assignment)}</span><small>{businessName(assignment?.business_id)}</small></div>
+              <button className="secondaryButton">Toegang opslaan</button>
+            </form>
+            <EmployeeEditor key={user.employee?.updated_at || "new"} user={user} onSave={saveEmployee} />
+          </div>;
         })}</div>
       </article>
     </section>
   </>;
+}
+
+const ROBUUST_ROLE_OPTIONS = [
+  ["admin", "admin"], ["coworker", "coworker"], ["manager hr", "manager hr"],
+  ["manager operations", "manager operations"], ["manager kitchen", "manager kitchen"],
+  ["manager customers", "manager customers"], ["manager finance", "manager finance"], ["deliverer", "deliverer"],
+];
+const EMPLOYEE_FUNCTION_OPTIONS = [
+  ["admin", "Admin"], ["bediening", "Bediening"], ["chefkok", "Chefkok"], ["kok", "Kok"],
+  ["keukenhulp", "Keukenhulp"], ["floormanager", "Floormanager"], ["bezorgers", "Bezorgers"], ["mt", "MT"],
+];
+
+function EmployeeEditor({ user, onSave }) {
+  const employee = user.employee || {};
+  const nameParts = String(user.fullName || "").trim().split(/\s+/);
+  const firstName = employee.first_name || nameParts[0] || "";
+  const lastName = employee.last_name || nameParts.slice(1).join(" ") || "";
+  const selectedRoles = employee.robuust_roles || [];
+  const selectedFunctions = employee.functions || [];
+
+  return <details className="employeeDetails">
+    <summary><span>Robuust-personeelsdossier</span><small>{employee.id ? (employee.sync_status === "synced" ? "Gekoppeld" : "Dossier aanwezig") : "Nog aanvullen"}</small></summary>
+    <form action={onSave} className="employeeForm">
+      <input type="hidden" name="userId" value={user.id} />
+      <div className="formSection full"><h3>Gegevens</h3><p>De functies hieronder zijn Robuust-kassagegevens en geven geen Horeca OS-beheerrechten.</p></div>
+      <label>Voornaam *<input name="firstName" required defaultValue={firstName} /></label>
+      <label>Achternaam *<input name="lastName" required defaultValue={lastName} /></label>
+      <fieldset className="full"><legend>Robuust-rollen *</legend><div className="checkGrid">{ROBUUST_ROLE_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="robuustRoles" value={value} defaultChecked={selectedRoles.includes(value)} />{label}</label>)}</div></fieldset>
+      <label>E-mail *<input name="email" type="email" required defaultValue={employee.email || user.email} /></label>
+      <label>Personeelsnummer<input name="employeeNumber" defaultValue={employee.employee_number || ""} /></label>
+      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld — leeg laten om te behouden" : "Nieuwe pincode"} /></label>
+      <label>Telefoonnummer<input name="phone" type="tel" defaultValue={employee.phone || ""} /></label>
+      <label>Eerste dag loonverband<input name="employmentStart" type="date" defaultValue={employee.employment_start || ""} /></label>
+      <label>Laatste dag loonverband<input name="employmentEnd" type="date" defaultValue={employee.employment_end || ""} /></label>
+      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiëne, wijnkennis" /></label>
+      <label>Adres<input name="address" autoComplete="street-address" defaultValue={employee.address || ""} /></label>
+      <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" defaultValue={employee.postal_code || ""} /></label><label>Woonplaats<input name="city" autoComplete="address-level2" defaultValue={employee.city || ""} /></label></div>
+      <label>Geboorteplaats<input name="birthplace" defaultValue={employee.birthplace || ""} /></label>
+      <label>Geboortedatum<input name="birthDate" type="date" defaultValue={employee.birth_date || ""} /></label>
+      <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} defaultChecked={selectedFunctions.includes(value)} />{label}</label>)}</div></fieldset>
+      <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" defaultChecked={employee.wage_type === "hourly"} />Uurloon</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" defaultChecked={employee.wage_type === "monthly"} />Maandloon</label></fieldset>
+      <label>Loon (€)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
+      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld •••• ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
+      <label>Bankrekening<input name="iban" autoComplete="off" placeholder={employee.has_iban ? employee.iban_masked : "Wordt versleuteld opgeslagen"} /></label>
+      <label>Ranking<input name="ranking" type="number" min="-1" defaultValue={employee.ranking ?? 10} /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
+      <label>Robuust medewerker-ID<input name="externalEmployeeId" defaultValue={employee.external_employee_id || ""} placeholder="Later automatisch gevuld door koppeling" /></label>
+      <div className="sensitiveNote full"><strong>Extra beveiligd</strong><span>BSN, bankrekening, pincode, geboortedatum en loon worden versleuteld opgeslagen. Geheime waarden verschijnen niet in het gebruikersoverzicht.</span></div>
+      <div className="formActions full"><button className="primary">Personeelsdossier opslaan</button></div>
+    </form>
+  </details>;
 }
 
 function getDateRanges(now) {
