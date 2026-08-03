@@ -96,7 +96,10 @@ export async function POST(request) {
       const scope = await validateRoleAndScope(admin, workspaceId, body.roleId, body.businessId, body.locationId);
       if (scope.error) return scope.error;
       const email = String(body.email || "").trim().toLowerCase();
-      const fullName = String(body.fullName || "").trim();
+      const firstName = cleanText(body.firstName, 100);
+      const lastName = cleanText(body.lastName, 100);
+      const fullName = `${firstName} ${lastName}`.trim();
+      if (!firstName || !lastName) return jsonError("Voornaam en achternaam zijn verplicht.", 400);
       if (!email || !email.includes("@")) return jsonError("Vul een geldig e-mailadres in.", 400);
 
       const redirectTo = process.env.NEXT_PUBLIC_SITE_URL || new URL("/dashboard", request.url).toString();
@@ -123,6 +126,26 @@ export async function POST(request) {
       }, { onConflict: "workspace_id,user_id" });
       if (memberResult.error) throw memberResult.error;
 
+      const { data: employee, error: employeeError } = await admin.from("employee_profiles").insert({
+        workspace_id: workspaceId,
+        user_id: user.id,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        created_by: context.user.id,
+        updated_by: context.user.id,
+      }).select("id").single();
+      if (employeeError) throw employeeError;
+
+      const { error: employeeAuditError } = await admin.from("employee_profile_audit").insert({
+        workspace_id: workspaceId,
+        employee_id: employee.id,
+        actor_id: context.user.id,
+        action: "created",
+        changed_fields: ["first_name", "last_name", "email"],
+      });
+      if (employeeAuditError) throw employeeAuditError;
+
       const assignmentResult = await admin.from("user_role_assignments").insert({
         workspace_id: workspaceId,
         user_id: user.id,
@@ -133,7 +156,7 @@ export async function POST(request) {
       });
       if (assignmentResult.error) throw assignmentResult.error;
 
-      return NextResponse.json({ ok: true, message: "Uitnodiging is verstuurd." });
+      return NextResponse.json({ ok: true, message: "Gebruiker is aangemaakt en de veilige activatielink is verstuurd." });
     }
 
     if (action === "replace-assignment") {
