@@ -501,9 +501,13 @@ function UsersAdmin({ workspaceId, session }) {
   async function inviteUser(formData) {
     const form = Object.fromEntries(formData);
     await submitAdminAction({
-      action: "invite", email: form.email, firstName: form.firstName, lastName: form.lastName,
-      fullName: `${form.firstName || ""} ${form.lastName || ""}`.trim(), roleId: form.roleId,
-      businessId: form.businessId || null, locationId: null,
+      ...form,
+      action: "invite",
+      fullName: `${form.firstName || ""} ${form.lastName || ""}`.trim(),
+      businessId: form.businessId || null,
+      locationId: null,
+      robuustRoles: formData.getAll("robuustRoles"),
+      functions: formData.getAll("functions"),
     });
   }
 
@@ -533,15 +537,36 @@ function UsersAdmin({ workspaceId, session }) {
     {adminMessage && <div className="notice successNotice">{adminMessage}</div>}
     {adminError && <div className="notice">{adminError}</div>}
     <section className="userAdminGrid">
-      <article className="panel invitePanel">
-        <div className="panelHead"><div><h2>Nieuwe gebruiker aanmaken</h2><p>Maak het account en basispersoneelsdossier aan. De gebruiker kiest zelf veilig een wachtwoord via e-mail.</p></div></div>
-        <form action={inviteUser} className="stack">
-          <div className="splitFields"><label>Voornaam<input name="firstName" type="text" required autoComplete="given-name" /></label><label>Achternaam<input name="lastName" type="text" required autoComplete="family-name" /></label></div>
-          <label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label>
-          <label>Horeca OS-rol<select name="roleId" required defaultValue=""><option value="" disabled>Kies een rol</option>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
-          <label>Toegang<select name="businessId" defaultValue=""><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-          <div className="sensitiveNote"><strong>Veilige activatie</strong><span>Er wordt geen tijdelijk wachtwoord gedeeld. De gebruiker ontvangt een persoonlijke activatielink.</span></div>
-          <button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduld…" : "Gebruiker aanmaken"}</button>
+      <article className="panel invitePanel creationPanel">
+        <div className="panelHead"><div><h2>Nieuwe medewerker</h2><p>Volledig personeelsformulier, voorbereid op de toekomstige Robuust-koppeling.</p></div></div>
+        <div className="recordTabs"><span className="active">Gegevens</span><span>Beoordelingen</span><span>Ziekte & verlof</span><span>Bonussen</span><span>Dossier</span><span>Documenten</span></div>
+        <form action={inviteUser} className="employeeForm creationForm">
+          <div className="formSection full"><h3>Account en toegang</h3><p>De medewerker ontvangt na het opslaan een persoonlijke activatielink per e-mail.</p></div>
+          <label>Voornaam *<input name="firstName" required autoComplete="given-name" /></label>
+          <label>Achternaam *<input name="lastName" required autoComplete="family-name" /></label>
+          <label>E-mail *<input name="email" type="email" required autoComplete="email" /></label>
+          <label>Personeelsnummer<input name="employeeNumber" /></label>
+          <label>Horeca OS-rol *<select name="roleId" required defaultValue=""><option value="" disabled>Kies een rol</option>{adminData.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+          <label>Vestigingstoegang<select name="businessId" defaultValue=""><option value="">Alle vestigingen</option>{adminData.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+          <fieldset className="full"><legend>Robuust-rollen *</legend><div className="checkGrid">{ROBUUST_ROLE_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="robuustRoles" value={value} />{label}</label>)}</div></fieldset>
+          <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder="Wordt versleuteld opgeslagen" /></label>
+          <label>Telefoonnummer<input name="phone" type="tel" /></label>
+          <label>Eerste dag loonverband<input name="employmentStart" type="date" /></label>
+          <label>Laatste dag loonverband<input name="employmentEnd" type="date" /></label>
+          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiëne, wijnkennis" /></label>
+          <label>Adres<input name="address" autoComplete="street-address" /></label>
+          <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" /></label><label>Woonplaats<input name="city" autoComplete="address-level2" /></label></div>
+          <label>Geboorteplaats<input name="birthplace" /></label>
+          <label>Geboortedatum<input name="birthDate" type="date" /></label>
+          <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} />{label}</label>)}</div></fieldset>
+          <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" />Uurloon (oproepkracht)</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" />Maandloon (vaste dienst)</label></fieldset>
+          <label>Loon (€)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
+          <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
+          <label>Bankrekening<input name="iban" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
+          <label>Ranking<input name="ranking" type="number" min="-1" defaultValue="10" /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
+          <label>Robuust medewerker-ID<input name="externalEmployeeId" placeholder="Later automatisch gevuld door koppeling" /></label>
+          <div className="sensitiveNote full"><strong>Extra beveiligd</strong><span>BSN, bankrekening, pincode, geboortedatum en loon worden versleuteld opgeslagen. Horeca OS-rollen blijven gescheiden van Robuust-functies.</span></div>
+          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduld…" : "Medewerker aanmaken"}</button></div>
         </form>
       </article>
       <article className="panel usersPanel">
