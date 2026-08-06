@@ -759,6 +759,7 @@ function UsersAdmin({ workspaceId, session }) {
 }
 
 const PERMISSION_OPTIONS = [
+  ["workspace:manage", "Volledige werkruimte beheren", false],
   ["operations:read", "Dashboard en omzet bekijken"], ["operations:manage", "Operationele gegevens beheren"],
   ["finance:read", "FinanciÃ«n bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
   ["foodcost:manage", "Foodcost, producten en recepten beheren"], ["kitchen:manage", "Keuken beheren"],
@@ -776,10 +777,14 @@ function AccessFields({ roles, businesses, initialRoleId = "", initialBusinessId
   const [roleId, setRoleId] = useState(initialRoleId || "");
   const role = roles.find((item) => item.id === roleId);
   const custom = role?.role_key === "custom";
+  const fixedPermissions = new Set(role?.role_permissions?.map((item) => item.permission) || []);
+  const customOptions = PERMISSION_OPTIONS.filter(([, , customAllowed = true]) => customAllowed);
   return <>
     <label>Horeca OS-rol *<select name="roleId" required value={roleId} onChange={(event) => setRoleId(event.target.value)}><option value="" disabled>Kies een rol</option>{roles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label>{compact ? "Toegang" : "Vestigingstoegang"}<select name="businessId" defaultValue={initialBusinessId || ""}><option value="">Alle vestigingen</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-    {custom && <fieldset className="permissionPicker full"><legend>Machtigingen voor deze gebruiker *</legend><p>Vink alleen aan wat deze gebruiker binnen de gekozen vestiging mag doen.</p><div className="permissionGrid">{PERMISSION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="permissions" value={value} defaultChecked={initialPermissions.includes(value)} />{label}</label>)}</div></fieldset>}
+    {role && <fieldset className={`permissionPicker full ${custom ? "editable" : "readOnly"}`}><legend>{custom ? "Machtigingen voor deze gebruiker *" : `Toegang met de rol ${role.name}`}</legend><p>{custom ? "Vink alleen aan wat deze gebruiker binnen de gekozen vestiging mag doen." : "Dit is het vaste rechtenpakket van deze rol. Kies Aangepast wanneer je losse rechten wilt aanvinken."}</p>{custom
+      ? <div className="permissionGrid">{customOptions.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="permissions" value={value} defaultChecked={initialPermissions.includes(value)} />{label}</label>)}</div>
+      : <div className="permissionGrid permissionSummary">{PERMISSION_OPTIONS.map(([value, label]) => <span className={fixedPermissions.has(value) || role.role_key === "owner" ? "granted" : "denied"} key={value}><b>{fixedPermissions.has(value) || role.role_key === "owner" ? "âœ“" : "â€“"}</b>{label}</span>)}</div>}</fieldset>}
   </>;
 }
 
