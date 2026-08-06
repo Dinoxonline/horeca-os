@@ -15,7 +15,7 @@ export async function GET(request) {
     const [authResult, membersResult, assignmentsResult, rolesResult, businessesResult, locationsResult, employeesResult] = await Promise.all([
       admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
       admin.from("workspace_members").select("user_id, role, created_at").eq("workspace_id", workspaceId),
-      admin.from("user_role_assignments").select("id, user_id, role_id, business_id, location_id, role:roles!inner(role_key, name)").eq("workspace_id", workspaceId),
+      admin.from("user_role_assignments").select("id, user_id, role_id, business_id, location_id, assignment_permissions(permission), role:roles!inner(role_key, name)").eq("workspace_id", workspaceId),
       admin.from("roles").select("id, role_key, name, description, is_system").eq("workspace_id", workspaceId).order("name"),
       admin.from("businesses").select("id, name").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       admin.from("business_locations").select("id, business_id, name").eq("workspace_id", workspaceId).eq("active", true).order("name"),
@@ -95,6 +95,8 @@ export async function POST(request) {
     if (action === "invite") {
       const scope = await validateRoleAndScope(admin, workspaceId, body.roleId, body.businessId, body.locationId);
       if (scope.error) return scope.error;
+      const customPermissionError = validateCustomPermissions(scope.role.role_key, body.permissions);
+      if (customPermissionError) return customPermissionError;
       const email = String(body.email || "").trim().toLowerCase();
       const firstName = cleanText(body.firstName, 100);
       const lastName = cleanText(body.lastName, 100);
@@ -184,15 +186,17 @@ export async function POST(request) {
       });
       if (employeeAuditError) throw employeeAuditError;
 
-      const assignmentResult = await admin.from("user_role_assignments").insert({
+      const { data: assignment, error: assignmentError } = await admin.from("user_role_assignments").insert({
         workspace_id: workspaceId,
         user_id: user.id,
         role_id: body.roleId,
         business_id: body.businessId || null,
         location_id: body.locationId || null,
         assigned_by: context.user.id,
-      });
-      if (assignmentResult.error) throw assignmentResult.error;
+      }).select("id").single();
+      if (assignmentError) throw assignmentError;
+      const permissionResult = await saveCustomPermissions(admin, workspaceId, assignment.id, scope.role.role_key, body.permissions);
+      if (permissionResult.error) return permissionResult.error;
 
       return NextResponse.json({ ok: true, message: "Medewerker, account en volledig personeelsdossier zijn aangemaakt. De activatielink is verstuurd." });
     }
@@ -200,6 +204,8 @@ export async function POST(request) {
     if (action === "replace-assignment") {
       const scope = await validateRoleAndScope(admin, workspaceId, body.roleId, body.businessId, body.locationId);
       if (scope.error) return scope.error;
+      const customPermissionError = validateCustomPermissions(scope.role.role_key, body.permissions);
+      if (customPermissionError) return customPermissionError;
       const userId = String(body.userId || "");
       if (!userId) return jsonError("Gebruiker ontbreekt.", 400);
 
@@ -225,15 +231,17 @@ export async function POST(request) {
       const deleteResult = await admin.from("user_role_assignments").delete().eq("workspace_id", workspaceId).eq("user_id", userId);
       if (deleteResult.error) throw deleteResult.error;
 
-      const insertResult = await admin.from("user_role_assignments").insert({
+      const { data: assignment, error: insertError } = await admin.from("user_role_assignments").insert({
         workspace_id: workspaceId,
         user_id: userId,
         role_id: body.roleId,
         business_id: body.businessId || null,
         location_id: body.locationId || null,
         assigned_by: context.user.id,
-      });
-      if (insertResult.error) throw insertResult.error;
+      }).select("id").single();
+      if (insertError) throw insertError;
+      const permissionResult = await saveCustomPermissions(admin, workspaceId, assignment.id, scope.role.role_key, body.permissions);
+      if (permissionResult.error) return permissionResult.error;
 
       const memberResult = await admin.from("workspace_members").update({
         role: legacyMembershipRole(scope.role.role_key),
@@ -360,13 +368,15 @@ async function requireUserManager(request) {
 
   const { data: assignments, error: roleError } = await supabase
     .from("user_role_assignments")
-    .select("role:roles!inner(role_key, role_permissions(permission))")
+    .select("assignment_permissions(permission), role:roles!inner(role_key, role_permissions(permission))")
     .eq("workspace_id", workspaceId)
     .eq("user_id", user.id);
   if (roleError) return { error: jsonError("Rechten konden niet worden gecontroleerd.", 403) };
 
   const allowed = (assignments || []).some((assignment) => {
-    const permissions = assignment.role?.role_permissions?.map((item) => item.permission) || [];
+    const permissions = assignment.role?.role_key === "custom"
+      ? assignment.assignment_permissions?.map((item) => item.permission) || []
+      : assignment.role?.role_permissions?.map((item) => item.permission) || [];
     return assignment.role?.role_key === "owner" || permissions.includes("users:manage");
   });
   if (!allowed) return { error: jsonError("Geen toegang tot gebruikersbeheer.", 403) };
@@ -410,8 +420,33 @@ async function validateRoleAndScope(admin, workspaceId, roleId, businessId, loca
   return { role };
 }
 
+async function saveCustomPermissions(admin, workspaceId, assignmentId, roleKey, requestedPermissions) {
+  if (roleKey !== "custom") return { ok: true };
+  const permissions = cleanChoiceList(requestedPermissions, CUSTOM_PERMISSIONS);
+  if (!permissions.length) return { error: jsonError("Vink minimaal Ã©Ã©n machtiging aan voor de rol Aangepast.", 400) };
+  const { error } = await admin.from("assignment_permissions").insert(permissions.map((permission) => ({
+    workspace_id: workspaceId,
+    assignment_id: assignmentId,
+    permission,
+  })));
+  if (error) throw error;
+  return { ok: true };
+}
+
+function validateCustomPermissions(roleKey, requestedPermissions) {
+  if (roleKey !== "custom") return null;
+  const permissions = cleanChoiceList(requestedPermissions, CUSTOM_PERMISSIONS);
+  return permissions.length ? null : jsonError("Vink minimaal Ã©Ã©n machtiging aan voor de rol Aangepast.", 400);
+}
+
 const ROBUUST_ROLES = ["admin", "coworker", "manager hr", "manager operations", "manager kitchen", "manager customers", "manager finance", "deliverer"];
 const EMPLOYEE_FUNCTIONS = ["admin", "bediening", "chefkok", "kok", "keukenhulp", "floormanager", "bezorgers", "mt"];
+const CUSTOM_PERMISSIONS = [
+  "operations:read", "operations:manage", "finance:read", "foodcost:read", "foodcost:manage", "kitchen:manage",
+  "reviews:read", "reviews:respond", "reviews:manage", "marketing:read", "marketing:manage", "social:read",
+  "social:manage", "social:publish", "ai:read", "ai:use", "integrations:read", "integrations:manage",
+  "users:read", "users:manage", "audit:read", "ai:audit",
+];
 
 function cleanText(value, maxLength) { return String(value || "").trim().slice(0, maxLength); }
 function cleanNullable(value, maxLength) { return cleanText(value, maxLength) || null; }
@@ -423,7 +458,7 @@ function cleanChoiceList(value, allowed) {
 function maskIban(value) {
   const normalized = String(value || "").replace(/\s/g, "");
   if (!normalized) return "";
-  return normalized.length <= 8 ? "••••" : `${normalized.slice(0, 4)} •••• •••• ${normalized.slice(-4)}`;
+  return normalized.length <= 8 ? "â€¢â€¢â€¢â€¢" : `${normalized.slice(0, 4)} â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ${normalized.slice(-4)}`;
 }
 
 function legacyMembershipRole(roleKey) {
@@ -442,3 +477,4 @@ function adminErrorMessage(error) {
 function jsonError(message, status) {
   return NextResponse.json({ error: message }, { status });
 }
+
