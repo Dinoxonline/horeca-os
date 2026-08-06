@@ -26,8 +26,8 @@ export default function ActivateAccountPage() {
     const password = String(formData.get("password") || "");
     const confirmation = String(formData.get("confirmation") || "");
     setMessage("");
-    if (password.length < 12) {
-      setMessage("Gebruik een wachtwoord van minimaal 12 tekens.");
+    if (password.length < 6) {
+      setMessage("Gebruik een wachtwoord van minimaal 6 tekens.");
       return;
     }
     if (password !== confirmation) {
@@ -53,8 +53,8 @@ export default function ActivateAccountPage() {
     {message && <div className="notice">{message}</div>}
     {!session ? <div className="notice">Deze activatielink is ongeldig of verlopen. Vraag je beheerder om een nieuwe uitnodiging.</div> :
       <form action={setPassword} className="stack">
-        <label>Nieuw wachtwoord<input name="password" type="password" minLength="12" required autoComplete="new-password" /></label>
-        <label>Herhaal wachtwoord<input name="confirmation" type="password" minLength="12" required autoComplete="new-password" /></label>
+        <label>Nieuw wachtwoord<input name="password" type="password" minLength="6" required autoComplete="new-password" /></label>
+        <label>Herhaal wachtwoord<input name="confirmation" type="password" minLength="6" required autoComplete="new-password" /></label>
         <button className="primary" disabled={saving}>{saving ? "Opslaan..." : "Account activeren"}</button>
       </form>}
   </section></main>;
