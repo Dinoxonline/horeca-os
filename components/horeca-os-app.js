@@ -30,11 +30,12 @@ const routeViews = {
 
 export default function HorecaOsApp() {
   const pathname = usePathname();
+  const recoveryPage = pathname === "/wachtwoord-herstellen";
   const [session, setSession] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(() => typeof window !== "undefined" && (
-    window.location.pathname === "/wachtwoord-herstellen"
-    || window.location.hash.includes("type=recovery")
+    window.location.hash.includes("type=recovery")
     || window.location.search.includes("type=recovery")
+    || window.sessionStorage.getItem("horeca-os-password-recovery-verified") === "pending"
   ));
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,12 +50,11 @@ export default function HorecaOsApp() {
   const activeView = routeViews[pathname] || "dashboard";
 
   useEffect(() => {
-    const recoveryFromUrl = window.location.pathname === "/wachtwoord-herstellen"
-      || window.location.hash.includes("type=recovery")
+    const recoveryFromUrl = window.location.hash.includes("type=recovery")
       || window.location.search.includes("type=recovery");
-    const recoveryPending = recoveryFromUrl || window.sessionStorage.getItem("horeca-os-password-recovery") === "pending";
+    const recoveryPending = recoveryFromUrl || window.sessionStorage.getItem("horeca-os-password-recovery-verified") === "pending";
     if (recoveryPending) {
-      window.sessionStorage.setItem("horeca-os-password-recovery", "pending");
+      window.sessionStorage.setItem("horeca-os-password-recovery-verified", "pending");
       setPasswordRecovery(true);
     }
     supabase.auth.getSession().then(({ data: authData }) => {
@@ -66,11 +66,12 @@ export default function HorecaOsApp() {
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "PASSWORD_RECOVERY") {
-        window.sessionStorage.setItem("horeca-os-password-recovery", "pending");
+        window.sessionStorage.setItem("horeca-os-password-recovery-verified", "pending");
         setPasswordRecovery(true);
       }
       if (event === "SIGNED_OUT") {
         window.sessionStorage.removeItem("horeca-os-password-recovery");
+        window.sessionStorage.removeItem("horeca-os-password-recovery-verified");
         setPasswordRecovery(false);
       }
       setSession(nextSession);
@@ -283,11 +284,13 @@ export default function HorecaOsApp() {
       return;
     }
     window.sessionStorage.removeItem("horeca-os-password-recovery");
+    window.sessionStorage.removeItem("horeca-os-password-recovery-verified");
     setPasswordRecovery(false);
     window.location.assign("/dashboard");
   }
 
   if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
+  if (recoveryPage && !passwordRecovery) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode lockResetMode />;
   if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode={passwordRecovery} />;
   if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} />;
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
@@ -891,9 +894,9 @@ function SalesCard({ label, period }) {
   return <Card label={label} value={money(period.revenue)} sub={hasComparison ? `${signedPercent(period.change)} t.o.v. vorige periode` : "Geen vergelijkingsdata"} tone={tone} />;
 }
 
-function LoginScreen({ signIn, requestPasswordReset, message, initialResetMode = false }) {
+function LoginScreen({ signIn, requestPasswordReset, message, initialResetMode = false, lockResetMode = false }) {
   const [resetMode, setResetMode] = useState(initialResetMode);
-  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>{resetMode ? "Wachtwoord herstellen" : "Veilig inloggen"}</h1><p>{resetMode ? "Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord te kiezen." : "Managementplatform voor jouw horecabedrijven"}</p>{message && <div className="notice">{message}</div>}{resetMode ? <form action={requestPasswordReset} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><button className="primary">Herstelmail versturen</button></form> : <form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form>}<button type="button" className="textButton" onClick={() => setResetMode((current) => !current)}>{resetMode ? "Terug naar inloggen" : "Wachtwoord vergeten?"}</button><small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
+  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>{resetMode ? "Wachtwoord herstellen" : "Veilig inloggen"}</h1><p>{resetMode ? "Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord te kiezen." : "Managementplatform voor jouw horecabedrijven"}</p>{message && <div className="notice">{message}</div>}{resetMode ? <form action={requestPasswordReset} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><button className="primary">Herstelmail versturen</button></form> : <form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form>}{!lockResetMode && <button type="button" className="textButton" onClick={() => setResetMode((current) => !current)}>{resetMode ? "Terug naar inloggen" : "Wachtwoord vergeten?"}</button>}<small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
 }
 
 function PasswordRecoveryScreen({ onSave, message }) {
