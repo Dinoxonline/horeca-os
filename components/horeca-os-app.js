@@ -292,7 +292,7 @@ export default function HorecaOsApp() {
   if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
   if (recoveryPage && !passwordRecovery) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode lockResetMode />;
   if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode={passwordRecovery} />;
-  if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} />;
+  if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} email={session?.user?.email} />;
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
@@ -899,8 +899,8 @@ function LoginScreen({ signIn, requestPasswordReset, message, initialResetMode =
   return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>{resetMode ? "Wachtwoord herstellen" : "Veilig inloggen"}</h1><p>{resetMode ? "Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord te kiezen." : "Managementplatform voor jouw horecabedrijven"}</p>{message && <div className="notice">{message}</div>}{resetMode ? <form action={requestPasswordReset} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><button className="primary">Herstelmail versturen</button></form> : <form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form>}{!lockResetMode && <button type="button" className="textButton" onClick={() => setResetMode((current) => !current)}>{resetMode ? "Terug naar inloggen" : "Wachtwoord vergeten?"}</button>}<small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
 }
 
-function PasswordRecoveryScreen({ onSave, message }) {
-  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Nieuw wachtwoord instellen</h1><p>Kies eerst een nieuw wachtwoord. Daarna krijg je toegang tot Horeca OS.</p>{message && <div className="notice">{message}</div>}<form action={onSave} className="stack"><label>Nieuw wachtwoord<input name="password" type="password" minLength="6" required autoComplete="new-password" /></label><label>Herhaal wachtwoord<input name="confirmation" type="password" minLength="6" required autoComplete="new-password" /></label><button className="primary">Wachtwoord opslaan</button></form><small>Gebruik minimaal 6 tekens.</small></section></main>;
+function PasswordRecoveryScreen({ onSave, message, email }) {
+  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Nieuw wachtwoord instellen</h1><p>Kies een nieuw wachtwoord voor:</p>{email && <p><strong>{email}</strong></p>}<p>Daarna krijg je toegang tot Horeca OS.</p>{message && <div className="notice">{message}</div>}<form action={onSave} className="stack"><label>Nieuw wachtwoord<input name="password" type="password" minLength="6" required autoComplete="new-password" /></label><label>Herhaal wachtwoord<input name="confirmation" type="password" minLength="6" required autoComplete="new-password" /></label><button className="primary">Wachtwoord opslaan</button></form><small>Gebruik minimaal 6 tekens.</small></section></main>;
 }
 
 function Card({ label, value, sub, tone = "normal" }) { return <article className={`card ${tone}`}><span>{label}</span><strong>{value ?? 0}</strong><small>{sub}</small></article>; }
