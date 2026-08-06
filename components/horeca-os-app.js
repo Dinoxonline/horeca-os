@@ -25,6 +25,7 @@ const routeViews = {
   "/ai": "assistant",
   "/gebruikers": "users",
   "/uren": "hours",
+  "/rooster": "schedule",
   "/koppelingen": "integrations",
   "/beveiliging": "security",
 };
@@ -228,6 +229,7 @@ export default function HorecaOsApp() {
     assistant: canUseFeature("ai:use"),
     users: canUseFeature("users:read") || canUseFeature("users:manage"),
     hours: canUseFeature("time:read"),
+    schedule: canUseFeature("schedule:read") || canUseFeature("schedule:manage"),
     integrations: canUseFeature("integrations:manage"),
     reviews: canUseFeature("reviews:read") || canUseFeature("reviews:manage") || canUseFeature("reviews:respond"),
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
@@ -322,6 +324,7 @@ export default function HorecaOsApp() {
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
           {featureVisibility.hours && <NavLink href="/uren" active={activeView === "hours"}>Uren</NavLink>}
+          {featureVisibility.schedule && <NavLink href="/rooster" active={activeView === "schedule"}>Rooster</NavLink>}
           {featureVisibility.integrations && <NavLink href="/koppelingen" active={activeView === "integrations"}>Koppelingen</NavLink>}
           <NavLink href="/beveiliging" active={activeView === "security"}>Beveiliging</NavLink>
         </nav>
@@ -386,6 +389,7 @@ export default function HorecaOsApp() {
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
+        {activeView === "schedule" && featureVisibility.schedule && <ScheduleOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} canManage={isOwner || canUseFeature("schedule:manage")} />}
         {activeView === "integrations" && featureVisibility.integrations && <RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} />}
         {activeView === "security" && <SecuritySettings required={mfaRequired} mfaState={mfaState} onRefresh={refreshMfa} />}
       </main>
@@ -520,6 +524,55 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
     <section className="dashboardGrid hoursGrid">
       <Panel title="Per medewerker" subtitle="Totaal binnen de gekozen periode">{loadingHours && <Empty text="Uren laden…" />}{!loadingHours && people.length === 0 && <Empty text="Nog geen uren geregistreerd." />}{people.map((person) => <div className="hoursPerson" key={person.id}><div><b>{person.name}</b><span>{person.shifts} dienst{person.shifts === 1 ? "" : "en"}{person.open ? " · nu ingeklokt" : ""}</span></div><strong>{formatDuration(person.minutes)}</strong></div>)}</Panel>
       <Panel title="Recente registraties" subtitle="Laatste in- en uitklokmomenten">{loadingHours && <Empty text="Registraties laden…" />}{!loadingHours && entries.length === 0 && <Empty text="Nog geen registraties gevonden." />}{entries.slice(0, 15).map((entry) => <TimeEntryEditor entry={entry} businesses={businesses} minutes={minutesFor(entry)} onCorrect={correctEntry} key={entry.id} />)}</Panel>
+    </section>
+  </>;
+}
+
+function ScheduleOverview({ workspaceId, businessId, businesses, userId, canManage }) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [shifts, setShifts] = useState([]);
+  const [availability, setAvailability] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [scheduleMessage, setScheduleMessage] = useState("");
+  const weekStart = useMemo(() => { const date = startOfDay(new Date()); const day = (date.getDay() + 6) % 7; date.setDate(date.getDate() - day + weekOffset * 7); return date; }, [weekOffset]);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
+
+  const loadSchedule = useCallback(async () => {
+    const until = addDays(weekStart, 7);
+    let shiftsQuery = supabase.from("schedule_shifts").select("id,user_id,business_id,starts_at,ends_at,role_label,note,status,member:workspace_members!schedule_shifts_workspace_id_user_id_fkey(profile:profiles!workspace_members_user_id_fkey(full_name)),business:businesses!schedule_shifts_business_id_workspace_id_fkey(name)").eq("workspace_id", workspaceId).gte("starts_at", weekStart.toISOString()).lt("starts_at", until.toISOString()).order("starts_at");
+    if (businessId !== "all") shiftsQuery = shiftsQuery.eq("business_id", businessId);
+    const [shiftResult, availabilityResult, memberResult] = await Promise.all([
+      shiftsQuery,
+      supabase.from("employee_availability").select("id,user_id,available_date,available_from,available_until,status,note").eq("workspace_id", workspaceId).gte("available_date", isoDate(weekStart)).lt("available_date", isoDate(until)),
+      supabase.from("workspace_members").select("user_id,profile:profiles!workspace_members_user_id_fkey(full_name)").eq("workspace_id", workspaceId),
+    ]);
+    if (shiftResult.error || availabilityResult.error) setScheduleMessage(`Rooster kon niet volledig worden geladen: ${shiftResult.error?.message || availabilityResult.error?.message}`);
+    else { setShifts(shiftResult.data || []); setAvailability(availabilityResult.data || []); }
+    if (!memberResult.error) setEmployees((memberResult.data || []).map((member) => ({ id: member.user_id, name: memberProfileName(member) })));
+  }, [businessId, weekStart, workspaceId]);
+
+  useEffect(() => { loadSchedule(); }, [loadSchedule]);
+
+  async function addShift(event) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); setScheduleMessage("");
+    const date = String(form.get("date"));
+    const { error } = await supabase.from("schedule_shifts").insert({ workspace_id: workspaceId, business_id: String(form.get("businessId")), user_id: String(form.get("userId")), starts_at: new Date(`${date}T${form.get("start")}`).toISOString(), ends_at: new Date(`${date}T${form.get("end")}`).toISOString(), role_label: String(form.get("roleLabel") || "").trim() || null, note: String(form.get("note") || "").trim() || null, created_by: userId });
+    setScheduleMessage(error ? `Dienst niet opgeslagen: ${error.message}` : "Dienst is aan het rooster toegevoegd."); if (!error) { event.currentTarget.reset(); loadSchedule(); }
+  }
+
+  async function saveAvailability(event) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); setScheduleMessage("");
+    const { error } = await supabase.from("employee_availability").upsert({ workspace_id: workspaceId, user_id: userId, available_date: String(form.get("date")), available_from: form.get("from") || null, available_until: form.get("until") || null, status: String(form.get("status")), note: String(form.get("note") || "").trim() || null }, { onConflict: "workspace_id,user_id,available_date" });
+    setScheduleMessage(error ? `Beschikbaarheid niet opgeslagen: ${error.message}` : "Je beschikbaarheid is opgeslagen."); if (!error) loadSchedule();
+  }
+
+  return <>
+    <section className="pageIntro scheduleIntro"><div><p className="eyebrow">Personeelsplanning</p><h2>Rooster & beschikbaarheid</h2><p>Diensten plannen per vestiging en beschikbaarheid vooraf verzamelen.</p></div><div className="weekControls"><button className="secondaryButton" onClick={() => setWeekOffset((value) => value - 1)}>Vorige</button><b>{formatShortDate(weekStart)} – {formatShortDate(addDays(weekStart, 6))}</b><button className="secondaryButton" onClick={() => setWeekOffset((value) => value + 1)}>Volgende</button></div></section>
+    {scheduleMessage && <div className="notice">{scheduleMessage}</div>}
+    <section className="scheduleWeek">{weekDays.map((day) => { const dayShifts = shifts.filter((shift) => isoDate(new Date(shift.starts_at)) === isoDate(day)); const dayAvailability = availability.filter((item) => item.available_date === isoDate(day)); return <article className="scheduleDay" key={isoDate(day)}><header><b>{new Intl.DateTimeFormat("nl-NL", { weekday: "short" }).format(day)}</b><span>{day.getDate()}</span></header>{dayShifts.map((shift) => <div className="shiftCard" key={shift.id}><strong>{formatTime(shift.starts_at)}–{formatTime(shift.ends_at)}</strong><b>{timeEntryEmployeeName(shift)}</b><small>{shift.role_label || shift.business?.name || "Dienst"}</small></div>)}{dayShifts.length === 0 && <small className="noShift">Geen diensten</small>}<footer>{dayAvailability.filter((item) => item.status !== "unavailable").length} beschikbaar</footer></article>; })}</section>
+    <section className="dashboardGrid scheduleForms">
+      {canManage && <Panel title="Dienst inplannen" subtitle="Voeg een medewerker toe aan het weekrooster"><form className="scheduleForm" onSubmit={addShift}><label>Medewerker<select name="userId" required defaultValue=""><option value="" disabled>Kies medewerker</option>{employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name}</option>)}</select></label><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Datum<input type="date" name="date" required defaultValue={isoDate(weekStart)} /></label><label>Start<input type="time" name="start" required /></label><label>Einde<input type="time" name="end" required /></label><label>Functie<input name="roleLabel" placeholder="Bijv. bediening" /></label><label className="full">Notitie<input name="note" /></label><button className="primary">Dienst toevoegen</button></form></Panel>}
+      <Panel title="Mijn beschikbaarheid" subtitle="Geef aan wanneer je kunt werken"><form className="scheduleForm" onSubmit={saveAvailability}><label>Datum<input type="date" name="date" required defaultValue={isoDate(weekStart)} /></label><label>Status<select name="status" defaultValue="available"><option value="available">Beschikbaar</option><option value="preferred">Voorkeur</option><option value="unavailable">Niet beschikbaar</option></select></label><label>Vanaf<input type="time" name="from" /></label><label>Tot<input type="time" name="until" /></label><label className="full">Toelichting<input name="note" placeholder="Optioneel" /></label><button className="primary">Beschikbaarheid opslaan</button></form></Panel>
     </section>
   </>;
 }
@@ -881,6 +934,8 @@ const PERMISSION_OPTIONS = [
   ["revenue:read", "Omzet en verkoopcijfers bekijken"],
   ["time:read", "Uren van medewerkers bekijken"],
   ["time:manage", "Uren van medewerkers corrigeren"],
+  ["schedule:read", "Eigen rooster en beschikbaarheid bekijken"],
+  ["schedule:manage", "Roosters en diensten beheren"],
   ["finance:read", "Financiën bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
   ["foodcost:manage", "Foodcost, producten en recepten beheren"], ["kitchen:manage", "Keuken beheren"],
   ["reviews:read", "Reviews bekijken"], ["reviews:respond", "Op reviews reageren"],
@@ -1076,6 +1131,8 @@ function formatDate(value) { if (!value) return ""; return new Intl.DateTimeForm
 function formatTime(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 function formatDuration(minutes) { const safeMinutes = Math.max(0, Math.round(number(minutes))); const hours = Math.floor(safeMinutes / 60); const rest = safeMinutes % 60; return `${hours}u ${String(rest).padStart(2, "0")}m`; }
 function timeEntryEmployeeName(entry) { const profile = Array.isArray(entry.member?.profile) ? entry.member.profile[0] : entry.member?.profile; return profile?.full_name || `Medewerker ${entry.user_id.slice(0, 6)}`; }
+function memberProfileName(member) { const profile = Array.isArray(member.profile) ? member.profile[0] : member.profile; return profile?.full_name || `Medewerker ${member.user_id.slice(0, 6)}`; }
+function formatShortDate(value) { return new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short" }).format(value); }
 function toLocalDateTimeInput(value) { if (!value) return ""; const date = new Date(value); const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16); }
 function localInputToIso(value) { return value ? new Date(String(value)).toISOString() : null; }
 
