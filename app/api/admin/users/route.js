@@ -423,7 +423,7 @@ async function validateRoleAndScope(admin, workspaceId, roleId, businessId, loca
 async function saveCustomPermissions(admin, workspaceId, assignmentId, roleKey, requestedPermissions) {
   if (roleKey !== "custom") return { ok: true };
   const permissions = cleanChoiceList(requestedPermissions, CUSTOM_PERMISSIONS);
-  if (!permissions.length) return { error: jsonError("Vink minimaal Ã©Ã©n machtiging aan voor de rol Aangepast.", 400) };
+  if (!permissions.length) return { error: jsonError("Vink minimaal één machtiging aan voor de rol Aangepast.", 400) };
   const { error } = await admin.from("assignment_permissions").insert(permissions.map((permission) => ({
     workspace_id: workspaceId,
     assignment_id: assignmentId,
@@ -436,13 +436,13 @@ async function saveCustomPermissions(admin, workspaceId, assignmentId, roleKey, 
 function validateCustomPermissions(roleKey, requestedPermissions) {
   if (roleKey !== "custom") return null;
   const permissions = cleanChoiceList(requestedPermissions, CUSTOM_PERMISSIONS);
-  return permissions.length ? null : jsonError("Vink minimaal Ã©Ã©n machtiging aan voor de rol Aangepast.", 400);
+  return permissions.length ? null : jsonError("Vink minimaal één machtiging aan voor de rol Aangepast.", 400);
 }
 
 const ROBUUST_ROLES = ["admin", "coworker", "manager hr", "manager operations", "manager kitchen", "manager customers", "manager finance", "deliverer"];
 const EMPLOYEE_FUNCTIONS = ["admin", "bediening", "chefkok", "kok", "keukenhulp", "floormanager", "bezorgers", "mt"];
 const CUSTOM_PERMISSIONS = [
-  "operations:read", "operations:manage", "revenue:read", "finance:read", "time:read", "foodcost:read", "foodcost:manage", "kitchen:manage",
+  "operations:read", "operations:manage", "revenue:read", "finance:read", "time:read", "time:manage", "foodcost:read", "foodcost:manage", "kitchen:manage",
   "reviews:read", "reviews:respond", "reviews:manage", "marketing:read", "marketing:manage", "social:read",
   "social:manage", "social:publish", "ai:read", "ai:use", "integrations:read", "integrations:manage",
   "users:read", "users:manage", "audit:read", "ai:audit",
@@ -458,7 +458,7 @@ function cleanChoiceList(value, allowed) {
 function maskIban(value) {
   const normalized = String(value || "").replace(/\s/g, "");
   if (!normalized) return "";
-  return normalized.length <= 8 ? "â€¢â€¢â€¢â€¢" : `${normalized.slice(0, 4)} â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ${normalized.slice(-4)}`;
+  return normalized.length <= 8 ? "••••" : `${normalized.slice(0, 4)} •••• •••• ${normalized.slice(-4)}`;
 }
 
 function legacyMembershipRole(roleKey) {
