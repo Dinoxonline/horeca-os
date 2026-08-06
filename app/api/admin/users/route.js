@@ -16,7 +16,7 @@ export async function GET(request) {
       admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
       admin.from("workspace_members").select("user_id, role, created_at").eq("workspace_id", workspaceId),
       admin.from("user_role_assignments").select("id, user_id, role_id, business_id, location_id, assignment_permissions(permission), role:roles!inner(role_key, name)").eq("workspace_id", workspaceId),
-      admin.from("roles").select("id, role_key, name, description, is_system").eq("workspace_id", workspaceId).order("name"),
+      admin.from("roles").select("id, role_key, name, description, is_system, role_permissions(permission)").eq("workspace_id", workspaceId).order("name"),
       admin.from("businesses").select("id, name").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       admin.from("business_locations").select("id, business_id, name").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       admin.from("employee_profiles").select("*").eq("workspace_id", workspaceId).order("ranking").order("last_name"),
