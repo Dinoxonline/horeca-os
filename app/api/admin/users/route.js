@@ -109,7 +109,7 @@ export async function POST(request) {
       const wageAmount = body.wageAmount === "" || body.wageAmount == null ? null : Number(body.wageAmount);
       if (wageAmount != null && (!Number.isFinite(wageAmount) || wageAmount < 0)) return jsonError("Vul een geldig loonbedrag in.", 400);
 
-      const redirectTo = process.env.NEXT_PUBLIC_SITE_URL || new URL("/dashboard", request.url).toString();
+      const redirectTo = new URL("/account-activeren", request.url).toString();
       const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
         data: { full_name: fullName },
         redirectTo,
@@ -423,7 +423,7 @@ function cleanChoiceList(value, allowed) {
 function maskIban(value) {
   const normalized = String(value || "").replace(/\s/g, "");
   if (!normalized) return "";
-  return normalized.length <= 8 ? "••••" : `${normalized.slice(0, 4)} •••• •••• ${normalized.slice(-4)}`;
+  return normalized.length <= 8 ? "â€¢â€¢â€¢â€¢" : `${normalized.slice(0, 4)} â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ${normalized.slice(-4)}`;
 }
 
 function legacyMembershipRole(roleKey) {
@@ -442,3 +442,4 @@ function adminErrorMessage(error) {
 function jsonError(message, status) {
   return NextResponse.json({ error: message }, { status });
 }
+
