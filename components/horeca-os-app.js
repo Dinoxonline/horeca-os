@@ -31,6 +31,7 @@ const routeViews = {
 export default function HorecaOsApp() {
   const pathname = usePathname();
   const [session, setSession] = useState(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
@@ -44,16 +45,32 @@ export default function HorecaOsApp() {
   const activeView = routeViews[pathname] || "dashboard";
 
   useEffect(() => {
+    const recoveryFromUrl = window.location.hash.includes("type=recovery") || window.location.search.includes("type=recovery");
+    const recoveryPending = recoveryFromUrl || window.sessionStorage.getItem("horeca-os-password-recovery") === "pending";
+    if (recoveryPending) {
+      window.sessionStorage.setItem("horeca-os-password-recovery", "pending");
+      setPasswordRecovery(true);
+    }
     supabase.auth.getSession().then(({ data: authData }) => {
       setSession(authData.session);
       setLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "PASSWORD_RECOVERY") {
+        window.sessionStorage.setItem("horeca-os-password-recovery", "pending");
+        setPasswordRecovery(true);
+      }
+      if (event === "SIGNED_OUT") {
+        window.sessionStorage.removeItem("horeca-os-password-recovery");
+        setPasswordRecovery(false);
+      }
+      setSession(nextSession);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || passwordRecovery) return;
     let active = true;
     supabase
       .from("workspace_members")
@@ -70,10 +87,10 @@ export default function HorecaOsApp() {
         setWorkspaceId((current) => current || available[0]?.workspace_id || "");
       });
     return () => { active = false; };
-  }, [session, mfaState.currentLevel]);
+  }, [session, mfaState.currentLevel, passwordRecovery]);
 
   useEffect(() => {
-    if (!session || !workspaceId) {
+    if (!session || passwordRecovery || !workspaceId) {
       setRoleAssignments([]);
       setRolesLoading(false);
       return;
@@ -96,10 +113,10 @@ export default function HorecaOsApp() {
         setRolesLoading(false);
       });
     return () => { active = false; };
-  }, [session, workspaceId]);
+  }, [passwordRecovery, session, workspaceId]);
 
   const refreshMfa = useCallback(async () => {
-    if (!session) {
+    if (!session || passwordRecovery) {
       setMfaState({ loading: false, currentLevel: null, nextLevel: null, factors: [] });
       return;
     }
@@ -118,12 +135,12 @@ export default function HorecaOsApp() {
       factors: factorResult.data.totp || [],
       error: "",
     });
-  }, [session]);
+  }, [passwordRecovery, session]);
 
   useEffect(() => { refreshMfa(); }, [refreshMfa]);
 
   const loadData = useCallback(async () => {
-    if (!workspaceId) return;
+    if (passwordRecovery || !workspaceId) return;
     setRefreshing(true);
     setMessage("");
 
@@ -164,7 +181,7 @@ export default function HorecaOsApp() {
     setData(next);
     if (firstError) setMessage(`Niet alle onderdelen konden worden geladen: ${firstError.message}`);
     setRefreshing(false);
-  }, [workspaceId, businessId]);
+  }, [passwordRecovery, workspaceId, businessId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -226,8 +243,31 @@ export default function HorecaOsApp() {
     if (error) setMessage(error.message);
   }
 
+  async function saveRecoveredPassword(formData) {
+    const password = String(formData.get("password") || "");
+    const confirmation = String(formData.get("confirmation") || "");
+    setMessage("");
+    if (password.length < 12) {
+      setMessage("Gebruik een wachtwoord van minimaal 12 tekens.");
+      return;
+    }
+    if (password !== confirmation) {
+      setMessage("De wachtwoorden zijn niet gelijk.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    window.sessionStorage.removeItem("horeca-os-password-recovery");
+    setPasswordRecovery(false);
+    window.location.assign("/dashboard");
+  }
+
   if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
   if (!session) return <LoginScreen signIn={signIn} message={message} />;
+  if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} />;
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
@@ -831,6 +871,10 @@ function SalesCard({ label, period }) {
 
 function LoginScreen({ signIn, message }) {
   return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Veilig inloggen</h1><p>Managementplatform voor jouw horecabedrijven</p>{message && <div className="notice">{message}</div>}<form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form><small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
+}
+
+function PasswordRecoveryScreen({ onSave, message }) {
+  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Nieuw wachtwoord instellen</h1><p>Kies eerst een nieuw wachtwoord. Daarna krijg je toegang tot Horeca OS.</p>{message && <div className="notice">{message}</div>}<form action={onSave} className="stack"><label>Nieuw wachtwoord<input name="password" type="password" minLength="12" required autoComplete="new-password" /></label><label>Herhaal wachtwoord<input name="confirmation" type="password" minLength="12" required autoComplete="new-password" /></label><button className="primary">Wachtwoord opslaan</button></form><small>Gebruik minimaal 12 tekens.</small></section></main>;
 }
 
 function Card({ label, value, sub, tone = "normal" }) { return <article className={`card ${tone}`}><span>{label}</span><strong>{value ?? 0}</strong><small>{sub}</small></article>; }
