@@ -31,7 +31,11 @@ const routeViews = {
 export default function HorecaOsApp() {
   const pathname = usePathname();
   const [session, setSession] = useState(null);
-  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [passwordRecovery, setPasswordRecovery] = useState(() => typeof window !== "undefined" && (
+    window.location.pathname === "/wachtwoord-herstellen"
+    || window.location.hash.includes("type=recovery")
+    || window.location.search.includes("type=recovery")
+  ));
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
@@ -45,7 +49,9 @@ export default function HorecaOsApp() {
   const activeView = routeViews[pathname] || "dashboard";
 
   useEffect(() => {
-    const recoveryFromUrl = window.location.hash.includes("type=recovery") || window.location.search.includes("type=recovery");
+    const recoveryFromUrl = window.location.pathname === "/wachtwoord-herstellen"
+      || window.location.hash.includes("type=recovery")
+      || window.location.search.includes("type=recovery");
     const recoveryPending = recoveryFromUrl || window.sessionStorage.getItem("horeca-os-password-recovery") === "pending";
     if (recoveryPending) {
       window.sessionStorage.setItem("horeca-os-password-recovery", "pending");
@@ -53,6 +59,9 @@ export default function HorecaOsApp() {
     }
     supabase.auth.getSession().then(({ data: authData }) => {
       setSession(authData.session);
+      if (recoveryPending && !authData.session) {
+        setMessage("Deze herstellink is verlopen of al gebruikt. Vraag hieronder een nieuwe herstelmail aan.");
+      }
       setLoading(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
@@ -247,7 +256,7 @@ export default function HorecaOsApp() {
     const email = String(formData.get("email") || "").trim();
     setMessage("");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/wachtwoord-herstellen`,
     });
     if (error) {
       setMessage(error.message);
@@ -279,7 +288,7 @@ export default function HorecaOsApp() {
   }
 
   if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
-  if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} />;
+  if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode={passwordRecovery} />;
   if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} />;
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
@@ -882,8 +891,8 @@ function SalesCard({ label, period }) {
   return <Card label={label} value={money(period.revenue)} sub={hasComparison ? `${signedPercent(period.change)} t.o.v. vorige periode` : "Geen vergelijkingsdata"} tone={tone} />;
 }
 
-function LoginScreen({ signIn, requestPasswordReset, message }) {
-  const [resetMode, setResetMode] = useState(false);
+function LoginScreen({ signIn, requestPasswordReset, message, initialResetMode = false }) {
+  const [resetMode, setResetMode] = useState(initialResetMode);
   return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>{resetMode ? "Wachtwoord herstellen" : "Veilig inloggen"}</h1><p>{resetMode ? "Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord te kiezen." : "Managementplatform voor jouw horecabedrijven"}</p>{message && <div className="notice">{message}</div>}{resetMode ? <form action={requestPasswordReset} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><button className="primary">Herstelmail versturen</button></form> : <form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form>}<button type="button" className="textButton" onClick={() => setResetMode((current) => !current)}>{resetMode ? "Terug naar inloggen" : "Wachtwoord vergeten?"}</button><small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
 }
 
