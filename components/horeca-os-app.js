@@ -24,6 +24,7 @@ const routeViews = {
   "/marketing": "marketing",
   "/ai": "assistant",
   "/gebruikers": "users",
+  "/uren": "hours",
   "/koppelingen": "integrations",
   "/beveiliging": "security",
 };
@@ -226,6 +227,7 @@ export default function HorecaOsApp() {
     suppliers: canUseFeature("foodcost:read"),
     assistant: canUseFeature("ai:use"),
     users: canUseFeature("users:read") || canUseFeature("users:manage"),
+    hours: canUseFeature("time:read"),
     integrations: canUseFeature("integrations:manage"),
     reviews: canUseFeature("reviews:read") || canUseFeature("reviews:manage") || canUseFeature("reviews:respond"),
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
@@ -319,6 +321,7 @@ export default function HorecaOsApp() {
           {featureVisibility.marketing && <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>}
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
+          {featureVisibility.hours && <NavLink href="/uren" active={activeView === "hours"}>Uren</NavLink>}
           {featureVisibility.integrations && <NavLink href="/koppelingen" active={activeView === "integrations"}>Koppelingen</NavLink>}
           <NavLink href="/beveiliging" active={activeView === "security"}>Beveiliging</NavLink>
         </nav>
@@ -382,6 +385,7 @@ export default function HorecaOsApp() {
         {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃƒÂ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
+        {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
         {activeView === "integrations" && featureVisibility.integrations && <RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} />}
         {activeView === "security" && <SecuritySettings required={mfaRequired} mfaState={mfaState} onRefresh={refreshMfa} />}
       </main>
@@ -454,6 +458,61 @@ function TimeClock({ workspaceId, businessId, businesses, userId }) {
     {feedback && <p className="clockFeedback">{feedback}</p>}
     {entries.length > 0 && <div className="clockHistory"><strong>Recente diensten</strong>{entries.slice(0, 4).map((entry) => <span key={entry.id}>{formatDate(entry.clocked_in_at)} Â· {formatTime(entry.clocked_in_at)} â€“ {entry.clocked_out_at ? formatTime(entry.clocked_out_at) : "actief"}</span>)}</div>}
   </section>;
+}
+
+function HoursOverview({ workspaceId, businessId, businesses }) {
+  const [days, setDays] = useState(30);
+  const [entries, setEntries] = useState([]);
+  const [loadingHours, setLoadingHours] = useState(true);
+  const [hoursError, setHoursError] = useState("");
+
+  const loadHours = useCallback(async () => {
+    setLoadingHours(true);
+    setHoursError("");
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - (days - 1));
+    let query = supabase.from("time_entries")
+      .select("id, user_id, business_id, clocked_in_at, clocked_out_at, business:businesses!time_entries_business_id_workspace_id_fkey(name), member:workspace_members!time_entries_workspace_id_user_id_fkey(profile:profiles!workspace_members_user_id_fkey(full_name))")
+      .eq("workspace_id", workspaceId)
+      .gte("clocked_in_at", from.toISOString())
+      .order("clocked_in_at", { ascending: false });
+    if (businessId !== "all") query = query.eq("business_id", businessId);
+    const { data: rows, error } = await query;
+    if (error) setHoursError(`Urenoverzicht kon niet worden geladen: ${error.message}`);
+    else setEntries(rows || []);
+    setLoadingHours(false);
+  }, [businessId, days, workspaceId]);
+
+  useEffect(() => { loadHours(); }, [loadHours]);
+
+  const now = Date.now();
+  const minutesFor = (entry) => Math.max(0, Math.round(((entry.clocked_out_at ? new Date(entry.clocked_out_at).getTime() : now) - new Date(entry.clocked_in_at).getTime()) / 60000));
+  const totalMinutes = entries.reduce((total, entry) => total + minutesFor(entry), 0);
+  const openEntries = entries.filter((entry) => !entry.clocked_out_at);
+  const people = [...entries.reduce((map, entry) => {
+    const current = map.get(entry.user_id) || { id: entry.user_id, name: timeEntryEmployeeName(entry), minutes: 0, shifts: 0, open: false };
+    current.minutes += minutesFor(entry);
+    current.shifts += 1;
+    current.open ||= !entry.clocked_out_at;
+    map.set(entry.user_id, current);
+    return map;
+  }, new Map()).values()].sort((a, b) => b.minutes - a.minutes);
+
+  return <>
+    <section className="pageIntro hoursIntro"><div><p className="eyebrow">Personeelsplanning</p><h2>Urenoverzicht</h2><p>Gewerkte uren per medewerker binnen de gekozen vestiging.</p></div><label>Periode<select value={days} onChange={(event) => setDays(Number(event.target.value))}><option value="7">Laatste 7 dagen</option><option value="30">Laatste 30 dagen</option><option value="90">Laatste 90 dagen</option></select></label></section>
+    {hoursError && <div className="notice">{hoursError}</div>}
+    <section className="kpis secondary">
+      <Card label="Totaal geregistreerd" value={formatDuration(totalMinutes)} sub={`${entries.length} diensten`} />
+      <Card label="Nu ingeklokt" value={openEntries.length} sub="Openstaande diensten" tone={openEntries.length ? "success" : "normal"} />
+      <Card label="Medewerkers" value={people.length} sub={`Met uren in de laatste ${days} dagen`} />
+      <Card label="Gemiddeld per dienst" value={formatDuration(entries.length ? Math.round(totalMinutes / entries.length) : 0)} sub="Inclusief actieve diensten" />
+    </section>
+    <section className="dashboardGrid hoursGrid">
+      <Panel title="Per medewerker" subtitle="Totaal binnen de gekozen periode">{loadingHours && <Empty text="Uren ladenâ€¦" />}{!loadingHours && people.length === 0 && <Empty text="Nog geen uren geregistreerd." />}{people.map((person) => <div className="hoursPerson" key={person.id}><div><b>{person.name}</b><span>{person.shifts} dienst{person.shifts === 1 ? "" : "en"}{person.open ? " Â· nu ingeklokt" : ""}</span></div><strong>{formatDuration(person.minutes)}</strong></div>)}</Panel>
+      <Panel title="Recente registraties" subtitle="Laatste in- en uitklokmomenten">{loadingHours && <Empty text="Registraties ladenâ€¦" />}{!loadingHours && entries.length === 0 && <Empty text="Nog geen registraties gevonden." />}{entries.slice(0, 15).map((entry) => <div className="hoursEntry" key={entry.id}><div><b>{timeEntryEmployeeName(entry)}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} Â· {formatDate(entry.clocked_in_at)}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutesFor(entry)) : "Actief"}</strong></div>)}</Panel>
+    </section>
+  </>;
 }
 
 function FoodcostDashboard({ analytics }) {
@@ -811,6 +870,7 @@ const PERMISSION_OPTIONS = [
   ["workspace:manage", "Volledige werkruimte beheren", false],
   ["operations:read", "Eigen werk, planning en inklokken"], ["operations:manage", "Operationele gegevens beheren"],
   ["revenue:read", "Omzet en verkoopcijfers bekijken"],
+  ["time:read", "Uren van medewerkers bekijken"],
   ["finance:read", "FinanciÃ«n bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
   ["foodcost:manage", "Foodcost, producten en recepten beheren"], ["kitchen:manage", "Keuken beheren"],
   ["reviews:read", "Reviews bekijken"], ["reviews:respond", "Op reviews reageren"],
@@ -1004,5 +1064,7 @@ function isoDate(date) { const local = startOfDay(date); return `${local.getFull
 function parseDate(value) { const [year, month, day] = value.split("-").map(Number); return new Date(year, month - 1, day); }
 function formatDate(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
 function formatTime(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
+function formatDuration(minutes) { const safeMinutes = Math.max(0, Math.round(number(minutes))); const hours = Math.floor(safeMinutes / 60); const rest = safeMinutes % 60; return `${hours}u ${String(rest).padStart(2, "0")}m`; }
+function timeEntryEmployeeName(entry) { const profile = Array.isArray(entry.member?.profile) ? entry.member.profile[0] : entry.member?.profile; return profile?.full_name || `Medewerker ${entry.user_id.slice(0, 6)}`; }
 
 
