@@ -584,30 +584,6 @@ function ReviewsInbox({ workspaceId, businessId, businesses, session, canManage,
   useEffect(() => { setReviewPage(1); }, [businessId, statusFilter]);
   async function addReview(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const sourceRating = String(form.get("rating")); const { error } = await supabase.from("customer_reviews").insert({ workspace_id: workspaceId, business_id: String(form.get("businessId")), source: String(form.get("source")), reviewer_name: String(form.get("reviewer") || "").trim() || null, rating: Number(sourceRating), title: String(form.get("title") || "").trim() || null, review_text: String(form.get("text") || "").trim(), reviewed_at: new Date().toISOString() }); setReviewMessage(error ? `Review niet opgeslagen: ${error.message}` : "Review toegevoegd aan de inbox."); if (!error) { event.currentTarget.reset(); loadReviews(); } }
   async function publishReview(event, id) { event.preventDefault(); const form = new FormData(event.currentTarget); const responseText = String(form.get("response") || "").trim(); if (!responseText) { setReviewMessage("Schrijf eerst een reactie."); return; } setPublishingReviewId(id); setReviewMessage(""); const response = await fetch(`/api/reviews/${id}/reply`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ workspaceId, responseText }) }); const result = await response.json().catch(() => ({})); setReviewMessage(response.ok ? "De reactie is door het reviewplatform bevestigd en geplaatst." : result.error || "De reactie kon niet worden geplaatst."); setPublishingReviewId(""); if (response.ok) loadReviews(); }
-  async function shareReview(review) {
-    const hasRating = Number.isFinite(Number(review.rating)) && Number(review.rating) >= 1;
-    if (!hasRating || Number(review.rating) < 4) {
-      setReviewMessage("Alleen reviews met 4 of 5 sterren kunnen als positieve review worden gedeeld.");
-      return;
-    }
-    const stars = "★".repeat(Number(review.rating)) + "☆".repeat(5 - Number(review.rating));
-    const text = `${stars}\n“${review.review_text}”\n— ${review.reviewer_name || "Een gast"} via ${review.source}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Mooie gastreview", text });
-        setReviewMessage("De review is geopend in het deelmenu. Kies daar Facebook, Instagram of een ander kanaal.");
-      } catch (error) {
-        if (error?.name !== "AbortError") setReviewMessage("Delen is niet gelukt. Probeer het opnieuw.");
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      setReviewMessage("De reviewtekst is gekopieerd. Plak hem nu in Facebook of Instagram.");
-    } catch {
-      setReviewMessage("Delen wordt op dit apparaat niet ondersteund.");
-    }
-  }
   async function uploadReviews(event) {
     event.preventDefault(); const form = new FormData(event.currentTarget); const file = form.get("file");
     if (!(file instanceof File) || !file.size) { setReviewMessage("Kies eerst een CSV-bestand."); return; }
@@ -620,7 +596,7 @@ function ReviewsInbox({ workspaceId, businessId, businesses, session, canManage,
     setReviewMessage(error ? `Upload niet verwerkt: ${error.message}` : `${payload.length} reviews succesvol geÃ¯mporteerd.`); if (!error) { event.currentTarget.reset(); loadReviews(); }
   }
   const filteredReviews = statusFilter === "all" ? reviews : reviews.filter((review) => review.status === statusFilter); const pageCount = Math.max(1, Math.ceil(filteredReviews.length / reviewPageSize)); const currentPage = Math.min(reviewPage, pageCount); const visibleReviews = filteredReviews.slice((currentPage - 1) * reviewPageSize, currentPage * reviewPageSize); const ratedReviews = reviews.filter((item) => Number.isFinite(Number(item.rating)) && Number(item.rating) >= 1); const average = ratedReviews.length ? ratedReviews.reduce((sum, item) => sum + Number(item.rating), 0) / ratedReviews.length : 0; const positive = ratedReviews.filter((item) => item.rating >= 4).length; const open = reviews.filter((item) => item.status === "new" || item.status === "in_progress").length; const negative = ratedReviews.filter((item) => item.rating <= 2).length; const withoutRating = reviews.length - ratedReviews.length;
-  return <><section className="pageIntro reviewIntro"><div><p className="eyebrow">Reputatiemanagement</p><h2>Reviews</h2><p>Alle gastreacties centraal beoordelen, opvolgen en beantwoorden.</p></div><div className="reviewFilters"><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Alle reviews</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select></label><label>Zichtbaar<select value={reviewPageSize} onChange={(event) => { setReviewPageSize(Number(event.target.value)); setReviewPage(1); }}>{[2,10,25,100].map((amount) => <option value={amount} key={amount}>{amount} reviews</option>)}</select></label></div></section>{reviewMessage && <div className="notice">{reviewMessage}</div>}<section className="kpis secondary"><Card label="Totaal reviews" value={reviews.length} sub={`${ratedReviews.length} met cijfer Â· ${withoutRating} zonder cijfer`} /><Card label="Gemiddelde score" value={average ? average.toFixed(2) : "â€“"} sub={`Gebaseerd op ${ratedReviews.length} broncijfers`} /><Card label="Goede reviews" value={positive} sub="4 of 5 sterren" tone="success" /><Card label="Kritieke reviews" value={negative} sub="1 of 2 sterren" tone={negative ? "danger" : "success"} /><Card label="Op te volgen" value={open} sub="Nieuw of in behandeling" tone={open ? "warning" : "success"} /><Card label="Beantwoord" value={reviews.filter((item) => item.status === "responded").length} sub="Afgeronde reacties" /></section><section className="reviewLayout"><Panel title="Review-inbox" subtitle="Nieuwste reacties bovenaan">{filteredReviews.length === 0 && <Empty text="Nog geen reviews gevonden." />}{visibleReviews.map((review) => { const hasRating = Number.isFinite(Number(review.rating)) && Number(review.rating) >= 1; return <article className={`reviewCard ${hasRating ? `rating${review.rating}` : "ratingUnknown"}`} key={review.id}><header><div><strong>{hasRating ? `${"\u2605".repeat(review.rating)}${"\u2606".repeat(5-review.rating)}` : "Geen cijfer aangeleverd"}</strong><b>{review.reviewer_name || "Anonieme gast"}</b></div><span className="status">{reviewStatusLabel(review.status)}</span></header><small>{review.source} Â· {formatDate(review.reviewed_at)}</small>{review.title && <h3>{review.title}</h3>}<p>{review.review_text}</p>{hasRating && Number(review.rating) >= 4 && <button type="button" className="secondaryButton" onClick={() => shareReview(review)}>Delen op social media</button>}{canManage && <details className="reviewReply"><summary>Reageren</summary><form onSubmit={(event) => publishReview(event, review.id)}><textarea name="response" defaultValue={review.response_text || ""} placeholder="Schrijf je reactie aan de gast" required /><button className="primary" disabled={publishingReviewId === review.id}>{publishingReviewId === review.id ? "Plaatsen…" : "Reactie plaatsen"}</button><small>De status verandert pas naar beantwoord nadat het reviewplatform de plaatsing bevestigt.</small></form></details>}</article>; })}{filteredReviews.length > reviewPageSize && <nav className="reviewPagination" aria-label="Reviewpagina's"><button type="button" className="secondaryButton" disabled={currentPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Vorige</button><span>Pagina {currentPage} van {pageCount} · {filteredReviews.length} reviews</span><button type="button" className="secondaryButton" disabled={currentPage === pageCount} onClick={() => setReviewPage((page) => Math.min(pageCount, page + 1))}>Volgende</button></nav>}</Panel>{canAdd && <Panel title="Reviews uploaden" subtitle="Importeer maximaal 500 reviews uit een CSV-bestand"><form className="reviewForm uploadReviews" onSubmit={uploadReviews}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>CSV-bestand<input name="file" type="file" accept=".csv,text/csv" required /></label><small>Kolommen: score, review, naam, datum en titel. Score en review zijn verplicht.</small><button className="primary">Reviews uploaden</button></form></Panel>}{canAdd && <Panel title="Review toevoegen" subtitle="Handmatig, totdat bronnen automatisch gekoppeld zijn"><form className="reviewForm" onSubmit={addReview}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>Gast<input name="reviewer" /></label><label>Score<select name="rating" defaultValue="5">{[5,4,3,2,1].map((score) => <option value={score} key={score}>{score} sterren</option>)}</select></label><label>Titel<input name="title" /></label><label>Review<textarea name="text" required /></label><button className="primary">Review toevoegen</button></form></Panel>}</section></>;
+  return <><section className="pageIntro reviewIntro"><div><p className="eyebrow">Reputatiemanagement</p><h2>Reviews</h2><p>Alle gastreacties centraal beoordelen, opvolgen en beantwoorden.</p></div><div className="reviewFilters"><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Alle reviews</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select></label><label>Zichtbaar<select value={reviewPageSize} onChange={(event) => { setReviewPageSize(Number(event.target.value)); setReviewPage(1); }}>{[2,10,25,100].map((amount) => <option value={amount} key={amount}>{amount} reviews</option>)}</select></label></div></section>{reviewMessage && <div className="notice">{reviewMessage}</div>}<section className="kpis secondary"><Card label="Totaal reviews" value={reviews.length} sub={`${ratedReviews.length} met cijfer Â· ${withoutRating} zonder cijfer`} /><Card label="Gemiddelde score" value={average ? average.toFixed(2) : "â€“"} sub={`Gebaseerd op ${ratedReviews.length} broncijfers`} /><Card label="Goede reviews" value={positive} sub="4 of 5 sterren" tone="success" /><Card label="Kritieke reviews" value={negative} sub="1 of 2 sterren" tone={negative ? "danger" : "success"} /><Card label="Op te volgen" value={open} sub="Nieuw of in behandeling" tone={open ? "warning" : "success"} /><Card label="Beantwoord" value={reviews.filter((item) => item.status === "responded").length} sub="Afgeronde reacties" /></section><section className="reviewLayout"><Panel title="Review-inbox" subtitle="Nieuwste reacties bovenaan">{filteredReviews.length === 0 && <Empty text="Nog geen reviews gevonden." />}{visibleReviews.map((review) => { const hasRating = Number.isFinite(Number(review.rating)) && Number(review.rating) >= 1; return <article className={`reviewCard ${hasRating ? `rating${review.rating}` : "ratingUnknown"}`} key={review.id}><header><div><strong>{hasRating ? `${"\u2605".repeat(review.rating)}${"\u2606".repeat(5-review.rating)}` : "Geen cijfer aangeleverd"}</strong><b>{review.reviewer_name || "Anonieme gast"}</b></div><span className="status">{reviewStatusLabel(review.status)}</span></header><small>{review.source} Â· {formatDate(review.reviewed_at)}</small>{review.title && <h3>{review.title}</h3>}<p>{review.review_text}</p>{canManage && <details className="reviewReply"><summary>Reageren</summary><form onSubmit={(event) => publishReview(event, review.id)}><textarea name="response" defaultValue={review.response_text || ""} placeholder="Schrijf je reactie aan de gast" required /><button className="primary" disabled={publishingReviewId === review.id}>{publishingReviewId === review.id ? "Plaatsenâ€¦" : "Reactie plaatsen"}</button><small>De status verandert pas naar beantwoord nadat het reviewplatform de plaatsing bevestigt.</small></form></details>}</article>; })}{filteredReviews.length > reviewPageSize && <nav className="reviewPagination" aria-label="Reviewpagina's"><button type="button" className="secondaryButton" disabled={currentPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Vorige</button><span>Pagina {currentPage} van {pageCount} Â· {filteredReviews.length} reviews</span><button type="button" className="secondaryButton" disabled={currentPage === pageCount} onClick={() => setReviewPage((page) => Math.min(pageCount, page + 1))}>Volgende</button></nav>}</Panel>{canAdd && <Panel title="Reviews uploaden" subtitle="Importeer maximaal 500 reviews uit een CSV-bestand"><form className="reviewForm uploadReviews" onSubmit={uploadReviews}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>CSV-bestand<input name="file" type="file" accept=".csv,text/csv" required /></label><small>Kolommen: score, review, naam, datum en titel. Score en review zijn verplicht.</small><button className="primary">Reviews uploaden</button></form></Panel>}{canAdd && <Panel title="Review toevoegen" subtitle="Handmatig, totdat bronnen automatisch gekoppeld zijn"><form className="reviewForm" onSubmit={addReview}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>Gast<input name="reviewer" /></label><label>Score<select name="rating" defaultValue="5">{[5,4,3,2,1].map((score) => <option value={score} key={score}>{score} sterren</option>)}</select></label><label>Titel<input name="title" /></label><label>Review<textarea name="text" required /></label><button className="primary">Review toevoegen</button></form></Panel>}</section></>;
 }
 
 function reviewStatusLabel(status) { return ({ new: "Nieuw", in_progress: "In behandeling", responded: "Beantwoord", archived: "Gearchiveerd" })[status] || status; }
@@ -797,15 +773,21 @@ function SecuritySettings({ required, mfaState, onRefresh }) {
 
 function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [accounts, setAccounts] = useState([]);
+  const [metaAccounts, setMetaAccounts] = useState([]);
   const [integrationMessage, setIntegrationMessage] = useState("");
   const [integrationError, setIntegrationError] = useState("");
   const [connecting, setConnecting] = useState(false);
 
   const loadAccounts = useCallback(async () => {
-    const response = await fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
-    const result = await response.json();
-    if (response.ok) setAccounts(result.accounts || []);
-    else setIntegrationError(result.error || "Koppelingen konden niet worden geladen.");
+    const headers = { Authorization: `Bearer ${session.access_token}` };
+    const [robuustResponse, metaResponse] = await Promise.all([
+      fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
+      fetch(`/api/integrations/meta?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
+    ]);
+    const [robuustResult, metaResult] = await Promise.all([robuustResponse.json(), metaResponse.json()]);
+    if (robuustResponse.ok) setAccounts(robuustResult.accounts || []);
+    if (metaResponse.ok) setMetaAccounts(metaResult.accounts || []);
+    if (!robuustResponse.ok || !metaResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || "Koppelingen konden niet worden geladen.");
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
@@ -822,6 +804,19 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     if (response.ok) { setIntegrationMessage(result.message); await loadAccounts(); }
     else setIntegrationError(result.error || "Robuust kon niet worden gekoppeld.");
     setConnecting(false);
+  }
+
+  async function connectMeta(formData) {
+    setConnecting(true); setIntegrationMessage(""); setIntegrationError("");
+    const businessId = String(formData.get("businessId") || "");
+    const response = await fetch("/api/integrations/meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ workspaceId, businessId }),
+    });
+    const result = await response.json();
+    if (response.ok && result.authorizationUrl) window.location.assign(result.authorizationUrl);
+    else { setIntegrationError(result.error || "Instagram kon niet worden gestart."); setConnecting(false); }
   }
 
   const statusLabel = { connected: "Verbonden", pending: "Controleren", degraded: "Aandacht nodig", not_configured: "Niet ingesteld", revoked: "Ingetrokken" };
@@ -846,6 +841,22 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         {!accounts.length && <Empty text="Nog geen Robuust-koppeling ingesteld." />}
         {accounts.map((account) => <div className="connectionRow" key={account.id}><div><strong>{account.display_name || "Robuust"}</strong><span>PID: {account.external_account_id}</span><small>{account.last_synced_at ? `Gecontroleerd op ${formatDate(account.last_synced_at)}` : "Nog niet gecontroleerd"}</small></div><span className={`status ${account.connection_status}`}>{statusLabel[account.connection_status] || account.connection_status}</span></div>)}
         <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>âœ“ Partnerbedrijf herkennen</span><span>âœ“ Beschikbaarheid van reserveringen controleren</span><span>â€“ Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
+      </article>
+    </section>
+    <section className="integrationGrid">
+      <article className="panel integrationSetup">
+        <div className="integrationBrand"><div className="integrationLogo">IG</div><div><h2>Instagram</h2><p>Publicaties, reacties en berichten per vestiging</p></div></div>
+        <div className="scopeBanner"><strong>Strikt per bedrijf gescheiden</strong><span>Kies eerst de Horeca OS-vestiging en log daarna uitsluitend in op het bijbehorende Instagram-profiel.</span></div>
+        <form action={connectMeta} className="stack">
+          <label>Horeca OS-vestiging<select name="businessId" required defaultValue=""><option value="" disabled>Kies een vestiging</option>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label>
+          <div className="sensitiveNote"><strong>Veilig opgeslagen</strong><span>Het toegangstoken wordt versleuteld en is alleen server-side beschikbaar voor deze vestiging.</span></div>
+          <button className="primary" disabled={connecting}>{connecting ? "Instagram openenâ€¦" : "Instagram-profiel koppelen"}</button>
+        </form>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>Instagram per vestiging</h2><p>Elk profiel hoort bij precies Ã©Ã©n Horeca OS-bedrijf.</p></div></div>
+        {!metaAccounts.length && <Empty text="Nog geen Instagram-profiel technisch gekoppeld." />}
+        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div><span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
   </>;
