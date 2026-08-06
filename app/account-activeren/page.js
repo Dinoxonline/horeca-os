@@ -59,4 +59,3 @@ export default function ActivateAccountPage() {
       </form>}
   </section></main>;
 }
-

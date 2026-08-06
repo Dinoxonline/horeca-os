@@ -171,6 +171,16 @@ export default function HorecaOsApp() {
   const analytics = useMemo(() => buildSalesAnalytics(data.sales, data.products, new Date()), [data.sales, data.products]);
   const activeWorkspace = memberships.find((membership) => membership.workspace_id === workspaceId);
   const activeBusiness = data.businesses.find((business) => business.id === businessId);
+  const isOwner = activeWorkspace?.role === "owner" || roleAssignments.some((assignment) => assignment.role?.role_key === "owner");
+  const hasWorkspaceWideRole = isOwner || roleAssignments.some((assignment) => !assignment.business_id);
+  const assignedBusinessIds = useMemo(
+    () => [...new Set(roleAssignments.map((assignment) => assignment.business_id).filter(Boolean))],
+    [roleAssignments],
+  );
+  const visibleBusinesses = useMemo(
+    () => hasWorkspaceWideRole ? data.businesses : data.businesses.filter((business) => assignedBusinessIds.includes(business.id)),
+    [assignedBusinessIds, data.businesses, hasWorkspaceWideRole],
+  );
   const canUseFeature = useCallback((permission) => {
     if (activeWorkspace?.role === "owner") return true;
     return roleAssignments.some((assignment) => {
@@ -180,6 +190,7 @@ export default function HorecaOsApp() {
     });
   }, [activeWorkspace?.role, businessId, roleAssignments]);
   const featureVisibility = useMemo(() => ({
+    dashboard: canUseFeature("operations:read") || canUseFeature("operations:manage") || canUseFeature("finance:read"),
     foodcost: canUseFeature("foodcost:read"),
     products: canUseFeature("foodcost:read"),
     recipes: canUseFeature("foodcost:read"),
@@ -187,8 +198,13 @@ export default function HorecaOsApp() {
     assistant: canUseFeature("ai:use"),
     users: canUseFeature("users:read") || canUseFeature("users:manage"),
     integrations: canUseFeature("integrations:manage"),
+    reviews: canUseFeature("reviews:read") || canUseFeature("reviews:manage") || canUseFeature("reviews:respond"),
+    marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
     security: true,
   }), [canUseFeature]);
+  const canViewDirectie = isOwner || canUseFeature("operations:manage") || canUseFeature("finance:read");
+  const dashboardLabel = isOwner ? "CEO Home" : canViewDirectie ? "Management Home" : "Mijn werk";
+  const viewAllowed = featureVisibility[activeView] !== false;
   const mfaRequired = useMemo(() => roleAssignments.some((assignment) => ["owner", "manager"].includes(assignment.role?.role_key)), [roleAssignments]);
   const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
   const openTasks = data.tasks.filter((task) => task.status !== "done");
@@ -199,19 +215,24 @@ export default function HorecaOsApp() {
   const connectedIntegrations = data.integrations.filter((item) => String(item.status).toLowerCase() === "connected").length;
   const foodcost = useMemo(() => buildFoodcostAnalytics(data), [data]);
 
+  useEffect(() => {
+    if (rolesLoading || hasWorkspaceWideRole || !assignedBusinessIds.length) return;
+    if (businessId === "all" || !assignedBusinessIds.includes(businessId)) setBusinessId(assignedBusinessIds[0]);
+  }, [assignedBusinessIds, businessId, hasWorkspaceWideRole, rolesLoading]);
+
   async function signIn(formData) {
     setMessage("");
     const { error } = await supabase.auth.signInWithPassword({ email: formData.get("email"), password: formData.get("password") });
     if (error) setMessage(error.message);
   }
 
-  if (loading) return <main className="center">Horeca OS ladenÃ¢â‚¬Â¦</main>;
+  if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
   if (!session) return <LoginScreen signIn={signIn} message={message} />;
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
-  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controlerenâ€¦</main>;
+  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
   if (mfaRequired && !verifiedMfaFactor) {
     return <MfaEnrollment required onComplete={refreshMfa} />;
   }
@@ -221,13 +242,13 @@ export default function HorecaOsApp() {
       <aside className="sidebar">
         <div className="brand">Horeca OS</div>
         <nav>
-          <NavLink href="/dashboard" active={activeView === "dashboard"}>CEO Home</NavLink>
+          {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
           {featureVisibility.recipes && <NavLink href="/recepten" active={activeView === "recipes"}>Recepturen</NavLink>}
           {featureVisibility.suppliers && <NavLink href="/leveranciers" active={activeView === "suppliers"}>Leveranciers</NavLink>}
-          <NavLink href="/reviews" active={activeView === "reviews"}>Reviews</NavLink>
-          <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>
+          {featureVisibility.reviews && <NavLink href="/reviews" active={activeView === "reviews"}>Reviews</NavLink>}
+          {featureVisibility.marketing && <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>}
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
           {featureVisibility.integrations && <NavLink href="/koppelingen" active={activeView === "integrations"}>Koppelingen</NavLink>}
@@ -238,17 +259,20 @@ export default function HorecaOsApp() {
 
       <main className="content">
         <header className="topbar">
-          <div><p className="eyebrow">Directieoverzicht</p><h1>{activeBusiness?.name || activeWorkspace?.workspace?.name || "Horeca OS"}</h1><p>{session.user.email}</p></div>
+          <div><p className="eyebrow">{canViewDirectie ? "Directieoverzicht" : "Persoonlijke werkomgeving"}</p><h1>{activeBusiness?.name || activeWorkspace?.workspace?.name || "Horeca OS"}</h1><p>{session.user.email}</p></div>
           <div className="toolbar">
             {memberships.length > 1 && <label>Werkruimte<select value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setBusinessId("all"); }}>{memberships.map((item) => <option key={item.workspace_id} value={item.workspace_id}>{item.workspace?.name || item.workspace_id}</option>)}</select></label>}
-            <label>Vestiging<select value={businessId} onChange={(event) => setBusinessId(event.target.value)}><option value="all">Alle vestigingen</option>{data.businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-            <button className="refresh" onClick={loadData} disabled={refreshing}>{refreshing ? "VerversenÃ¢â‚¬Â¦" : "Data verversen"}</button>
+            <label>Vestiging<select value={businessId} onChange={(event) => setBusinessId(event.target.value)}>{hasWorkspaceWideRole && <option value="all">Alle vestigingen</option>}{visibleBusinesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+            <button className="refresh" onClick={loadData} disabled={refreshing}>{refreshing ? "Verversenâ€¦" : "Data verversen"}</button>
           </div>
         </header>
 
         {message && <div className="notice">{message}</div>}
 
-        {activeView === "dashboard" && <>
+        {!viewAllowed && <AccessDenied />}
+
+        {activeView === "dashboard" && featureVisibility.dashboard && <>
+        {canViewDirectie ? <>
         <section className="kpis salesKpis">
           <SalesCard label="Omzet vandaag" period={analytics.today} />
           <SalesCard label="Omzet gisteren" period={analytics.yesterday} />
@@ -264,7 +288,7 @@ export default function HorecaOsApp() {
         </section>
 
         <section className="dashboardGrid">
-          <Panel title="Topprioriteiten" subtitle="Wat vandaag bestuurlijke aandacht vraagt">{priorities.length === 0 && <Empty text="Geen openstaande prioriteiten." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Ã‚Â· {statusLabel[task.status] || task.status}</span></div><span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span></div>)}</Panel>
+          <Panel title="Topprioriteiten" subtitle="Wat vandaag bestuurlijke aandacht vraagt">{priorities.length === 0 && <Empty text="Geen openstaande prioriteiten." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Â· {statusLabel[task.status] || task.status}</span></div><span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span></div>)}</Panel>
           <Panel title="Komende agenda" subtitle="Eerstvolgende afspraken en evenementen">{data.events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{data.events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
           <Panel title="Topverkopers" subtitle="Hoogste aantallen in de huidige maand">{analytics.topProducts.length === 0 && <Empty text="Nog geen productverkoop voor deze maand." />}{analytics.topProducts.map((product, index) => <div className="rankRow" key={product.name}><span className="rank">{index + 1}</span><b>{product.name}</b><strong>{product.quantity}</strong></div>)}</Panel>
           <Panel title="Systemen" subtitle="Status van de belangrijkste koppelingen">{data.integrations.length === 0 && <Empty text="Geen integraties gevonden." />}{data.integrations.map((integration) => <div className="systemRow" key={integration.id}><div><b>{integration.provider}</b><span>{integration.last_synced_at ? `Laatste sync ${formatDate(integration.last_synced_at)}` : "Nog niet gesynchroniseerd"}</span></div><span className={`status ${String(integration.status).toLowerCase()}`}>{integration.status}</span></div>)}</Panel>
@@ -278,14 +302,15 @@ export default function HorecaOsApp() {
         </section>
 
         <section className="panel ai"><div><p className="eyebrow light">AI-directieadvies</p><h2>{buildAdvice({ criticalTasks, sales: analytics.today, events: data.events, securityWarnings })}</h2></div><div className="aiMeta"><span>Live database</span><span>Tenantfilter actief</span><span>Dagelijkse back-up</span></div></section>
+        </> : <StaffDashboard priorities={priorities} events={data.events} />}
         </>}
 
         {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
         {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} />}
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview analytics={foodcost} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
-        {activeView === "reviews" && <EmptyModule eyebrow="Social intelligence" title="Reviews" description="Review-inzichten worden hier samengebracht zodra de eerste reviewbron is gekoppeld." />}
-        {activeView === "marketing" && <EmptyModule eyebrow="CommerciÃƒÂ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
+        {activeView === "reviews" && featureVisibility.reviews && <EmptyModule eyebrow="Social intelligence" title="Reviews" description="Review-inzichten worden hier samengebracht zodra de eerste reviewbron is gekoppeld." />}
+        {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "integrations" && featureVisibility.integrations && <RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} />}
@@ -301,30 +326,44 @@ function EmptyModule({ eyebrow, title, description }) {
   return <><section className="pageIntro"><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></section><section className="panel emptyModule"><strong>Klaar voor de eerste databron</strong><p>Dit onderdeel is onderdeel van de nieuwe applicatiestructuur. Er wordt geen voorbeelddata getoond.</p></section></>;
 }
 
+function AccessDenied() {
+  return <section className="panel emptyModule"><strong>Geen toegang tot dit onderdeel</strong><p>Jouw rol bevat niet de benodigde rechten. Kies een beschikbaar onderdeel in het menu.</p><Link className="secondaryButton" href="/dashboard">Naar mijn werk</Link></section>;
+}
+
+function StaffDashboard({ priorities, events }) {
+  return <>
+    <section className="pageIntro"><p className="eyebrow">Mijn werk</p><h2>Werkzaamheden en planning</h2><p>Alleen informatie binnen jouw toegewezen vestiging en rol wordt getoond.</p></section>
+    <section className="dashboardGrid">
+      <Panel title="Mijn prioriteiten" subtitle="Openstaande operationele werkzaamheden">{priorities.length === 0 && <Empty text="Geen openstaande werkzaamheden." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} · {statusLabel[task.status] || task.status}</span></div></div>)}</Panel>
+      <Panel title="Mijn planning" subtitle="Eerstvolgende afspraken binnen jouw vestiging">{events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
+    </section>
+  </>;
+}
+
 function FoodcostDashboard({ analytics }) {
   return <>
     <section className="pageIntro"><p className="eyebrow">Foodcost dashboard</p><h2>Marge en prijsbewaking</h2><p>Actuele berekening uit inkoopprijzen, recepturen en verkoopprijzen.</p></section>
     <section className="kpis">
-      <Card label="Gemiddelde foodcost" value={analytics.average == null ? "Ã¢â‚¬â€" : `${analytics.average.toFixed(1)}%`} sub={`${analytics.items.length} verkoopbare gerechten`} />
-      <Card label="Beste marge" value={analytics.best?.name || "Ã¢â‚¬â€"} sub={analytics.best ? `${analytics.best.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone="success" />
-      <Card label="Hoogste foodcost" value={analytics.worst?.name || "Ã¢â‚¬â€"} sub={analytics.worst ? `${analytics.worst.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone={analytics.worst?.foodcost > 40 ? "danger" : "normal"} />
+      <Card label="Gemiddelde foodcost" value={analytics.average == null ? "â€”" : `${analytics.average.toFixed(1)}%`} sub={`${analytics.items.length} verkoopbare gerechten`} />
+      <Card label="Beste marge" value={analytics.best?.name || "â€”"} sub={analytics.best ? `${analytics.best.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone="success" />
+      <Card label="Hoogste foodcost" value={analytics.worst?.name || "â€”"} sub={analytics.worst ? `${analytics.worst.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone={analytics.worst?.foodcost > 40 ? "danger" : "normal"} />
       <Card label="Prijswaarschuwingen" value={analytics.warnings.length} sub="Gerechten boven doel of 40%" tone={analytics.warnings.length ? "warning" : "success"} />
     </section>
     <section className="panel"><div className="panelHead"><h2>Gerechten</h2><p>Foodcost is exclusief btw-effecten en volgt de actuele productprijs.</p></div>
       <div className="tableWrap"><table><thead><tr><th>Gerecht</th><th>Kostprijs</th><th>Verkoopprijs</th><th>Foodcost</th><th>Doel</th><th>Status</th></tr></thead><tbody>
-        {analytics.items.map((item) => <tr key={item.id}><td><b>{item.name}</b></td><td>{money(item.cost)}</td><td>{money(item.sellingPrice)}</td><td>{item.foodcost.toFixed(1)}%</td><td>{item.target ? `${item.target}%` : "Ã¢â‚¬â€"}</td><td><span className={`status ${item.warning ? "pending" : "connected"}`}>{item.warning ? "Controleren" : "Op koers"}</span></td></tr>)}
-      </tbody></table></div>{!analytics.items.length && <Empty text="Voeg producten, ingrediÃƒÂ«nten, receptregels en menu-items toe om foodcost te berekenen." />}
+        {analytics.items.map((item) => <tr key={item.id}><td><b>{item.name}</b></td><td>{money(item.cost)}</td><td>{money(item.sellingPrice)}</td><td>{item.foodcost.toFixed(1)}%</td><td>{item.target ? `${item.target}%` : "â€”"}</td><td><span className={`status ${item.warning ? "pending" : "connected"}`}>{item.warning ? "Controleren" : "Op koers"}</span></td></tr>)}
+      </tbody></table></div>{!analytics.items.length && <Empty text="Voeg producten, ingrediÃ«nten, receptregels en menu-items toe om foodcost te berekenen." />}
     </section>
   </>;
 }
 
 function ProductOverview({ products, suppliers }) {
   const supplierMap = new Map(suppliers.map((item) => [item.id, item.name]));
-  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "Ã¢â‚¬â€"} {product.content_unit || ""} Ã‚Â· {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
+  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "â€”"} {product.content_unit || ""} Â· {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
 }
 
 function RecipeOverview({ analytics }) {
-  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) Ã‚Â· {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
+  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) Â· {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
 }
 
 function SupplierOverview({ suppliers, products }) {
@@ -362,7 +401,7 @@ function Assistant({ workspaceId, businessId, session, conversations, onRefresh 
     <section className="assistantLayout"><aside className="panel chatHistory"><button className="primary" onClick={() => { setConversationId(""); setChat([]); }}>Nieuw gesprek</button><h3>Geschiedenis</h3>{conversations.map((item) => <button className={conversationId === item.id ? "history active" : "history"} key={item.id} onClick={() => openConversation(item.id)}><b>{item.title}</b><small>{item.use_case}</small></button>)}</aside>
       <article className="panel chatPanel"><div className="useCases">{[["ceo","CEO"],["foodcost","Foodcost"],["reviews","Reviews"],["marketing","Marketing"],["operations","Operatie"]].map(([key,label]) => <button key={key} className={useCase === key ? "chip active" : "chip"} onClick={() => setUseCase(key)} disabled={Boolean(conversationId)}>{label}</button>)}</div>
         <div className="messages">{!chat.length && <Empty text="Stel een vraag. De assistent gebruikt alleen gegevens die jij binnen deze werkruimte mag zien." />}{chat.map((item) => <div className={`messageBubble ${item.role}`} key={item.id}>{item.content}</div>)}</div>
-        {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "AnalyserenÃ¢â‚¬Â¦" : "Versturen"}</button></form>
+        {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "Analyserenâ€¦" : "Versturen"}</button></form>
       </article></section></>;
 }
 
@@ -388,7 +427,7 @@ function MfaChallenge({ factor, onComplete }) {
     {error && <div className="notice">{error}</div>}
     <form onSubmit={verifyMfa} className="stack">
       <label>Beveiligingscode<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
-      <button className="primary" disabled={verifying}>{verifying ? "Controlerenâ€¦" : "Veilig inloggen"}</button>
+      <button className="primary" disabled={verifying}>{verifying ? "Controleren…" : "Veilig inloggen"}</button>
     </form>
     <button className="textButton" onClick={() => supabase.auth.signOut()}>Terug naar inloggen</button>
   </section></main>;
@@ -429,12 +468,12 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
     <p className="eyebrow">Accountbeveiliging</p><h1>{required ? "Stel tweestapsverificatie in" : "Authenticator koppelen"}</h1>
     <p>{required ? "Voor Eigenaren en Managers is een tweede beveiligingsstap verplicht." : "Scan de QR-code met Google Authenticator, Microsoft Authenticator of 1Password."}</p>
     {error && <div className="notice">{error}</div>}
-    {!enrollment && !error && <p>Beveiligde QR-code voorbereidenâ€¦</p>}
+    {!enrollment && !error && <p>Beveiligde QR-code voorbereiden…</p>}
     {enrollment && <form onSubmit={confirmEnrollment} className="stack">
       <div className="mfaQr"><img src={enrollment.qr} alt="QR-code voor de authenticator-app" /></div>
       <details><summary>QR-code werkt niet?</summary><p>Voer deze sleutel handmatig in:</p><code className="mfaSecret">{enrollment.secret}</code></details>
       <label>Code uit authenticator<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
-      <button className="primary" disabled={verifying}>{verifying ? "Activerenâ€¦" : "2FA activeren"}</button>
+      <button className="primary" disabled={verifying}>{verifying ? "Activeren…" : "2FA activeren"}</button>
     </form>}
     {!required && <button className="textButton" onClick={cancelEnrollment}>Annuleren</button>}
     {required && <button className="textButton" onClick={() => supabase.auth.signOut()}>Uitloggen</button>}
@@ -512,14 +551,14 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
           <label>Robuust PID<input name="pid" required placeholder="Jouw Robuust bedrijfs-ID" autoComplete="off" /></label>
           <label>Robuust API-sleutel<input name="apiKey" type="password" required autoComplete="new-password" placeholder="Eenmalig invoeren" /></label>
           <div className="sensitiveNote"><strong>Versleuteld</strong><span>De API-sleutel wordt opgeslagen in Supabase Vault en verschijnt daarna niet meer op het scherm.</span></div>
-          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controlerenâ€¦" : "Robuust verbinden"}</button>
+          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controleren…" : "Robuust verbinden"}</button>
         </form>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>OfficiÃ«le Robuust Reserveringen-API.</p></div></div>
+        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>Officiële Robuust Reserveringen-API.</p></div></div>
         {!accounts.length && <Empty text="Nog geen Robuust-koppeling ingesteld." />}
         {accounts.map((account) => <div className="connectionRow" key={account.id}><div><strong>{account.display_name || "Robuust"}</strong><span>PID: {account.external_account_id}</span><small>{account.last_synced_at ? `Gecontroleerd op ${formatDate(account.last_synced_at)}` : "Nog niet gecontroleerd"}</small></div><span className={`status ${account.connection_status}`}>{statusLabel[account.connection_status] || account.connection_status}</span></div>)}
-        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>âœ“ Partnerbedrijf herkennen</span><span>âœ“ Beschikbaarheid van reserveringen controleren</span><span>â€“ Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
+        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>✓ Partnerbedrijf herkennen</span><span>✓ Beschikbaarheid van reserveringen controleren</span><span>– Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
       </article>
     </section>
   </>;
@@ -613,25 +652,25 @@ function UsersAdmin({ workspaceId, session }) {
           <label>Telefoonnummer<input name="phone" type="tel" /></label>
           <label>Eerste dag loonverband<input name="employmentStart" type="date" /></label>
           <label>Laatste dag loonverband<input name="employmentEnd" type="date" /></label>
-          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiÃ«ne, wijnkennis" /></label>
+          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiëne, wijnkennis" /></label>
           <label>Adres<input name="address" autoComplete="street-address" /></label>
           <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" /></label><label>Woonplaats<input name="city" autoComplete="address-level2" /></label></div>
           <label>Geboorteplaats<input name="birthplace" /></label>
           <label>Geboortedatum<input name="birthDate" type="date" /></label>
           <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} />{label}</label>)}</div></fieldset>
           <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" />Uurloon (oproepkracht)</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" />Maandloon (vaste dienst)</label></fieldset>
-          <label>Loon (â‚¬)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
+          <label>Loon (€)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
           <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
           <label>Bankrekening<input name="iban" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
           <label>Ranking<input name="ranking" type="number" min="-1" defaultValue="10" /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
           <label>Robuust medewerker-ID<input name="externalEmployeeId" placeholder="Later automatisch gevuld door koppeling" /></label>
           <div className="sensitiveNote full"><strong>Extra beveiligd</strong><span>BSN, bankrekening, pincode, geboortedatum en loon worden versleuteld opgeslagen. Horeca OS-rollen blijven gescheiden van Robuust-functies.</span></div>
-          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduldâ€¦" : "Medewerker aanmaken"}</button></div>
+          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduld…" : "Medewerker aanmaken"}</button></div>
         </form>
       </article>
       <article className="panel usersPanel">
         <div className="panelHead"><div><h2>Actieve en uitgenodigde gebruikers</h2><p>{adminData.users.length} gebruiker(s) binnen deze werkruimte.</p></div></div>
-        {loadingUsers && <Empty text="Gebruikers ladenâ€¦" />}
+        {loadingUsers && <Empty text="Gebruikers laden…" />}
         {!loadingUsers && !adminData.users.length && <Empty text="Nog geen gebruikers gevonden." />}
         <div className="userList">{adminData.users.map((user) => {
           const assignment = user.assignments[0];
@@ -680,19 +719,19 @@ function EmployeeEditor({ user, onSave }) {
       <fieldset className="full"><legend>Robuust-rollen *</legend><div className="checkGrid">{ROBUUST_ROLE_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="robuustRoles" value={value} defaultChecked={selectedRoles.includes(value)} />{label}</label>)}</div></fieldset>
       <label>E-mail *<input name="email" type="email" required defaultValue={employee.email || user.email} /></label>
       <label>Personeelsnummer<input name="employeeNumber" defaultValue={employee.employee_number || ""} /></label>
-      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld â€” leeg laten om te behouden" : "Nieuwe pincode"} /></label>
+      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld — leeg laten om te behouden" : "Nieuwe pincode"} /></label>
       <label>Telefoonnummer<input name="phone" type="tel" defaultValue={employee.phone || ""} /></label>
       <label>Eerste dag loonverband<input name="employmentStart" type="date" defaultValue={employee.employment_start || ""} /></label>
       <label>Laatste dag loonverband<input name="employmentEnd" type="date" defaultValue={employee.employment_end || ""} /></label>
-      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiÃ«ne, wijnkennis" /></label>
+      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiëne, wijnkennis" /></label>
       <label>Adres<input name="address" autoComplete="street-address" defaultValue={employee.address || ""} /></label>
       <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" defaultValue={employee.postal_code || ""} /></label><label>Woonplaats<input name="city" autoComplete="address-level2" defaultValue={employee.city || ""} /></label></div>
       <label>Geboorteplaats<input name="birthplace" defaultValue={employee.birthplace || ""} /></label>
       <label>Geboortedatum<input name="birthDate" type="date" defaultValue={employee.birth_date || ""} /></label>
       <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} defaultChecked={selectedFunctions.includes(value)} />{label}</label>)}</div></fieldset>
       <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" defaultChecked={employee.wage_type === "hourly"} />Uurloon</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" defaultChecked={employee.wage_type === "monthly"} />Maandloon</label></fieldset>
-      <label>Loon (â‚¬)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
-      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld â€¢â€¢â€¢â€¢ ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
+      <label>Loon (€)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
+      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld •••• ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
       <label>Bankrekening<input name="iban" autoComplete="off" placeholder={employee.has_iban ? employee.iban_masked : "Wordt versleuteld opgeslagen"} /></label>
       <label>Ranking<input name="ranking" type="number" min="-1" defaultValue={employee.ranking ?? 10} /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
       <label>Robuust medewerker-ID<input name="externalEmployeeId" defaultValue={employee.external_employee_id || ""} placeholder="Later automatisch gevuld door koppeling" /></label>
@@ -798,7 +837,7 @@ function Card({ label, value, sub, tone = "normal" }) { return <article classNam
 function ChannelCard({ label, revenue, orders, share: channelShare }) { return <article className="channelCard"><div><span>{label}</span><strong>{money(revenue)}</strong></div><div className="channelMeta"><small>{number(orders)} orders</small><small>{channelShare.toFixed(1)}% van omzet</small></div></article>; }
 function Panel({ title, subtitle, children }) { return <article className="panel"><div className="panelHead"><div><h2>{title}</h2><p>{subtitle}</p></div></div>{children}</article>; }
 function Empty({ text }) { return <p className="empty">{text}</p>; }
-function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃƒÂ«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
+function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃ«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
 function rowsBetween(rows, start, end) { const from = isoDate(start); const through = isoDate(end); return rows.filter((row) => row.sales_date >= from && row.sales_date <= through); }
 function sum(rows, key) { return rows.reduce((total, row) => total + number(row[key]), 0); }
 function share(value, total) { return total ? (value / total) * 100 : 0; }
@@ -812,5 +851,4 @@ function daysBetween(start, end) { return Math.round((startOfDay(end) - startOfD
 function isoDate(date) { const local = startOfDay(date); return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`; }
 function parseDate(value) { const [year, month, day] = value.split("-").map(Number); return new Date(year, month - 1, day); }
 function formatDate(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
-
 

@@ -423,7 +423,7 @@ function cleanChoiceList(value, allowed) {
 function maskIban(value) {
   const normalized = String(value || "").replace(/\s/g, "");
   if (!normalized) return "";
-  return normalized.length <= 8 ? "â€¢â€¢â€¢â€¢" : `${normalized.slice(0, 4)} â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ${normalized.slice(-4)}`;
+  return normalized.length <= 8 ? "••••" : `${normalized.slice(0, 4)} •••• •••• ${normalized.slice(-4)}`;
 }
 
 function legacyMembershipRole(roleKey) {
@@ -442,4 +442,3 @@ function adminErrorMessage(error) {
 function jsonError(message, status) {
   return NextResponse.json({ error: message }, { status });
 }
-
