@@ -584,7 +584,7 @@ function ReviewsInbox({ workspaceId, businessId, businesses, canManage, canAdd }
   async function addReview(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const { error } = await supabase.from("customer_reviews").insert({ workspace_id: workspaceId, business_id: String(form.get("businessId")), source: String(form.get("source")), reviewer_name: String(form.get("reviewer") || "").trim() || null, rating: Number(form.get("rating")), title: String(form.get("title") || "").trim() || null, review_text: String(form.get("text") || "").trim(), reviewed_at: new Date().toISOString() }); setReviewMessage(error ? `Review niet opgeslagen: ${error.message}` : "Review toegevoegd aan de inbox."); if (!error) { event.currentTarget.reset(); loadReviews(); } }
   async function updateReview(event, id) { event.preventDefault(); const form = new FormData(event.currentTarget); const payload = { status: String(form.get("status")), internal_note: String(form.get("note") || "").trim() || null, response_text: String(form.get("response") || "").trim() || null }; if (payload.status === "responded") payload.responded_at = new Date().toISOString(); const { error } = await supabase.from("customer_reviews").update(payload).eq("id", id); setReviewMessage(error ? `Opvolging niet opgeslagen: ${error.message}` : "Reviewopvolging bijgewerkt."); if (!error) loadReviews(); }
   const visible = statusFilter === "all" ? reviews : reviews.filter((review) => review.status === statusFilter); const average = reviews.length ? reviews.reduce((sum, item) => sum + number(item.rating), 0) / reviews.length : 0; const open = reviews.filter((item) => item.status === "new" || item.status === "in_progress").length; const negative = reviews.filter((item) => item.rating <= 2).length;
-  return <><section className="pageIntro reviewIntro"><div><p className="eyebrow">Reputatiemanagement</p><h2>Reviews</h2><p>Alle gastreacties centraal beoordelen, opvolgen en beantwoorden.</p></div><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Alle reviews</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select></label></section>{reviewMessage && <div className="notice">{reviewMessage}</div>}<section className="kpis secondary"><Card label="Gemiddelde score" value={average ? average.toFixed(1) : "–"} sub={`${reviews.length} reviews`} /><Card label="Op te volgen" value={open} sub="Nieuw of in behandeling" tone={open ? "warning" : "success"} /><Card label="Kritieke reviews" value={negative} sub="1 of 2 sterren" tone={negative ? "danger" : "success"} /><Card label="Beantwoord" value={reviews.filter((item) => item.status === "responded").length} sub="Afgeronde reacties" /></section><section className="reviewLayout"><Panel title="Review-inbox" subtitle="Nieuwste reacties bovenaan">{visible.length === 0 && <Empty text="Nog geen reviews gevonden." />}{visible.map((review) => <article className={`reviewCard rating${review.rating}`} key={review.id}><header><div><strong>{"★".repeat(review.rating)}{"☆".repeat(5-review.rating)}</strong><b>{review.reviewer_name || "Anonieme gast"}</b></div><span className="status">{reviewStatusLabel(review.status)}</span></header><small>{review.source} · {formatDate(review.reviewed_at)}</small>{review.title && <h3>{review.title}</h3>}<p>{review.review_text}</p>{canManage && <form onSubmit={(event) => updateReview(event, review.id)}><select name="status" defaultValue={review.status}><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select><textarea name="response" defaultValue={review.response_text || ""} placeholder="Conceptantwoord aan de gast" /><input name="note" defaultValue={review.internal_note || ""} placeholder="Interne notitie" /><button className="secondaryButton">Opvolging opslaan</button></form>}</article>)}</Panel>{canManage && <Panel title="Review toevoegen" subtitle="Handmatig, totdat bronnen automatisch gekoppeld zijn"><form className="reviewForm" onSubmit={addReview}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>Gast<input name="reviewer" /></label><label>Score<select name="rating" defaultValue="5">{[5,4,3,2,1].map((score) => <option value={score} key={score}>{score} sterren</option>)}</select></label><label>Titel<input name="title" /></label><label>Review<textarea name="text" required /></label><button className="primary">Review toevoegen</button></form></Panel>}</section></>;
+  return <><section className="pageIntro reviewIntro"><div><p className="eyebrow">Reputatiemanagement</p><h2>Reviews</h2><p>Alle gastreacties centraal beoordelen, opvolgen en beantwoorden.</p></div><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Alle reviews</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select></label></section>{reviewMessage && <div className="notice">{reviewMessage}</div>}<section className="kpis secondary"><Card label="Gemiddelde score" value={average ? average.toFixed(1) : "–"} sub={`${reviews.length} reviews`} /><Card label="Op te volgen" value={open} sub="Nieuw of in behandeling" tone={open ? "warning" : "success"} /><Card label="Kritieke reviews" value={negative} sub="1 of 2 sterren" tone={negative ? "danger" : "success"} /><Card label="Beantwoord" value={reviews.filter((item) => item.status === "responded").length} sub="Afgeronde reacties" /></section><section className="reviewLayout"><Panel title="Review-inbox" subtitle="Nieuwste reacties bovenaan">{visible.length === 0 && <Empty text="Nog geen reviews gevonden." />}{visible.map((review) => <article className={`reviewCard rating${review.rating}`} key={review.id}><header><div><strong>{"★".repeat(review.rating)}{"☆".repeat(5-review.rating)}</strong><b>{review.reviewer_name || "Anonieme gast"}</b></div><span className="status">{reviewStatusLabel(review.status)}</span></header><small>{review.source} · {formatDate(review.reviewed_at)}</small>{review.title && <h3>{review.title}</h3>}<p>{review.review_text}</p>{canManage && <form onSubmit={(event) => updateReview(event, review.id)}><select name="status" defaultValue={review.status}><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select><textarea name="response" defaultValue={review.response_text || ""} placeholder="Conceptantwoord aan de gast" /><input name="note" defaultValue={review.internal_note || ""} placeholder="Interne notitie" /><button className="secondaryButton">Opvolging opslaan</button></form>}</article>)}</Panel>{canAdd && <Panel title="Review toevoegen" subtitle="Handmatig, totdat bronnen automatisch gekoppeld zijn"><form className="reviewForm" onSubmit={addReview}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>Gast<input name="reviewer" /></label><label>Score<select name="rating" defaultValue="5">{[5,4,3,2,1].map((score) => <option value={score} key={score}>{score} sterren</option>)}</select></label><label>Titel<input name="title" /></label><label>Review<textarea name="text" required /></label><button className="primary">Review toevoegen</button></form></Panel>}</section></>;
 }
 
 function reviewStatusLabel(status) { return ({ new: "Nieuw", in_progress: "In behandeling", responded: "Beantwoord", archived: "Gearchiveerd" })[status] || status; }
@@ -1055,101 +1055,4 @@ function buildFoodcostAnalytics(data) {
     const sellingPrice = number(menuItem.selling_price);
     const foodcost = sellingPrice ? cost / sellingPrice * 100 : 0;
     const target = number(recipe?.target_foodcost_percentage);
-    return { id: menuItem.id, name: menuItem.name, category: menuItem.category, cost, sellingPrice, foodcost, target, lines: lines.length, warning: foodcost > 40 || (target > 0 && foodcost > target) };
-  }).filter((item) => item.lines > 0 && item.sellingPrice > 0);
-  const ranked = [...items].sort((a, b) => a.foodcost - b.foodcost);
-  return { items, average: items.length ? items.reduce((sumValue, item) => sumValue + item.foodcost, 0) / items.length : null, best: ranked[0] || null, worst: ranked.at(-1) || null, warnings: items.filter((item) => item.warning) };
-}
-
-function buildSalesAnalytics(sales, products, now) {
-  const ranges = getDateRanges(now);
-  const todayDate = startOfDay(now);
-  const yesterdayDate = addDays(todayDate, -1);
-  const weekStart = parseDate(ranges.weekStart);
-  const monthStart = parseDate(ranges.monthStart);
-  const previousWeekEnd = addDays(weekStart, -1);
-  const previousWeekStart = addDays(previousWeekEnd, -(daysBetween(weekStart, todayDate)));
-  const previousMonthEnd = addDays(monthStart, -1);
-  const previousMonthStart = new Date(previousMonthEnd.getFullYear(), previousMonthEnd.getMonth(), 1);
-  const comparablePreviousMonthEnd = new Date(previousMonthEnd.getFullYear(), previousMonthEnd.getMonth(), Math.min(todayDate.getDate(), previousMonthEnd.getDate()));
-
-  const period = (start, end, previousStart, previousEnd) => {
-    const currentRows = rowsBetween(sales, start, end);
-    const previousRows = rowsBetween(sales, previousStart, previousEnd);
-    const revenue = sum(currentRows, "revenue_inc_vat");
-    const previousRevenue = sum(previousRows, "revenue_inc_vat");
-    const orders = sum(currentRows, "order_count");
-    return { revenue, previousRevenue, orders, averageTicket: orders ? revenue / orders : 0, change: percentageChange(revenue, previousRevenue) };
-  };
-
-  const monthRows = rowsBetween(sales, monthStart, todayDate);
-  const takeawayRevenue = sum(monthRows, "takeaway_revenue");
-  const ownRevenue = sum(monthRows, "own_channel_revenue");
-  const totalRevenue = sum(monthRows, "revenue_inc_vat");
-  const otherRevenue = Math.max(totalRevenue - takeawayRevenue - ownRevenue, 0);
-  const productTotals = new Map();
-  products.forEach((row) => {
-    const name = String(row.product_name || "Onbekend product").trim();
-    productTotals.set(name, (productTotals.get(name) || 0) + number(row.quantity));
-  });
-
-  return {
-    today: period(todayDate, todayDate, yesterdayDate, yesterdayDate),
-    yesterday: period(yesterdayDate, yesterdayDate, addDays(yesterdayDate, -1), addDays(yesterdayDate, -1)),
-    week: period(weekStart, todayDate, previousWeekStart, previousWeekEnd),
-    month: period(monthStart, todayDate, previousMonthStart, comparablePreviousMonthEnd),
-    channels: [
-      { label: "Takeaway", revenue: takeawayRevenue, orders: sum(monthRows, "takeaway_order_count"), share: share(takeawayRevenue, totalRevenue) },
-      { label: "Eigen website en app", revenue: ownRevenue, orders: sum(monthRows, "own_channel_order_count"), share: share(ownRevenue, totalRevenue) },
-      { label: "Overige omzet", revenue: otherRevenue, orders: Math.max(sum(monthRows, "order_count") - sum(monthRows, "takeaway_order_count") - sum(monthRows, "own_channel_order_count"), 0), share: share(otherRevenue, totalRevenue) },
-    ],
-    topProducts: [...productTotals.entries()].map(([name, quantity]) => ({ name, quantity })).sort((a, b) => b.quantity - a.quantity).slice(0, 8),
-  };
-}
-
-function SalesCard({ label, period }) {
-  const hasComparison = period.previousRevenue !== 0;
-  const tone = hasComparison ? (period.change >= 0 ? "success" : "danger") : "normal";
-  return <Card label={label} value={money(period.revenue)} sub={hasComparison ? `${signedPercent(period.change)} t.o.v. vorige periode` : "Geen vergelijkingsdata"} tone={tone} />;
-}
-
-function LoginScreen({ signIn, requestPasswordReset, message, initialResetMode = false, lockResetMode = false }) {
-  const [resetMode, setResetMode] = useState(initialResetMode);
-  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>{resetMode ? "Wachtwoord herstellen" : "Veilig inloggen"}</h1><p>{resetMode ? "Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord te kiezen." : "Managementplatform voor jouw horecabedrijven"}</p>{message && <div className="notice">{message}</div>}{resetMode ? <form action={requestPasswordReset} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><button className="primary">Herstelmail versturen</button></form> : <form action={signIn} className="stack"><label>E-mailadres<input name="email" type="email" required autoComplete="email" /></label><label>Wachtwoord<input name="password" type="password" required autoComplete="current-password" /></label><button className="primary">Inloggen</button></form>}{!lockResetMode && <button type="button" className="textButton" onClick={() => setResetMode((current) => !current)}>{resetMode ? "Terug naar inloggen" : "Wachtwoord vergeten?"}</button>}<small>Nieuwe accounts worden uitsluitend door een beheerder toegevoegd.</small></section></main>;
-}
-
-function PasswordRecoveryScreen({ onSave, message, email }) {
-  return <main className="authPage"><section className="authCard"><div className="brand dark">Horeca OS</div><h1>Nieuw wachtwoord instellen</h1><p>Kies een nieuw wachtwoord voor:</p>{email && <p><strong>{email}</strong></p>}<p>Daarna krijg je toegang tot Horeca OS.</p>{message && <div className="notice">{message}</div>}<form action={onSave} className="stack"><label>Nieuw wachtwoord<input name="password" type="password" minLength="6" required autoComplete="new-password" /></label><label>Herhaal wachtwoord<input name="confirmation" type="password" minLength="6" required autoComplete="new-password" /></label><button className="primary">Wachtwoord opslaan</button></form><small>Gebruik minimaal 6 tekens.</small></section></main>;
-}
-
-function Card({ label, value, sub, tone = "normal" }) { return <article className={`card ${tone}`}><span>{label}</span><strong>{value ?? 0}</strong><small>{sub}</small></article>; }
-function ChannelCard({ label, revenue, orders, share: channelShare }) { return <article className="channelCard"><div><span>{label}</span><strong>{money(revenue)}</strong></div><div className="channelMeta"><small>{number(orders)} orders</small><small>{channelShare.toFixed(1)}% van omzet</small></div></article>; }
-function Panel({ title, subtitle, children }) { return <article className="panel"><div className="panelHead"><div><h2>{title}</h2><p>{subtitle}</p></div></div>{children}</article>; }
-function Empty({ text }) { return <p className="empty">{text}</p>; }
-function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃ«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
-function rowsBetween(rows, start, end) { const from = isoDate(start); const through = isoDate(end); return rows.filter((row) => row.sales_date >= from && row.sales_date <= through); }
-function sum(rows, key) { return rows.reduce((total, row) => total + number(row[key]), 0); }
-function share(value, total) { return total ? (value / total) * 100 : 0; }
-function percentageChange(current, previous) { return previous ? ((current - previous) / previous) * 100 : 0; }
-function signedPercent(value) { return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`; }
-function number(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
-function money(value) { return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(number(value)); }
-function startOfDay(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
-function addDays(date, amount) { const result = new Date(date); result.setDate(result.getDate() + amount); return result; }
-function daysBetween(start, end) { return Math.round((startOfDay(end) - startOfDay(start)) / 86400000); }
-function isoDate(date) { const local = startOfDay(date); return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`; }
-function parseDate(value) { const [year, month, day] = value.split("-").map(Number); return new Date(year, month - 1, day); }
-function formatDate(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
-function formatTime(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
-function formatDuration(minutes) { const safeMinutes = Math.max(0, Math.round(number(minutes))); const hours = Math.floor(safeMinutes / 60); const rest = safeMinutes % 60; return `${hours}u ${String(rest).padStart(2, "0")}m`; }
-function timeEntryEmployeeName(entry) { const profile = Array.isArray(entry.member?.profile) ? entry.member.profile[0] : entry.member?.profile; return profile?.full_name || `Medewerker ${entry.user_id.slice(0, 6)}`; }
-function memberProfileName(member) { const profile = Array.isArray(member.profile) ? member.profile[0] : member.profile; return profile?.full_name || `Medewerker ${member.user_id.slice(0, 6)}`; }
-function formatShortDate(value) { return new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short" }).format(value); }
-function toLocalDateTimeInput(value) { if (!value) return ""; const date = new Date(value); const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16); }
-function localInputToIso(value) { return value ? new Date(String(value)).toISOString() : null; }
-
-function TimeEntryEditor({ entry, businesses, minutes, onCorrect }) {
-  return <div className="hoursRecord"><div className="hoursEntry"><div><b>{timeEntryEmployeeName(entry)} {entry.corrected_at && <em className="restoredBadge">Hersteld</em>}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} · {formatDate(entry.clocked_in_at)}{entry.break_minutes ? ` · ${entry.break_minutes} min pauze` : ""}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutes) : "Actief"}</strong></div>{entry.correction_reason && <small className="correctionReason">Reden: {entry.correction_reason}</small>}<details className="correctionEditor"><summary>Tijd corrigeren</summary><form onSubmit={(event) => onCorrect(event, entry.id)}><label>Ingeklokt<input name="clockedIn" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_in_at)} required /></label><label>Uitgeklokt<input name="clockedOut" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_out_at)} required /></label><label>Pauze (min)<input name="breakMinutes" type="number" min="0" defaultValue={entry.break_minutes || 0} /></label><label>Reden correctie<input name="reason" required maxLength="500" placeholder="Bijv. vergeten uit te klokken" /></label><button className="secondaryButton">Correctie opslaan</button></form></details></div>;
-}
-
-
+    return { id: menuItem.id, name: menuItem.name, category: menuItem.category, cost, sellingPrice, foodcost, target, lines: lines.length, 
