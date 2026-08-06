@@ -219,7 +219,7 @@ export default function HorecaOsApp() {
     });
   }, [activeWorkspace?.role, businessId, roleAssignments]);
   const featureVisibility = useMemo(() => ({
-    dashboard: canUseFeature("operations:read") || canUseFeature("operations:manage") || canUseFeature("finance:read"),
+    dashboard: canUseFeature("operations:read") || canUseFeature("operations:manage") || canUseFeature("revenue:read") || canUseFeature("finance:read"),
     foodcost: canUseFeature("foodcost:read"),
     products: canUseFeature("foodcost:read"),
     recipes: canUseFeature("foodcost:read"),
@@ -231,7 +231,8 @@ export default function HorecaOsApp() {
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
     security: true,
   }), [canUseFeature]);
-  const canViewDirectie = isOwner || canUseFeature("operations:manage") || canUseFeature("finance:read");
+  const canViewRevenue = isOwner || canUseFeature("revenue:read") || canUseFeature("finance:read");
+  const canViewDirectie = canViewRevenue;
   const dashboardLabel = isOwner ? "CEO Home" : canViewDirectie ? "Management Home" : "Mijn werk";
   const viewAllowed = featureVisibility[activeView] !== false;
   const mfaRequired = isOwner || canUseFeature("users:manage") || canUseFeature("integrations:manage");
@@ -339,6 +340,7 @@ export default function HorecaOsApp() {
         {!viewAllowed && <AccessDenied />}
 
         {activeView === "dashboard" && featureVisibility.dashboard && <>
+        {(canUseFeature("operations:read") || canUseFeature("operations:manage")) && <TimeClock workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} />}
         {canViewDirectie ? <>
         <section className="kpis salesKpis">
           <SalesCard label="Omzet vandaag" period={analytics.today} />
@@ -405,6 +407,53 @@ function StaffDashboard({ priorities, events }) {
       <Panel title="Mijn planning" subtitle="Eerstvolgende afspraken binnen jouw vestiging">{events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
     </section>
   </>;
+}
+
+function TimeClock({ workspaceId, businessId, businesses, userId }) {
+  const [selectedBusinessId, setSelectedBusinessId] = useState(businessId === "all" ? (businesses[0]?.id || "") : businessId);
+  const [entries, setEntries] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+
+  const loadEntries = useCallback(async () => {
+    if (!workspaceId || !userId) return;
+    const { data: rows, error } = await supabase.from("time_entries")
+      .select("id, business_id, clocked_in_at, clocked_out_at")
+      .eq("workspace_id", workspaceId).eq("user_id", userId)
+      .order("clocked_in_at", { ascending: false }).limit(7);
+    if (error) setFeedback(`Uren konden niet worden geladen: ${error.message}`);
+    else setEntries(rows || []);
+  }, [userId, workspaceId]);
+
+  useEffect(() => { loadEntries(); }, [loadEntries]);
+  useEffect(() => {
+    setSelectedBusinessId(businessId === "all" ? (businesses[0]?.id || "") : businessId);
+  }, [businessId, businesses]);
+
+  const openEntry = entries.find((entry) => !entry.clocked_out_at);
+  async function toggleClock() {
+    setBusy(true);
+    setFeedback("");
+    const result = openEntry
+      ? await supabase.from("time_entries").update({ clocked_out_at: new Date().toISOString() }).eq("id", openEntry.id).is("clocked_out_at", null)
+      : await supabase.from("time_entries").insert({ workspace_id: workspaceId, business_id: selectedBusinessId, user_id: userId });
+    if (result.error) setFeedback(`Registratie niet gelukt: ${result.error.message}`);
+    else {
+      setFeedback(openEntry ? "Je bent uitgeklokt." : "Je bent ingeklokt.");
+      await loadEntries();
+    }
+    setBusy(false);
+  }
+
+  return <section className="panel timeClock">
+    <div><p className="eyebrow">Urenregistratie</p><h2>{openEntry ? "Je bent ingeklokt" : "Klaar om te starten"}</h2><p>{openEntry ? `Sinds ${formatTime(openEntry.clocked_in_at)}` : "Kies je vestiging en klok in bij aanvang van je dienst."}</p></div>
+    <div className="clockActions">
+      {!openEntry && <label>Vestiging<select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>}
+      <button className={openEntry ? "secondaryButton" : "primary"} onClick={toggleClock} disabled={busy || (!openEntry && !selectedBusinessId)}>{busy ? "Bezigâ€¦" : openEntry ? "Uitklokken" : "Inklokken"}</button>
+    </div>
+    {feedback && <p className="clockFeedback">{feedback}</p>}
+    {entries.length > 0 && <div className="clockHistory"><strong>Recente diensten</strong>{entries.slice(0, 4).map((entry) => <span key={entry.id}>{formatDate(entry.clocked_in_at)} Â· {formatTime(entry.clocked_in_at)} â€“ {entry.clocked_out_at ? formatTime(entry.clocked_out_at) : "actief"}</span>)}</div>}
+  </section>;
 }
 
 function FoodcostDashboard({ analytics }) {
@@ -760,7 +809,8 @@ function UsersAdmin({ workspaceId, session }) {
 
 const PERMISSION_OPTIONS = [
   ["workspace:manage", "Volledige werkruimte beheren", false],
-  ["operations:read", "Dashboard en omzet bekijken"], ["operations:manage", "Operationele gegevens beheren"],
+  ["operations:read", "Eigen werk, planning en inklokken"], ["operations:manage", "Operationele gegevens beheren"],
+  ["revenue:read", "Omzet en verkoopcijfers bekijken"],
   ["finance:read", "FinanciÃ«n bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
   ["foodcost:manage", "Foodcost, producten en recepten beheren"], ["kitchen:manage", "Keuken beheren"],
   ["reviews:read", "Reviews bekijken"], ["reviews:respond", "Op reviews reageren"],
@@ -953,5 +1003,6 @@ function daysBetween(start, end) { return Math.round((startOfDay(end) - startOfD
 function isoDate(date) { const local = startOfDay(date); return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`; }
 function parseDate(value) { const [year, month, day] = value.split("-").map(Number); return new Date(year, month - 1, day); }
 function formatDate(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+function formatTime(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 
 
