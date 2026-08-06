@@ -442,7 +442,7 @@ function validateCustomPermissions(roleKey, requestedPermissions) {
 const ROBUUST_ROLES = ["admin", "coworker", "manager hr", "manager operations", "manager kitchen", "manager customers", "manager finance", "deliverer"];
 const EMPLOYEE_FUNCTIONS = ["admin", "bediening", "chefkok", "kok", "keukenhulp", "floormanager", "bezorgers", "mt"];
 const CUSTOM_PERMISSIONS = [
-  "operations:read", "operations:manage", "revenue:read", "finance:read", "foodcost:read", "foodcost:manage", "kitchen:manage",
+  "operations:read", "operations:manage", "revenue:read", "finance:read", "time:read", "foodcost:read", "foodcost:manage", "kitchen:manage",
   "reviews:read", "reviews:respond", "reviews:manage", "marketing:read", "marketing:manage", "social:read",
   "social:manage", "social:publish", "ai:read", "ai:use", "integrations:read", "integrations:manage",
   "users:read", "users:manage", "audit:read", "ai:audit",
