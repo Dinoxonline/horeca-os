@@ -294,7 +294,7 @@ export default function HorecaOsApp() {
     window.location.assign("/dashboard");
   }
 
-  if (loading) return <main className="center">Horeca OS ladenÃ¢â‚¬Â¦</main>;
+  if (loading) return <main className="center">Horeca OS ladenâ€¦</main>;
   if (recoveryPage && !passwordRecovery) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode lockResetMode />;
   if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode={passwordRecovery} />;
   if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} email={session?.user?.email} />;
@@ -302,7 +302,7 @@ export default function HorecaOsApp() {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
-  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controlerenâ€¦</main>;
+  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
   if (mfaRequired && !verifiedMfaFactor) {
     return <MfaEnrollment required onComplete={refreshMfa} />;
   }
@@ -334,7 +334,7 @@ export default function HorecaOsApp() {
           <div className="toolbar">
             {memberships.length > 1 && <label>Werkruimte<select value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setBusinessId("all"); }}>{memberships.map((item) => <option key={item.workspace_id} value={item.workspace_id}>{item.workspace?.name || item.workspace_id}</option>)}</select></label>}
             <label>Vestiging<select value={businessId} onChange={(event) => setBusinessId(event.target.value)}>{hasWorkspaceWideRole && <option value="all">Alle vestigingen</option>}{visibleBusinesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-            <button className="refresh" onClick={loadData} disabled={refreshing}>{refreshing ? "VerversenÃ¢â‚¬Â¦" : "Data verversen"}</button>
+            <button className="refresh" onClick={loadData} disabled={refreshing}>{refreshing ? "Verversenâ€¦" : "Data verversen"}</button>
           </div>
         </header>
 
@@ -360,7 +360,7 @@ export default function HorecaOsApp() {
         </section>
 
         <section className="dashboardGrid">
-          <Panel title="Topprioriteiten" subtitle="Wat vandaag bestuurlijke aandacht vraagt">{priorities.length === 0 && <Empty text="Geen openstaande prioriteiten." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Ã‚Â· {statusLabel[task.status] || task.status}</span></div><span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span></div>)}</Panel>
+          <Panel title="Topprioriteiten" subtitle="Wat vandaag bestuurlijke aandacht vraagt">{priorities.length === 0 && <Empty text="Geen openstaande prioriteiten." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Â· {statusLabel[task.status] || task.status}</span></div><span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span></div>)}</Panel>
           <Panel title="Komende agenda" subtitle="Eerstvolgende afspraken en evenementen">{data.events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{data.events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
           <Panel title="Topverkopers" subtitle="Hoogste aantallen in de huidige maand">{analytics.topProducts.length === 0 && <Empty text="Nog geen productverkoop voor deze maand." />}{analytics.topProducts.map((product, index) => <div className="rankRow" key={product.name}><span className="rank">{index + 1}</span><b>{product.name}</b><strong>{product.quantity}</strong></div>)}</Panel>
           <Panel title="Systemen" subtitle="Status van de belangrijkste koppelingen">{data.integrations.length === 0 && <Empty text="Geen integraties gevonden." />}{data.integrations.map((integration) => <div className="systemRow" key={integration.id}><div><b>{integration.provider}</b><span>{integration.last_synced_at ? `Laatste sync ${formatDate(integration.last_synced_at)}` : "Nog niet gesynchroniseerd"}</span></div><span className={`status ${String(integration.status).toLowerCase()}`}>{integration.status}</span></div>)}</Panel>
@@ -382,7 +382,7 @@ export default function HorecaOsApp() {
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview analytics={foodcost} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
         {activeView === "reviews" && featureVisibility.reviews && <EmptyModule eyebrow="Social intelligence" title="Reviews" description="Review-inzichten worden hier samengebracht zodra de eerste reviewbron is gekoppeld." />}
-        {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃƒÂ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
+        {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃ«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
@@ -407,7 +407,7 @@ function StaffDashboard({ priorities, events }) {
   return <>
     <section className="pageIntro"><p className="eyebrow">Mijn werk</p><h2>Werkzaamheden en planning</h2><p>Alleen informatie binnen jouw toegewezen vestiging en rol wordt getoond.</p></section>
     <section className="dashboardGrid">
-      <Panel title="Mijn prioriteiten" subtitle="Openstaande operationele werkzaamheden">{priorities.length === 0 && <Empty text="Geen openstaande werkzaamheden." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Â· {statusLabel[task.status] || task.status}</span></div></div>)}</Panel>
+      <Panel title="Mijn prioriteiten" subtitle="Openstaande operationele werkzaamheden">{priorities.length === 0 && <Empty text="Geen openstaande werkzaamheden." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} · {statusLabel[task.status] || task.status}</span></div></div>)}</Panel>
       <Panel title="Mijn planning" subtitle="Eerstvolgende afspraken binnen jouw vestiging">{events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
     </section>
   </>;
@@ -453,10 +453,10 @@ function TimeClock({ workspaceId, businessId, businesses, userId }) {
     <div><p className="eyebrow">Urenregistratie</p><h2>{openEntry ? "Je bent ingeklokt" : "Klaar om te starten"}</h2><p>{openEntry ? `Sinds ${formatTime(openEntry.clocked_in_at)}` : "Kies je vestiging en klok in bij aanvang van je dienst."}</p></div>
     <div className="clockActions">
       {!openEntry && <label>Vestiging<select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>}
-      <button className={openEntry ? "secondaryButton" : "primary"} onClick={toggleClock} disabled={busy || (!openEntry && !selectedBusinessId)}>{busy ? "Bezigâ€¦" : openEntry ? "Uitklokken" : "Inklokken"}</button>
+      <button className={openEntry ? "secondaryButton" : "primary"} onClick={toggleClock} disabled={busy || (!openEntry && !selectedBusinessId)}>{busy ? "Bezig…" : openEntry ? "Uitklokken" : "Inklokken"}</button>
     </div>
     {feedback && <p className="clockFeedback">{feedback}</p>}
-    {entries.length > 0 && <div className="clockHistory"><strong>Recente diensten</strong>{entries.slice(0, 4).map((entry) => <span key={entry.id}>{formatDate(entry.clocked_in_at)} Â· {formatTime(entry.clocked_in_at)} â€“ {entry.clocked_out_at ? formatTime(entry.clocked_out_at) : "actief"}</span>)}</div>}
+    {entries.length > 0 && <div className="clockHistory"><strong>Recente diensten</strong>{entries.slice(0, 4).map((entry) => <span key={entry.id}>{formatDate(entry.clocked_in_at)} · {formatTime(entry.clocked_in_at)} – {entry.clocked_out_at ? formatTime(entry.clocked_out_at) : "actief"}</span>)}</div>}
   </section>;
 }
 
@@ -465,6 +465,7 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
   const [entries, setEntries] = useState([]);
   const [loadingHours, setLoadingHours] = useState(true);
   const [hoursError, setHoursError] = useState("");
+  const [hoursFeedback, setHoursFeedback] = useState("");
 
   const loadHours = useCallback(async () => {
     setLoadingHours(true);
@@ -473,7 +474,7 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
     from.setHours(0, 0, 0, 0);
     from.setDate(from.getDate() - (days - 1));
     let query = supabase.from("time_entries")
-      .select("id, user_id, business_id, clocked_in_at, clocked_out_at, business:businesses!time_entries_business_id_workspace_id_fkey(name), member:workspace_members!time_entries_workspace_id_user_id_fkey(profile:profiles!workspace_members_user_id_fkey(full_name))")
+      .select("id, user_id, business_id, clocked_in_at, clocked_out_at, break_minutes, corrected_at, correction_reason, business:businesses!time_entries_business_id_workspace_id_fkey(name), member:workspace_members!time_entries_workspace_id_user_id_fkey(profile:profiles!workspace_members_user_id_fkey(full_name))")
       .eq("workspace_id", workspaceId)
       .gte("clocked_in_at", from.toISOString())
       .order("clocked_in_at", { ascending: false });
@@ -487,7 +488,7 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
   useEffect(() => { loadHours(); }, [loadHours]);
 
   const now = Date.now();
-  const minutesFor = (entry) => Math.max(0, Math.round(((entry.clocked_out_at ? new Date(entry.clocked_out_at).getTime() : now) - new Date(entry.clocked_in_at).getTime()) / 60000));
+  const minutesFor = (entry) => Math.max(0, Math.round(((entry.clocked_out_at ? new Date(entry.clocked_out_at).getTime() : now) - new Date(entry.clocked_in_at).getTime()) / 60000) - number(entry.break_minutes));
   const totalMinutes = entries.reduce((total, entry) => total + minutesFor(entry), 0);
   const openEntries = entries.filter((entry) => !entry.clocked_out_at);
   const people = [...entries.reduce((map, entry) => {
@@ -499,9 +500,17 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
     return map;
   }, new Map()).values()].sort((a, b) => b.minutes - a.minutes);
 
+  async function correctEntry(event, entryId) {
+    event.preventDefault(); setHoursFeedback(""); const form = new FormData(event.currentTarget);
+    const payload = { clocked_in_at: localInputToIso(form.get("clockedIn")), clocked_out_at: localInputToIso(form.get("clockedOut")), break_minutes: Math.max(0, Number(form.get("breakMinutes") || 0)), correction_reason: String(form.get("reason") || "").trim() };
+    const { error } = await supabase.from("time_entries").update(payload).eq("id", entryId);
+    setHoursFeedback(error ? `Correctie niet opgeslagen: ${error.message}` : "Correctie opgeslagen en gemarkeerd als hersteld.");
+    if (!error) loadHours();
+  }
+
   return <>
     <section className="pageIntro hoursIntro"><div><p className="eyebrow">Personeelsplanning</p><h2>Urenoverzicht</h2><p>Gewerkte uren per medewerker binnen de gekozen vestiging.</p></div><label>Periode<select value={days} onChange={(event) => setDays(Number(event.target.value))}><option value="7">Laatste 7 dagen</option><option value="30">Laatste 30 dagen</option><option value="90">Laatste 90 dagen</option></select></label></section>
-    {hoursError && <div className="notice">{hoursError}</div>}
+    {hoursError && <div className="notice">{hoursError}</div>}{hoursFeedback && <div className="notice">{hoursFeedback}</div>}
     <section className="kpis secondary">
       <Card label="Totaal geregistreerd" value={formatDuration(totalMinutes)} sub={`${entries.length} diensten`} />
       <Card label="Nu ingeklokt" value={openEntries.length} sub="Openstaande diensten" tone={openEntries.length ? "success" : "normal"} />
@@ -509,8 +518,8 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
       <Card label="Gemiddeld per dienst" value={formatDuration(entries.length ? Math.round(totalMinutes / entries.length) : 0)} sub="Inclusief actieve diensten" />
     </section>
     <section className="dashboardGrid hoursGrid">
-      <Panel title="Per medewerker" subtitle="Totaal binnen de gekozen periode">{loadingHours && <Empty text="Uren ladenâ€¦" />}{!loadingHours && people.length === 0 && <Empty text="Nog geen uren geregistreerd." />}{people.map((person) => <div className="hoursPerson" key={person.id}><div><b>{person.name}</b><span>{person.shifts} dienst{person.shifts === 1 ? "" : "en"}{person.open ? " Â· nu ingeklokt" : ""}</span></div><strong>{formatDuration(person.minutes)}</strong></div>)}</Panel>
-      <Panel title="Recente registraties" subtitle="Laatste in- en uitklokmomenten">{loadingHours && <Empty text="Registraties ladenâ€¦" />}{!loadingHours && entries.length === 0 && <Empty text="Nog geen registraties gevonden." />}{entries.slice(0, 15).map((entry) => <div className="hoursEntry" key={entry.id}><div><b>{timeEntryEmployeeName(entry)}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} Â· {formatDate(entry.clocked_in_at)}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutesFor(entry)) : "Actief"}</strong></div>)}</Panel>
+      <Panel title="Per medewerker" subtitle="Totaal binnen de gekozen periode">{loadingHours && <Empty text="Uren laden…" />}{!loadingHours && people.length === 0 && <Empty text="Nog geen uren geregistreerd." />}{people.map((person) => <div className="hoursPerson" key={person.id}><div><b>{person.name}</b><span>{person.shifts} dienst{person.shifts === 1 ? "" : "en"}{person.open ? " · nu ingeklokt" : ""}</span></div><strong>{formatDuration(person.minutes)}</strong></div>)}</Panel>
+      <Panel title="Recente registraties" subtitle="Laatste in- en uitklokmomenten">{loadingHours && <Empty text="Registraties laden…" />}{!loadingHours && entries.length === 0 && <Empty text="Nog geen registraties gevonden." />}{entries.slice(0, 15).map((entry) => <TimeEntryEditor entry={entry} businesses={businesses} minutes={minutesFor(entry)} onCorrect={correctEntry} key={entry.id} />)}</Panel>
     </section>
   </>;
 }
@@ -519,26 +528,26 @@ function FoodcostDashboard({ analytics }) {
   return <>
     <section className="pageIntro"><p className="eyebrow">Foodcost dashboard</p><h2>Marge en prijsbewaking</h2><p>Actuele berekening uit inkoopprijzen, recepturen en verkoopprijzen.</p></section>
     <section className="kpis">
-      <Card label="Gemiddelde foodcost" value={analytics.average == null ? "Ã¢â‚¬â€" : `${analytics.average.toFixed(1)}%`} sub={`${analytics.items.length} verkoopbare gerechten`} />
-      <Card label="Beste marge" value={analytics.best?.name || "Ã¢â‚¬â€"} sub={analytics.best ? `${analytics.best.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone="success" />
-      <Card label="Hoogste foodcost" value={analytics.worst?.name || "Ã¢â‚¬â€"} sub={analytics.worst ? `${analytics.worst.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone={analytics.worst?.foodcost > 40 ? "danger" : "normal"} />
+      <Card label="Gemiddelde foodcost" value={analytics.average == null ? "â€”" : `${analytics.average.toFixed(1)}%`} sub={`${analytics.items.length} verkoopbare gerechten`} />
+      <Card label="Beste marge" value={analytics.best?.name || "â€”"} sub={analytics.best ? `${analytics.best.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone="success" />
+      <Card label="Hoogste foodcost" value={analytics.worst?.name || "â€”"} sub={analytics.worst ? `${analytics.worst.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone={analytics.worst?.foodcost > 40 ? "danger" : "normal"} />
       <Card label="Prijswaarschuwingen" value={analytics.warnings.length} sub="Gerechten boven doel of 40%" tone={analytics.warnings.length ? "warning" : "success"} />
     </section>
     <section className="panel"><div className="panelHead"><h2>Gerechten</h2><p>Foodcost is exclusief btw-effecten en volgt de actuele productprijs.</p></div>
       <div className="tableWrap"><table><thead><tr><th>Gerecht</th><th>Kostprijs</th><th>Verkoopprijs</th><th>Foodcost</th><th>Doel</th><th>Status</th></tr></thead><tbody>
-        {analytics.items.map((item) => <tr key={item.id}><td><b>{item.name}</b></td><td>{money(item.cost)}</td><td>{money(item.sellingPrice)}</td><td>{item.foodcost.toFixed(1)}%</td><td>{item.target ? `${item.target}%` : "Ã¢â‚¬â€"}</td><td><span className={`status ${item.warning ? "pending" : "connected"}`}>{item.warning ? "Controleren" : "Op koers"}</span></td></tr>)}
-      </tbody></table></div>{!analytics.items.length && <Empty text="Voeg producten, ingrediÃƒÂ«nten, receptregels en menu-items toe om foodcost te berekenen." />}
+        {analytics.items.map((item) => <tr key={item.id}><td><b>{item.name}</b></td><td>{money(item.cost)}</td><td>{money(item.sellingPrice)}</td><td>{item.foodcost.toFixed(1)}%</td><td>{item.target ? `${item.target}%` : "â€”"}</td><td><span className={`status ${item.warning ? "pending" : "connected"}`}>{item.warning ? "Controleren" : "Op koers"}</span></td></tr>)}
+      </tbody></table></div>{!analytics.items.length && <Empty text="Voeg producten, ingrediÃ«nten, receptregels en menu-items toe om foodcost te berekenen." />}
     </section>
   </>;
 }
 
 function ProductOverview({ products, suppliers }) {
   const supplierMap = new Map(suppliers.map((item) => [item.id, item.name]));
-  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "Ã¢â‚¬â€"} {product.content_unit || ""} Ã‚Â· {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
+  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "â€”"} {product.content_unit || ""} Â· {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
 }
 
 function RecipeOverview({ analytics }) {
-  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) Ã‚Â· {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
+  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) Â· {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
 }
 
 function SupplierOverview({ suppliers, products }) {
@@ -576,7 +585,7 @@ function Assistant({ workspaceId, businessId, session, conversations, onRefresh 
     <section className="assistantLayout"><aside className="panel chatHistory"><button className="primary" onClick={() => { setConversationId(""); setChat([]); }}>Nieuw gesprek</button><h3>Geschiedenis</h3>{conversations.map((item) => <button className={conversationId === item.id ? "history active" : "history"} key={item.id} onClick={() => openConversation(item.id)}><b>{item.title}</b><small>{item.use_case}</small></button>)}</aside>
       <article className="panel chatPanel"><div className="useCases">{[["ceo","CEO"],["foodcost","Foodcost"],["reviews","Reviews"],["marketing","Marketing"],["operations","Operatie"]].map(([key,label]) => <button key={key} className={useCase === key ? "chip active" : "chip"} onClick={() => setUseCase(key)} disabled={Boolean(conversationId)}>{label}</button>)}</div>
         <div className="messages">{!chat.length && <Empty text="Stel een vraag. De assistent gebruikt alleen gegevens die jij binnen deze werkruimte mag zien." />}{chat.map((item) => <div className={`messageBubble ${item.role}`} key={item.id}>{item.content}</div>)}</div>
-        {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "AnalyserenÃ¢â‚¬Â¦" : "Versturen"}</button></form>
+        {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "Analyserenâ€¦" : "Versturen"}</button></form>
       </article></section></>;
 }
 
@@ -602,7 +611,7 @@ function MfaChallenge({ factor, onComplete }) {
     {error && <div className="notice">{error}</div>}
     <form onSubmit={verifyMfa} className="stack">
       <label>Beveiligingscode<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
-      <button className="primary" disabled={verifying}>{verifying ? "Controlerenâ€¦" : "Veilig inloggen"}</button>
+      <button className="primary" disabled={verifying}>{verifying ? "Controleren…" : "Veilig inloggen"}</button>
     </form>
     <button className="textButton" onClick={() => supabase.auth.signOut()}>Terug naar inloggen</button>
   </section></main>;
@@ -643,12 +652,12 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
     <p className="eyebrow">Accountbeveiliging</p><h1>{required ? "Stel tweestapsverificatie in" : "Authenticator koppelen"}</h1>
     <p>{required ? "Voor Eigenaren en Managers is een tweede beveiligingsstap verplicht." : "Scan de QR-code met Google Authenticator, Microsoft Authenticator of 1Password."}</p>
     {error && <div className="notice">{error}</div>}
-    {!enrollment && !error && <p>Beveiligde QR-code voorbereidenâ€¦</p>}
+    {!enrollment && !error && <p>Beveiligde QR-code voorbereiden…</p>}
     {enrollment && <form onSubmit={confirmEnrollment} className="stack">
       <div className="mfaQr"><img src={enrollment.qr} alt="QR-code voor de authenticator-app" /></div>
       <details><summary>QR-code werkt niet?</summary><p>Voer deze sleutel handmatig in:</p><code className="mfaSecret">{enrollment.secret}</code></details>
       <label>Code uit authenticator<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
-      <button className="primary" disabled={verifying}>{verifying ? "Activerenâ€¦" : "2FA activeren"}</button>
+      <button className="primary" disabled={verifying}>{verifying ? "Activeren…" : "2FA activeren"}</button>
     </form>}
     {!required && <button className="textButton" onClick={cancelEnrollment}>Annuleren</button>}
     {required && <button className="textButton" onClick={() => supabase.auth.signOut()}>Uitloggen</button>}
@@ -726,14 +735,14 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
           <label>Robuust PID<input name="pid" required placeholder="Jouw Robuust bedrijfs-ID" autoComplete="off" /></label>
           <label>Robuust API-sleutel<input name="apiKey" type="password" required autoComplete="new-password" placeholder="Eenmalig invoeren" /></label>
           <div className="sensitiveNote"><strong>Versleuteld</strong><span>De API-sleutel wordt opgeslagen in Supabase Vault en verschijnt daarna niet meer op het scherm.</span></div>
-          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controlerenâ€¦" : "Robuust verbinden"}</button>
+          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controleren…" : "Robuust verbinden"}</button>
         </form>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>OfficiÃ«le Robuust Reserveringen-API.</p></div></div>
+        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>Officiële Robuust Reserveringen-API.</p></div></div>
         {!accounts.length && <Empty text="Nog geen Robuust-koppeling ingesteld." />}
         {accounts.map((account) => <div className="connectionRow" key={account.id}><div><strong>{account.display_name || "Robuust"}</strong><span>PID: {account.external_account_id}</span><small>{account.last_synced_at ? `Gecontroleerd op ${formatDate(account.last_synced_at)}` : "Nog niet gecontroleerd"}</small></div><span className={`status ${account.connection_status}`}>{statusLabel[account.connection_status] || account.connection_status}</span></div>)}
-        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>âœ“ Partnerbedrijf herkennen</span><span>âœ“ Beschikbaarheid van reserveringen controleren</span><span>â€“ Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
+        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>✓ Partnerbedrijf herkennen</span><span>✓ Beschikbaarheid van reserveringen controleren</span><span>– Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
       </article>
     </section>
   </>;
@@ -828,25 +837,25 @@ function UsersAdmin({ workspaceId, session }) {
           <label>Telefoonnummer<input name="phone" type="tel" /></label>
           <label>Eerste dag loonverband<input name="employmentStart" type="date" /></label>
           <label>Laatste dag loonverband<input name="employmentEnd" type="date" /></label>
-          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiÃ«ne, wijnkennis" /></label>
+          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiëne, wijnkennis" /></label>
           <label>Adres<input name="address" autoComplete="street-address" /></label>
           <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" /></label><label>Woonplaats<input name="city" autoComplete="address-level2" /></label></div>
           <label>Geboorteplaats<input name="birthplace" /></label>
           <label>Geboortedatum<input name="birthDate" type="date" /></label>
           <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} />{label}</label>)}</div></fieldset>
           <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" />Uurloon (oproepkracht)</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" />Maandloon (vaste dienst)</label></fieldset>
-          <label>Loon (â‚¬)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
+          <label>Loon (€)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
           <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
           <label>Bankrekening<input name="iban" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
           <label>Ranking<input name="ranking" type="number" min="-1" defaultValue="10" /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
           <label>Robuust medewerker-ID<input name="externalEmployeeId" placeholder="Later automatisch gevuld door koppeling" /></label>
           <div className="sensitiveNote full"><strong>Extra beveiligd</strong><span>BSN, bankrekening, pincode, geboortedatum en loon worden versleuteld opgeslagen. Horeca OS-rollen blijven gescheiden van Robuust-functies.</span></div>
-          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduldâ€¦" : "Medewerker aanmaken"}</button></div>
+          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduld…" : "Medewerker aanmaken"}</button></div>
         </form>
       </article>
       <article className="panel usersPanel">
         <div className="panelHead"><div><h2>Actieve en uitgenodigde gebruikers</h2><p>{adminData.users.length} gebruiker(s) binnen deze werkruimte.</p></div></div>
-        {loadingUsers && <Empty text="Gebruikers ladenâ€¦" />}
+        {loadingUsers && <Empty text="Gebruikers laden…" />}
         {!loadingUsers && !adminData.users.length && <Empty text="Nog geen gebruikers gevonden." />}
         <div className="userList">{adminData.users.map((user) => {
           const assignment = user.assignments[0];
@@ -871,7 +880,8 @@ const PERMISSION_OPTIONS = [
   ["operations:read", "Eigen werk, planning en inklokken"], ["operations:manage", "Operationele gegevens beheren"],
   ["revenue:read", "Omzet en verkoopcijfers bekijken"],
   ["time:read", "Uren van medewerkers bekijken"],
-  ["finance:read", "FinanciÃ«n bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
+  ["time:manage", "Uren van medewerkers corrigeren"],
+  ["finance:read", "Financiën bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
   ["foodcost:manage", "Foodcost, producten en recepten beheren"], ["kitchen:manage", "Keuken beheren"],
   ["reviews:read", "Reviews bekijken"], ["reviews:respond", "Op reviews reageren"],
   ["reviews:manage", "Reviews beheren"], ["marketing:read", "Marketing bekijken"],
@@ -894,7 +904,7 @@ function AccessFields({ roles, businesses, initialRoleId = "", initialBusinessId
     <label>{compact ? "Toegang" : "Vestigingstoegang"}<select name="businessId" defaultValue={initialBusinessId || ""}><option value="">Alle vestigingen</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
     {role && <fieldset className={`permissionPicker full ${custom ? "editable" : "readOnly"}`}><legend>{custom ? "Machtigingen voor deze gebruiker *" : `Toegang met de rol ${role.name}`}</legend><p>{custom ? "Vink alleen aan wat deze gebruiker binnen de gekozen vestiging mag doen." : "Dit is het vaste rechtenpakket van deze rol. Kies Aangepast wanneer je losse rechten wilt aanvinken."}</p>{custom
       ? <div className="permissionGrid">{customOptions.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="permissions" value={value} defaultChecked={initialPermissions.includes(value)} />{label}</label>)}</div>
-      : <div className="permissionGrid permissionSummary">{PERMISSION_OPTIONS.map(([value, label]) => <span className={fixedPermissions.has(value) || role.role_key === "owner" ? "granted" : "denied"} key={value}><b>{fixedPermissions.has(value) || role.role_key === "owner" ? "âœ“" : "â€“"}</b>{label}</span>)}</div>}</fieldset>}
+      : <div className="permissionGrid permissionSummary">{PERMISSION_OPTIONS.map(([value, label]) => <span className={fixedPermissions.has(value) || role.role_key === "owner" ? "granted" : "denied"} key={value}><b>{fixedPermissions.has(value) || role.role_key === "owner" ? "✓" : "–"}</b>{label}</span>)}</div>}</fieldset>}
   </>;
 }
 
@@ -926,19 +936,19 @@ function EmployeeEditor({ user, onSave }) {
       <fieldset className="full"><legend>Robuust-rollen *</legend><div className="checkGrid">{ROBUUST_ROLE_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="robuustRoles" value={value} defaultChecked={selectedRoles.includes(value)} />{label}</label>)}</div></fieldset>
       <label>E-mail *<input name="email" type="email" required defaultValue={employee.email || user.email} /></label>
       <label>Personeelsnummer<input name="employeeNumber" defaultValue={employee.employee_number || ""} /></label>
-      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld â€” leeg laten om te behouden" : "Nieuwe pincode"} /></label>
+      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld — leeg laten om te behouden" : "Nieuwe pincode"} /></label>
       <label>Telefoonnummer<input name="phone" type="tel" defaultValue={employee.phone || ""} /></label>
       <label>Eerste dag loonverband<input name="employmentStart" type="date" defaultValue={employee.employment_start || ""} /></label>
       <label>Laatste dag loonverband<input name="employmentEnd" type="date" defaultValue={employee.employment_end || ""} /></label>
-      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiÃ«ne, wijnkennis" /></label>
+      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiëne, wijnkennis" /></label>
       <label>Adres<input name="address" autoComplete="street-address" defaultValue={employee.address || ""} /></label>
       <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" defaultValue={employee.postal_code || ""} /></label><label>Woonplaats<input name="city" autoComplete="address-level2" defaultValue={employee.city || ""} /></label></div>
       <label>Geboorteplaats<input name="birthplace" defaultValue={employee.birthplace || ""} /></label>
       <label>Geboortedatum<input name="birthDate" type="date" defaultValue={employee.birth_date || ""} /></label>
       <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} defaultChecked={selectedFunctions.includes(value)} />{label}</label>)}</div></fieldset>
       <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" defaultChecked={employee.wage_type === "hourly"} />Uurloon</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" defaultChecked={employee.wage_type === "monthly"} />Maandloon</label></fieldset>
-      <label>Loon (â‚¬)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
-      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld â€¢â€¢â€¢â€¢ ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
+      <label>Loon (€)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
+      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld •••• ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
       <label>Bankrekening<input name="iban" autoComplete="off" placeholder={employee.has_iban ? employee.iban_masked : "Wordt versleuteld opgeslagen"} /></label>
       <label>Ranking<input name="ranking" type="number" min="-1" defaultValue={employee.ranking ?? 10} /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
       <label>Robuust medewerker-ID<input name="externalEmployeeId" defaultValue={employee.external_employee_id || ""} placeholder="Later automatisch gevuld door koppeling" /></label>
@@ -1049,7 +1059,7 @@ function Card({ label, value, sub, tone = "normal" }) { return <article classNam
 function ChannelCard({ label, revenue, orders, share: channelShare }) { return <article className="channelCard"><div><span>{label}</span><strong>{money(revenue)}</strong></div><div className="channelMeta"><small>{number(orders)} orders</small><small>{channelShare.toFixed(1)}% van omzet</small></div></article>; }
 function Panel({ title, subtitle, children }) { return <article className="panel"><div className="panelHead"><div><h2>{title}</h2><p>{subtitle}</p></div></div>{children}</article>; }
 function Empty({ text }) { return <p className="empty">{text}</p>; }
-function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃƒÂ«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
+function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃ«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
 function rowsBetween(rows, start, end) { const from = isoDate(start); const through = isoDate(end); return rows.filter((row) => row.sales_date >= from && row.sales_date <= through); }
 function sum(rows, key) { return rows.reduce((total, row) => total + number(row[key]), 0); }
 function share(value, total) { return total ? (value / total) * 100 : 0; }
@@ -1066,5 +1076,11 @@ function formatDate(value) { if (!value) return ""; return new Intl.DateTimeForm
 function formatTime(value) { if (!value) return ""; return new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 function formatDuration(minutes) { const safeMinutes = Math.max(0, Math.round(number(minutes))); const hours = Math.floor(safeMinutes / 60); const rest = safeMinutes % 60; return `${hours}u ${String(rest).padStart(2, "0")}m`; }
 function timeEntryEmployeeName(entry) { const profile = Array.isArray(entry.member?.profile) ? entry.member.profile[0] : entry.member?.profile; return profile?.full_name || `Medewerker ${entry.user_id.slice(0, 6)}`; }
+function toLocalDateTimeInput(value) { if (!value) return ""; const date = new Date(value); const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16); }
+function localInputToIso(value) { return value ? new Date(String(value)).toISOString() : null; }
+
+function TimeEntryEditor({ entry, businesses, minutes, onCorrect }) {
+  return <div className="hoursRecord"><div className="hoursEntry"><div><b>{timeEntryEmployeeName(entry)} {entry.corrected_at && <em className="restoredBadge">Hersteld</em>}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} · {formatDate(entry.clocked_in_at)}{entry.break_minutes ? ` · ${entry.break_minutes} min pauze` : ""}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutes) : "Actief"}</strong></div>{entry.correction_reason && <small className="correctionReason">Reden: {entry.correction_reason}</small>}<details className="correctionEditor"><summary>Tijd corrigeren</summary><form onSubmit={(event) => onCorrect(event, entry.id)}><label>Ingeklokt<input name="clockedIn" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_in_at)} required /></label><label>Uitgeklokt<input name="clockedOut" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_out_at)} required /></label><label>Pauze (min)<input name="breakMinutes" type="number" min="0" defaultValue={entry.break_minutes || 0} /></label><label>Reden correctie<input name="reason" required maxLength="500" placeholder="Bijv. vergeten uit te klokken" /></label><button className="secondaryButton">Correctie opslaan</button></form></details></div>;
+}
 
 
