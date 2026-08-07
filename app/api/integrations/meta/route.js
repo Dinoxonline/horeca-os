@@ -21,7 +21,7 @@ export async function POST(request) {
   if (!body.businessId) return jsonError("Kies eerst een vestiging.", 400);
   const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
   if (!appId) return jsonError("De Instagram App ID ontbreekt in de serverconfiguratie.", 409);
-  const redirectUri = process.env.META_REDIRECT_URI || `${new URL(request.url).origin}/api/integrations/meta/callback`;
+  const redirectUri = `${new URL(request.url).origin}/api/integrations/meta/callback`;
   let state;
   try { state = createMetaState({ workspaceId: context.workspaceId, businessId: body.businessId, userId: context.user.id }); }
   catch (error) { return jsonError(error.message, 409); }
