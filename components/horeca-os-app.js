@@ -777,7 +777,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [metaConfiguration, setMetaConfiguration] = useState({ ready: false, missing: [] });
   const [integrationMessage, setIntegrationMessage] = useState("");
   const [integrationError, setIntegrationError] = useState("");
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState(false);\n  const [testingMetaBusinessId, setTestingMetaBusinessId] = useState("");
 
   const loadAccounts = useCallback(async () => {
     const headers = { Authorization: `Bearer ${session.access_token}` };
@@ -823,6 +823,19 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     else { setIntegrationError(result.error || "Instagram kon niet worden gestart."); setConnecting(false); }
   }
 
+  async function verifyMeta(businessId) {
+    setTestingMetaBusinessId(businessId); setIntegrationMessage(""); setIntegrationError("");
+    const response = await fetch("/api/integrations/meta/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ workspaceId, businessId }),
+    });
+    const result = await response.json();
+    if (response.ok) { setIntegrationMessage(result.message); await loadAccounts(); }
+    else setIntegrationError(result.error || "De Instagram-verbinding kon niet worden getest.");
+    setTestingMetaBusinessId("");
+  }
+
   const statusLabel = { connected: "Verbonden", pending: "Controleren", degraded: "Aandacht nodig", not_configured: "Niet ingesteld", revoked: "Ingetrokken" };
   return <>
     <section className="pageIntro"><p className="eyebrow">Databronnen</p><h2>Koppelingen</h2><p>Verbind externe systemen via gecontroleerde, traceerbare gegevensstromen.</p></section>
@@ -861,7 +874,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       <article className="panel">
         <div className="panelHead"><div><h2>Instagram per vestiging</h2><p>Elk profiel hoort bij precies ÃƒÂ©ÃƒÂ©n Horeca OS-bedrijf.</p></div></div>
         {!metaAccounts.length && <Empty text="Nog geen Instagram-profiel technisch gekoppeld." />}
-        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div><span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
+        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.last_synced_at ? `Getest op ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div>{account && <button className="secondaryButton" type="button" disabled={testingMetaBusinessId === business.id} onClick={() => verifyMeta(business.id)}>{testingMetaBusinessId === business.id ? "Testen…" : "Verbinding testen"}</button>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
   </>;
