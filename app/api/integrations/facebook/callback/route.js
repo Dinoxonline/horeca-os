@@ -5,6 +5,7 @@ import { encryptMetaToken, getFacebookConfiguration, readMetaState } from "../..
 const GRAPH_VERSION = "v25.0";
 const GRANTED_SCOPES = [
   "pages_show_list",
+  "pages_read_engagement",
   "business_management",
 ];
 
