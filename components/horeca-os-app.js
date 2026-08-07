@@ -612,7 +612,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage }) {
   useEffect(() => { setPage(1); }, [businessId, channelFilter, typeFilter, pageSize]);
 
   const businessNames = Object.fromEntries(businesses.map((business) => [business.id, business.name]));
-  const channelName = (item) => accounts[item.account_id]?.provider === "facebook" ? "Facebook" : accounts[item.account_id]?.provider === "instagram" ? "Instagram" : accounts[item.account_id]?.display_name || "Sociaal";
+  const channelName = (item) => String(item.permalink || "").includes("instagram.com") || accounts[item.account_id]?.provider === "instagram" ? "Instagram" : String(item.permalink || "").includes("facebook.com") || accounts[item.account_id]?.provider === "facebook" ? "Facebook" : accounts[item.account_id]?.display_name || "Sociaal";
   const filtered = items.filter((item) => (channelFilter === "all" || channelName(item) === channelFilter) && (typeFilter === "all" || item.content_type === typeFilter));
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
