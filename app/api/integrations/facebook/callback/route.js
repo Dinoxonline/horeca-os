@@ -55,7 +55,9 @@ export async function GET(request) {
     const pagesResponse = await fetch(pagesUrl, { cache: "no-store" });
     const pagesResult = await pagesResponse.json();
     if (!pagesResponse.ok) throw new Error(pagesResult.error?.message || "Facebookpagina's konden niet worden gelezen.");
-    const page = (pagesResult.data || []).find((item) => String(item.instagram_business_account?.id || "") === String(instagramAccount.external_account_id));
+    const availablePages = pagesResult.data || [];
+    const page = availablePages.find((item) => String(item.instagram_business_account?.id || "") === String(instagramAccount.external_account_id))
+      || (availablePages.length === 1 ? availablePages[0] : null);
     if (!page?.id || !page?.access_token) throw new Error("Geen Facebookpagina gevonden die bij het gekoppelde Instagram-profiel hoort.");
 
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
