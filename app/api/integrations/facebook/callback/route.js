@@ -59,9 +59,27 @@ export async function GET(request) {
     }
 
     const admin = createAdminSupabase();
-    const { data: instagramAccount } = await admin.from("integration_accounts")
-      .select("external_account_id").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
-      .eq("provider", "meta").maybeSingle();
+    const [
+      { data: instagramAccount, error: instagramLookupError },
+      { data: existingAccount, error: facebookLookupError },
+    ] = await Promise.all([
+      admin.from("integration_accounts")
+        .select("external_account_id").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
+        .eq("provider", "meta").maybeSingle(),
+      admin.from("integration_accounts")
+        .select("id,external_account_id,display_name").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
+        .eq("provider", "facebook").maybeSingle(),
+    ]);
+    if (instagramLookupError) throw new Error("Het gekoppelde Instagram-profiel kon niet worden gecontroleerd.");
+    if (facebookLookupError) {
+      console.error("Facebook account lookup failed", {
+        code: facebookLookupError.code,
+        message: facebookLookupError.message,
+        details: facebookLookupError.details,
+        hint: facebookLookupError.hint,
+      });
+      throw new Error("De bestaande Facebook-koppeling kon niet worden gecontroleerd.");
+    }
     if (!instagramAccount) throw new Error("Koppel voor deze vestiging eerst het juiste Instagram-profiel.");
 
     const pagesUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`);
@@ -74,9 +92,17 @@ export async function GET(request) {
     const pagesResult = await pagesResponse.json();
     if (!pagesResponse.ok) throw new Error(pagesResult.error?.message || "Facebookpagina's konden niet worden gelezen.");
     const availablePages = pagesResult.data || [];
-    const page = availablePages.find((item) => String(item.instagram_business_account?.id || "") === String(instagramAccount.external_account_id))
-      || (availablePages.length === 1 ? availablePages[0] : null);
-    if (!page?.id || !page?.access_token) throw new Error("Geen Facebookpagina gevonden die bij het gekoppelde Instagram-profiel hoort.");
+    const page = availablePages.find((item) =>
+      String(item.instagram_business_account?.id || "") === String(instagramAccount.external_account_id)
+      || (existingAccount?.external_account_id && String(item.id) === String(existingAccount.external_account_id))
+    );
+    if (!page?.id || !page?.access_token) {
+      const availableNames = availablePages.map((item) => item.name).filter(Boolean).join(", ");
+      const expectedName = existingAccount?.display_name || "de Facebookpagina van deze vestiging";
+      throw new Error(availableNames
+        ? `Meta geeft alleen toegang tot: ${availableNames}. Geef Horeca OS ook toegang tot ${expectedName} en probeer opnieuw.`
+        : `Meta geeft geen toegang tot ${expectedName}. Controleer de paginatoegang in Meta Business en probeer opnieuw.`);
+    }
 
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
     const accountPayload = {
@@ -93,18 +119,6 @@ export async function GET(request) {
       last_error_code: null,
       last_error_at: null,
     };
-
-    const { data: existingAccount, error: lookupError } = await admin.from("integration_accounts").select("id")
-      .eq("workspace_id", state.workspaceId).eq("business_id", state.businessId).eq("provider", "facebook").maybeSingle();
-    if (lookupError) {
-      console.error("Facebook account lookup failed", {
-        code: lookupError.code,
-        message: lookupError.message,
-        details: lookupError.details,
-        hint: lookupError.hint,
-      });
-      throw new Error("De bestaande Facebook-koppeling kon niet worden gecontroleerd.");
-    }
 
     let account;
     if (existingAccount) {
