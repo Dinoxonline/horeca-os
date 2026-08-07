@@ -4,6 +4,7 @@ import { createMetaState, getFacebookConfiguration } from "../../../../lib/meta-
 
 const SCOPES = [
   "pages_show_list",
+  "pages_read_engagement",
   "business_management",
 ];
 
