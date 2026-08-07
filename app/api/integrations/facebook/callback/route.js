@@ -3,7 +3,7 @@ import { createAdminSupabase } from "../../../../../lib/server-supabase";
 import { encryptMetaToken, getFacebookConfiguration, readMetaState } from "../../../../../lib/meta-oauth";
 
 const GRAPH_VERSION = "v25.0";
-const GRANTED_SCOPES = [
+const SUPPORTED_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_read_user_content",
@@ -46,6 +46,18 @@ export async function GET(request) {
     const userToken = longResponse.ok && longResult.access_token ? longResult.access_token : tokenResult.access_token;
     const expiresIn = Number(longResult.expires_in || tokenResult.expires_in || 3600);
 
+    const permissionsUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me/permissions`);
+    permissionsUrl.searchParams.set("access_token", userToken);
+    const permissionsResponse = await fetch(permissionsUrl, { cache: "no-store" });
+    const permissionsResult = await permissionsResponse.json();
+    if (!permissionsResponse.ok) throw new Error(permissionsResult.error?.message || "De toegekende Facebook-rechten konden niet worden gecontroleerd.");
+    const grantedScopes = (permissionsResult.data || [])
+      .filter((item) => item.status === "granted" && SUPPORTED_SCOPES.includes(item.permission))
+      .map((item) => item.permission);
+    if (!grantedScopes.includes("pages_manage_engagement")) {
+      throw new Error("Facebook heeft het recht om op reacties te antwoorden nog niet toegekend.");
+    }
+
     const admin = createAdminSupabase();
     const { data: instagramAccount } = await admin.from("integration_accounts")
       .select("external_account_id").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
@@ -75,7 +87,7 @@ export async function GET(request) {
       display_name: page.name || "Facebookpagina",
       account_type: "facebook_page",
       connection_status: "connected",
-      granted_scopes: GRANTED_SCOPES,
+      granted_scopes: grantedScopes,
       credential_secret_name: `facebook/${state.workspaceId}/${state.businessId}`,
       token_expires_at: tokenExpiresAt,
       last_error_code: null,
