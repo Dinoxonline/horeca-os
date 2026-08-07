@@ -3,7 +3,15 @@ import { createAdminSupabase } from "../../../../../lib/server-supabase";
 import { encryptMetaToken, getFacebookConfiguration, readMetaState } from "../../../../../lib/meta-oauth";
 
 const GRAPH_VERSION = "v25.0";
-const GRANTED_SCOPES = ["pages_show_list", "business_management"];
+const GRANTED_SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_read_user_content",
+  "pages_manage_engagement",
+  "ads_read",
+  "read_insights",
+  "business_management",
+];
 
 export async function GET(request) {
   const url = new URL(request.url);
