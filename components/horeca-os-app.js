@@ -600,7 +600,7 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "De reactie kon niet worden geplaatst.");
       setReply(""); setStatus(result.warning || result.message || "Reactie geplaatst.");
-      onPublished();
+      await onPublished();
     } catch (error) {
       setStatus(error.message || "De reactie kon niet worden geplaatst.");
     } finally {
@@ -685,9 +685,10 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
       handled_at: handled ? new Date().toISOString() : null,
       handled_by: handled ? session?.user?.id || null : null,
     }).eq("id", itemId).eq("workspace_id", workspaceId);
-    if (error) { setMessage(`Werkstatus kon niet worden opgeslagen: ${error.message}`); return; }
+    if (error) { setMessage(`Werkstatus kon niet worden opgeslagen: ${error.message}`); return false; }
     setItems((current) => current.map((item) => item.id === itemId ? { ...item, workflow_status: workflowStatus, handled_at: handled ? new Date().toISOString() : null } : item));
     setMessage(workflowStatus === "handled" ? "Item is afgehandeld." : workflowStatus === "in_progress" ? "Item staat in behandeling." : "Item is opnieuw als nieuw gemarkeerd.");
+    return true;
   }
 
   useEffect(() => { loadSocialItems(); }, [loadSocialItems]);
@@ -722,7 +723,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
           <small>{businessNames[item.business_id] || "Onbekende vestiging"} · {formatDate(item.published_at || item.created_at)}</small>
           <p>{item.body || "Geen tekst meegeleverd."}</p>
           <div className="socialInboxActions">{item.permalink && <a className="secondaryButton" href={item.permalink} target="_blank" rel="noreferrer">Openen op {channelName(item)}</a>}
-            {canManage && item.content_type === "comment" && <SocialReply item={item} channel={channelName(item)} workspaceId={workspaceId} session={session} onPublished={loadSocialItems} />}
+            {canManage && item.content_type === "comment" && <SocialReply item={item} channel={channelName(item)} workspaceId={workspaceId} session={session} onPublished={async () => { const marked = await updateWorkflowStatus(item.id, "handled"); if (marked) await loadSocialItems(); }} />}
             {canManage && item.direction === "inbound" && <select aria-label={`Werkstatus voor ${author}`} value={item.workflow_status || "new"} onChange={(event) => updateWorkflowStatus(item.id, event.target.value)}><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="handled">Afgehandeld</option></select>}
           </div>
         </article>;
