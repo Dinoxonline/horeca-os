@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "../../../../../lib/server-supabase";
-import { encryptMetaToken, readMetaState } from "../../../../../lib/meta-oauth";
+import { encryptMetaToken, getInstagramConfiguration, readMetaState } from "../../../../../lib/meta-oauth";
 
 export async function GET(request) {
   const url = new URL(request.url);
   const destination = new URL("/koppelingen", url.origin);
   try {
     if (url.searchParams.get("error")) throw new Error(url.searchParams.get("error_description") || "Instagram heeft de koppeling geweigerd.");
+    const configuration = getInstagramConfiguration();
+    if (!configuration.ready) throw new Error(`De Instagram-koppeling mist serverinstellingen: ${configuration.missing.join(", ")}.`);
     const code = url.searchParams.get("code");
     const state = readMetaState(url.searchParams.get("state"));
     if (!code) throw new Error("Instagram heeft geen autorisatiecode teruggestuurd.");
@@ -14,13 +16,13 @@ export async function GET(request) {
     const shortTokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || "", client_secret: process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "", grant_type: "authorization_code", redirect_uri: redirectUri, code }),
+      body: new URLSearchParams({ client_id: process.env.INSTAGRAM_APP_ID, client_secret: process.env.INSTAGRAM_APP_SECRET, grant_type: "authorization_code", redirect_uri: redirectUri, code }),
       cache: "no-store",
     });
     const shortToken = await shortTokenResponse.json();
-    if (!shortTokenResponse.ok || !shortToken.access_token) throw new Error(shortToken.error_message || "Instagram-token kon niet worden opgehaald.");
+    if (!shortTokenResponse.ok || !shortToken.access_token) throw new Error(shortToken.error_message || shortToken.error?.message || "Instagram-token kon niet worden opgehaald.");
     const longUrl = new URL("https://graph.instagram.com/access_token");
-    longUrl.search = new URLSearchParams({ grant_type: "ig_exchange_token", client_secret: process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "", access_token: shortToken.access_token }).toString();
+    longUrl.search = new URLSearchParams({ grant_type: "ig_exchange_token", client_secret: process.env.INSTAGRAM_APP_SECRET, access_token: shortToken.access_token }).toString();
     const longResponse = await fetch(longUrl, { cache: "no-store" });
     const longToken = await longResponse.json();
     const accessToken = longResponse.ok && longToken.access_token ? longToken.access_token : shortToken.access_token;
@@ -59,4 +61,5 @@ export async function GET(request) {
   }
   return NextResponse.redirect(destination);
 }
+
 
