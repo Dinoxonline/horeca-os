@@ -626,6 +626,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const loadSocialItems = useCallback(async () => {
     setLoading(true); setMessage("");
