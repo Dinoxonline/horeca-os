@@ -93,13 +93,50 @@ export async function GET(request) {
       last_error_code: null,
       last_error_at: null,
     };
-    const { data: existingAccount } = await admin.from("integration_accounts").select("id")
+
+    const { data: existingAccount, error: lookupError } = await admin.from("integration_accounts").select("id")
       .eq("workspace_id", state.workspaceId).eq("business_id", state.businessId).eq("provider", "facebook").maybeSingle();
-    const accountQuery = existingAccount
-      ? admin.from("integration_accounts").update(accountPayload).eq("id", existingAccount.id)
-      : admin.from("integration_accounts").insert(accountPayload);
-    const { data: account, error: accountError } = await accountQuery.select("id").single();
-    if (accountError) throw new Error("De Facebookpagina kon niet aan de vestiging worden gekoppeld.");
+    if (lookupError) {
+      console.error("Facebook account lookup failed", {
+        code: lookupError.code,
+        message: lookupError.message,
+        details: lookupError.details,
+        hint: lookupError.hint,
+      });
+      throw new Error("De bestaande Facebook-koppeling kon niet worden gecontroleerd.");
+    }
+
+    let account;
+    if (existingAccount) {
+      const { error: updateError } = await admin.from("integration_accounts")
+        .update(accountPayload)
+        .eq("id", existingAccount.id);
+      if (updateError) {
+        console.error("Facebook account update failed", {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        });
+        throw new Error("De Facebookpagina kon niet aan de vestiging worden gekoppeld.");
+      }
+      account = existingAccount;
+    } else {
+      const { data: insertedAccount, error: insertError } = await admin.from("integration_accounts")
+        .insert(accountPayload)
+        .select("id")
+        .single();
+      if (insertError) {
+        console.error("Facebook account insert failed", {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+        });
+        throw new Error("De Facebookpagina kon niet aan de vestiging worden gekoppeld.");
+      }
+      account = insertedAccount;
+    }
 
     const encrypted = encryptMetaToken(page.access_token);
     const { error: credentialError } = await admin.from("integration_credentials").upsert({
@@ -121,4 +158,3 @@ export async function GET(request) {
   }
   return NextResponse.redirect(destination);
 }
-
