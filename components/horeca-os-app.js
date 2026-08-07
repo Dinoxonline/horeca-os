@@ -581,15 +581,18 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
   const [reply, setReply] = useState("");
   const [status, setStatus] = useState("");
   const [publishing, setPublishing] = useState(false);
-  const isFacebook = channel === "Facebook";
+  const provider = channel === "Facebook" ? "facebook" : channel === "Instagram" ? "meta" : "";
+  const supported = Boolean(provider);
+  const platformName = channel === "Instagram" ? "Instagram" : "Facebook";
+  const maxLength = channel === "Instagram" ? 2200 : 8000;
 
   async function publishReply() {
     const message = reply.trim();
     if (!message) { setStatus("Schrijf eerst een reactie."); return; }
-    if (!window.confirm(`Deze reactie wordt openbaar geplaatst op Facebook namens de gekoppelde vestiging:\n\n${message}\n\nDefinitief plaatsen?`)) return;
+    if (!window.confirm(`Deze reactie wordt openbaar geplaatst op ${platformName} namens de gekoppelde vestiging:\n\n${message}\n\nDefinitief plaatsen?`)) return;
     setPublishing(true); setStatus("");
     try {
-      const response = await fetch("/api/integrations/facebook/reply", {
+      const response = await fetch(`/api/integrations/${provider}/reply`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${session?.access_token || ""}` },
         body: JSON.stringify({ workspaceId, businessId: item.business_id, itemId: item.id, message }),
@@ -607,9 +610,9 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
 
   return <details className="socialReply">
     <summary>Reageren</summary>
-    <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Schrijf je reactie aan de gast" maxLength={8000} disabled={!isFacebook || publishing} />
-    <button type="button" className="primary" onClick={publishReply} disabled={!isFacebook || publishing || !reply.trim()}>{publishing ? "Plaatsen…" : isFacebook ? "Reactie plaatsen" : "Instagram volgt"}</button>
-    <small>{isFacebook ? "Voor het plaatsen volgt altijd nog een definitieve bevestiging." : "Reageren op Instagram activeren we in de volgende koppeling."}</small>
+    <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Schrijf je reactie aan de gast" maxLength={maxLength} disabled={!supported || publishing} />
+    <button type="button" className="primary" onClick={publishReply} disabled={!supported || publishing || !reply.trim()}>{publishing ? "Plaatsen…" : supported ? `Reactie plaatsen op ${platformName}` : "Kanaal niet beschikbaar"}</button>
+    <small>{supported ? `Voor plaatsing op ${platformName} volgt altijd nog een definitieve bevestiging.` : "Reageren is voor dit kanaal nog niet beschikbaar."}</small>
     {status && <small className="notice">{status}</small>}
   </details>;
 }
