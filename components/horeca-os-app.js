@@ -775,6 +775,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [accounts, setAccounts] = useState([]);
   const [metaAccounts, setMetaAccounts] = useState([]);
   const [metaConfiguration, setMetaConfiguration] = useState({ ready: false, missing: [] });
+  const [facebookAccounts, setFacebookAccounts] = useState([]);
+  const [facebookConfiguration, setFacebookConfiguration] = useState({ ready: false, missing: [] });
   const [integrationMessage, setIntegrationMessage] = useState("");
   const [integrationError, setIntegrationError] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -783,17 +785,22 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
 
   const loadAccounts = useCallback(async () => {
     const headers = { Authorization: `Bearer ${session.access_token}` };
-    const [robuustResponse, metaResponse] = await Promise.all([
+    const [robuustResponse, metaResponse, facebookResponse] = await Promise.all([
       fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
       fetch(`/api/integrations/meta?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
+      fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
     ]);
-    const [robuustResult, metaResult] = await Promise.all([robuustResponse.json(), metaResponse.json()]);
+    const [robuustResult, metaResult, facebookResult] = await Promise.all([robuustResponse.json(), metaResponse.json(), facebookResponse.json()]);
     if (robuustResponse.ok) setAccounts(robuustResult.accounts || []);
     if (metaResponse.ok) {
       setMetaAccounts(metaResult.accounts || []);
       setMetaConfiguration(metaResult.configuration || { ready: false, missing: [] });
     }
-    if (!robuustResponse.ok || !metaResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || "Koppelingen konden niet worden geladen.");
+    if (facebookResponse.ok) {
+      setFacebookAccounts(facebookResult.accounts || []);
+      setFacebookConfiguration(facebookResult.configuration || { ready: false, missing: [] });
+    }
+    if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || "Koppelingen konden niet worden geladen.");
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
@@ -823,6 +830,19 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     const result = await response.json();
     if (response.ok && result.authorizationUrl) window.location.assign(result.authorizationUrl);
     else { setIntegrationError(result.error || "Instagram kon niet worden gestart."); setConnecting(false); }
+  }
+
+  async function connectFacebook(formData) {
+    setConnecting(true); setIntegrationMessage(""); setIntegrationError("");
+    const businessId = String(formData.get("businessId") || "");
+    const response = await fetch("/api/integrations/facebook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ workspaceId, businessId }),
+    });
+    const result = await response.json();
+    if (response.ok && result.authorizationUrl) window.location.assign(result.authorizationUrl);
+    else { setIntegrationError(result.error || "Facebook kon niet worden gestart."); setConnecting(false); }
   }
 
   async function verifyMeta(businessId) {
@@ -889,7 +909,24 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       <article className="panel">
         <div className="panelHead"><div><h2>Instagram per vestiging</h2><p>Elk profiel hoort bij precies ÃƒÂ©ÃƒÂ©n Horeca OS-bedrijf.</p></div></div>
         {!metaAccounts.length && <Empty text="Nog geen Instagram-profiel technisch gekoppeld." />}
-        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div>{account && <div><button className="secondaryButton" type="button" disabled={testingMetaBusinessId === business.id || syncingMetaBusinessId === business.id} onClick={() => verifyMeta(business.id)}>{testingMetaBusinessId === business.id ? "Testen…" : "Verbinding testen"}</button><button className="secondaryButton" type="button" disabled={syncingMetaBusinessId === business.id || testingMetaBusinessId === business.id} onClick={() => syncMeta(business.id)}>{syncingMetaBusinessId === business.id ? "Ophalen…" : "Reacties ophalen"}</button></div>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
+        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div>{account && <div><button className="secondaryButton" type="button" disabled={testingMetaBusinessId === business.id || syncingMetaBusinessId === business.id} onClick={() => verifyMeta(business.id)}>{testingMetaBusinessId === business.id ? "TestenÃ¢â‚¬Â¦" : "Verbinding testen"}</button><button className="secondaryButton" type="button" disabled={syncingMetaBusinessId === business.id || testingMetaBusinessId === business.id} onClick={() => syncMeta(business.id)}>{syncingMetaBusinessId === business.id ? "OphalenÃ¢â‚¬Â¦" : "Reacties ophalen"}</button></div>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
+      </article>
+    </section>
+    <section className="integrationGrid">
+      <article className="panel integrationSetup">
+        <div className="integrationBrand"><div className="integrationLogo">FB</div><div><h2>Facebook & campagnes</h2><p>Pagina's, reacties en advertentieprestaties per vestiging</p></div></div>
+        <div className="scopeBanner"><strong>Eerste fase: alleen lezen</strong><span>De juiste Facebookpagina wordt automatisch herkend via het gekoppelde Instagram-profiel. Horeca OS plaatst of wijzigt nog niets.</span></div>
+        {!facebookConfiguration.ready && <div className="notice">Facebook is nog niet gereed op de server. Ontbrekend: {facebookConfiguration.missing.join(", ") || "configuratie controleren"}.</div>}
+        <form action={connectFacebook} className="stack">
+          <label>Horeca OS-vestiging<select name="businessId" required defaultValue=""><option value="" disabled>Kies een vestiging</option>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label>
+          <div className="sensitiveNote"><strong>Automatisch gekoppeld</strong><span>De Facebookpagina moet bij het Instagram-profiel van dezelfde vestiging horen. Toegangssleutels blijven versleuteld op de server.</span></div>
+          <button className="primary" disabled={connecting || !facebookConfiguration.ready}>{connecting ? "Facebook openenâ€¦" : "Facebookpagina koppelen"}</button>
+        </form>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>Facebook per vestiging</h2><p>Voor reacties, paginaberichten en later campagne-KPI's.</p></div></div>
+        {!facebookAccounts.length && <Empty text="Nog geen Facebookpagina technisch gekoppeld." />}
+        {businesses.map((business) => { const account = facebookAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen Facebookpagina gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel eerst Instagram en daarna Facebook"}</small></div><span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
   </>;
