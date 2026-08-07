@@ -45,6 +45,7 @@ export async function POST(request) {
 
     const rows = [];
     let commentCount = 0;
+    let skippedCommentThreads = 0;
     for (const post of posts) {
       rows.push({
         workspace_id: workspaceId, business_id: businessId, account_id: account.id,
@@ -54,10 +55,15 @@ export async function POST(request) {
         provider_updated_at: post.updated_time || post.created_time || null,
       });
 
-      const comments = await graphGetAll(`${encodeURIComponent(post.id)}/comments`, accessToken, {
-        fields: "id,message,created_time,from{id,name},permalink_url",
-        filter: "stream", limit: "100",
-      }, MAX_COMMENTS_PER_POST);
+      let comments = [];
+      try {
+        comments = await graphGetAll(`${encodeURIComponent(post.id)}/comments`, accessToken, {
+          fields: "id,message,created_time,from{id,name},permalink_url",
+          filter: "stream", limit: "100",
+        }, MAX_COMMENTS_PER_POST);
+      } catch {
+        skippedCommentThreads += 1;
+      }
       for (const comment of comments) {
         commentCount += 1;
         rows.push({
@@ -83,8 +89,8 @@ export async function POST(request) {
 
     return NextResponse.json({
       ok: true,
-      message: `${posts.length} Facebook-berichten en ${commentCount} reacties opgehaald voor ${account.display_name}.`,
-      posts: posts.length, comments: commentCount,
+      message: `${posts.length} Facebook-berichten en ${commentCount} reacties opgehaald voor ${account.display_name}.${skippedCommentThreads ? ` Reacties bij ${skippedCommentThreads} bericht(en) waren niet toegankelijk via Meta.` : ""}`,
+      posts: posts.length, comments: commentCount, skippedCommentThreads,
     });
   } catch (error) {
     const failedAt = new Date().toISOString();
