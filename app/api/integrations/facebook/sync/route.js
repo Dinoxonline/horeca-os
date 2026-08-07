@@ -38,7 +38,7 @@ export async function POST(request) {
 
   try {
     const accessToken = decryptMetaToken(credential);
-    const posts = await graphGetAll(`${account.external_account_id}/feed`, accessToken, {
+    const posts = await graphGetAll(`${account.external_account_id}/posts`, accessToken, {
       fields: "id,message,created_time,updated_time,permalink_url",
       limit: "25",
     }, MAX_POSTS);
