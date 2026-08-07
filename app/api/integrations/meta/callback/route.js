@@ -10,7 +10,7 @@ export async function GET(request) {
     const code = url.searchParams.get("code");
     const state = readMetaState(url.searchParams.get("state"));
     if (!code) throw new Error("Instagram heeft geen autorisatiecode teruggestuurd.");
-    const redirectUri = process.env.META_REDIRECT_URI || `${url.origin}/api/integrations/meta/callback`;
+    const redirectUri = `${url.origin}/api/integrations/meta/callback`;
     const shortTokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
