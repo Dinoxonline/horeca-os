@@ -13,9 +13,10 @@ export async function GET(request) {
   const { data, error } = await context.admin.from("integration_accounts")
     .select("id,business_id,external_account_id,display_name,connection_status,granted_scopes,token_expires_at,last_synced_at,last_error_code")
     .eq("workspace_id", context.workspaceId).eq("provider", "facebook").order("display_name");
-  return error ? jsonError("Facebook-koppelingen konden niet worden geladen.", 500) : NextResponse.json({
-    accounts: data || [],
+  return NextResponse.json({
+    accounts: error ? [] : data || [],
     configuration: getFacebookConfiguration(),
+    accountsWarning: error ? "Bestaande Facebook-koppelingen konden niet worden geladen." : null,
   });
 }
 
