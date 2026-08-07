@@ -777,7 +777,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [metaConfiguration, setMetaConfiguration] = useState({ ready: false, missing: [] });
   const [integrationMessage, setIntegrationMessage] = useState("");
   const [integrationError, setIntegrationError] = useState("");
-  const [connecting, setConnecting] = useState(false);\n  const [testingMetaBusinessId, setTestingMetaBusinessId] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [testingMetaBusinessId, setTestingMetaBusinessId] = useState("");
 
   const loadAccounts = useCallback(async () => {
     const headers = { Authorization: `Bearer ${session.access_token}` };
