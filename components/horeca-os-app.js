@@ -648,6 +648,34 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
     setAccounts(accountMap); setItems(rows || []); setLoading(false);
   }, [businessId, workspaceId]);
 
+  async function syncSocialItems() {
+    if (syncing) return;
+    const targetIds = businessId === "all" ? businesses.map((business) => business.id) : [businessId];
+    if (!targetIds.length) { setMessage("Geen vestiging beschikbaar om te synchroniseren."); return; }
+    setSyncing(true); setMessage("");
+    const headers = { "content-type": "application/json", authorization: `Bearer ${session?.access_token || ""}` };
+    const attempts = await Promise.all(targetIds.flatMap((targetBusinessId) => [
+      fetch("/api/integrations/meta/sync", {
+        method: "POST", headers,
+        body: JSON.stringify({ workspaceId, businessId: targetBusinessId }),
+      }).then(async (response) => ({ provider: "Instagram", businessId: targetBusinessId, response, result: await response.json().catch(() => ({})) })),
+      fetch("/api/integrations/facebook/sync", {
+        method: "POST", headers,
+        body: JSON.stringify({ workspaceId, businessId: targetBusinessId }),
+      }).then(async (response) => ({ provider: "Facebook", businessId: targetBusinessId, response, result: await response.json().catch(() => ({})) })),
+    ]));
+    const failures = attempts.filter((attempt) => !attempt.response.ok);
+    const successes = attempts.filter((attempt) => attempt.response.ok);
+    await loadSocialItems();
+    if (failures.length) {
+      const detail = failures.map((attempt) => `${attempt.provider}: ${attempt.result.error || "synchronisatie mislukt"}`).join(" · ");
+      setMessage(`${successes.length} koppeling(en) bijgewerkt. ${detail}`);
+    } else {
+      setMessage(`Facebook en Instagram zijn bijgewerkt voor ${targetIds.length} vestiging${targetIds.length === 1 ? "" : "en"}.`);
+    }
+    setSyncing(false);
+  }
+
   useEffect(() => { loadSocialItems(); }, [loadSocialItems]);
   useEffect(() => { setPage(1); }, [businessId, channelFilter, typeFilter, pageSize]);
 
@@ -664,7 +692,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
       <label>Kanaal<select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}><option value="all">Alle kanalen</option><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option></select></label>
       <label>Soort<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Alles</option><option value="comment">Reacties</option><option value="post">Berichten</option></select></label>
       <label>Zichtbaar<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{[10,25,100].map((amount) => <option value={amount} key={amount}>{amount}</option>)}</select></label>
-      <button type="button" className="secondaryButton" onClick={loadSocialItems} disabled={loading}>{loading ? "Ophalen…" : "Verversen"}</button>
+      <button type="button" className="secondaryButton" onClick={syncSocialItems} disabled={loading || syncing}>{syncing ? "Synchroniseren…" : loading ? "Ophalen…" : "Kanalen verversen"}</button>
     </div></div>
     {message && <div className="notice">{message}</div>}
     <div className="socialInboxSummary"><strong>{items.length}</strong> items <span>·</span><strong>{inbound}</strong> reacties van gasten <span>·</span><strong>{new Set(items.map((item) => item.business_id)).size}</strong> vestigingen</div>
