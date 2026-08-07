@@ -622,6 +622,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
   const [accounts, setAccounts] = useState({});
   const [channelFilter, setChannelFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [workflowFilter, setWorkflowFilter] = useState("all");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState("");
@@ -631,7 +632,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
   const loadSocialItems = useCallback(async () => {
     setLoading(true); setMessage("");
     let query = supabase.from("social_content_items")
-      .select("id,business_id,account_id,content_type,direction,status,body,media,permalink,published_at,created_at")
+      .select("id,business_id,account_id,content_type,direction,status,workflow_status,handled_at,body,media,permalink,published_at,created_at")
       .eq("workspace_id", workspaceId)
       .in("content_type", ["post", "comment"])
       .order("published_at", { ascending: false, nullsFirst: false })
@@ -677,37 +678,52 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
     setSyncing(false);
   }
 
+  async function updateWorkflowStatus(itemId, workflowStatus) {
+    const handled = workflowStatus === "handled";
+    const { error } = await supabase.from("social_content_items").update({
+      workflow_status: workflowStatus,
+      handled_at: handled ? new Date().toISOString() : null,
+      handled_by: handled ? session?.user?.id || null : null,
+    }).eq("id", itemId).eq("workspace_id", workspaceId);
+    if (error) { setMessage(`Werkstatus kon niet worden opgeslagen: ${error.message}`); return; }
+    setItems((current) => current.map((item) => item.id === itemId ? { ...item, workflow_status: workflowStatus, handled_at: handled ? new Date().toISOString() : null } : item));
+    setMessage(workflowStatus === "handled" ? "Item is afgehandeld." : workflowStatus === "in_progress" ? "Item staat in behandeling." : "Item is opnieuw als nieuw gemarkeerd.");
+  }
+
   useEffect(() => { loadSocialItems(); }, [loadSocialItems]);
-  useEffect(() => { setPage(1); }, [businessId, channelFilter, typeFilter, pageSize]);
+  useEffect(() => { setPage(1); }, [businessId, channelFilter, typeFilter, workflowFilter, pageSize]);
 
   const businessNames = Object.fromEntries(businesses.map((business) => [business.id, business.name]));
   const channelName = (item) => String(item.permalink || "").includes("instagram.com") || accounts[item.account_id]?.provider === "instagram" ? "Instagram" : String(item.permalink || "").includes("facebook.com") || accounts[item.account_id]?.provider === "facebook" ? "Facebook" : accounts[item.account_id]?.display_name || "Sociaal";
-  const filtered = items.filter((item) => (channelFilter === "all" || channelName(item) === channelFilter) && (typeFilter === "all" || item.content_type === typeFilter));
+  const filtered = items.filter((item) => (channelFilter === "all" || channelName(item) === channelFilter) && (typeFilter === "all" || item.content_type === typeFilter) && (workflowFilter === "all" || (item.workflow_status || "new") === workflowFilter));
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const inbound = items.filter((item) => item.direction === "inbound").length;
+  const openItems = items.filter((item) => item.direction === "inbound" && (item.workflow_status || "new") !== "handled").length;
 
   return <section className="socialInbox">
     <div className="socialInboxHeader"><div><p className="eyebrow">Sociale kanalen</p><h2>Berichten & reacties</h2><p>Facebook en Instagram centraal, met behoud van de scheiding per vestiging.</p></div><div className="socialInboxFilters">
       <label>Kanaal<select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}><option value="all">Alle kanalen</option><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option></select></label>
       <label>Soort<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Alles</option><option value="comment">Reacties</option><option value="post">Berichten</option></select></label>
+      <label>Werkstatus<select value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value)}><option value="all">Alle statussen</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="handled">Afgehandeld</option></select></label>
       <label>Zichtbaar<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{[10,25,100].map((amount) => <option value={amount} key={amount}>{amount}</option>)}</select></label>
       <button type="button" className="secondaryButton" onClick={syncSocialItems} disabled={loading || syncing}>{syncing ? "Synchroniseren…" : loading ? "Ophalen…" : "Kanalen verversen"}</button>
     </div></div>
     {message && <div className="notice">{message}</div>}
-    <div className="socialInboxSummary"><strong>{items.length}</strong> items <span>·</span><strong>{inbound}</strong> reacties van gasten <span>·</span><strong>{new Set(items.map((item) => item.business_id)).size}</strong> vestigingen</div>
+    <div className="socialInboxSummary"><strong>{items.length}</strong> items <span>·</span><strong>{inbound}</strong> reacties van gasten <span>·</span><strong>{openItems}</strong> open <span>·</span><strong>{new Set(items.map((item) => item.business_id)).size}</strong> vestigingen</div>
     <div className="socialInboxList">
       {!loading && visible.length === 0 && <Empty text="Nog geen sociale berichten of reacties voor deze selectie." />}
       {visible.map((item) => {
         const media = Array.isArray(item.media) ? item.media[0] || {} : {};
         const author = media.sender_name || (item.direction === "outbound" ? accounts[item.account_id]?.display_name : "Gast");
         return <article className={`socialInboxItem ${item.direction}`} key={item.id}>
-          <header><div><span className={`channelBadge ${channelName(item).toLowerCase()}`}>{channelName(item)}</span><b>{author}</b></div><span className="status">{item.content_type === "comment" ? "Reactie" : "Bericht"}</span></header>
+          <header><div><span className={`channelBadge ${channelName(item).toLowerCase()}`}>{channelName(item)}</span><b>{author}</b></div><span className="status">{item.workflow_status === "handled" ? "Afgehandeld" : item.workflow_status === "in_progress" ? "In behandeling" : "Nieuw"}</span></header>
           <small>{businessNames[item.business_id] || "Onbekende vestiging"} · {formatDate(item.published_at || item.created_at)}</small>
           <p>{item.body || "Geen tekst meegeleverd."}</p>
           <div className="socialInboxActions">{item.permalink && <a className="secondaryButton" href={item.permalink} target="_blank" rel="noreferrer">Openen op {channelName(item)}</a>}
             {canManage && item.content_type === "comment" && <SocialReply item={item} channel={channelName(item)} workspaceId={workspaceId} session={session} onPublished={loadSocialItems} />}
+            {canManage && item.direction === "inbound" && <select aria-label={`Werkstatus voor ${author}`} value={item.workflow_status || "new"} onChange={(event) => updateWorkflowStatus(item.id, event.target.value)}><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="handled">Afgehandeld</option></select>}
           </div>
         </article>;
       })}
