@@ -630,10 +630,50 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
   </details>;
 }
 
-function CalendarOverview() {
+function CalendarOverview({ workspaceId, session }) {
+  const [accounts, setAccounts] = useState([]);
+  const [mailbox, setMailbox] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  const loadCalendar = useCallback(async () => {
+    if (!workspaceId || !session?.access_token) return;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch(`/api/integrations/microsoft/calendar?workspaceId=${encodeURIComponent(workspaceId)}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De agenda kon niet worden geladen.");
+      setAccounts(result.accounts || []);
+    } catch (error) { setMessage(error.message); }
+    finally { setLoading(false); }
+  }, [session?.access_token, workspaceId]);
+
+  useEffect(() => { loadCalendar(); }, [loadCalendar]);
+
+  const events = accounts
+    .filter((account) => mailbox === "all" || account.mailbox === mailbox)
+    .flatMap((account) => account.events.map((event) => ({ ...event, mailbox: account.mailbox })))
+    .sort((a, b) => new Date(a.start?.dateTime) - new Date(b.start?.dateTime));
+
   return <section className="stack">
-    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Persoonlijke en gedeelde Microsoft-agenda’s komen hier samen, los van de mailboxen.</p></div></div>
-    <div className="panel"><h3>Agenda wordt afzonderlijk ingericht</h3><p>De bestaande Microsoft-koppelingen blijven behouden. Hier voegen we de kalenderweergave, agenda-keuze en afsprakenbeheer toe.</p></div>
+    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Alle persoonlijke Microsoft-agenda’s overzichtelijk bij elkaar.</p></div><button type="button" className="secondary" onClick={loadCalendar} disabled={loading}>{loading ? "Laden…" : "Agenda verversen"}</button></div>
+    {message && <div className="notice warning">{message}</div>}
+    {accounts.some((account) => account.error) && <div className="notice warning"><strong>Niet alle agenda’s konden worden geladen.</strong>{accounts.filter((account) => account.error).map((account) => <p key={account.mailbox}>{account.mailbox}: {account.error}</p>)}</div>}
+    <div className="panel">
+      <div className="toolbar"><label>Mailbox<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label></div>
+      <p><strong>{events.length}</strong> afspraak/afspraken in de komende 30 dagen.</p>
+    </div>
+    <div className="stack">
+      {!loading && !events.length && <div className="panel"><p>Geen afspraken gevonden.</p></div>}
+      {events.map((event) => {
+        const start = new Date(event.start?.dateTime);
+        const end = new Date(event.end?.dateTime);
+        return <article className="connectionRow" key={`${event.mailbox}-${event.id}`}>
+          <div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? start.toLocaleDateString("nl-NL") + " · hele dag" : `${start.toLocaleString("nl-NL")} – ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <p>{event.location.displayName}</p>}{event.organizer?.emailAddress?.name && <small>Organisator: {event.organizer.emailAddress.name}</small>}</div>
+          {event.webLink && <a className="secondary" href={event.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}
+        </article>;
+      })}
+    </div>
   </section>;
 }
 
