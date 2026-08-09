@@ -30,7 +30,7 @@ export async function POST(request) {
   if (!ALLOWED_MAILBOXES.includes(mailbox)) return NextResponse.json({ error: "Kies een geldige Horeca OS-mailbox." }, { status: 400 });
   const configuration = microsoftConfiguration();
   if (!configuration.ready) return NextResponse.json({ error: `Microsoft 365 mist serverinstellingen: ${configuration.missing.join(", ")}.` }, { status: 409 });
-  const state = createMicrosoftState({ workspaceId: body.workspaceId, userId: auth.user.id, mailbox });
+  const state = createMicrosoftState({ workspaceId: body.workspaceId, userId: auth.user.id, mailbox, returnTo: body.returnTo === "/agenda" ? "/agenda" : "/mail" });
   const url = new URL(`https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize`);
   url.search = new URLSearchParams({
     client_id: process.env.MICROSOFT_CLIENT_ID,
