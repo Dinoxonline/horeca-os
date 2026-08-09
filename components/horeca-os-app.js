@@ -22,6 +22,7 @@ const routeViews = {
   "/leveranciers": "suppliers",
   "/reviews": "reviews",
   "/social-inbox": "social",
+  "/mail-agenda": "mail",
   "/marketing": "marketing",
   "/ai": "assistant",
   "/gebruikers": "users",
@@ -234,6 +235,7 @@ export default function HorecaOsApp() {
     integrations: canUseFeature("integrations:manage"),
     reviews: canUseFeature("reviews:read") || canUseFeature("reviews:manage") || canUseFeature("reviews:respond"),
     social: canUseFeature("social:read"),
+    mail: isOwner,
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
     security: true,
   }), [canUseFeature]);
@@ -323,6 +325,7 @@ export default function HorecaOsApp() {
           {featureVisibility.suppliers && <NavLink href="/leveranciers" active={activeView === "suppliers"}>Leveranciers</NavLink>}
           {featureVisibility.reviews && <NavLink href="/reviews" active={activeView === "reviews"}>Reviews</NavLink>}
           {featureVisibility.social && <NavLink href="/social-inbox" active={activeView === "social"}>Social inbox</NavLink>}
+          {featureVisibility.mail && <NavLink href="/mail-agenda" active={activeView === "mail"}>Mail & agenda</NavLink>}
           {featureVisibility.marketing && <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>}
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
@@ -389,6 +392,7 @@ export default function HorecaOsApp() {
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
         {activeView === "reviews" && featureVisibility.reviews && <ReviewsInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("reviews:manage") || canUseFeature("reviews:respond")} canAdd={isOwner || canUseFeature("reviews:manage")} />}
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
+        {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃƒÆ’Ã‚Â«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
@@ -619,6 +623,72 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
     <small>{supported ? `Voor plaatsing op ${platformName} volgt altijd nog een definitieve bevestiging.` : "Reageren is voor dit kanaal nog niet beschikbaar."}</small>
     {status && <small className="notice">{status}</small>}
   </details>;
+}
+
+function MailAgenda({ workspaceId, session }) {
+  const [mailboxes, setMailboxes] = useState([]);
+  const [selectedMailbox, setSelectedMailbox] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  const loadMail = useCallback(async () => {
+    if (!workspaceId || !session?.access_token) return;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch(\`/api/integrations/microsoft/messages?workspaceId=\${encodeURIComponent(workspaceId)}\`, {
+        headers: { Authorization: \`Bearer \${session.access_token}\` },
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De mailboxen konden niet worden geladen.");
+      setMailboxes(result.mailboxes || []);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.access_token, workspaceId]);
+
+  useEffect(() => { loadMail(); }, [loadMail]);
+
+  const visible = selectedMailbox === "all"
+    ? mailboxes.flatMap((item) => item.messages.map((mail) => ({ ...mail, mailbox: item.mailbox })))
+        .sort((a, b) => new Date(b.receivedDateTime) - new Date(a.receivedDateTime))
+    : (mailboxes.find((item) => item.mailbox === selectedMailbox)?.messages || [])
+        .map((mail) => ({ ...mail, mailbox: selectedMailbox }));
+
+  return <section className="stack">
+    <div className="section-heading">
+      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail & agenda</h2><p>Lees jouw persoonlijke mailbox en gedeelde bedrijfs-mailboxen centraal. Horeca OS kan geen berichten versturen, wijzigen of verwijderen.</p></div>
+      <button type="button" className="secondary" onClick={loadMail} disabled={loading}>{loading ? "Laden…" : "Mail verversen"}</button>
+    </div>
+    <div className="panel">
+      <div className="toolbar">
+        <label>Mailbox<select value={selectedMailbox} onChange={(event) => setSelectedMailbox(event.target.value)}>
+          <option value="all">Alle mailboxen</option>
+          {mailboxes.map((item) => <option key={item.mailbox} value={item.mailbox}>{item.mailbox}</option>)}
+        </select></label>
+      </div>
+      {message && <div className="notice warning"><p>{message}</p><Link href="/koppelingen">Microsoft 365 opnieuw koppelen</Link></div>}
+      {!message && mailboxes.some((item) => item.error) && <div className="notice warning">
+        <strong>Niet alle mailboxen zijn toegankelijk.</strong>
+        {mailboxes.filter((item) => item.error).map((item) => <p key={item.mailbox}>{item.mailbox}: {item.error}</p>)}
+      </div>}
+      {!loading && !message && visible.length === 0 && <p>Nog geen e-mails gevonden in de gekozen mailbox.</p>}
+      <div className="stack">
+        {visible.map((mail) => <article className="connectionRow" key={\`\${mail.mailbox}-\${mail.id}\`}>
+          <div>
+            <p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p>
+            <h3>{mail.subject || "(Geen onderwerp)"}</h3>
+            <p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? \` · \${mail.from.emailAddress.address}\` : ""}</p>
+            <p>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</p>
+            {mail.bodyPreview && <p>{mail.bodyPreview}</p>}
+          </div>
+          {mail.webLink && <a className="secondary" href={mail.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}
+        </article>)}
+      </div>
+    </div>
+  </section>;
 }
 
 function SocialInbox({ workspaceId, businessId, businesses, canManage, session }) {
