@@ -34,7 +34,7 @@ export async function GET(request) {
       const token = accessToken(connection);
       const [calendars, events] = await Promise.all([
         graph(token, "calendars?$select=id,name,color,canEdit,owner"),
-        graph(token, `calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$select=id,subject,start,end,location,organizer,isAllDay,webLink,showAs&$orderby=start/dateTime&$top=100`),
+        graph(token, `calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview,isAllDay,webLink,showAs,onlineMeetingUrl&$orderby=start/dateTime&$top=100`),
       ]);
       return { mailbox: connection.email, calendars, events, error: null };
     } catch (error) {
