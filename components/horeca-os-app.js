@@ -630,22 +630,23 @@ function MailAgenda({ workspaceId, session }) {
   const [selectedMailbox, setSelectedMailbox] = useState("all");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [connecting, setConnecting] = useState(false);
+  const [connectionNotice, setConnectionNotice] = useState("");
+  const [connecting, setConnecting] = useState("");
 
-  async function connectMicrosoft() {
-    setConnecting(true); setMessage("");
+  async function connectMicrosoft(mailbox) {
+    setConnecting(mailbox); setMessage("");
     try {
       const response = await fetch("/api/integrations/microsoft", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ workspaceId }),
+        body: JSON.stringify({ workspaceId, mailbox }),
       });
       const result = await response.json();
       if (!response.ok || !result.authorizationUrl) throw new Error(result.error || "Microsoft 365 kon niet worden gestart.");
       window.location.assign(result.authorizationUrl);
     } catch (error) {
       setMessage(error.message);
-      setConnecting(false);
+      setConnecting("");
     }
   }
 
@@ -667,18 +668,34 @@ function MailAgenda({ workspaceId, session }) {
     }
   }, [session?.access_token, workspaceId]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("microsoft") === "connected") setConnectionNotice(`${params.get("account") || "De mailbox"} is succesvol gekoppeld.`);
+    if (params.get("microsoft") === "error") setMessage(params.get("message") || "De mailbox kon niet worden gekoppeld.");
+    if (params.has("microsoft")) window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   useEffect(() => { loadMail(); }, [loadMail]);
 
   const visible = selectedMailbox === "all"
-    ? mailboxes.flatMap((item) => item.messages.map((mail) => ({ ...mail, mailbox: item.mailbox })))
-        .sort((a, b) => new Date(b.receivedDateTime) - new Date(a.receivedDateTime))
-    : (mailboxes.find((item) => item.mailbox === selectedMailbox)?.messages || [])
-        .map((mail) => ({ ...mail, mailbox: selectedMailbox }));
+    ? mailboxes.flatMap((item) => item.messages.map((mail) => ({ ...mail, mailbox: item.mailbox }))).sort((a, b) => new Date(b.receivedDateTime) - new Date(a.receivedDateTime))
+    : (mailboxes.find((item) => item.mailbox === selectedMailbox)?.messages || []).map((mail) => ({ ...mail, mailbox: selectedMailbox }));
 
   return <section className="stack">
     <div className="section-heading">
-      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail & agenda</h2><p>Lees jouw persoonlijke mailbox en gedeelde bedrijfs-mailboxen centraal. Horeca OS kan geen berichten versturen, wijzigen of verwijderen.</p></div>
+      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail & agenda</h2><p>Log per mailbox veilig in bij Microsoft. Wachtwoorden worden nooit door Horeca OS gezien of opgeslagen.</p></div>
       <button type="button" className="secondary" onClick={loadMail} disabled={loading}>{loading ? "Laden…" : "Mail verversen"}</button>
+    </div>
+    {connectionNotice && <div className="notice successNotice">{connectionNotice}</div>}
+    {message && <div className="notice warning">{message}</div>}
+    <div className="panel stack">
+      <h3>Mailboxen koppelen</h3>
+      {mailboxes.map((item) => <div className="connectionRow" key={item.mailbox}>
+        <div><strong>{item.mailbox}</strong><small>{item.connected ? "Gekoppeld met een eigen Microsoft-inlog" : "Nog niet gekoppeld"}</small></div>
+        <button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting)}>
+          {connecting === item.mailbox ? "Microsoft openen…" : item.connected ? "Opnieuw inloggen" : "Inloggen"}
+        </button>
+      </div>)}
     </div>
     <div className="panel">
       <div className="toolbar">
@@ -687,9 +704,8 @@ function MailAgenda({ workspaceId, session }) {
           {mailboxes.map((item) => <option key={item.mailbox} value={item.mailbox}>{item.mailbox}</option>)}
         </select></label>
       </div>
-      {message && <div className="notice warning"><p>{message}</p><button type="button" className="primary" onClick={connectMicrosoft} disabled={connecting}>{connecting ? "Microsoft openen…" : "Microsoft 365 koppelen"}</button></div>}
       {!message && mailboxes.some((item) => item.error) && <div className="notice warning">
-        <strong>Niet alle mailboxen zijn toegankelijk.</strong>
+        <strong>Een gekoppelde mailbox kon niet worden gelezen.</strong>
         {mailboxes.filter((item) => item.error).map((item) => <p key={item.mailbox}>{item.mailbox}: {item.error}</p>)}
       </div>}
       {!loading && !message && visible.length === 0 && <p>Nog geen e-mails gevonden in de gekozen mailbox.</p>}
@@ -1052,7 +1068,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       setFacebookAccounts(facebookResult.accounts || []);
       setFacebookConfiguration(facebookResult.configuration || { ready: false, missing: [] });
     }
-    if (microsoftResponse.ok) { setMicrosoftConnection(microsoftResult.connection || null); setMicrosoftConfiguration(microsoftResult.configuration || { ready: false, missing: [] }); }
+    if (microsoftResponse.ok) { setMicrosoftConnection((microsoftResult.connections || [])[0] || null); setMicrosoftConfiguration(microsoftResult.configuration || { ready: false, missing: [] }); }
     if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok || !microsoftResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || microsoftResult.error || "Koppelingen konden niet worden geladen.");
   }, [session.access_token, workspaceId]);
 
@@ -1112,9 +1128,9 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     else { setIntegrationError(result.error || "Facebook kon niet worden gestart."); setConnecting(false); }
   }
 
-  async function connectMicrosoft() {
+  async function connectMicrosoft(mailbox) {
     setConnecting(true); setIntegrationMessage(""); setIntegrationError("");
-    const response = await fetch("/api/integrations/microsoft", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ workspaceId }) });
+    const response = await fetch("/api/integrations/microsoft", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ workspaceId, mailbox }) });
     const result = await response.json();
     if (response.ok && result.authorizationUrl) window.location.assign(result.authorizationUrl);
     else { setIntegrationError(result.error || "Microsoft 365 kon niet worden gestart."); setConnecting(false); }
@@ -1169,7 +1185,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="integrationBrand"><div className="integrationLogo">M365</div><div><h2>Persoonlijke Microsoft-agenda</h2><p>Eigen Outlook-agenda en gedelegeerde agenda&apos;s</p></div></div>
         <div className="scopeBanner"><strong>Alleen lezen</strong><span>Iedere medewerker koppelt het eigen @leclubbbq.nl-account. Gedeelde agenda&apos;s zijn alleen zichtbaar wanneer Microsoft daar al toegang voor heeft verleend.</span></div>
         {!microsoftConfiguration.ready && <div className="notice">Microsoft 365 is nog niet gereed. Ontbrekend: {microsoftConfiguration.missing.join(", ") || "configuratie controleren"}.</div>}
-        <button className="primary" type="button" onClick={connectMicrosoft} disabled={connecting || !microsoftConfiguration.ready}>{connecting ? "Microsoft openen…" : microsoftConnection ? "Microsoft-agenda opnieuw koppelen" : "Microsoft-agenda koppelen"}</button>
+        <button className="primary" type="button" onClick={() => connectMicrosoft(microsoftConnection?.email || session.user.email)} disabled={connecting || !microsoftConfiguration.ready}>{connecting ? "Microsoft openen…" : microsoftConnection ? "Microsoft-agenda opnieuw koppelen" : "Microsoft-agenda koppelen"}</button>
       </article>
       <article className="panel">
         <div className="panelHead"><div><h2>Jouw agendakoppeling</h2><p>Persoonlijk per medewerker, nooit gedeeld met andere gebruikers.</p></div></div>
