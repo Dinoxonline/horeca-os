@@ -633,47 +633,102 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
 function CalendarOverview({ workspaceId, session }) {
   const [accounts, setAccounts] = useState([]);
   const [mailbox, setMailbox] = useState("all");
+  const [view, setView] = useState("month");
+  const [anchor, setAnchor] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+
+  const range = useMemo(() => {
+    const date = new Date(anchor);
+    let start; let end;
+    if (view === "day") {
+      start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      end = new Date(start); end.setDate(end.getDate() + 1);
+    } else if (view === "week") {
+      start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const day = (start.getDay() + 6) % 7; start.setDate(start.getDate() - day);
+      end = new Date(start); end.setDate(end.getDate() + 7);
+    } else if (view === "year") {
+      start = new Date(date.getFullYear(), 0, 1);
+      end = new Date(date.getFullYear() + 1, 0, 1);
+    } else {
+      start = new Date(date.getFullYear(), date.getMonth(), 1);
+      end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    }
+    return { start, end };
+  }, [anchor, view]);
 
   const loadCalendar = useCallback(async () => {
     if (!workspaceId || !session?.access_token) return;
     setLoading(true); setMessage("");
     try {
-      const response = await fetch(`/api/integrations/microsoft/calendar?workspaceId=${encodeURIComponent(workspaceId)}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+      const params = new URLSearchParams({ workspaceId, start: range.start.toISOString(), end: range.end.toISOString() });
+      const response = await fetch(`/api/integrations/microsoft/calendar?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "De agenda kon niet worden geladen.");
       setAccounts(result.accounts || []);
     } catch (error) { setMessage(error.message); }
     finally { setLoading(false); }
-  }, [session?.access_token, workspaceId]);
+  }, [range.end, range.start, session?.access_token, workspaceId]);
 
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
 
-  const events = accounts
-    .filter((account) => mailbox === "all" || account.mailbox === mailbox)
+  const events = accounts.filter((account) => mailbox === "all" || account.mailbox === mailbox)
     .flatMap((account) => account.events.map((event) => ({ ...event, mailbox: account.mailbox })))
     .sort((a, b) => new Date(a.start?.dateTime) - new Date(b.start?.dateTime));
 
+  function move(direction) {
+    const next = new Date(anchor);
+    if (view === "day") next.setDate(next.getDate() + direction);
+    else if (view === "week") next.setDate(next.getDate() + direction * 7);
+    else if (view === "month") next.setMonth(next.getMonth() + direction);
+    else next.setFullYear(next.getFullYear() + direction);
+    setAnchor(next);
+  }
+  const periodLabel = view === "day" ? anchor.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : view === "week" ? `${range.start.toLocaleDateString("nl-NL")} – ${new Date(range.end.getTime() - 86400000).toLocaleDateString("nl-NL")}`
+    : view === "year" ? String(anchor.getFullYear())
+    : anchor.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+
+  const eventCard = (event) => {
+    const start = new Date(event.start?.dateTime); const end = new Date(event.end?.dateTime);
+    return <article className="connectionRow" key={`${event.mailbox}-${event.id}`}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? "Hele dag" : `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div>{event.webLink && <a className="secondary" href={event.webLink} target="_blank" rel="noreferrer">Openen</a>}</article>;
+  };
+
+  const days = [];
+  if (view === "week" || view === "month") {
+    const gridStart = new Date(range.start);
+    if (view === "month") gridStart.setDate(gridStart.getDate() - ((gridStart.getDay() + 6) % 7));
+    const count = view === "week" ? 7 : 42;
+    for (let index = 0; index < count; index += 1) { const day = new Date(gridStart); day.setDate(day.getDate() + index); days.push(day); }
+  }
+
   return <section className="stack">
-    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Alle persoonlijke Microsoft-agenda’s overzichtelijk bij elkaar.</p></div><button type="button" className="secondary" onClick={loadCalendar} disabled={loading}>{loading ? "Laden…" : "Agenda verversen"}</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Microsoft-agenda’s per dag, week, maand of jaar.</p></div><button type="button" className="secondary" onClick={loadCalendar} disabled={loading}>{loading ? "Laden…" : "Agenda verversen"}</button></div>
     {message && <div className="notice warning">{message}</div>}
-    {accounts.some((account) => account.error) && <div className="notice warning"><strong>Niet alle agenda’s konden worden geladen.</strong>{accounts.filter((account) => account.error).map((account) => <p key={account.mailbox}>{account.mailbox}: {account.error}</p>)}</div>}
-    <div className="panel">
-      <div className="toolbar"><label>Mailbox<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label></div>
-      <p><strong>{events.length}</strong> afspraak/afspraken in de komende 30 dagen.</p>
+    <div className="panel stack">
+      <div className="toolbar">
+        <button type="button" className="secondary" onClick={() => move(-1)}>Vorige</button><button type="button" className="secondary" onClick={() => setAnchor(new Date())}>Vandaag</button><button type="button" className="secondary" onClick={() => move(1)}>Volgende</button>
+        <strong>{periodLabel}</strong>
+      </div>
+      <div className="toolbar">
+        <label>Weergave<select value={view} onChange={(event) => setView(event.target.value)}><option value="day">Dag</option><option value="week">Week</option><option value="month">Maand</option><option value="year">Jaar</option></select></label>
+        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label>
+      </div>
     </div>
-    <div className="stack">
-      {!loading && !events.length && <div className="panel"><p>Geen afspraken gevonden.</p></div>}
-      {events.map((event) => {
-        const start = new Date(event.start?.dateTime);
-        const end = new Date(event.end?.dateTime);
-        return <article className="connectionRow" key={`${event.mailbox}-${event.id}`}>
-          <div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? start.toLocaleDateString("nl-NL") + " · hele dag" : `${start.toLocaleString("nl-NL")} – ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <p>{event.location.displayName}</p>}{event.organizer?.emailAddress?.name && <small>Organisator: {event.organizer.emailAddress.name}</small>}</div>
-          {event.webLink && <a className="secondary" href={event.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}
-        </article>;
+    {view === "day" && <div className="stack">{!events.length && <div className="panel">Geen afspraken.</div>}{events.map(eventCard)}</div>}
+    {(view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
+      {days.map((day) => {
+        const dayEvents = events.filter((event) => new Date(event.start?.dateTime).toDateString() === day.toDateString());
+        return <div className="panel" key={day.toISOString()} style={{ minHeight: view === "month" ? "150px" : "260px", padding: "10px", opacity: view === "month" && day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: view === "week" ? "short" : undefined })}</strong><div className="stack">{dayEvents.map((event) => <a href={event.webLink || "#"} target="_blank" rel="noreferrer" key={event.id} style={{ display: "block", padding: "6px", background: "#e8f4f6", borderRadius: "6px", fontSize: "12px" }}><strong>{new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject}</a>)}</div></div>;
       })}
-    </div>
+    </div>}
+    {view === "year" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
+      {Array.from({ length: 12 }, (_, month) => {
+        const monthEvents = events.filter((event) => new Date(event.start?.dateTime).getMonth() === month);
+        return <div className="panel" key={month}><h3>{new Date(anchor.getFullYear(), month, 1).toLocaleDateString("nl-NL", { month: "long" })}</h3><p>{monthEvents.length} afspraak/afspraken</p>{monthEvents.slice(0, 4).map((event) => <p key={event.id}><strong>{new Date(event.start?.dateTime).getDate()}</strong> {event.subject}</p>)}</div>;
+      })}
+    </div>}
   </section>;
 }
 
