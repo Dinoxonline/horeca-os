@@ -640,45 +640,54 @@ function CalendarOverview() {
 function MailAgenda({ workspaceId, session }) {
   const [mailboxes, setMailboxes] = useState([]);
   const [selectedMailbox, setSelectedMailbox] = useState("all");
+  const [selectedFolder, setSelectedFolder] = useState("inbox");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [connectionNotice, setConnectionNotice] = useState("");
   const [connecting, setConnecting] = useState("");
+  const [replying, setReplying] = useState({});
+  const [compose, setCompose] = useState({ open: false, mailbox: "", to: "", subject: "", content: "" });
+  const [working, setWorking] = useState("");
 
   async function connectMicrosoft(mailbox) {
     setConnecting(mailbox); setMessage("");
     try {
-      const response = await fetch("/api/integrations/microsoft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ workspaceId, mailbox }),
-      });
+      const response = await fetch("/api/integrations/microsoft", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ workspaceId, mailbox }) });
       const result = await response.json();
       if (!response.ok || !result.authorizationUrl) throw new Error(result.error || "Microsoft 365 kon niet worden gestart.");
       window.location.assign(result.authorizationUrl);
-    } catch (error) {
-      setMessage(error.message);
-      setConnecting("");
-    }
+    } catch (error) { setMessage(error.message); setConnecting(""); }
   }
 
-  const loadMail = useCallback(async () => {
+  const loadMail = useCallback(async (mailbox = selectedMailbox, folderId = selectedFolder) => {
     if (!workspaceId || !session?.access_token) return;
     setLoading(true); setMessage("");
     try {
-      const response = await fetch(`/api/integrations/microsoft/messages?workspaceId=${encodeURIComponent(workspaceId)}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        cache: "no-store",
-      });
+      const params = new URLSearchParams({ workspaceId });
+      if (mailbox !== "all") { params.set("mailbox", mailbox); params.set("folderId", folderId); }
+      const response = await fetch(`/api/integrations/microsoft/messages?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "De mailboxen konden niet worden geladen.");
-      setMailboxes(result.mailboxes || []);
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.access_token, workspaceId]);
+      if (mailbox === "all") setMailboxes(result.mailboxes || []);
+      else setMailboxes((current) => current.map((item) => item.mailbox === mailbox ? result.mailboxes?.[0] || item : item));
+    } catch (error) { setMessage(error.message); }
+    finally { setLoading(false); }
+  }, [selectedFolder, selectedMailbox, session?.access_token, workspaceId]);
+
+  async function mailAction(mailbox, payload, confirmation) {
+    if (confirmation && !window.confirm(confirmation)) return;
+    setWorking(payload.messageId || payload.action); setMessage("");
+    try {
+      const response = await fetch("/api/integrations/microsoft/messages/action", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ workspaceId, mailbox, ...payload }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De actie kon niet worden uitgevoerd.");
+      setConnectionNotice(result.message || "Actie uitgevoerd.");
+      setReplying((current) => ({ ...current, [payload.messageId]: "" }));
+      if (payload.action === "send") setCompose({ open: false, mailbox: "", to: "", subject: "", content: "" });
+      await loadMail();
+    } catch (error) { setMessage(error.message); }
+    finally { setWorking(""); }
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -686,53 +695,43 @@ function MailAgenda({ workspaceId, session }) {
     if (params.get("microsoft") === "error") setMessage(params.get("message") || "De mailbox kon niet worden gekoppeld.");
     if (params.has("microsoft")) window.history.replaceState({}, "", window.location.pathname);
   }, []);
+  useEffect(() => { loadMail("all", "inbox"); }, [workspaceId, session?.access_token]);
 
-  useEffect(() => { loadMail(); }, [loadMail]);
-
+  const connected = mailboxes.filter((item) => item.connected);
+  const activeBox = mailboxes.find((item) => item.mailbox === selectedMailbox);
   const visible = selectedMailbox === "all"
     ? mailboxes.flatMap((item) => item.messages.map((mail) => ({ ...mail, mailbox: item.mailbox }))).sort((a, b) => new Date(b.receivedDateTime) - new Date(a.receivedDateTime))
-    : (mailboxes.find((item) => item.mailbox === selectedMailbox)?.messages || []).map((mail) => ({ ...mail, mailbox: selectedMailbox }));
+    : (activeBox?.messages || []).map((mail) => ({ ...mail, mailbox: selectedMailbox }));
+
+  function chooseMailbox(value) {
+    setSelectedMailbox(value); setSelectedFolder("inbox");
+    loadMail(value, "inbox");
+  }
 
   return <section className="stack">
     <div className="section-heading">
-      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail</h2><p>Beheer iedere mailbox afzonderlijk. Wachtwoorden worden nooit door Horeca OS gezien of opgeslagen.</p></div>
-      <button type="button" className="secondary" onClick={loadMail} disabled={loading}>{loading ? "Laden…" : "Mail verversen"}</button>
+      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail</h2><p>Beheer iedere mailbox afzonderlijk vanuit Horeca OS.</p></div>
+      <div className="toolbar"><button type="button" className="primary" disabled={!connected.length} onClick={() => setCompose({ open: true, mailbox: connected[0]?.mailbox || "", to: "", subject: "", content: "" })}>Nieuwe e-mail</button><button type="button" className="secondary" onClick={() => loadMail()} disabled={loading}>{loading ? "Laden…" : "Mail verversen"}</button></div>
     </div>
     {connectionNotice && <div className="notice successNotice">{connectionNotice}</div>}
     {message && <div className="notice warning">{message}</div>}
     <div className="panel stack">
-      <h3>Mailboxen koppelen</h3>
-      {mailboxes.map((item) => <div className="connectionRow" key={item.mailbox}>
-        <div><strong>{item.mailbox}</strong><small>{item.connected ? "Gekoppeld met een eigen Microsoft-inlog" : "Nog niet gekoppeld"}</small></div>
-        <button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting) || item.connected}>
-          {connecting === item.mailbox ? "Microsoft openen…" : item.connected ? "Ingelogd" : "Inloggen"}
-        </button>
-      </div>)}
+      <h3>Mailboxen</h3>
+      {mailboxes.map((item) => <div className="connectionRow" key={item.mailbox}><div><strong>{item.mailbox}</strong><small>{item.connected ? "Ingelogd bij Microsoft" : "Nog niet gekoppeld"}</small></div><button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting) || item.connected}>{connecting === item.mailbox ? "Microsoft openen…" : item.connected ? "Ingelogd" : "Inloggen"}</button></div>)}
     </div>
-    <div className="panel">
+    {compose.open && <div className="panel stack"><h3>Nieuwe e-mail</h3><label>Van<select value={compose.mailbox} onChange={(event) => setCompose({ ...compose, mailbox: event.target.value })}>{connected.map((item) => <option key={item.mailbox}>{item.mailbox}</option>)}</select></label><label>Aan<input value={compose.to} onChange={(event) => setCompose({ ...compose, to: event.target.value })} placeholder="naam@bedrijf.nl" /></label><label>Onderwerp<input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} /></label><label>Bericht<textarea value={compose.content} onChange={(event) => setCompose({ ...compose, content: event.target.value })} /></label><div className="toolbar"><button className="primary" type="button" disabled={Boolean(working)} onClick={() => mailAction(compose.mailbox, { action: "send", to: compose.to, subject: compose.subject, content: compose.content }, `E-mail naar ${compose.to} verzenden?`)}>Verzenden</button><button className="secondary" type="button" onClick={() => setCompose({ ...compose, open: false })}>Annuleren</button></div></div>}
+    <div className="panel stack">
       <div className="toolbar">
-        <label>Mailbox<select value={selectedMailbox} onChange={(event) => setSelectedMailbox(event.target.value)}>
-          <option value="all">Alle mailboxen</option>
-          {mailboxes.map((item) => <option key={item.mailbox} value={item.mailbox}>{item.mailbox}</option>)}
-        </select></label>
+        <label>Mailbox<select value={selectedMailbox} onChange={(event) => chooseMailbox(event.target.value)}><option value="all">Alle mailboxen</option>{mailboxes.map((item) => <option key={item.mailbox} value={item.mailbox}>{item.mailbox}</option>)}</select></label>
+        {selectedMailbox !== "all" && <label>Map<select value={selectedFolder} onChange={(event) => { setSelectedFolder(event.target.value); loadMail(selectedMailbox, event.target.value); }}><option value="all">Alle e-mail</option>{(activeBox?.folders || []).map((folder) => <option key={folder.id} value={folder.id}>{folder.displayName} ({folder.unreadItemCount || 0} ongelezen)</option>)}</select></label>}
       </div>
-      {!message && mailboxes.some((item) => item.error) && <div className="notice warning">
-        <strong>Een gekoppelde mailbox kon niet worden gelezen.</strong>
-        {mailboxes.filter((item) => item.error).map((item) => <p key={item.mailbox}>{item.mailbox}: {item.error}</p>)}
-      </div>}
-      {!loading && !message && visible.length === 0 && <p>Nog geen e-mails gevonden in de gekozen mailbox.</p>}
-      <div className="stack">
-        {visible.map((mail) => <article className="connectionRow" key={`${mail.mailbox}-${mail.id}`}>
-          <div>
-            <p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p>
-            <h3>{mail.subject || "(Geen onderwerp)"}</h3>
-            <p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? ` · ${mail.from.emailAddress.address}` : ""}</p>
-            <p>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</p>
-            {mail.bodyPreview && <p>{mail.bodyPreview}</p>}
-          </div>
-          {mail.webLink && <a className="secondary" href={mail.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}
-        </article>)}
-      </div>
+      {!loading && visible.length === 0 && <p>Nog geen e-mails gevonden.</p>}
+      {visible.map((mail) => <article className="panel stack" key={`${mail.mailbox}-${mail.id}`}>
+        <div className="connectionRow"><div><p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p><h3>{mail.subject || "(Geen onderwerp)"}</h3><p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? ` · ${mail.from.emailAddress.address}` : ""}</p><small>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</small></div>{mail.webLink && <a className="secondary" href={mail.webLink} target="_blank" rel="noreferrer">Volledig openen</a>}</div>
+        {mail.bodyPreview && <p>{mail.bodyPreview}</p>}
+        <div className="toolbar"><button type="button" className="secondary" onClick={() => setReplying((current) => ({ ...current, [mail.id]: current[mail.id] ?? "" }))}>Beantwoorden</button><button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "read", messageId: mail.id, isRead: !mail.isRead })}>{mail.isRead ? "Ongelezen" : "Gelezen"}</button>{selectedMailbox !== "all" && <select defaultValue="" onChange={(event) => event.target.value && mailAction(mail.mailbox, { action: "move", messageId: mail.id, folderId: event.target.value }, "Deze e-mail verplaatsen?")}><option value="">Verplaatsen naar…</option>{(activeBox?.folders || []).map((folder) => <option key={folder.id} value={folder.id}>{folder.displayName}</option>)}</select>}<button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "delete", messageId: mail.id }, "Deze e-mail verwijderen?")}>Verwijderen</button></div>
+        {Object.prototype.hasOwnProperty.call(replying, mail.id) && <div className="stack"><textarea placeholder="Schrijf je antwoord" value={replying[mail.id]} onChange={(event) => setReplying({ ...replying, [mail.id]: event.target.value })} /><button type="button" className="primary" disabled={!replying[mail.id]?.trim() || Boolean(working)} onClick={() => mailAction(mail.mailbox, { action: "reply", messageId: mail.id, comment: replying[mail.id] }, "Dit antwoord nu verzenden?")}>Antwoord verzenden</button></div>}
+      </article>)}
     </div>
   </section>;
 }
