@@ -677,6 +677,32 @@ function CalendarOverview({ workspaceId, session }) {
 
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("microsoft") === "connected") setNotice(`${params.get("account") || "De agenda"} heeft beheerrechten en is gekoppeld.`);
+    if (params.get("microsoft") === "error") setMessage(params.get("message") || "De agendarechten konden niet worden vernieuwd.");
+    if (params.has("microsoft")) window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  async function renewCalendarAccess() {
+    const targetMailbox = mailbox === "all" ? accounts[0]?.mailbox : mailbox;
+    if (!targetMailbox) return;
+    setWorking(true); setMessage("");
+    try {
+      const response = await fetch("/api/integrations/microsoft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ workspaceId, mailbox: targetMailbox, returnTo: "/agenda" }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.authorizationUrl) throw new Error(result.error || "Microsoft kon niet worden geopend.");
+      window.location.assign(result.authorizationUrl);
+    } catch (error) {
+      setMessage(error.message);
+      setWorking(false);
+    }
+  }
+
   const events = accounts.filter((account) => mailbox === "all" || account.mailbox === mailbox)
     .flatMap((account) => account.events.map((event) => ({ ...event, mailbox: account.mailbox })))
     .sort((a, b) => new Date(a.start?.dateTime) - new Date(b.start?.dateTime));
@@ -802,7 +828,7 @@ function CalendarOverview({ workspaceId, session }) {
       </div>
       <div className="toolbar">
         <label>Weergave<select value={view} onChange={(event) => setView(event.target.value)}><option value="day">Dag</option><option value="week">Week</option><option value="month">Maand</option><option value="year">Jaar</option></select></label>
-        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label>
+        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label><button type="button" className="secondary" onClick={renewCalendarAccess} disabled={working || !accounts.length}>{working ? "Microsoft openen…" : "Agendarechten vernieuwen"}</button>
       </div>
     </div>
     {editor && <form className="panel stack" onSubmit={saveAppointment}>
