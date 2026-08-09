@@ -39,11 +39,17 @@ async function accessToken(connection, admin) {
 
 async function messagesFor(token, mailbox, own) {
   const target=own?"me":`users/${encodeURIComponent(mailbox)}`;
-  const url=new URL(`https://graph.microsoft.com/v1.0/${target}/messages`);
+  const collection=own?"messages":"mailFolders/inbox/messages";
+  const url=new URL(`https://graph.microsoft.com/v1.0/${target}/${collection}`);
   url.search=new URLSearchParams({"$select":"id,subject,from,receivedDateTime,isRead,bodyPreview,webLink","$orderby":"receivedDateTime desc","$top":"20"}).toString();
   const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
   const result=await response.json();
-  if(!response.ok)throw new Error(result.error?.message||"Geen toegang tot deze mailbox.");
+  if(!response.ok){
+    const code=result.error?.code||"";
+    if(code==="ErrorItemNotFound"||String(result.error?.message||"").includes("Default folder")) throw new Error("Microsoft herkent dit adres niet als een gedeelde mailbox met een Postvak IN. Controleer in Microsoft 365 of dit een echte gedeelde mailbox is en of jij toegang hebt.");
+    if(response.status===403) throw new Error("Jouw Microsoft-account heeft nog geen leesrechten voor deze gedeelde mailbox.");
+    throw new Error(result.error?.message||"Geen toegang tot deze mailbox.");
+  }
   return result.value||[];
 }
 
