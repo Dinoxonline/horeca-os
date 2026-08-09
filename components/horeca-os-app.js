@@ -970,6 +970,20 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("microsoft");
+    const account = params.get("account");
+    const message = params.get("message");
+    if (status === "connected") setIntegrationMessage(`Microsoft-agenda van ${account || "jouw account"} is succesvol gekoppeld.`);
+    if (status === "error") setIntegrationError(message || "De Microsoft-agenda kon niet worden gekoppeld.");
+    if (status) {
+      params.delete("microsoft"); params.delete("account"); params.delete("message");
+      const query = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+    }
+  }, []);
+
   async function connectRobuust(formData) {
     setConnecting(true); setIntegrationMessage(""); setIntegrationError("");
     const form = Object.fromEntries(formData);
