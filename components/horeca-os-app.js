@@ -635,8 +635,8 @@ function MailAgenda({ workspaceId, session }) {
     if (!workspaceId || !session?.access_token) return;
     setLoading(true); setMessage("");
     try {
-      const response = await fetch(\`/api/integrations/microsoft/messages?workspaceId=\${encodeURIComponent(workspaceId)}\`, {
-        headers: { Authorization: \`Bearer \${session.access_token}\` },
+      const response = await fetch(`/api/integrations/microsoft/messages?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
         cache: "no-store",
       });
       const result = await response.json();
@@ -676,11 +676,11 @@ function MailAgenda({ workspaceId, session }) {
       </div>}
       {!loading && !message && visible.length === 0 && <p>Nog geen e-mails gevonden in de gekozen mailbox.</p>}
       <div className="stack">
-        {visible.map((mail) => <article className="connectionRow" key={\`\${mail.mailbox}-\${mail.id}\`}>
+        {visible.map((mail) => <article className="connectionRow" key={`${mail.mailbox}-${mail.id}`}>
           <div>
             <p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p>
             <h3>{mail.subject || "(Geen onderwerp)"}</h3>
-            <p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? \` · \${mail.from.emailAddress.address}\` : ""}</p>
+            <p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? ` · ${mail.from.emailAddress.address}` : ""}</p>
             <p>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</p>
             {mail.bodyPreview && <p>{mail.bodyPreview}</p>}
           </div>
