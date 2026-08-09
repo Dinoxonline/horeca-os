@@ -15,7 +15,7 @@ export async function POST(request) {
 
   const context = await authorizedContext(request, body.workspaceId, body.businessId);
   if (context.error) return context.error;
-  const { admin, workspaceId, businessId } = context;
+  const { admin, workspaceId, businessId, userId } = context;
 
   const { data: item } = await admin.from("social_content_items")
     .select("id,account_id,external_id,content_type,direction,permalink")
@@ -59,6 +59,9 @@ export async function POST(request) {
       direction: "outbound",
       status: "published",
       body: message,
+      created_by: userId,
+      approved_by: userId,
+      approved_at: now,
       permalink: item.permalink || null,
       media: [{ provider: "facebook", parent_comment_id: String(item.external_id) }],
       published_at: now,
@@ -98,7 +101,7 @@ async function authorizedContext(request, workspaceId, businessId) {
       || permissions.includes("reviews:respond");
   });
   if (!allowed) return { error: jsonError("Je hebt geen toestemming om namens deze vestiging te reageren.", 403) };
-  return { admin: createAdminSupabase(), workspaceId, businessId };
+  return { admin: createAdminSupabase(), workspaceId, businessId, userId: authData.user.id };
 }
 
 function jsonError(error, status) {
