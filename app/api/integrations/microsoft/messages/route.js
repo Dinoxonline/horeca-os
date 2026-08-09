@@ -37,8 +37,18 @@ async function accessToken(connection, admin) {
   return tokens.access_token;
 }
 
-async function ownMessages(token) {
-  const url = new URL("https://graph.microsoft.com/v1.0/me/messages");
+async function foldersFor(token) {
+  const url = new URL("https://graph.microsoft.com/v1.0/me/mailFolders");
+  url.search = new URLSearchParams({ "$select": "id,displayName,totalItemCount,unreadItemCount", "$top": "100", includeHiddenFolders: "true" }).toString();
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error?.message || "De mappen konden niet worden geladen.");
+  return result.value || [];
+}
+
+async function ownMessages(token, folderId = "inbox") {
+  const path = folderId === "all" ? "messages" : `mailFolders/${encodeURIComponent(folderId)}/messages`;
+  const url = new URL(`https://graph.microsoft.com/v1.0/me/${path}`);
   url.search = new URLSearchParams({ "$select": "id,subject,from,receivedDateTime,isRead,bodyPreview,webLink", "$orderby": "receivedDateTime desc", "$top": "20" }).toString();
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
   const result = await response.json();
@@ -47,19 +57,24 @@ async function ownMessages(token) {
 }
 
 export async function GET(request) {
-  const workspaceId = new URL(request.url).searchParams.get("workspaceId");
+  const requestUrl = new URL(request.url);
+  const workspaceId = requestUrl.searchParams.get("workspaceId");
+  const requestedMailbox = String(requestUrl.searchParams.get("mailbox") || "").toLowerCase();
+  const folderId = requestUrl.searchParams.get("folderId") || "inbox";
   const context = await ownerContext(request, workspaceId);
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar heeft toegang tot het centrale mailoverzicht." }, { status: 403 });
   const { data: connections } = await context.admin.from("calendar_connections").select("*").eq("workspace_id", workspaceId).eq("user_id", context.user.id).eq("provider", "microsoft");
   const byEmail = new Map((connections || []).map((row) => [row.email, row]));
-  const results = await Promise.all(MAILBOXES.map(async (mailbox) => {
+  const targets = requestedMailbox && MAILBOXES.includes(requestedMailbox) ? [requestedMailbox] : MAILBOXES;
+  const results = await Promise.all(targets.map(async (mailbox) => {
     const connection = byEmail.get(mailbox);
-    if (!connection) return { mailbox, connected: false, messages: [], error: null };
+    if (!connection) return { mailbox, connected: false, folders: [], messages: [], error: null };
     try {
       const token = await accessToken(connection, context.admin);
-      return { mailbox, connected: true, messages: await ownMessages(token), error: null };
+      const [folders, messages] = await Promise.all([foldersFor(token), ownMessages(token, folderId)]);
+      return { mailbox, connected: true, folders, messages, error: null };
     } catch (error) {
-      return { mailbox, connected: true, messages: [], error: error.message };
+      return { mailbox, connected: true, folders: [], messages: [], error: error.message };
     }
   }));
   return NextResponse.json({ mailboxes: results });
