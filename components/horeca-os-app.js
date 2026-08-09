@@ -692,8 +692,8 @@ function MailAgenda({ workspaceId, session }) {
       <h3>Mailboxen koppelen</h3>
       {mailboxes.map((item) => <div className="connectionRow" key={item.mailbox}>
         <div><strong>{item.mailbox}</strong><small>{item.connected ? "Gekoppeld met een eigen Microsoft-inlog" : "Nog niet gekoppeld"}</small></div>
-        <button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting)}>
-          {connecting === item.mailbox ? "Microsoft openen…" : item.connected ? "Opnieuw inloggen" : "Inloggen"}
+        <button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting) || item.connected}>
+          {connecting === item.mailbox ? "Microsoft openen…" : item.connected ? "Ingelogd" : "Inloggen"}
         </button>
       </div>)}
     </div>
