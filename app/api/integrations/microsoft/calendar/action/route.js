@@ -24,6 +24,20 @@ function eventPayload(body) {
     emailAddress: { address },
     type: "required",
   }));
+  const startDate = new Date(body.start);
+  const recurrenceType = String(body.recurrence || "none");
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  let recurrence = null;
+  if (recurrenceType !== "none") {
+    const pattern = recurrenceType === "daily"
+      ? { type: "daily", interval: 1 }
+      : recurrenceType === "weekly"
+        ? { type: "weekly", interval: 1, daysOfWeek: [dayNames[startDate.getDay()]], firstDayOfWeek: "monday" }
+        : recurrenceType === "monthly"
+          ? { type: "absoluteMonthly", interval: 1, dayOfMonth: startDate.getDate() }
+          : { type: "absoluteYearly", interval: 1, dayOfMonth: startDate.getDate(), month: startDate.getMonth() + 1 };
+    recurrence = { pattern, range: { type: "noEnd", startDate: startDate.toISOString().slice(0, 10) } };
+  }
   return {
     subject: String(body.subject || "").trim() || "(Geen onderwerp)",
     body: { contentType: "text", content: String(body.description || "") },
@@ -32,6 +46,9 @@ function eventPayload(body) {
     isAllDay: Boolean(body.isAllDay),
     location: { displayName: String(body.location || "") },
     attendees,
+    recurrence,
+    isReminderOn: Number(body.reminderMinutes) >= 0,
+    reminderMinutesBeforeStart: Math.max(0, Number(body.reminderMinutes) || 0),
   };
 }
 
