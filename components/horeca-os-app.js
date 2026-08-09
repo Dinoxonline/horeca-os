@@ -630,6 +630,24 @@ function MailAgenda({ workspaceId, session }) {
   const [selectedMailbox, setSelectedMailbox] = useState("all");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  async function connectMicrosoft() {
+    setConnecting(true); setMessage("");
+    try {
+      const response = await fetch("/api/integrations/microsoft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ workspaceId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.authorizationUrl) throw new Error(result.error || "Microsoft 365 kon niet worden gestart.");
+      window.location.assign(result.authorizationUrl);
+    } catch (error) {
+      setMessage(error.message);
+      setConnecting(false);
+    }
+  }
 
   const loadMail = useCallback(async () => {
     if (!workspaceId || !session?.access_token) return;
@@ -669,7 +687,7 @@ function MailAgenda({ workspaceId, session }) {
           {mailboxes.map((item) => <option key={item.mailbox} value={item.mailbox}>{item.mailbox}</option>)}
         </select></label>
       </div>
-      {message && <div className="notice warning"><p>{message}</p><Link href="/koppelingen">Microsoft 365 opnieuw koppelen</Link></div>}
+      {message && <div className="notice warning"><p>{message}</p><button type="button" className="primary" onClick={connectMicrosoft} disabled={connecting}>{connecting ? "Microsoft openen…" : "Microsoft 365 koppelen"}</button></div>}
       {!message && mailboxes.some((item) => item.error) && <div className="notice warning">
         <strong>Niet alle mailboxen zijn toegankelijk.</strong>
         {mailboxes.filter((item) => item.error).map((item) => <p key={item.mailbox}>{item.mailbox}: {item.error}</p>)}
