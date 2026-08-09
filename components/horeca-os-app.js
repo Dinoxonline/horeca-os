@@ -23,6 +23,8 @@ const routeViews = {
   "/reviews": "reviews",
   "/social-inbox": "social",
   "/mail-agenda": "mail",
+  "/mail": "mail",
+  "/agenda": "calendar",
   "/marketing": "marketing",
   "/ai": "assistant",
   "/gebruikers": "users",
@@ -236,6 +238,7 @@ export default function HorecaOsApp() {
     reviews: canUseFeature("reviews:read") || canUseFeature("reviews:manage") || canUseFeature("reviews:respond"),
     social: canUseFeature("social:read"),
     mail: isOwner,
+    calendar: isOwner,
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
     security: true,
   }), [canUseFeature]);
@@ -325,7 +328,8 @@ export default function HorecaOsApp() {
           {featureVisibility.suppliers && <NavLink href="/leveranciers" active={activeView === "suppliers"}>Leveranciers</NavLink>}
           {featureVisibility.reviews && <NavLink href="/reviews" active={activeView === "reviews"}>Reviews</NavLink>}
           {featureVisibility.social && <NavLink href="/social-inbox" active={activeView === "social"}>Social inbox</NavLink>}
-          {featureVisibility.mail && <NavLink href="/mail-agenda" active={activeView === "mail"}>Mail & agenda</NavLink>}
+          {featureVisibility.mail && <NavLink href="/mail" active={activeView === "mail"}>Mail</NavLink>}
+          {featureVisibility.calendar && <NavLink href="/agenda" active={activeView === "calendar"}>Agenda</NavLink>}
           {featureVisibility.marketing && <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>}
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
@@ -393,6 +397,7 @@ export default function HorecaOsApp() {
         {activeView === "reviews" && featureVisibility.reviews && <ReviewsInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("reviews:manage") || canUseFeature("reviews:respond")} canAdd={isOwner || canUseFeature("reviews:manage")} />}
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
+        {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃƒÆ’Ã‚Â«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
@@ -625,6 +630,13 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
   </details>;
 }
 
+function CalendarOverview() {
+  return <section className="stack">
+    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Persoonlijke en gedeelde Microsoft-agenda’s komen hier samen, los van de mailboxen.</p></div></div>
+    <div className="panel"><h3>Agenda wordt afzonderlijk ingericht</h3><p>De bestaande Microsoft-koppelingen blijven behouden. Hier voegen we de kalenderweergave, agenda-keuze en afsprakenbeheer toe.</p></div>
+  </section>;
+}
+
 function MailAgenda({ workspaceId, session }) {
   const [mailboxes, setMailboxes] = useState([]);
   const [selectedMailbox, setSelectedMailbox] = useState("all");
@@ -683,7 +695,7 @@ function MailAgenda({ workspaceId, session }) {
 
   return <section className="stack">
     <div className="section-heading">
-      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail & agenda</h2><p>Log per mailbox veilig in bij Microsoft. Wachtwoorden worden nooit door Horeca OS gezien of opgeslagen.</p></div>
+      <div><p className="eyebrow">CEO-communicatie</p><h2>Mail</h2><p>Beheer iedere mailbox afzonderlijk. Wachtwoorden worden nooit door Horeca OS gezien of opgeslagen.</p></div>
       <button type="button" className="secondary" onClick={loadMail} disabled={loading}>{loading ? "Laden…" : "Mail verversen"}</button>
     </div>
     {connectionNotice && <div className="notice successNotice">{connectionNotice}</div>}
