@@ -937,6 +937,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [metaConfiguration, setMetaConfiguration] = useState({ ready: false, missing: [] });
   const [facebookAccounts, setFacebookAccounts] = useState([]);
   const [facebookConfiguration, setFacebookConfiguration] = useState({ ready: false, missing: [] });
+  const [microsoftConnection, setMicrosoftConnection] = useState(null);
+  const [microsoftConfiguration, setMicrosoftConfiguration] = useState({ ready: false, missing: [] });
   const [integrationMessage, setIntegrationMessage] = useState("");
   const [integrationError, setIntegrationError] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -946,12 +948,13 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
 
   const loadAccounts = useCallback(async () => {
     const headers = { Authorization: `Bearer ${session.access_token}` };
-    const [robuustResponse, metaResponse, facebookResponse] = await Promise.all([
+    const [robuustResponse, metaResponse, facebookResponse, microsoftResponse] = await Promise.all([
       fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
       fetch(`/api/integrations/meta?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
       fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
+      fetch(`/api/integrations/microsoft?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
     ]);
-    const [robuustResult, metaResult, facebookResult] = await Promise.all([robuustResponse.json(), metaResponse.json(), facebookResponse.json()]);
+    const [robuustResult, metaResult, facebookResult, microsoftResult] = await Promise.all([robuustResponse.json(), metaResponse.json(), facebookResponse.json(), microsoftResponse.json()]);
     if (robuustResponse.ok) setAccounts(robuustResult.accounts || []);
     if (metaResponse.ok) {
       setMetaAccounts(metaResult.accounts || []);
@@ -961,7 +964,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       setFacebookAccounts(facebookResult.accounts || []);
       setFacebookConfiguration(facebookResult.configuration || { ready: false, missing: [] });
     }
-    if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || "Koppelingen konden niet worden geladen.");
+    if (microsoftResponse.ok) { setMicrosoftConnection(microsoftResult.connection || null); setMicrosoftConfiguration(microsoftResult.configuration || { ready: false, missing: [] }); }
+    if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok || !microsoftResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || microsoftResult.error || "Koppelingen konden niet worden geladen.");
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
@@ -1004,6 +1008,14 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     const result = await response.json();
     if (response.ok && result.authorizationUrl) window.location.assign(result.authorizationUrl);
     else { setIntegrationError(result.error || "Facebook kon niet worden gestart."); setConnecting(false); }
+  }
+
+  async function connectMicrosoft() {
+    setConnecting(true); setIntegrationMessage(""); setIntegrationError("");
+    const response = await fetch("/api/integrations/microsoft", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ workspaceId }) });
+    const result = await response.json();
+    if (response.ok && result.authorizationUrl) window.location.assign(result.authorizationUrl);
+    else { setIntegrationError(result.error || "Microsoft 365 kon niet worden gestart."); setConnecting(false); }
   }
 
   async function verifyMeta(businessId) {
@@ -1050,6 +1062,19 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     <section className="pageIntro"><p className="eyebrow">Databronnen</p><h2>Koppelingen</h2><p>Verbind externe systemen via gecontroleerde, traceerbare gegevensstromen.</p></section>
     {integrationMessage && <div className="notice successNotice">{integrationMessage}</div>}
     {integrationError && <div className="notice">{integrationError}</div>}
+    <section className="integrationGrid">
+      <article className="panel integrationSetup">
+        <div className="integrationBrand"><div className="integrationLogo">M365</div><div><h2>Persoonlijke Microsoft-agenda</h2><p>Eigen Outlook-agenda en gedelegeerde agenda&apos;s</p></div></div>
+        <div className="scopeBanner"><strong>Alleen lezen</strong><span>Iedere medewerker koppelt het eigen @leclubbbq.nl-account. Gedeelde agenda&apos;s zijn alleen zichtbaar wanneer Microsoft daar al toegang voor heeft verleend.</span></div>
+        {!microsoftConfiguration.ready && <div className="notice">Microsoft 365 is nog niet gereed. Ontbrekend: {microsoftConfiguration.missing.join(", ") || "configuratie controleren"}.</div>}
+        <button className="primary" type="button" onClick={connectMicrosoft} disabled={connecting || !microsoftConfiguration.ready}>{connecting ? "Microsoft openen…" : microsoftConnection ? "Microsoft-agenda opnieuw koppelen" : "Microsoft-agenda koppelen"}</button>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>Jouw agendakoppeling</h2><p>Persoonlijk per medewerker, nooit gedeeld met andere gebruikers.</p></div></div>
+        {!microsoftConnection ? <Empty text="Nog geen persoonlijke Microsoft-agenda gekoppeld." /> : <div className="connectionRow"><div><strong>{microsoftConnection.display_name || microsoftConnection.email}</strong><span>{microsoftConnection.email}</span><small>Eigen agenda en toegestane gedeelde agenda&apos;s · alleen lezen</small></div><span className="status connected">Verbonden</span></div>}
+        <div className="apiScopeList"><h3>Gedeelde agenda&apos;s</h3><span>admin@leclubbbq.nl</span><span>info@leclubbbq.nl</span><span>verhuur@leclubbbq.nl</span><small>Zichtbaar zodra deze agenda&apos;s in Microsoft met jou zijn gedeeld.</small></div>
+      </article>
+    </section>
     <section className="integrationGrid">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">R</div><div><h2>Robuust</h2><p>Kassa, reserveringen en operationele data</p></div></div>
