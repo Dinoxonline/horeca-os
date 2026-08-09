@@ -637,6 +637,7 @@ function CalendarOverview({ workspaceId, session }) {
   const [anchor, setAnchor] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   const range = useMemo(() => {
     const date = new Date(anchor);
@@ -692,7 +693,7 @@ function CalendarOverview({ workspaceId, session }) {
 
   const eventCard = (event) => {
     const start = new Date(event.start?.dateTime); const end = new Date(event.end?.dateTime);
-    return <article className="connectionRow" key={`${event.mailbox}-${event.id}`}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? "Hele dag" : `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div>{event.webLink && <a className="secondary" href={event.webLink} target="_blank" rel="noreferrer">Openen</a>}</article>;
+    return <article className="connectionRow" key={`${event.mailbox}-${event.id}`}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? "Hele dag" : `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div><button type="button" className="secondary" onClick={() => setSelectedEvent(event)}>Bekijken</button></article>;
   };
 
   const days = [];
@@ -716,17 +717,26 @@ function CalendarOverview({ workspaceId, session }) {
         <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label>
       </div>
     </div>
+    {selectedEvent && <div className="panel stack">
+      <div className="connectionRow"><div><p className="eyebrow">{selectedEvent.mailbox}</p><h3>{selectedEvent.subject || "(Geen onderwerp)"}</h3></div><button type="button" className="secondary" onClick={() => setSelectedEvent(null)}>Sluiten</button></div>
+      <p><strong>Wanneer:</strong> {selectedEvent.isAllDay ? "Hele dag" : `${new Date(selectedEvent.start?.dateTime).toLocaleString("nl-NL")} – ${new Date(selectedEvent.end?.dateTime).toLocaleString("nl-NL")}`}</p>
+      {selectedEvent.location?.displayName && <p><strong>Locatie:</strong> {selectedEvent.location.displayName}</p>}
+      {selectedEvent.organizer?.emailAddress && <p><strong>Organisator:</strong> {selectedEvent.organizer.emailAddress.name || selectedEvent.organizer.emailAddress.address}{selectedEvent.organizer.emailAddress.address && ` · ${selectedEvent.organizer.emailAddress.address}`}</p>}
+      {selectedEvent.attendees?.length > 0 && <div><strong>Deelnemers:</strong><ul>{selectedEvent.attendees.map((attendee, index) => <li key={`${attendee.emailAddress?.address}-${index}`}>{attendee.emailAddress?.name || attendee.emailAddress?.address || "Onbekend"}{attendee.status?.response && ` · ${attendee.status.response}`}</li>)}</ul></div>}
+      {selectedEvent.bodyPreview && <div><strong>Beschrijving:</strong><p>{selectedEvent.bodyPreview}</p></div>}
+      <div className="toolbar">{selectedEvent.onlineMeetingUrl && <a className="primary" href={selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan online vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
+    </div>}
     {view === "day" && <div className="stack">{!events.length && <div className="panel">Geen afspraken.</div>}{events.map(eventCard)}</div>}
     {(view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
       {days.map((day) => {
         const dayEvents = events.filter((event) => new Date(event.start?.dateTime).toDateString() === day.toDateString());
-        return <div className="panel" key={day.toISOString()} style={{ minHeight: view === "month" ? "150px" : "260px", padding: "10px", opacity: view === "month" && day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: view === "week" ? "short" : undefined })}</strong><div className="stack">{dayEvents.map((event) => <a href={event.webLink || "#"} target="_blank" rel="noreferrer" key={event.id} style={{ display: "block", padding: "6px", background: "#e8f4f6", borderRadius: "6px", fontSize: "12px" }}><strong>{new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject}</a>)}</div></div>;
+        return <div className="panel" key={day.toISOString()} style={{ minHeight: view === "month" ? "150px" : "260px", padding: "10px", opacity: view === "month" && day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: view === "week" ? "short" : undefined })}</strong><div className="stack">{dayEvents.map((event) => <button type="button" onClick={() => setSelectedEvent(event)} key={`${event.mailbox}-${event.id}`} style={{ display: "block", width: "100%", padding: "6px", background: "#e8f4f6", border: 0, borderRadius: "6px", fontSize: "12px", textAlign: "left", cursor: "pointer", color: "inherit" }}><strong>{new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject}</button>)}</div></div>;
       })}
     </div>}
     {view === "year" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
       {Array.from({ length: 12 }, (_, month) => {
         const monthEvents = events.filter((event) => new Date(event.start?.dateTime).getMonth() === month);
-        return <div className="panel" key={month}><h3>{new Date(anchor.getFullYear(), month, 1).toLocaleDateString("nl-NL", { month: "long" })}</h3><p>{monthEvents.length} afspraak/afspraken</p>{monthEvents.slice(0, 4).map((event) => <p key={event.id}><strong>{new Date(event.start?.dateTime).getDate()}</strong> {event.subject}</p>)}</div>;
+        return <div className="panel" key={month}><h3>{new Date(anchor.getFullYear(), month, 1).toLocaleDateString("nl-NL", { month: "long" })}</h3><p>{monthEvents.length} afspraak/afspraken</p>{monthEvents.slice(0, 4).map((event) => <button type="button" className="textButton" onClick={() => setSelectedEvent(event)} key={`${event.mailbox}-${event.id}`}><strong>{new Date(event.start?.dateTime).getDate()}</strong> {event.subject}</button>)}</div>;
       })}
     </div>}
   </section>;
