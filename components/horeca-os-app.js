@@ -663,12 +663,22 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
             onClick={() => selectWebsiteEvent(eventItem)}
             style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
           >
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <strong>{eventItem.title}</strong>
-              <small>{eventItem.startDate ? new Intl.DateTimeFormat("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(eventItem.startDate)) : "Datum staat niet in Eventin"}</small>
+              <small>{new Intl.DateTimeFormat("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(eventItem.startDate))}</small>
               <span>{eventItem.description?.slice(0, 180)}</span>
             </div>
-            <span className="pill">{selectedWebsiteEventId === eventItem.id ? "Geselecteerd" : "Kiezen"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
+              {eventItem.image && <img
+                src={eventItem.image}
+                alt=""
+                width="96"
+                height="72"
+                loading="lazy"
+                style={{ width: "96px", height: "72px", objectFit: "cover", borderRadius: "10px" }}
+              />}
+              <span className="pill">{selectedWebsiteEventId === eventItem.id ? "Geselecteerd" : "Kiezen"}</span>
+            </div>
           </button>)}
         </div>
       </div>}
