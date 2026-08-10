@@ -436,6 +436,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [channelResult, setChannelResult] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [importingEvent, setImportingEvent] = useState(false);
+  const [sourcePreview, setSourcePreview] = useState(null);
 
   const loadCampaigns = useCallback(async () => {
     if (!workspaceId || !selectedBusinessId) {
@@ -484,6 +486,43 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setStatus("");
   }
 
+  async function importWebsiteEvent() {
+    if (!sourceUrl.trim()) {
+      setStatus("Plak eerst de link van het evenement op onze website.");
+      return;
+    }
+    setImportingEvent(true);
+    setStatus("");
+    setSourcePreview(null);
+    try {
+      const response = await fetch("/api/marketing/event-preview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ sourceUrl: sourceUrl.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Het evenement kon niet worden ingelezen.");
+      setSourcePreview(result.event);
+      if (result.event.title) setCampaignTitle(result.event.title);
+      if (result.event.description) setCampaignText(result.event.description);
+      if (result.event.startDate) {
+        const date = new Date(result.event.startDate);
+        if (!Number.isNaN(date.getTime())) {
+          const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+          setScheduledFor(local);
+        }
+      }
+      setStatus("Evenement ingelezen. Controleer de gegevens voordat je de campagne inplant.");
+    } catch (error) {
+      setStatus(error.message || "Het evenement kon niet worden ingelezen.");
+    } finally {
+      setImportingEvent(false);
+    }
+  }
+
   async function planCampaign(event) {
     event.preventDefault();
     if (!selectedBusinessId || !sourceUrl.trim() || !campaignTitle.trim() || !channels.length || !scheduledFor) {
@@ -514,6 +553,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       kind: "campaign_distribution",
       source_type: sourceType,
       source_url: sourceUrl.trim(),
+      source_preview: sourcePreview,
       use_predis: usePredis,
       target_channels: channels,
       channel_states: Object.fromEntries(channels.map((channel) => [
@@ -591,8 +631,19 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         </select>
       </label>
       <label className="full">Link naar het bericht of evenement
-        <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Plak hier de link van Facebook, Instagram, TikTok of het event op onze website" required />
+        <input type="url" value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setSourcePreview(null); }} placeholder="Plak hier de link van Facebook, Instagram, TikTok of het event op onze website" required />
       </label>
+      {sourceType === "website_event" && <div className="full">
+        <button type="button" className="secondaryButton" onClick={importWebsiteEvent} disabled={importingEvent}>
+          {importingEvent ? "Evenement inlezen..." : "Eventgegevens van website ophalen"}
+        </button>
+      </div>}
+      {sourcePreview && <div className="notice full">
+        <strong>{sourcePreview.title || "Website-event"}</strong>
+        {sourcePreview.startDate && <p>{formatDate(sourcePreview.startDate)}</p>}
+        {sourcePreview.location && <p>{sourcePreview.location}</p>}
+        {sourcePreview.image && <p>Afbeelding gevonden</p>}
+      </div>}
       <label>Interne campagnenaam
         <input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} placeholder="Bijvoorbeeld: Caribbean Social Club" required />
       </label>
