@@ -444,9 +444,6 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
     setBrevoLists([]);
     setDrafts([]);
     setSelectedListId("");
-    setSelectedDraftId("");
-    setPreview(null);
-    setCampaignForm({ campaignName: "", senderName: "", subject: "", content: "" });
     const headers = { Authorization: `Bearer ${session.access_token}` };
     const baseQuery = `workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(selectedBusinessId)}`;
     Promise.all([
@@ -563,7 +560,14 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
         <div className="panelHead"><div><h2>{selectedDraftId ? "Campagneconcept bewerken" : "Nieuwe Brevo-campagne"}</h2><p>Concepten worden in Horeca OS opgeslagen. Er wordt niets verzonden of in Brevo gewijzigd.</p></div>{selectedDraftId && <button type="button" onClick={startNewDraft}>Nieuw concept</button>}</div>
         <form onSubmit={buildPreview} className="employeeForm creationForm">
           <label>Vestiging
-            <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
+            <select value={selectedBusinessId} onChange={(event) => {
+              setSelectedBusinessId(event.target.value);
+              setSelectedDraftId("");
+              setCampaignForm({ campaignName: "", senderName: "", subject: "", content: "" });
+              setPreview(null);
+              setSaveMessage("");
+              setBrevoError("");
+            }}>
               {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
             </select>
           </label>
