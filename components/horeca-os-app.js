@@ -398,7 +398,7 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && <EmptyModule eyebrow="CommerciÃƒÆ’Ã‚Â«le groei" title="Marketing" description="Campagnes en kanaalprestaties worden hier beschikbaar zodra de marketingkoppelingen actief zijn." />}
+        {activeView === "marketing" && featureVisibility.marketing && <MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
@@ -414,6 +414,98 @@ function NavLink({ active, children, href }) { return <Link className={`nav ${ac
 
 function EmptyModule({ eyebrow, title, description }) {
   return <><section className="pageIntro"><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></section><section className="panel emptyModule"><strong>Klaar voor de eerste databron</strong><p>Dit onderdeel is onderdeel van de nieuwe applicatiestructuur. Er wordt geen voorbeelddata getoond.</p></section></>;
+}
+
+function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session }) {
+  const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
+  const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
+  const [brevoLists, setBrevoLists] = useState([]);
+  const [selectedListId, setSelectedListId] = useState("");
+  const [loadingBrevo, setLoadingBrevo] = useState(false);
+  const [brevoError, setBrevoError] = useState("");
+  const [preview, setPreview] = useState(null);
+
+  useEffect(() => {
+    const nextBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
+    setSelectedBusinessId(nextBusinessId);
+  }, [businessId, businesses]);
+
+  useEffect(() => {
+    if (!selectedBusinessId) return;
+    let active = true;
+    setLoadingBrevo(true);
+    setBrevoError("");
+    setBrevoLists([]);
+    setSelectedListId("");
+    const headers = { Authorization: `Bearer ${session.access_token}` };
+    const query = `workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(selectedBusinessId)}&resource=lists`;
+    fetch(`/api/integrations/brevo?${query}`, { headers })
+      .then(async (response) => ({ ok: response.ok, result: await response.json() }))
+      .then(({ ok, result }) => {
+        if (!active) return;
+        if (!ok) { setBrevoError(result.error || "De Brevo-lijsten konden niet worden geladen."); return; }
+        const lists = result.lists || [];
+        setBrevoLists(lists);
+        setSelectedListId(lists[0]?.id ? String(lists[0].id) : "");
+      })
+      .catch(() => { if (active) setBrevoError("Brevo kon niet worden bereikt."); })
+      .finally(() => { if (active) setLoadingBrevo(false); });
+    return () => { active = false; };
+  }, [selectedBusinessId, session.access_token, workspaceId]);
+
+  function buildPreview(formData) {
+    const form = Object.fromEntries(formData);
+    const list = brevoLists.find((item) => String(item.id) === String(form.listId));
+    setPreview({
+      business: businesses.find((item) => item.id === selectedBusinessId)?.name || "Vestiging",
+      listName: list?.name || "Geen doelgroep",
+      recipients: Number(list?.totalSubscribers || list?.uniqueSubscribers || 0),
+      campaignName: form.campaignName || "Naamloos concept",
+      subject: form.subject || "Geen onderwerp",
+      senderName: form.senderName || "Horeca OS",
+      content: form.content || "",
+    });
+  }
+
+  return <>
+    <section className="pageIntro"><p className="eyebrow">Commerciële groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vóór verzending.</p></section>
+    <section className="userAdminGrid">
+      <article className="panel creationPanel">
+        <div className="panelHead"><div><h2>Nieuwe Brevo-campagne</h2><p>Dit maakt alleen een voorbeeld. Er wordt nog niets verzonden of in Brevo gewijzigd.</p></div></div>
+        <form action={buildPreview} className="employeeForm creationForm">
+          <label>Vestiging
+            <select value={selectedBusinessId} onChange={(event) => { setSelectedBusinessId(event.target.value); setPreview(null); }}>
+              {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+            </select>
+          </label>
+          <label>Doelgroep
+            <select name="listId" value={selectedListId} onChange={(event) => setSelectedListId(event.target.value)} disabled={loadingBrevo || !brevoLists.length}>
+              {loadingBrevo && <option>Lijsten laden...</option>}
+              {!loadingBrevo && !brevoLists.length && <option value="">Geen lijst beschikbaar</option>}
+              {brevoLists.map((list) => <option key={list.id} value={list.id}>{list.name} · {Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten</option>)}
+            </select>
+          </label>
+          <label>Interne campagnenaam<input name="campaignName" placeholder="Bijvoorbeeld: Caribbean Friday augustus" required /></label>
+          <label>Naam afzender<input name="senderName" placeholder="Caribbean Corner" required /></label>
+          <label className="full">Onderwerp<input name="subject" placeholder="Dit ziet de gast in de inbox" required /></label>
+          <label className="full">Bericht<textarea name="content" rows="9" placeholder="Schrijf hier de inhoud van de nieuwsbrief." required /></label>
+          {brevoError && <div className="notice full">{brevoError}</div>}
+          <div className="scopeBanner full"><strong>Veilige controle</strong><span>De definitieve verzendknop wordt pas later toegevoegd met een aparte bevestiging en bevoegdheidscontrole.</span></div>
+          <button type="submit" className="primary full" disabled={!selectedListId || loadingBrevo}>Voorbeeld maken</button>
+        </form>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>Campagnevoorbeeld</h2><p>Controleer vestiging, doelgroep en inhoud voordat verzending ooit wordt toegestaan.</p></div></div>
+        {!preview && <Empty text="Vul links de campagne in en maak een voorbeeld." />}
+        {preview && <>
+          <div className="scopeBanner"><strong>{preview.business}</strong><span>{preview.listName} · {preview.recipients} ontvangers</span></div>
+          <div className="factorRow"><div><strong>{preview.subject}</strong><small>Van: {preview.senderName} · Intern: {preview.campaignName}</small></div></div>
+          <div className="sensitiveNote"><strong>Inhoud</strong><span style={{ whiteSpace: "pre-wrap" }}>{preview.content}</span></div>
+          <div className="notice successNotice">Voorbeeld gereed. Er is niets naar Brevo of gasten verstuurd.</div>
+        </>}
+      </article>
+    </section>
+  </>;
 }
 
 function AccessDenied() {
