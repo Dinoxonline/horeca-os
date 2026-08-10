@@ -791,8 +791,12 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     if (requestedBusinessId && businesses.some((item) => item.id === requestedBusinessId)) {
       setSelectedBusinessId(requestedBusinessId);
       window.sessionStorage.removeItem("horeca-os:predis-generator-business");
+      return;
     }
-  }, [businessId, businesses]);
+    if (!selectedBusinessId && businesses[0]?.id) {
+      setSelectedBusinessId(businesses[0].id);
+    }
+  }, [businessId, businesses, selectedBusinessId]);
 
   useEffect(() => {
     if (!selectedBusinessId) return;
