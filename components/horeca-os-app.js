@@ -434,6 +434,35 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [channelResult, setChannelResult] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+
+  const loadCampaigns = useCallback(async () => {
+    if (!workspaceId || !selectedBusinessId) {
+      setCampaigns([]);
+      return;
+    }
+    setLoadingCampaigns(true);
+    const { data, error } = await supabase.from("social_content_items")
+      .select("id, body, media, status, workflow_status, scheduled_for, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", selectedBusinessId)
+      .eq("direction", "outbound")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) {
+      setStatus("Campagneoverzicht kon niet worden geladen: " + error.message);
+      setCampaigns([]);
+    } else {
+      setCampaigns((data || []).filter((item) => Array.isArray(item.media)
+        && item.media.some((mediaItem) => mediaItem?.kind === "campaign_distribution")));
+    }
+    setLoadingCampaigns(false);
+  }, [selectedBusinessId, workspaceId]);
+
+  useEffect(() => {
+    loadCampaigns();
+  }, [loadCampaigns]);
 
   useEffect(() => {
     setSelectedBusinessId(businessId !== "all" ? businessId : businesses[0]?.id || "");
@@ -535,6 +564,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
             ? "Gepland"
             : "Koppeling controleren",
     })));
+    await loadCampaigns();
     setStatus("Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
     setSaving(false);
   }
@@ -598,6 +628,34 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       <button type="submit" className="primary full" disabled={saving}>{saving ? "Campagne klaarzetten..." : "Alles inplannen"}</button>
     </form>
     <p className="securityHint">Betaalde Meta-campagnes worden nooit geactiveerd zonder een afzonderlijke definitieve uitgavenbevestiging.</p>
+    <div className="sectionHeading" style={{ marginTop: "28px" }}>
+      <div><p className="eyebrow">Campagnecontrole</p><h3>Ingeplande campagnes</h3><p>Hier zie je per vestiging wat werkelijk is opgeslagen en welke kanalen nog aandacht nodig hebben.</p></div>
+      <button type="button" className="secondaryButton" onClick={loadCampaigns} disabled={loadingCampaigns}>{loadingCampaigns ? "Vernieuwen..." : "Overzicht vernieuwen"}</button>
+    </div>
+    {loadingCampaigns && <Empty text="Campagnes laden..." />}
+    {!loadingCampaigns && !campaigns.length && <Empty text="Nog geen multichannelcampagnes voor deze vestiging." />}
+    <div className="stackList">
+      {campaigns.map((campaign) => {
+        const distribution = campaign.media.find((item) => item?.kind === "campaign_distribution") || {};
+        const labels = {
+          brevo: "Brevo", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
+          whatsapp: "WhatsApp", facebook_groups: "Facebook-groepen",
+        };
+        return <article className="factorRow" key={campaign.id} style={{ alignItems: "flex-start" }}>
+          <div>
+            <strong>{campaign.body || "Campagne zonder titel"}</strong>
+            <small>{distribution.source_type?.replaceAll("_", " ") || "Bron"} · {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
+            {distribution.source_url && <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a>}
+            <div className="formActions" style={{ marginTop: "10px" }}>
+              {(distribution.target_channels || []).map((channel) => <span className="pill" key={channel}>{labels[channel] || channel}: {distribution.channel_states?.[channel] === "confirmation_required" ? "bevestiging nodig" : "gepland"}</span>)}
+              {distribution.use_predis && <span className="pill">Predis: ingeschakeld</span>}
+              {distribution.meta_ads?.enabled && <span className="pill">Meta Ads: € {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag · goedkeuring nodig</span>}
+            </div>
+          </div>
+          <span className="status scheduled">{campaign.status === "scheduled" ? "Ingepland" : campaign.status}</span>
+        </article>;
+      })}
+    </div>
   </section>;
 }
 
