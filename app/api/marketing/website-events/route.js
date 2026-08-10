@@ -36,7 +36,7 @@ export async function GET(request) {
     today.setHours(0, 0, 0, 0);
     const events = (Array.isArray(rows) ? rows : [])
       .map(normalizeEvent)
-      .filter((event) => !event.startDate || new Date(event.startDate) >= today)
+      .filter((event) => event.startDate && new Date(event.startDate) >= today)
       .sort((left, right) => String(left.startDate || "9999").localeCompare(String(right.startDate || "9999")));
     return NextResponse.json({ events, source: "Eventin", website: origin });
   } catch (error) {
@@ -66,8 +66,13 @@ function dateFromSlug(slug) {
 
 function dateFromTitle(title) {
   const months = { januari: 1, februari: 2, maart: 3, april: 4, mei: 5, juni: 6, juli: 7, augustus: 8, september: 9, oktober: 10, november: 11, december: 12 };
-  const match = String(title || "").toLowerCase().match(/(\d{1,2})\s+(januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december)\s+(20\d{2})/);
-  return match ? validDate(Number(match[3]), months[match[2]], Number(match[1])) : null;
+  const normalized = String(title || "").toLowerCase();
+  const match = normalized.match(/(\d{1,2})\s+(januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december)\s+(20\d{2})/);
+  if (match) return validDate(Number(match[3]), months[match[2]], Number(match[1]));
+  const year = Number(normalized.match(/20\d{2}/)?.[0]);
+  if (normalized.includes("oudjaarsdag") && year) return validDate(year, 12, 31);
+  if ((normalized.includes("nieuwjaarsdag") || normalized.includes("new year")) && year) return validDate(year, 1, 1);
+  return null;
 }
 
 function validDate(year, month, day) {
@@ -83,6 +88,8 @@ function cleanText(value) {
     .replace(/&quot;/gi, '"')
     .replace(/&#039;|&apos;/gi, "'")
     .replace(/&#8230;/gi, "…")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 5000);
