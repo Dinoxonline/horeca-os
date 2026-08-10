@@ -780,6 +780,10 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
   const [draftCaptions, setDraftCaptions] = useState({});
   const [savingPostId, setSavingPostId] = useState("");
   const [savedPostIds, setSavedPostIds] = useState([]);
+  const [socialAccountId, setSocialAccountId] = useState("");
+  const [approvedConcepts, setApprovedConcepts] = useState([]);
+  const [planningValues, setPlanningValues] = useState({});
+  const [planningPostId, setPlanningPostId] = useState("");
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId);
 
   useEffect(() => {
@@ -810,6 +814,41 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     setSavedPostIds([]);
     setPolling(false);
   }, [selectedBusinessId, workspaceId, businesses]);
+
+  const loadApprovedConcepts = useCallback(async () => {
+    if (!workspaceId || !selectedBusinessId) {
+      setApprovedConcepts([]);
+      return;
+    }
+    const [{ data: accounts }, { data: concepts, error }] = await Promise.all([
+      supabase.from("integration_accounts")
+        .select("id, provider, display_name, connection_status")
+        .eq("workspace_id", workspaceId)
+        .eq("business_id", selectedBusinessId)
+        .eq("connection_status", "connected"),
+      supabase.from("social_content_items")
+        .select("id, account_id, body, media, status, scheduled_for, approved_at, created_at")
+        .eq("workspace_id", workspaceId)
+        .eq("business_id", selectedBusinessId)
+        .eq("content_type", "post")
+        .eq("direction", "outbound")
+        .in("status", ["draft", "scheduled"])
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
+    const preferredAccount = (accounts || []).find((item) => item.provider === "facebook") || (accounts || [])[0];
+    setSocialAccountId(preferredAccount?.id || "");
+    if (error) {
+      setStatus(`De publicatieplanning kon niet worden geladen: ${error.message}`);
+      setApprovedConcepts([]);
+      return;
+    }
+    setApprovedConcepts(concepts || []);
+  }, [selectedBusinessId, workspaceId]);
+
+  useEffect(() => {
+    loadApprovedConcepts();
+  }, [loadApprovedConcepts]);
 
   async function checkConnection() {
     if (!selectedBusinessId || !brandId.trim()) {
@@ -918,26 +957,100 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
       setStatus("Vul eerst een tekst in voordat je het concept goedkeurt.");
       return;
     }
+    if (!socialAccountId) {
+      setStatus("Koppel voor deze vestiging eerst een Facebook- of Instagram-account.");
+      return;
+    }
     setSavingPostId(postId);
     const media = urls.map((url) => ({ url, media_type: post.media_type || mediaType, source: "predis", predis_post_id: postId }));
+    const now = new Date().toISOString();
     const { error } = await supabase.from("social_content_items").insert({
       workspace_id: workspaceId,
       business_id: selectedBusinessId,
+      account_id: socialAccountId,
       content_type: "post",
       direction: "outbound",
       status: "draft",
       workflow_status: "new",
       body: caption,
       media,
-      created_at: new Date().toISOString(),
+      created_by: session.user.id,
+      approved_by: session.user.id,
+      approved_at: now,
+      created_at: now,
     });
     if (error) {
       setStatus(`Concept kon niet worden opgeslagen: ${error.message}`);
     } else {
       setSavedPostIds((current) => current.includes(postId) ? current : [...current, postId]);
       setStatus("Concept is goedgekeurd en als concept klaargezet voor de publicatieplanning.");
+      await loadApprovedConcepts();
     }
     setSavingPostId("");
+  }
+
+  function updatePlanningValue(conceptId, key, value) {
+    setPlanningValues((current) => ({
+      ...current,
+      [conceptId]: { ...(current[conceptId] || {}), [key]: value },
+    }));
+  }
+
+  function togglePlanningChannel(conceptId, channel) {
+    const currentChannels = planningValues[conceptId]?.channels || [];
+    updatePlanningValue(
+      conceptId,
+      "channels",
+      currentChannels.includes(channel)
+        ? currentChannels.filter((item) => item !== channel)
+        : [...currentChannels, channel],
+    );
+  }
+
+  async function scheduleConcept(concept) {
+    const values = planningValues[concept.id] || {};
+    if (!values.date || !values.time) {
+      setStatus("Kies eerst een publicatiedatum en tijd.");
+      return;
+    }
+    if (!values.channels?.length) {
+      setStatus("Kies minimaal één kanaal: Facebook of Instagram.");
+      return;
+    }
+    const scheduledFor = new Date(`${values.date}T${values.time}`);
+    if (Number.isNaN(scheduledFor.getTime()) || scheduledFor <= new Date()) {
+      setStatus("Kies een datum en tijd in de toekomst.");
+      return;
+    }
+    const currentMedia = Array.isArray(concept.media)
+      ? concept.media.filter((item) => item?.kind !== "publication_schedule")
+      : [];
+    const scheduleMetadata = {
+      kind: "publication_schedule",
+      target_channels: values.channels,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam",
+    };
+    setPlanningPostId(concept.id);
+    const { error } = await supabase.from("social_content_items")
+      .update({
+        status: "scheduled",
+        workflow_status: "in_progress",
+        scheduled_for: scheduledFor.toISOString(),
+        approved_by: session.user.id,
+        approved_at: concept.approved_at || new Date().toISOString(),
+        media: [...currentMedia, scheduleMetadata],
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", concept.id)
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", selectedBusinessId);
+    if (error) {
+      setStatus(`Concept kon niet worden ingepland: ${error.message}`);
+    } else {
+      setStatus(`Concept ingepland voor ${formatDate(scheduledFor)}. Er is nog niets gepubliceerd.`);
+      await loadApprovedConcepts();
+    }
+    setPlanningPostId("");
   }
 
     if (mode === "connect") return <section className="panel formPanel">
@@ -1017,6 +1130,57 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
         </article>;
       })}
     </div>}
+
+    <div className="sectionHeading" style={{ marginTop: "28px" }}>
+      <div>
+        <p className="eyebrow">Publicatieplanning</p>
+        <h3>Goedgekeurde concepten</h3>
+        <p>Kies datum, tijd en kanaal per vestiging. Inplannen publiceert nog niets.</p>
+      </div>
+      <button type="button" className="secondaryButton" onClick={loadApprovedConcepts}>Planning vernieuwen</button>
+    </div>
+    {!socialAccountId && <div className="warningBanner">Voor deze vestiging is nog geen actief sociaal account gevonden.</div>}
+    {approvedConcepts.length === 0
+      ? <p className="empty">Nog geen goedgekeurde concepten voor {selectedBusiness?.name || "deze vestiging"}.</p>
+      : <div style={{ display: "grid", gap: "16px" }}>
+        {approvedConcepts.map((concept) => {
+          const scheduleMeta = (Array.isArray(concept.media) ? concept.media : []).find((item) => item?.kind === "publication_schedule");
+          const mediaItem = (Array.isArray(concept.media) ? concept.media : []).find((item) => item?.url);
+          const selectedChannels = planningValues[concept.id]?.channels || scheduleMeta?.target_channels || [];
+          return <article className="panel" key={concept.id} style={{ padding: "16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: mediaItem?.url ? "minmax(140px, 220px) 1fr" : "1fr", gap: "18px", alignItems: "start" }}>
+              {mediaItem?.url && (mediaItem.media_type === "video" || /\.(mp4|mov|webm)(\?|$)/i.test(mediaItem.url)
+                ? <video src={mediaItem.url} controls playsInline style={{ width: "100%", borderRadius: "12px" }} />
+                : <img src={mediaItem.url} alt="Goedgekeurd concept" style={{ width: "100%", borderRadius: "12px" }} />)}
+              <div>
+                <p>{concept.body}</p>
+                {concept.status === "scheduled" && concept.scheduled_for && <div className="statusBanner">Ingepland voor {formatDate(concept.scheduled_for)} · {selectedChannels.map((channel) => channel === "facebook" ? "Facebook" : "Instagram").join(" + ")}</div>}
+                <div className="formGrid">
+                  <label>Datum
+                    <input type="date" min={isoDate(new Date())} value={planningValues[concept.id]?.date || (concept.scheduled_for ? toLocalDateTimeInput(concept.scheduled_for).slice(0, 10) : "")} onChange={(event) => updatePlanningValue(concept.id, "date", event.target.value)} />
+                  </label>
+                  <label>Tijd
+                    <input type="time" value={planningValues[concept.id]?.time || (concept.scheduled_for ? toLocalDateTimeInput(concept.scheduled_for).slice(11, 16) : "")} onChange={(event) => updatePlanningValue(concept.id, "time", event.target.value)} />
+                  </label>
+                </div>
+                <fieldset style={{ marginTop: "12px" }}>
+                  <legend>Kanalen</legend>
+                  <div className="checkGrid">
+                    <label className="checkOption"><input type="checkbox" checked={selectedChannels.includes("facebook")} onChange={() => togglePlanningChannel(concept.id, "facebook")} />Facebook</label>
+                    <label className="checkOption"><input type="checkbox" checked={selectedChannels.includes("instagram")} onChange={() => togglePlanningChannel(concept.id, "instagram")} />Instagram</label>
+                  </div>
+                </fieldset>
+                <div className="formActions">
+                  <button type="button" className="primaryButton" onClick={() => scheduleConcept(concept)} disabled={planningPostId === concept.id || !socialAccountId}>
+                    {planningPostId === concept.id ? "Inplannen..." : concept.status === "scheduled" ? "Planning wijzigen" : "Inplannen"}
+                  </button>
+                </div>
+                <p className="securityHint">De definitieve publicatie krijgt later nog een aparte bevestiging.</p>
+              </div>
+            </div>
+          </article>;
+        })}
+      </div>}
   </section>;
 }
 
