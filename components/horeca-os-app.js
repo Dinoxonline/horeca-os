@@ -398,7 +398,7 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && <MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
+        {activeView === "marketing" && featureVisibility.marketing && <><MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><PredisContentGenerator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /></>}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
@@ -706,6 +706,106 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
       </article>
     </section>
   </>;
+}
+
+
+function PredisContentGenerator({ workspaceId, businessId, businesses, session }) {
+  const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
+  const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
+  const [brandId, setBrandId] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [mediaType, setMediaType] = useState("single_image");
+  const [status, setStatus] = useState("");
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (businessId !== "all") setSelectedBusinessId(businessId);
+  }, [businessId]);
+
+  async function checkConnection() {
+    if (!selectedBusinessId || !brandId.trim()) {
+      setStatus("Kies een vestiging en vul het bijbehorende Predis-merk-ID in.");
+      return;
+    }
+    setLoading(true);
+    setStatus("");
+    const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, brandId: brandId.trim() });
+    const response = await fetch(`/api/integrations/predis?${query}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) {
+      setPosts([]);
+      setStatus(result.error || "Predis kon niet worden gecontroleerd.");
+    } else {
+      setPosts(result.posts || []);
+      setStatus(`Predis is gekoppeld aan ${result.business?.name || "deze vestiging"}. ${result.posts?.length || 0} recente concepten gevonden.`);
+    }
+    setLoading(false);
+  }
+
+  async function generateConcept() {
+    if (!selectedBusinessId || !brandId.trim()) {
+      setStatus("Kies een vestiging en vul het bijbehorende Predis-merk-ID in.");
+      return;
+    }
+    if (prompt.trim().length < 20) {
+      setStatus("Beschrijf het bericht met minimaal 20 tekens.");
+      return;
+    }
+    setLoading(true);
+    setStatus("");
+    const response = await fetch("/api/integrations/predis", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceId, businessId: selectedBusinessId, brandId: brandId.trim(), prompt: prompt.trim(), mediaType }),
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    setStatus(response?.ok
+      ? `Predis maakt het concept. Status: ${result.status || "in behandeling"}. Er wordt niets gepubliceerd.`
+      : result.error || "Predis kon het concept niet starten.");
+    setLoading(false);
+  }
+
+  return <section className="panel formPanel">
+    <div className="sectionHeading">
+      <div><p className="eyebrow">Sociale content</p><h3>Predis conceptgenerator</h3><p>Maak beeld- en tekstconcepten per vestiging. Publiceren blijft altijd een aparte, handmatige stap.</p></div>
+    </div>
+    <div className="formGrid">
+      <label>Vestiging
+        <select value={selectedBusinessId} onChange={(event) => { setSelectedBusinessId(event.target.value); setPosts([]); setStatus(""); }}>
+          <option value="">Kies een vestiging</option>
+          {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+        </select>
+      </label>
+      <label>Predis-merk-ID
+        <input value={brandId} onChange={(event) => setBrandId(event.target.value)} placeholder="Merk-ID uit Predis" autoComplete="off" />
+      </label>
+      <label>Soort concept
+        <select value={mediaType} onChange={(event) => setMediaType(event.target.value)}>
+          <option value="single_image">Afbeelding</option>
+          <option value="carousel">Carrousel</option>
+          <option value="video">Video</option>
+        </select>
+      </label>
+    </div>
+    <label>Opdracht voor Predis
+      <textarea rows="5" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Beschrijf doelgroep, aanbieding, toon en gewenste actie." />
+    </label>
+    <div className="formActions">
+      <button type="button" className="secondaryButton" onClick={checkConnection} disabled={loading}>{loading ? "Controleren..." : "Koppeling controleren"}</button>
+      <button type="button" className="primaryButton" onClick={generateConcept} disabled={loading}>{loading ? "Bezig..." : "Concept laten maken"}</button>
+    </div>
+    <p className="securityHint">Predis kan hiervoor credits gebruiken. Horeca OS publiceert dit concept niet automatisch.</p>
+    {status && <div className="statusBanner">{status}</div>}
+    {posts.length > 0 && <div className="compactList">
+      {posts.slice(0, 3).map((post, index) => <div className="compactListItem" key={post.post_id || post.id || index}>
+        <strong>{post.caption?.slice?.(0, 90) || post.text?.slice?.(0, 90) || `Predis-concept ${index + 1}`}</strong>
+        <span>{post.status || post.post_status || "Beschikbaar"}</span>
+      </div>)}
+    </div>}
+  </section>;
 }
 
 function AccessDenied() {
