@@ -60,12 +60,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [uploadingSlot, setUploadingSlot] = useState("");
   const [uploadMessage, setUploadMessage] = useState(null);
   const [eventCampaigns, setEventCampaigns] = useState([]);
+  const [editingCampaignId, setEditingCampaignId] = useState(null);
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const site = siteForBusiness(selectedBusiness);
   const update = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setPreview(false); setResult(null); };
   const selectCampaignType = (campaignType) => {
     setForm((current) => ({ ...current, campaignType, googleTopic: campaignType === "event" ? "EVENT" : campaignType === "offer" ? "OFFER" : "STANDARD" }));
-    setPreview(false); setResult(null);
+    setEditingCampaignId(null); setPreview(false); setResult(null);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const enabledChannels = Object.keys(form.channels).filter((channel) => form.channels[channel]);
@@ -91,7 +92,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const { data } = supabase.storage.from("marketing-assets").getPublicUrl(path);
       const matches = dimensions.width === slot.width && dimensions.height === slot.height;
       setForm((current) => ({ ...current, images: { ...current.images, [slot.key]: { url: data.publicUrl, path, name: file.name, ...dimensions, matches } } }));
-      setUploadMessage({ ok: true, message: matches ? `${slot.label} is correct geupload.` : `${slot.label} is geupload (${dimensions.width} × ${dimensions.height} px). Aanbevolen is ${slot.width} × ${slot.height} px.` });
+      setUploadMessage({ ok: true, message: matches ? `${slot.label} is correct geupload.` : `${slot.label} is geupload (${dimensions.width} Ã— ${dimensions.height} px). Aanbevolen is ${slot.width} Ã— ${slot.height} px.` });
       setPreview(false); setResult(null);
     } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
     finally { setUploadingSlot(""); }
@@ -112,6 +113,42 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEventCampaigns((data || []).filter((item) => (item.media || []).some((entry) => entry?.kind === "campaign_distribution")).slice(0, 10));
   }
 
+  function openCampaignConcept(item) {
+    const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
+    if (!distribution) return;
+    const common = distribution.common || {};
+    const commercial = common.commercial || {};
+    const review = common.review || {};
+    const payloads = distribution.channel_payloads || {};
+    const targetChannels = distribution.target_channels || [];
+    const storedType = common.campaign_type || (distribution.source_type === "website_event" ? "event" : distribution.source_type) || "custom";
+    const channels = Object.fromEntries(Object.keys(channelDefaults).map((channel) => [channel, targetChannels.includes(channel)]));
+    setForm({
+      ...emptyForm,
+      campaignType: storedType,
+      title: common.title || "", shortDescription: common.short_description || "", description: common.description || item.body || "",
+      start: common.start || "", end: common.end || "", location: common.location || emptyForm.location,
+      imageUrl: common.image_url || "", images: { ...emptyImages, ...(common.images || {}) }, videoUrl: common.video_url || "",
+      organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
+      ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
+      ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
+      preparePromotion: targetChannels.length > 0, channels,
+      brevoSubject: payloads.brevo?.subject || "", brevoPreview: payloads.brevo?.preview_text || "", brevoAudience: payloads.brevo?.audience || "",
+      facebookText: payloads.facebook?.text || "", instagramFormat: payloads.instagram?.format || "post", instagramCaption: payloads.instagram?.caption || "",
+      tiktokCaption: payloads.tiktok?.caption || "", tiktokPrivacy: payloads.tiktok?.privacy || emptyForm.tiktokPrivacy, tiktokComments: payloads.tiktok?.comments_enabled ?? true,
+      whatsappTemplate: payloads.whatsapp?.template_name || "", whatsappMessage: payloads.whatsapp?.message || "",
+      googleTopic: payloads.google?.topic_type || (storedType === "event" ? "EVENT" : storedType === "offer" ? "OFFER" : "STANDARD"),
+      predisType: payloads.predis?.content_type || "afbeelding", predisTone: payloads.predis?.tone || emptyForm.predisTone,
+      regularPrice: commercial.regular_price || "", campaignPrice: commercial.campaign_price || "", discountCode: commercial.discount_code || "",
+      validFrom: commercial.valid_from || "", validUntil: commercial.valid_until || "", groupSize: commercial.group_size || "", pricePerPerson: commercial.price_per_person || "",
+      reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
+    });
+    setEditingCampaignId(storedType === "event" ? null : item.id);
+    setPreview(false);
+    setResult({ ok: true, message: storedType === "event" ? "Het evenement is als basis geopend. Opslaan maakt veilig een nieuw Eventin-evenement." : "Het campagneconcept is geopend en kan nu worden bijgewerkt." });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   useEffect(() => { loadEventCampaigns(); }, [workspaceId, selectedBusiness?.id, businessId]);
 
   const validate = () => {
@@ -122,7 +159,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.campaignType === "offer" && (!form.campaignPrice || !form.validUntil)) return "Vul de actieprijs en einddatum in.";
     if (form.campaignType === "review" && !form.description.trim()) return "Vul de reviewtekst in.";
     if (form.preparePromotion && form.channels.brevo && !form.brevoSubject.trim()) return "Vul voor Brevo een onderwerpregel in.";
-    if (form.preparePromotion && form.channels.brevo && !form.brevoAudience.trim()) return "Kies of noteer voor Brevo minimaal één doelgroep.";
+    if (form.preparePromotion && form.channels.brevo && !form.brevoAudience.trim()) return "Kies of noteer voor Brevo minimaal Ã©Ã©n doelgroep.";
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
     if (form.preparePromotion && form.channels.google && (!form.ctaUrl.trim() || !form.shortDescription.trim())) return "Google heeft een korte tekst en knoplink nodig.";
@@ -164,11 +201,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }));
     const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
       eventin_event_id: websiteEvent.id, common, target_channels: enabledChannels, channel_payloads, channel_status };
-    const { error } = await supabase.from("social_content_items").insert({
-      workspace_id: workspaceId, account_id: integration.id, business_id: selectedBusiness?.id || businessId || null,
+    const record = {
+      account_id: integration.id, business_id: selectedBusiness?.id || businessId || null,
       content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
       media: [distribution], status: "draft", workflow_status: "new", scheduled_for: null, created_by: session.user.id,
-    });
+    };
+    const { error } = editingCampaignId && !isEvent
+      ? await supabase.from("social_content_items").update(record).eq("id", editingCampaignId).eq("workspace_id", workspaceId)
+      : await supabase.from("social_content_items").insert({ ...record, workspace_id: workspaceId });
     return error ? { warning: "Het evenement staat op de website, maar het promotieconcept kon niet worden opgeslagen." } : { ok: true };
   }
 
@@ -196,13 +236,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const promotion = await createPromotionDraft({ id: null, url: form.ctaUrl.trim() });
       if (!promotion.ok) throw new Error(promotion.warning || "Het campagneconcept kon niet worden opgeslagen.");
       setResult({ ok: true, message: `${campaignTypeLabel} is als campagneconcept opgeslagen.` });
-      setPreview(false);
+      setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); }
     finally { setBusy(false); }
   }
 
   return <section className="panel" style={{ marginBottom: 24 }}>
     <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
+    {editingCampaignId && <div className="editingNotice"><strong>Concept bewerken</strong><span>Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat.</span></div>}
     <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
     <div className="eventCreatorGrid">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
@@ -217,10 +258,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <div className="imageUploads wide">
         <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload alleen de formaten die je nodig hebt. Horeca OS kiest automatisch het beste beeld voor ieder kanaal.</p></div>
         <div className="imageSlotGrid">{imageSlots.map((slot) => { const uploaded = form.images?.[slot.key]; return <article className={`imageSlot ${uploaded?.matches ? "exact" : ""}`} key={slot.key}>
-          <div><strong>{slot.label}</strong><span>{slot.width} × {slot.height} px · {slot.ratio}</span><small>{slot.channels}</small></div>
-          {uploaded ? <div className="uploadedImage"><div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} /><p>{uploaded.width} × {uploaded.height} px {uploaded.matches ? "· Perfect formaat" : "· Afwijkend formaat"}</p><button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button></div> : <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploaden…" : "Afbeelding uploaden"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>}
+          <div><strong>{slot.label}</strong><span>{slot.width} Ã— {slot.height} px Â· {slot.ratio}</span><small>{slot.channels}</small></div>
+          {uploaded ? <div className="uploadedImage"><div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} /><p>{uploaded.width} Ã— {uploaded.height} px {uploaded.matches ? "Â· Perfect formaat" : "Â· Afwijkend formaat"}</p><button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button></div> : <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploadenâ€¦" : "Afbeelding uploaden"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>}
         </article>; })}</div>
-        <p className="imageHelp">JPG, PNG of WebP · maximaal 10 MB per afbeelding.</p>
+        <p className="imageHelp">JPG, PNG of WebP Â· maximaal 10 MB per afbeelding.</p>
         {uploadMessage && <p className={`uploadMessage ${uploadMessage.ok ? "success" : "error"}`}>{uploadMessage.message}</p>}
       </div>
       <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
@@ -243,25 +284,25 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </fieldset>
 
     {form.preparePromotion && <div className="channelDetails">
-      {form.channels.brevo && <fieldset><legend>Brevo — verplicht voor nieuwsbrief</legend><label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label><label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label><label>Doelgroep(en) *<input value={form.brevoAudience} onChange={(e) => update("brevoAudience", e.target.value)} placeholder="Selecteer later Brevo-lijsten of segmenten" /></label></fieldset>}
+      {form.channels.brevo && <fieldset><legend>Brevo â€” verplicht voor nieuwsbrief</legend><label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label><label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label><label>Doelgroep(en) *<input value={form.brevoAudience} onChange={(e) => update("brevoAudience", e.target.value)} placeholder="Selecteer later Brevo-lijsten of segmenten" /></label></fieldset>}
       {form.channels.facebook && <fieldset><legend>Facebook</legend><label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label></fieldset>}
       {form.channels.instagram && <fieldset><legend>Instagram</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
-      {form.channels.tiktok && <fieldset><legend>TikTok — video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
-      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business — template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
+      {form.channels.tiktok && <fieldset><legend>TikTok â€” video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
+      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business â€” template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
       {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
       {form.channels.predis && <fieldset><legend>Predis</legend><label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label><label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label></fieldset>}
     </div>}
 
-    {preview && <div className="eventPreview"><strong>Controle vóór opslaan</strong><p><b>{campaignTypeLabel}: {form.title}</b></p>{isEvent && <><p>{new Date(form.start).toLocaleString("nl-NL")} – {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p></>}<ul>{isEvent && <li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>}{isEvent && form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul></div>}
-    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy}>{busy ? "Bezig met opslaan…" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    {preview && <div className="eventPreview"><strong>Controle vÃ³Ã³r opslaan</strong><p><b>{campaignTypeLabel}: {form.title}</b></p>{isEvent && <><p>{new Date(form.start).toLocaleString("nl-NL")} â€“ {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p></>}<ul>{isEvent && <li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>}{isEvent && form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul></div>}
+    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "âœ“" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy}>{busy ? "Bezig met opslaanâ€¦" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
     {eventCampaigns.length > 0 && <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={loadEventCampaigns}>Status verversen</button></div>
-      {eventCampaigns.map((item) => { const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {}; const storedType = distribution.common?.campaign_type || distribution.source_type; const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne"); return <article key={item.id}><div><span className="campaignKind">{typeLabel}</span><strong>{distribution.common?.title || typeLabel}</strong><p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : "Campagneconcept in Horeca OS"}</p></div><div className="statusPills">{(distribution.target_channels || []).length === 0 && <span className="status local">Alleen als concept opgeslagen</span>}{(distribution.target_channels || []).map((channel) => { const stored = distribution.channel_status?.[channel]; const label = item.published_at ? "Geplaatst" : item.scheduled_for ? "Ingepland" : stored === "extra_gegevens_nodig" ? "Extra gegevens nodig" : "Klaar voor controle"; return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}><b>{channelLabels[channel] || channel}</b> · {label}</span>; })}</div></article>; })}
+      {eventCampaigns.map((item) => { const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {}; const storedType = distribution.common?.campaign_type || distribution.source_type; const isStoredEvent = storedType === "event" || storedType === "website_event"; const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne"); return <article key={item.id}><div><span className="campaignKind">{typeLabel}</span><strong>{distribution.common?.title || typeLabel}</strong><p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : "Campagneconcept in Horeca OS"}</p><button type="button" className="conceptOpenButton" onClick={() => openCampaignConcept(item)}>{isStoredEvent ? "Als basis gebruiken" : "Concept bewerken"}</button></div><div className="statusPills">{(distribution.target_channels || []).length === 0 && <span className="status local">Alleen als concept opgeslagen</span>}{(distribution.target_channels || []).map((channel) => { const stored = distribution.channel_status?.[channel]; const label = item.published_at ? "Geplaatst" : item.scheduled_for ? "Ingepland" : stored === "extra_gegevens_nodig" ? "Extra gegevens nodig" : "Klaar voor controle"; return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}><b>{channelLabels[channel] || channel}</b> Â· {label}</span>; })}</div></article>; })}
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>}
     <style jsx>{`
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
-      .campaignKind{display:block;width:max-content;margin-bottom:5px;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}
+      .campaignKind{display:block;width:max-content;margin-bottom:5px;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{color:#5c7285}.conceptOpenButton{margin-top:9px;padding:8px 11px;border:1px solid #25889b;border-radius:8px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
       .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.imageSlot.exact{border-color:#57ad7d}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.uploadButton{align-self:flex-end;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{padding:7px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:13px}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.campaignTypeGrid,.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot{display:block}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
     `}</style>
   </section>;
