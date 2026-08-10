@@ -46,11 +46,13 @@ export async function GET(request) {
 
 function normalizeEvent(row) {
   const title = cleanText(row?.title?.rendered);
-  const startDate = dateFromSlug(row?.slug) || dateFromTitle(title);
+  const description = cleanText(row?.content?.rendered || row?.excerpt?.rendered);
+  const publicationYear = new Date(row?.date || row?.modified || Date.now()).getFullYear();
+  const startDate = dateFromSlug(row?.slug) || dateFromTitle(title) || dateFromContent(description, publicationYear);
   return {
     id: String(row?.id || row?.slug || ""),
     title,
-    description: cleanText(row?.excerpt?.rendered || row?.content?.rendered),
+    description,
     sourceUrl: safeUrl(row?.link),
     image: safeUrl(row?._embedded?.["wp:featuredmedia"]?.[0]?.source_url),
     startDate: startDate ? startDate.toISOString() : "",
@@ -73,6 +75,14 @@ function dateFromTitle(title) {
   if (normalized.includes("oudjaarsdag") && year) return validDate(year, 12, 31);
   if ((normalized.includes("nieuwjaarsdag") || normalized.includes("new year")) && year) return validDate(year, 1, 1);
   return null;
+}
+
+function dateFromContent(content, fallbackYear) {
+  const months = { januari: 1, februari: 2, maart: 3, april: 4, mei: 5, juni: 6, juli: 7, augustus: 8, september: 9, oktober: 10, november: 11, december: 12 };
+  const normalized = String(content || "").toLowerCase();
+  const match = normalized.match(/(?:maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)?\s*(\d{1,2})\s+(januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december)(?:\s+(20\d{2}))?/);
+  if (!match) return null;
+  return validDate(Number(match[3] || fallbackYear), months[match[2]], Number(match[1]));
 }
 
 function validDate(year, month, day) {
