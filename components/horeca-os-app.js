@@ -436,8 +436,10 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [channelResult, setChannelResult] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
-  const [importingEvent, setImportingEvent] = useState(false);
   const [sourcePreview, setSourcePreview] = useState(null);
+  const [websiteEvents, setWebsiteEvents] = useState([]);
+  const [selectedWebsiteEventId, setSelectedWebsiteEventId] = useState("");
+  const [loadingWebsiteEvents, setLoadingWebsiteEvents] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     if (!workspaceId || !selectedBusinessId) {
@@ -486,41 +488,53 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setStatus("");
   }
 
-  async function importWebsiteEvent() {
-    if (!sourceUrl.trim()) {
-      setStatus("Plak eerst de link van het evenement op onze website.");
+  function websiteHostname() {
+    const businessName = businesses.find((item) => item.id === selectedBusinessId)?.name?.toLowerCase() || "";
+    if (businessName.includes("caribbean")) return "caribbeancorner.nl";
+    if (businessName.includes("plein")) return "grandcafehetplein.com";
+    return "";
+  }
+
+  async function loadWebsiteEvents() {
+    const site = websiteHostname();
+    if (!site) {
+      setStatus("Voor deze vestiging is nog geen Eventin-website ingesteld.");
       return;
     }
-    setImportingEvent(true);
+    setLoadingWebsiteEvents(true);
     setStatus("");
-    setSourcePreview(null);
     try {
-      const response = await fetch("/api/marketing/event-preview", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ sourceUrl: sourceUrl.trim() }),
+      const response = await fetch(`/api/marketing/website-events?site=${encodeURIComponent(site)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Het evenement kon niet worden ingelezen.");
-      setSourcePreview(result.event);
-      if (result.event.title) setCampaignTitle(result.event.title);
-      if (result.event.description) setCampaignText(result.event.description);
-      if (result.event.startDate) {
-        const date = new Date(result.event.startDate);
-        if (!Number.isNaN(date.getTime())) {
-          const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-          setScheduledFor(local);
-        }
-      }
-      setStatus("Evenement ingelezen. Controleer de gegevens voordat je de campagne inplant.");
+      if (!response.ok) throw new Error(result.error || "De websiteagenda kon niet worden geladen.");
+      setWebsiteEvents(result.events || []);
+      setStatus(result.events?.length
+        ? `${result.events.length} actuele evenementen uit de websiteagenda geladen.`
+        : "Er staan geen toekomstige evenementen in de websiteagenda.");
     } catch (error) {
-      setStatus(error.message || "Het evenement kon niet worden ingelezen.");
+      setWebsiteEvents([]);
+      setStatus(error.message || "De websiteagenda kon niet worden geladen.");
     } finally {
-      setImportingEvent(false);
+      setLoadingWebsiteEvents(false);
     }
+  }
+
+  function selectWebsiteEvent(eventItem) {
+    setSelectedWebsiteEventId(eventItem.id);
+    setSourceUrl(eventItem.sourceUrl || "");
+    setSourcePreview(eventItem);
+    setCampaignTitle(eventItem.title || "");
+    setCampaignText(eventItem.description || "");
+    if (eventItem.startDate) {
+      const date = new Date(eventItem.startDate);
+      if (!Number.isNaN(date.getTime())) {
+        const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        setScheduledFor(local);
+      }
+    }
+    setStatus(`${eventItem.title} geselecteerd. Controleer nu de tekst, kanalen en publicatiedatum.`);
   }
 
   async function planCampaign(event) {
@@ -623,26 +637,47 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
           <option value="facebook_post">Facebook-bericht</option>
           <option value="facebook_event">Facebook-evenement</option>
-          <option value="website_event">Event van onze website (Eventin van Team Winter)</option>
+          <option value="website_event">Event van onze website (Eventin)</option>
           <option value="instagram_post">Instagram-bericht</option>
           <option value="instagram_reel">Instagram-reel</option>
           <option value="tiktok_post">TikTok-video</option>
           <option value="predis_concept">Predis-concept</option>
         </select>
       </label>
-      <label className="full">Link naar het bericht of evenement
-        <input type="url" value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setSourcePreview(null); }} placeholder="Plak hier de link van Facebook, Instagram, TikTok of het event op onze website" required />
-      </label>
+      {sourceType !== "website_event" && <label className="full">Link naar het bericht of evenement
+        <input type="url" value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setSourcePreview(null); }} placeholder="Plak hier de link van Facebook, Instagram, TikTok of Predis" required />
+      </label>}
       {sourceType === "website_event" && <div className="full">
-        <button type="button" className="secondaryButton" onClick={importWebsiteEvent} disabled={importingEvent}>
-          {importingEvent ? "Evenement inlezen..." : "Eventgegevens van website ophalen"}
-        </button>
+        <div className="sectionHeading">
+          <div><strong>Evenementenagenda van de website</strong><p>Klik op een evenement om het als campagnebron te gebruiken.</p></div>
+          <button type="button" className="secondaryButton" onClick={loadWebsiteEvents} disabled={loadingWebsiteEvents}>
+            {loadingWebsiteEvents ? "Agenda laden..." : websiteEvents.length ? "Agenda vernieuwen" : "Evenementen laden"}
+          </button>
+        </div>
+        {!loadingWebsiteEvents && !websiteEvents.length && <Empty text="Laad de actuele Eventin-agenda van deze vestiging." />}
+        <div className="stackList">
+          {websiteEvents.map((eventItem) => <button
+            type="button"
+            key={eventItem.id}
+            className={`factorRow ${selectedWebsiteEventId === eventItem.id ? "selected" : ""}`}
+            onClick={() => selectWebsiteEvent(eventItem)}
+            style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+          >
+            <div>
+              <strong>{eventItem.title}</strong>
+              <small>{eventItem.startDate ? new Intl.DateTimeFormat("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(eventItem.startDate)) : "Datum staat niet in Eventin"}</small>
+              <span>{eventItem.description?.slice(0, 180)}</span>
+            </div>
+            <span className="pill">{selectedWebsiteEventId === eventItem.id ? "Geselecteerd" : "Kiezen"}</span>
+          </button>)}
+        </div>
       </div>}
       {sourcePreview && <div className="notice full">
         <strong>{sourcePreview.title || "Website-event"}</strong>
         {sourcePreview.startDate && <p>{formatDate(sourcePreview.startDate)}</p>}
         {sourcePreview.location && <p>{sourcePreview.location}</p>}
         {sourcePreview.image && <p>Afbeelding gevonden</p>}
+        {sourcePreview.sourceUrl && <a href={sourcePreview.sourceUrl} target="_blank" rel="noreferrer">Evenement op website openen</a>}
       </div>}
       <label>Interne campagnenaam
         <input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} placeholder="Bijvoorbeeld: Caribbean Social Club" required />
@@ -696,7 +731,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         const sourceLabels = {
           facebook_post: "Facebook-bericht",
           facebook_event: "Facebook-evenement",
-          website_event: "Event van onze website (Eventin van Team Winter)",
+          website_event: "Event van onze website (Eventin)",
           instagram_post: "Instagram-bericht",
           instagram_reel: "Instagram-reel",
           tiktok_post: "TikTok-video",
