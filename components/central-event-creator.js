@@ -17,7 +17,17 @@ const imageSlots = [
 
 const emptyImages = Object.fromEntries(imageSlots.map(({ key }) => [key, null]));
 
+const campaignTypes = [
+  ["event", "Evenement", "Met Eventin, datum, tickets en agenda"],
+  ["product", "Gerecht of product", "Gerecht, drankje of ander product"],
+  ["offer", "Aanbieding", "Actieprijs en geldigheidsperiode"],
+  ["package", "Arrangement", "Groepen, feesten, verhuur of menu"],
+  ["review", "Review delen", "Maak van een gastbeoordeling content"],
+  ["custom", "Eigen campagne", "Vrij nieuwsbericht of merkverhaal"],
+];
+
 const emptyForm = {
+  campaignType: "event",
   title: "", shortDescription: "", description: "", start: "", end: "",
   location: "Caribbean Corner, Dorpsstraat 114A, Zoetermeer", imageUrl: "", images: emptyImages, videoUrl: "",
   organizer: "Caribbean Corner", contactEmail: "info@caribbeancorner.nl", language: "nl",
@@ -29,6 +39,8 @@ const emptyForm = {
   tiktokCaption: "", tiktokPrivacy: "PUBLIC_TO_EVERYONE", tiktokComments: true,
   whatsappTemplate: "", whatsappMessage: "",
   googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek",
+  regularPrice: "", campaignPrice: "", discountCode: "", validFrom: "", validUntil: "",
+  groupSize: "", pricePerPerson: "", reviewerName: "", reviewScore: "5", reviewSource: "",
 };
 
 const channelLabels = {
@@ -51,8 +63,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const site = siteForBusiness(selectedBusiness);
   const update = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setPreview(false); setResult(null); };
+  const selectCampaignType = (campaignType) => {
+    setForm((current) => ({ ...current, campaignType, googleTopic: campaignType === "event" ? "EVENT" : campaignType === "offer" ? "OFFER" : "STANDARD" }));
+    setPreview(false); setResult(null);
+  };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const enabledChannels = Object.keys(form.channels).filter((channel) => form.channels[channel]);
+  const isEvent = form.campaignType === "event";
+  const campaignTypeLabel = campaignTypes.find(([id]) => id === form.campaignType)?.[1] || "Campagne";
 
   async function uploadImage(slot, file) {
     if (!file) return;
@@ -73,7 +91,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const { data } = supabase.storage.from("marketing-assets").getPublicUrl(path);
       const matches = dimensions.width === slot.width && dimensions.height === slot.height;
       setForm((current) => ({ ...current, images: { ...current.images, [slot.key]: { url: data.publicUrl, path, name: file.name, ...dimensions, matches } } }));
-      setUploadMessage({ ok: true, message: matches ? `${slot.label} is correct geupload.` : `${slot.label} is geupload (${dimensions.width} Ã— ${dimensions.height} px). Aanbevolen is ${slot.width} Ã— ${slot.height} px.` });
+      setUploadMessage({ ok: true, message: matches ? `${slot.label} is correct geupload.` : `${slot.label} is geupload (${dimensions.width} × ${dimensions.height} px). Aanbevolen is ${slot.width} × ${slot.height} px.` });
       setPreview(false); setResult(null);
     } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
     finally { setUploadingSlot(""); }
@@ -97,12 +115,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   useEffect(() => { loadEventCampaigns(); }, [workspaceId, selectedBusiness?.id, businessId]);
 
   const validate = () => {
-    if (!form.title.trim()) return "Vul een evenementnaam in.";
-    if (!form.start || !form.end) return "Vul een begin- en eindmoment in.";
-    if (new Date(form.end) <= new Date(form.start)) return "Het eindmoment moet na het beginmoment liggen.";
-    if (form.ticketType === "paid" && Number(form.ticketPrice) <= 0) return "Vul een geldige ticketprijs in.";
+    if (!form.title.trim()) return `Vul een naam in voor ${campaignTypeLabel.toLowerCase()}.`;
+    if (isEvent && (!form.start || !form.end)) return "Vul een begin- en eindmoment in.";
+    if (isEvent && new Date(form.end) <= new Date(form.start)) return "Het eindmoment moet na het beginmoment liggen.";
+    if (isEvent && form.ticketType === "paid" && Number(form.ticketPrice) <= 0) return "Vul een geldige ticketprijs in.";
+    if (form.campaignType === "offer" && (!form.campaignPrice || !form.validUntil)) return "Vul de actieprijs en einddatum in.";
+    if (form.campaignType === "review" && !form.description.trim()) return "Vul de reviewtekst in.";
     if (form.preparePromotion && form.channels.brevo && !form.brevoSubject.trim()) return "Vul voor Brevo een onderwerpregel in.";
-    if (form.preparePromotion && form.channels.brevo && !form.brevoAudience.trim()) return "Kies of noteer voor Brevo minimaal Ã©Ã©n doelgroep.";
+    if (form.preparePromotion && form.channels.brevo && !form.brevoAudience.trim()) return "Kies of noteer voor Brevo minimaal één doelgroep.";
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
     if (form.preparePromotion && form.channels.google && (!form.ctaUrl.trim() || !form.shortDescription.trim())) return "Google heeft een korte tekst en knoplink nodig.";
@@ -112,16 +132,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const showPreview = () => { const error = validate(); if (error) return setResult({ ok: false, message: error }); setResult(null); setPreview(true); };
 
   async function createPromotionDraft(websiteEvent) {
-    if (!form.preparePromotion) return { skipped: true };
+    if (!form.preparePromotion) return { ok: true, skipped: true };
     const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
     if (!integration?.id) return { warning: "Promotieconcept kon niet worden opgeslagen: marketingkoppeling ontbreekt." };
     const imageFor = (key, fallbackKeys = []) => form.images?.[key]?.url || fallbackKeys.map((item) => form.images?.[item]?.url).find(Boolean) || form.imageUrl.trim();
     const common = {
+      campaign_type: form.campaignType,
       title: form.title.trim(), short_description: form.shortDescription.trim(), description: form.description.trim(),
       start: form.start, end: form.end, location: form.location.trim(), image_url: imageFor("landscape", ["square", "portrait", "vertical"]), images: form.images, video_url: form.videoUrl.trim(),
       organizer: form.organizer.trim(), contact_email: form.contactEmail.trim(), language: form.language,
       cta: { label: form.ctaLabel, url: form.ctaUrl.trim() || websiteEvent.url },
       tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity }, website_url: websiteEvent.url,
+      commercial: { regular_price: form.regularPrice, campaign_price: form.campaignPrice, discount_code: form.discountCode, valid_from: form.validFrom, valid_until: form.validUntil, group_size: form.groupSize, price_per_person: form.pricePerPerson },
+      review: { reviewer_name: form.reviewerName.trim(), score: form.reviewScore, source: form.reviewSource.trim() },
     };
     const channel_payloads = {
       brevo: { subject: form.brevoSubject.trim(), preview_text: form.brevoPreview.trim(), audience: form.brevoAudience.trim(), image_url: imageFor("landscape", ["square"]) },
@@ -139,7 +162,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         (channel === "google" && (!payload.summary || !payload.call_to_action?.url));
       return [channel, missing ? "extra_gegevens_nodig" : "klaar_voor_controle"];
     }));
-    const distribution = { kind: "campaign_distribution", source_type: "website_event", source_url: websiteEvent.url,
+    const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
       eventin_event_id: websiteEvent.id, common, target_channels: enabledChannels, channel_payloads, channel_status };
     const { error } = await supabase.from("social_content_items").insert({
       workspace_id: workspaceId, account_id: integration.id, business_id: selectedBusiness?.id || businessId || null,
@@ -166,23 +189,38 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
 
+  async function createStandaloneCampaign() {
+    const error = validate(); if (error) return setResult({ ok: false, message: error });
+    setBusy(true); setResult(null);
+    try {
+      const promotion = await createPromotionDraft({ id: null, url: form.ctaUrl.trim() });
+      if (!promotion.ok) throw new Error(promotion.warning || "Het campagneconcept kon niet worden opgeslagen.");
+      setResult({ ok: true, message: `${campaignTypeLabel} is als campagneconcept opgeslagen.` });
+      setPreview(false);
+    } catch (requestError) { setResult({ ok: false, message: requestError.message }); }
+    finally { setBusy(false); }
+  }
+
   return <section className="panel" style={{ marginBottom: 24 }}>
-    <div className="panelHead"><div><p className="eyebrow">EVENEMENTENBEHEER</p><h2>Nieuw evenement aanmaken</h2><p>Vul de basis Ã©Ã©n keer in. Horeca OS vraagt daarna alleen wat een gekozen kanaal extra nodig heeft.</p></div></div>
+    <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
+    <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
     <div className="eventCreatorGrid">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
-      <label>Evenementnaam *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
-      <label>Begint *<input type="datetime-local" value={form.start} onChange={(e) => update("start", e.target.value)} /></label>
-      <label>Eindigt *<input type="datetime-local" value={form.end} onChange={(e) => update("end", e.target.value)} /></label>
-      <label className="wide">Locatie<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label>
+      <label>{campaignTypeLabel}naam *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
+      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onChange={(e) => update("start", e.target.value)} /></label><label>Eindigt *<input type="datetime-local" value={form.end} onChange={(e) => update("end", e.target.value)} /></label><label className="wide">Locatie<input value={form.location} onChange={(e) => update("location", e.target.value)} /></>}
+      {(form.campaignType === "product" || form.campaignType === "offer") && <><label>Normale prijs<input type="number" min="0" step="0.01" value={form.regularPrice} onChange={(e) => update("regularPrice", e.target.value)} /></label><label>{form.campaignType === "offer" ? "Actieprijs *" : "Promotieprijs"}<input type="number" min="0" step="0.01" value={form.campaignPrice} onChange={(e) => update("campaignPrice", e.target.value)} /></label></>}
+      {form.campaignType === "offer" && <><label>Actiecode<input value={form.discountCode} onChange={(e) => update("discountCode", e.target.value)} /></label><label>Geldig vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Geldig tot *<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
+      {form.campaignType === "package" && <><label>Aantal personen<input type="number" min="1" value={form.groupSize} onChange={(e) => update("groupSize", e.target.value)} /></label><label>Prijs per persoon<input type="number" min="0" step="0.01" value={form.pricePerPerson} onChange={(e) => update("pricePerPerson", e.target.value)} /></label><label>Beschikbaar vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Beschikbaar tot<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
+      {form.campaignType === "review" && <><label>Naam gast<input value={form.reviewerName} onChange={(e) => update("reviewerName", e.target.value)} /></label><label>Beoordeling<select value={form.reviewScore} onChange={(e) => update("reviewScore", e.target.value)}>{[5,4,3,2,1].map((score) => <option key={score} value={score}>{score} sterren</option>)}</select></label><label className="wide">Bron of reviewlink<input type="url" value={form.reviewSource} onChange={(e) => update("reviewSource", e.target.value)} /></label></>}
       <label className="wide">Korte promotietekst<textarea rows={3} value={form.shortDescription} onChange={(e) => update("shortDescription", e.target.value)} placeholder="De kernboodschap voor Google, WhatsApp en sociale media." /></label>
-      <label className="wide">Volledige omschrijving<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
+      <label className="wide">{form.campaignType === "review" ? "Reviewtekst *" : "Volledige omschrijving"}<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
       <div className="imageUploads wide">
         <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload alleen de formaten die je nodig hebt. Horeca OS kiest automatisch het beste beeld voor ieder kanaal.</p></div>
         <div className="imageSlotGrid">{imageSlots.map((slot) => { const uploaded = form.images?.[slot.key]; return <article className={`imageSlot ${uploaded?.matches ? "exact" : ""}`} key={slot.key}>
-          <div><strong>{slot.label}</strong><span>{slot.width} Ã— {slot.height} px Â· {slot.ratio}</span><small>{slot.channels}</small></div>
-          {uploaded ? <div className="uploadedImage"><div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} /><p>{uploaded.width} Ã— {uploaded.height} px {uploaded.matches ? "Â· Perfect formaat" : "Â· Afwijkend formaat"}</p><button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button></div> : <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploadenâ€¦" : "Afbeelding uploaden"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>}
+          <div><strong>{slot.label}</strong><span>{slot.width} × {slot.height} px · {slot.ratio}</span><small>{slot.channels}</small></div>
+          {uploaded ? <div className="uploadedImage"><div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} /><p>{uploaded.width} × {uploaded.height} px {uploaded.matches ? "· Perfect formaat" : "· Afwijkend formaat"}</p><button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button></div> : <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploaden…" : "Afbeelding uploaden"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>}
         </article>; })}</div>
-        <p className="imageHelp">JPG, PNG of WebP Â· maximaal 10 MB per afbeelding.</p>
+        <p className="imageHelp">JPG, PNG of WebP · maximaal 10 MB per afbeelding.</p>
         {uploadMessage && <p className={`uploadMessage ${uploadMessage.ok ? "success" : "error"}`}>{uploadMessage.message}</p>}
       </div>
       <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
@@ -191,37 +229,38 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label>Contact-e-mail<input type="email" value={form.contactEmail} onChange={(e) => update("contactEmail", e.target.value)} /></label>
       <label>Knoptekst<input value={form.ctaLabel} onChange={(e) => update("ctaLabel", e.target.value)} /></label>
       <label>Knoplink<input type="url" value={form.ctaUrl} onChange={(e) => update("ctaUrl", e.target.value)} placeholder="Leeg = de nieuwe evenementpagina" /></label>
-      <label>Tickets<select value={form.ticketType} onChange={(e) => update("ticketType", e.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option><option value="none">Geen tickets</option></select></label>
+      {isEvent && <><label>Tickets<select value={form.ticketType} onChange={(e) => update("ticketType", e.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option><option value="none">Geen tickets</option></select></label>
       <label>Prijs per ticket<input type="number" min="0" step="0.01" disabled={form.ticketType !== "paid"} value={form.ticketPrice} onChange={(e) => update("ticketPrice", e.target.value)} /></label>
       <label>Capaciteit<input type="number" min="1" value={form.capacity} onChange={(e) => update("capacity", e.target.value)} /></label>
-      <label>Website-status<select value={form.status} onChange={(e) => update("status", e.target.value)}><option value="draft">Eerst als concept</option><option value="publish">Direct publiceren</option></select></label>
+      <label>Website-status<select value={form.status} onChange={(e) => update("status", e.target.value)}><option value="draft">Eerst als concept</option><option value="publish">Direct publiceren</option></select></label></>}
     </div>
 
     <fieldset className="eventDestinations"><legend>Bestemmingen</legend>
-      <label className="check"><input type="checkbox" checked={form.addToCalendar} onChange={(e) => update("addToCalendar", e.target.checked)} /> Microsoft-agenda</label>
-      {form.addToCalendar && <label>Agenda-e-mailadres<input type="email" value={form.calendarMailbox} onChange={(e) => update("calendarMailbox", e.target.value)} /></label>}
+      {isEvent && <><label className="check"><input type="checkbox" checked={form.addToCalendar} onChange={(e) => update("addToCalendar", e.target.checked)} /> Microsoft-agenda</label>
+      {form.addToCalendar && <label>Agenda-e-mailadres<input type="email" value={form.calendarMailbox} onChange={(e) => update("calendarMailbox", e.target.value)} /></label>}</>}
       <label className="check"><input type="checkbox" checked={form.preparePromotion} onChange={(e) => update("preparePromotion", e.target.checked)} /> Promotieconcept voor andere kanalen</label>
       {form.preparePromotion && <div className="channelChecks">{Object.entries(channelLabels).map(([key, label]) => <label className="check" key={key}><input type="checkbox" checked={form.channels[key]} onChange={() => toggleChannel(key)} /> {label}</label>)}</div>}
     </fieldset>
 
     {form.preparePromotion && <div className="channelDetails">
-      {form.channels.brevo && <fieldset><legend>Brevo â€” verplicht voor nieuwsbrief</legend><label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label><label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label><label>Doelgroep(en) *<input value={form.brevoAudience} onChange={(e) => update("brevoAudience", e.target.value)} placeholder="Selecteer later Brevo-lijsten of segmenten" /></label></fieldset>}
+      {form.channels.brevo && <fieldset><legend>Brevo — verplicht voor nieuwsbrief</legend><label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label><label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label><label>Doelgroep(en) *<input value={form.brevoAudience} onChange={(e) => update("brevoAudience", e.target.value)} placeholder="Selecteer later Brevo-lijsten of segmenten" /></label></fieldset>}
       {form.channels.facebook && <fieldset><legend>Facebook</legend><label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label></fieldset>}
       {form.channels.instagram && <fieldset><legend>Instagram</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
-      {form.channels.tiktok && <fieldset><legend>TikTok â€” video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
-      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business â€” template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
+      {form.channels.tiktok && <fieldset><legend>TikTok — video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
+      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business — template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
       {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
       {form.channels.predis && <fieldset><legend>Predis</legend><label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label><label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label></fieldset>}
     </div>}
 
-    {preview && <div className="eventPreview"><strong>Controle vÃ³Ã³r aanmaken</strong><p><b>{form.title}</b></p><p>{new Date(form.start).toLocaleString("nl-NL")} â€“ {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p><ul><li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>{form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul></div>}
-    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "âœ“" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={createEvent} disabled={busy}>{busy ? "Bezig met aanmakenâ€¦" : form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken"}</button>}</div>
+    {preview && <div className="eventPreview"><strong>Controle vóór opslaan</strong><p><b>{campaignTypeLabel}: {form.title}</b></p>{isEvent && <><p>{new Date(form.start).toLocaleString("nl-NL")} – {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p></>}<ul>{isEvent && <li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>}{isEvent && form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul></div>}
+    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy}>{busy ? "Bezig met opslaan…" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
     {eventCampaigns.length > 0 && <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">DOORPLAATSSTATUS</p><h3>Evenementcampagnes</h3></div><button type="button" className="secondaryButton" onClick={loadEventCampaigns}>Status verversen</button></div>
-      {eventCampaigns.map((item) => { const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution" && entry?.source_type === "website_event") || {}; return <article key={item.id}><div><strong>{distribution.common?.title || "Evenement"}</strong><p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Website-evenement openen</a> : "Promotieconcept"}</p></div><div className="statusPills">{(distribution.target_channels || []).map((channel) => { const stored = distribution.channel_status?.[channel]; const label = item.published_at ? "Geplaatst" : item.scheduled_for ? "Ingepland" : stored === "extra_gegevens_nodig" ? "Extra gegevens nodig" : "Klaar voor controle"; return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}><b>{channelLabels[channel] || channel}</b> Â· {label}</span>; })}</div></article>; })}
+      {eventCampaigns.map((item) => { const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution" && entry?.source_type === "website_event") || {}; return <article key={item.id}><div><strong>{distribution.common?.title || "Evenement"}</strong><p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Website-evenement openen</a> : "Promotieconcept"}</p></div><div className="statusPills">{(distribution.target_channels || []).map((channel) => { const stored = distribution.channel_status?.[channel]; const label = item.published_at ? "Geplaatst" : item.scheduled_for ? "Ingepland" : stored === "extra_gegevens_nodig" ? "Extra gegevens nodig" : "Klaar voor controle"; return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}><b>{channelLabels[channel] || channel}</b> · {label}</span>; })}</div></article>; })}
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>}
     <style jsx>{`
+      .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.imageSlot.exact{border-color:#57ad7d}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.uploadButton{align-self:flex-end;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{padding:7px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:13px}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot{display:block}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
     `}</style>
   </section>;
