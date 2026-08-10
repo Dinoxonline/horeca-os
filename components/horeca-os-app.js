@@ -655,7 +655,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
           <fieldset className="full"><legend>Doelgroepen</legend>
             {loadingBrevo && <small>Lijsten laden...</small>}
             {!loadingBrevo && !brevoLists.length && <small>Geen lijst beschikbaar</small>}
-            <div className="checkGrid">{brevoLists.map((list) => <label className="checkOption" key={list.id}><input type="checkbox" checked={selectedListIds.includes(String(list.id))} onChange={() => toggleList(list.id)} />{list.name} · {Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten</label>)}</div>
+            <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>{brevoLists.map((list) => <label className="checkOption" key={list.id}><input type="checkbox" checked={selectedListIds.includes(String(list.id))} onChange={() => toggleList(list.id)} />{list.name} · {Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten</label>)}</div>
             {!!selectedListIds.length && <small>{selectedListIds.length} doelgroep(en) geselecteerd. Brevo verwijdert dubbele e-mailadressen bij verzending.</small>}
           </fieldset>
           <label>Interne campagnenaam<input value={campaignForm.campaignName} onChange={(event) => updateField("campaignName", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Friday augustus" required /></label>
