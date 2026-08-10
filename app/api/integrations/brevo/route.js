@@ -49,7 +49,12 @@ export async function GET(request) {
 
     if (resource === "lists") {
       const lists = await getConfiguredLists(apiKey, listIds);
-      return NextResponse.json({ ok: true, business, lists });
+      return NextResponse.json({
+        ok: true,
+        business,
+        lists,
+        senderEmail: configuredSenderEmail(business.name),
+      });
     }
 
     if (resource === "campaigns") {
