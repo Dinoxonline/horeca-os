@@ -421,8 +421,13 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
   const [brevoLists, setBrevoLists] = useState([]);
   const [selectedListId, setSelectedListId] = useState("");
+  const [drafts, setDrafts] = useState([]);
+  const [selectedDraftId, setSelectedDraftId] = useState("");
+  const [campaignForm, setCampaignForm] = useState({ campaignName: "", senderName: "", subject: "", content: "" });
   const [loadingBrevo, setLoadingBrevo] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [brevoError, setBrevoError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
   const [preview, setPreview] = useState(null);
 
   useEffect(() => {
@@ -435,74 +440,171 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
     let active = true;
     setLoadingBrevo(true);
     setBrevoError("");
+    setSaveMessage("");
     setBrevoLists([]);
+    setDrafts([]);
     setSelectedListId("");
+    setSelectedDraftId("");
+    setPreview(null);
+    setCampaignForm({ campaignName: "", senderName: "", subject: "", content: "" });
     const headers = { Authorization: `Bearer ${session.access_token}` };
-    const query = `workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(selectedBusinessId)}&resource=lists`;
-    fetch(`/api/integrations/brevo?${query}`, { headers })
-      .then(async (response) => ({ ok: response.ok, result: await response.json() }))
-      .then(({ ok, result }) => {
+    const baseQuery = `workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(selectedBusinessId)}`;
+    Promise.all([
+      fetch(`/api/integrations/brevo?${baseQuery}&resource=lists`, { headers }).then(async (response) => ({ ok: response.ok, result: await response.json() })),
+      fetch(`/api/integrations/brevo?${baseQuery}&resource=drafts`, { headers }).then(async (response) => ({ ok: response.ok, result: await response.json() })),
+    ])
+      .then(([listsResponse, draftsResponse]) => {
         if (!active) return;
-        if (!ok) { setBrevoError(result.error || "De Brevo-lijsten konden niet worden geladen."); return; }
-        const lists = result.lists || [];
-        setBrevoLists(lists);
-        setSelectedListId(lists[0]?.id ? String(lists[0].id) : "");
+        if (!listsResponse.ok) {
+          setBrevoError(listsResponse.result.error || "De Brevo-lijsten konden niet worden geladen.");
+        } else {
+          const lists = listsResponse.result.lists || [];
+          setBrevoLists(lists);
+          setSelectedListId(lists[0]?.id ? String(lists[0].id) : "");
+        }
+        if (!draftsResponse.ok) {
+          setBrevoError((current) => current || draftsResponse.result.error || "De campagneconcepten konden niet worden geladen.");
+        } else {
+          setDrafts(draftsResponse.result.drafts || []);
+        }
       })
       .catch(() => { if (active) setBrevoError("Brevo kon niet worden bereikt."); })
       .finally(() => { if (active) setLoadingBrevo(false); });
     return () => { active = false; };
   }, [selectedBusinessId, session.access_token, workspaceId]);
 
-  function buildPreview(formData) {
-    const form = Object.fromEntries(formData);
-    const list = brevoLists.find((item) => String(item.id) === String(form.listId));
+  function updateField(field, value) {
+    setCampaignForm((current) => ({ ...current, [field]: value }));
+    setSaveMessage("");
+    setPreview(null);
+  }
+
+  function buildPreview(event) {
+    event?.preventDefault();
+    const list = brevoLists.find((item) => String(item.id) === String(selectedListId));
+    if (!list) { setBrevoError("Kies eerst een geldige Brevo-doelgroep."); return; }
+    setBrevoError("");
     setPreview({
       business: businesses.find((item) => item.id === selectedBusinessId)?.name || "Vestiging",
-      listName: list?.name || "Geen doelgroep",
-      recipients: Number(list?.totalSubscribers || list?.uniqueSubscribers || 0),
-      campaignName: form.campaignName || "Naamloos concept",
-      subject: form.subject || "Geen onderwerp",
-      senderName: form.senderName || "Horeca OS",
-      content: form.content || "",
+      listName: list.name || "Geen doelgroep",
+      recipients: Number(list.totalSubscribers || list.uniqueSubscribers || 0),
+      campaignName: campaignForm.campaignName,
+      subject: campaignForm.subject,
+      senderName: campaignForm.senderName,
+      content: campaignForm.content,
     });
+  }
+
+  async function saveConcept() {
+    if (!preview || !selectedListId) return;
+    setSavingDraft(true);
+    setBrevoError("");
+    setSaveMessage("");
+    const response = await fetch("/api/integrations/brevo", {
+      method: selectedDraftId ? "PATCH" : "POST",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: selectedDraftId || undefined,
+        workspaceId,
+        businessId: selectedBusinessId,
+        listId: Number(selectedListId),
+        ...campaignForm,
+      }),
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) {
+      setBrevoError(result.error || "Het concept kon niet worden opgeslagen.");
+      setSavingDraft(false);
+      return;
+    }
+    const saved = result.draft;
+    setSelectedDraftId(saved.id);
+    setDrafts((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+    setSaveMessage(selectedDraftId ? "Concept bijgewerkt." : "Concept veilig opgeslagen.");
+    setSavingDraft(false);
+  }
+
+  function openDraft(draft) {
+    setSelectedDraftId(draft.id);
+    setSelectedListId(String(draft.list_id));
+    setCampaignForm({
+      campaignName: draft.internal_name,
+      senderName: draft.sender_name,
+      subject: draft.subject,
+      content: draft.body,
+    });
+    setPreview({
+      business: businesses.find((item) => item.id === selectedBusinessId)?.name || "Vestiging",
+      listName: draft.list_name,
+      recipients: Number(draft.recipient_count || 0),
+      campaignName: draft.internal_name,
+      subject: draft.subject,
+      senderName: draft.sender_name,
+      content: draft.body,
+    });
+    setSaveMessage("Bestaand concept geopend. Wijzig het en sla opnieuw op.");
+    setBrevoError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function startNewDraft() {
+    setSelectedDraftId("");
+    setCampaignForm({ campaignName: "", senderName: "", subject: "", content: "" });
+    setSelectedListId(brevoLists[0]?.id ? String(brevoLists[0].id) : "");
+    setPreview(null);
+    setSaveMessage("");
+    setBrevoError("");
   }
 
   return <>
     <section className="pageIntro"><p className="eyebrow">Commerciële groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vóór verzending.</p></section>
     <section className="userAdminGrid">
       <article className="panel creationPanel">
-        <div className="panelHead"><div><h2>Nieuwe Brevo-campagne</h2><p>Dit maakt alleen een voorbeeld. Er wordt nog niets verzonden of in Brevo gewijzigd.</p></div></div>
-        <form action={buildPreview} className="employeeForm creationForm">
+        <div className="panelHead"><div><h2>{selectedDraftId ? "Campagneconcept bewerken" : "Nieuwe Brevo-campagne"}</h2><p>Concepten worden in Horeca OS opgeslagen. Er wordt niets verzonden of in Brevo gewijzigd.</p></div>{selectedDraftId && <button type="button" onClick={startNewDraft}>Nieuw concept</button>}</div>
+        <form onSubmit={buildPreview} className="employeeForm creationForm">
           <label>Vestiging
-            <select value={selectedBusinessId} onChange={(event) => { setSelectedBusinessId(event.target.value); setPreview(null); }}>
+            <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
               {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
             </select>
           </label>
           <label>Doelgroep
-            <select name="listId" value={selectedListId} onChange={(event) => setSelectedListId(event.target.value)} disabled={loadingBrevo || !brevoLists.length}>
+            <select value={selectedListId} onChange={(event) => { setSelectedListId(event.target.value); setPreview(null); }} disabled={loadingBrevo || !brevoLists.length}>
               {loadingBrevo && <option>Lijsten laden...</option>}
               {!loadingBrevo && !brevoLists.length && <option value="">Geen lijst beschikbaar</option>}
               {brevoLists.map((list) => <option key={list.id} value={list.id}>{list.name} · {Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten</option>)}
             </select>
           </label>
-          <label>Interne campagnenaam<input name="campaignName" placeholder="Bijvoorbeeld: Caribbean Friday augustus" required /></label>
-          <label>Naam afzender<input name="senderName" placeholder="Caribbean Corner" required /></label>
-          <label className="full">Onderwerp<input name="subject" placeholder="Dit ziet de gast in de inbox" required /></label>
-          <label className="full">Bericht<textarea name="content" rows="9" placeholder="Schrijf hier de inhoud van de nieuwsbrief." required /></label>
+          <label>Interne campagnenaam<input value={campaignForm.campaignName} onChange={(event) => updateField("campaignName", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Friday augustus" required /></label>
+          <label>Naam afzender<input value={campaignForm.senderName} onChange={(event) => updateField("senderName", event.target.value)} placeholder="Caribbean Corner" required /></label>
+          <label className="full">Onderwerp<input value={campaignForm.subject} onChange={(event) => updateField("subject", event.target.value)} placeholder="Dit ziet de gast in de inbox" required /></label>
+          <label className="full">Bericht<textarea value={campaignForm.content} onChange={(event) => updateField("content", event.target.value)} rows="9" placeholder="Schrijf hier de inhoud van de nieuwsbrief." required /></label>
           {brevoError && <div className="notice full">{brevoError}</div>}
-          <div className="scopeBanner full"><strong>Veilige controle</strong><span>De definitieve verzendknop wordt pas later toegevoegd met een aparte bevestiging en bevoegdheidscontrole.</span></div>
+          {saveMessage && <div className="notice successNotice full">{saveMessage}</div>}
+          <div className="scopeBanner full"><strong>Veilige controle</strong><span>Opslaan maakt alleen een concept. Verzenden blijft uitgeschakeld en krijgt later een aparte bevestiging en bevoegdheidscontrole.</span></div>
           <button type="submit" className="primary full" disabled={!selectedListId || loadingBrevo}>Voorbeeld maken</button>
         </form>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>Campagnevoorbeeld</h2><p>Controleer vestiging, doelgroep en inhoud voordat verzending ooit wordt toegestaan.</p></div></div>
+        <div className="panelHead"><div><h2>Campagnevoorbeeld</h2><p>Controleer vestiging, doelgroep en inhoud vóór je het concept opslaat.</p></div></div>
         {!preview && <Empty text="Vul links de campagne in en maak een voorbeeld." />}
         {preview && <>
           <div className="scopeBanner"><strong>{preview.business}</strong><span>{preview.listName} · {preview.recipients} ontvangers</span></div>
           <div className="factorRow"><div><strong>{preview.subject}</strong><small>Van: {preview.senderName} · Intern: {preview.campaignName}</small></div></div>
           <div className="sensitiveNote"><strong>Inhoud</strong><span style={{ whiteSpace: "pre-wrap" }}>{preview.content}</span></div>
           <div className="notice successNotice">Voorbeeld gereed. Er is niets naar Brevo of gasten verstuurd.</div>
+          <button type="button" className="primary" onClick={saveConcept} disabled={savingDraft}>{savingDraft ? "Concept opslaan..." : selectedDraftId ? "Wijzigingen opslaan" : "Concept opslaan"}</button>
         </>}
+      </article>
+      <article className="panel" style={{ gridColumn: "1 / -1" }}>
+        <div className="panelHead"><div><h2>Opgeslagen concepten</h2><p>Alleen concepten van de gekozen vestiging zijn hier zichtbaar.</p></div><span>{drafts.length} concept(en)</span></div>
+        {loadingBrevo && <Empty text="Concepten laden..." />}
+        {!loadingBrevo && !drafts.length && <Empty text="Nog geen campagneconcepten voor deze vestiging." />}
+        <div className="stackList">
+          {drafts.map((draft) => <div className="factorRow" key={draft.id}>
+            <div><strong>{draft.internal_name}</strong><small>{draft.subject} · {draft.list_name} · {draft.recipient_count} ontvangers</small><small>Laatst bijgewerkt: {new Date(draft.updated_at).toLocaleString("nl-NL")}</small></div>
+            <button type="button" onClick={() => openDraft(draft)}>Openen</button>
+          </div>)}
+        </div>
       </article>
     </section>
   </>;
