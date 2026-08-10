@@ -777,6 +777,9 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
   const [generatedPostIds, setGeneratedPostIds] = useState([]);
+  const [draftCaptions, setDraftCaptions] = useState({});
+  const [savingPostId, setSavingPostId] = useState("");
+  const [savedPostIds, setSavedPostIds] = useState([]);
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId);
 
   useEffect(() => {
@@ -799,6 +802,8 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     setStatus("");
     setPosts([]);
     setGeneratedPostIds([]);
+    setDraftCaptions({});
+    setSavedPostIds([]);
     setPolling(false);
   }, [selectedBusinessId, workspaceId, businesses]);
 
@@ -901,7 +906,37 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     followGeneration(postIds);
   }
 
-  if (mode === "connect") return <section className="panel formPanel">
+  async function saveConceptForPlanning(post, index) {
+    const postId = String(post.post_id || post.id || index);
+    const urls = Array.isArray(post.urls) ? post.urls : [];
+    const caption = (draftCaptions[postId] ?? post.caption ?? post.text ?? "").trim();
+    if (!caption) {
+      setStatus("Vul eerst een tekst in voordat je het concept goedkeurt.");
+      return;
+    }
+    setSavingPostId(postId);
+    const media = urls.map((url) => ({ url, media_type: post.media_type || mediaType, source: "predis", predis_post_id: postId }));
+    const { error } = await supabase.from("social_content_items").insert({
+      workspace_id: workspaceId,
+      business_id: selectedBusinessId,
+      content_type: "post",
+      direction: "outbound",
+      status: "draft",
+      workflow_status: "new",
+      body: caption,
+      media,
+      created_at: new Date().toISOString(),
+    });
+    if (error) {
+      setStatus(`Concept kon niet worden opgeslagen: ${error.message}`);
+    } else {
+      setSavedPostIds((current) => current.includes(postId) ? current : [...current, postId]);
+      setStatus("Concept is goedgekeurd en als concept klaargezet voor de publicatieplanning.");
+    }
+    setSavingPostId("");
+  }
+
+    if (mode === "connect") return <section className="panel formPanel">
     <div className="sectionHeading"><div><p className="eyebrow">Contentkoppelingen</p><h3>Predis</h3><p>Elke vestiging heeft een eigen koppeling. De status is direct zichtbaar.</p></div></div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
       {businesses.map((business) => <PredisBusinessConnectionCard key={business.id} workspaceId={workspaceId} business={business} session={session} />)}
@@ -949,8 +984,30 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
               : <img src={mediaUrl} alt="Predis-concept" style={{ width: "100%", borderRadius: "12px" }} />)}
             <div>
               <p className="eyebrow">{selectedBusiness?.name || "Vestiging"} · {post.media_type || mediaType}</p>
-              <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{caption}</p>
-              <strong>Status: {post.status || post.post_status || "Klaar"}</strong>
+              <label>Tekst voor publicatie
+                <textarea
+                  rows="7"
+                  value={draftCaptions[String(post.post_id || post.id || index)] ?? caption}
+                  onChange={(event) => setDraftCaptions((current) => ({ ...current, [String(post.post_id || post.id || index)]: event.target.value }))}
+                  disabled={savedPostIds.includes(String(post.post_id || post.id || index))}
+                />
+              </label>
+              <p><strong>Predis-status:</strong> {post.status || post.post_status || "Klaar"}</p>
+              <div className="formActions">
+                <button
+                  type="button"
+                  className="primaryButton"
+                  onClick={() => saveConceptForPlanning(post, index)}
+                  disabled={savingPostId === String(post.post_id || post.id || index) || savedPostIds.includes(String(post.post_id || post.id || index))}
+                >
+                  {savedPostIds.includes(String(post.post_id || post.id || index))
+                    ? "Goedgekeurd en klaargezet"
+                    : savingPostId === String(post.post_id || post.id || index)
+                      ? "Opslaan..."
+                      : "Goedkeuren voor planning"}
+                </button>
+              </div>
+              <p className="securityHint">Goedkeuren slaat het concept op, maar publiceert nog niets.</p>
             </div>
           </div>
         </article>;
