@@ -8,9 +8,18 @@ const channelDefaults = {
   whatsapp: false, google: true, predis: true,
 };
 
+const imageSlots = [
+  { key: "landscape", label: "Liggend", width: 1200, height: 630, ratio: "1,91:1", channels: "Facebook, Google Bedrijfsprofiel en Brevo" },
+  { key: "square", label: "Vierkant", width: 1080, height: 1080, ratio: "1:1", channels: "Instagram, Facebook en Predis" },
+  { key: "portrait", label: "Staand bericht", width: 1080, height: 1350, ratio: "4:5", channels: "Instagram-feed" },
+  { key: "vertical", label: "Story, Reel en TikTok", width: 1080, height: 1920, ratio: "9:16", channels: "Stories, Reels, TikTok en WhatsApp Status" },
+];
+
+const emptyImages = Object.fromEntries(imageSlots.map(({ key }) => [key, null]));
+
 const emptyForm = {
   title: "", shortDescription: "", description: "", start: "", end: "",
-  location: "Caribbean Corner, Dorpsstraat 114A, Zoetermeer", imageUrl: "", videoUrl: "",
+  location: "Caribbean Corner, Dorpsstraat 114A, Zoetermeer", imageUrl: "", images: emptyImages, videoUrl: "",
   organizer: "Caribbean Corner", contactEmail: "info@caribbeancorner.nl", language: "nl",
   ctaLabel: "Meer informatie", ctaUrl: "", ticketType: "free", ticketPrice: "0", capacity: "",
   status: "draft", calendarMailbox: "info@leclubbbq.nl", addToCalendar: true, preparePromotion: true,
@@ -36,12 +45,46 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [uploadingSlot, setUploadingSlot] = useState("");
+  const [uploadMessage, setUploadMessage] = useState(null);
   const [eventCampaigns, setEventCampaigns] = useState([]);
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const site = siteForBusiness(selectedBusiness);
   const update = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setPreview(false); setResult(null); };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const enabledChannels = Object.keys(form.channels).filter((channel) => form.channels[channel]);
+
+  async function uploadImage(slot, file) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return setUploadMessage({ ok: false, message: "Gebruik een JPG-, PNG- of WebP-afbeelding." });
+    if (file.size > 10 * 1024 * 1024) return setUploadMessage({ ok: false, message: "De afbeelding mag maximaal 10 MB zijn." });
+    setUploadingSlot(slot.key); setUploadMessage(null);
+    try {
+      const dimensions = await new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file); const image = new Image();
+        image.onload = () => { resolve({ width: image.naturalWidth, height: image.naturalHeight }); URL.revokeObjectURL(url); };
+        image.onerror = () => { reject(new Error("Afbeelding kon niet worden gelezen.")); URL.revokeObjectURL(url); };
+        image.src = url;
+      });
+      const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+      const path = `${workspaceId}/${selectedBusiness?.id || businessId || "algemeen"}/${slot.key}-${Date.now()}-${safeName}`;
+      const { error } = await supabase.storage.from("marketing-assets").upload(path, file, { cacheControl: "31536000", contentType: file.type, upsert: false });
+      if (error) throw error;
+      const { data } = supabase.storage.from("marketing-assets").getPublicUrl(path);
+      const matches = dimensions.width === slot.width && dimensions.height === slot.height;
+      setForm((current) => ({ ...current, images: { ...current.images, [slot.key]: { url: data.publicUrl, path, name: file.name, ...dimensions, matches } } }));
+      setUploadMessage({ ok: true, message: matches ? `${slot.label} is correct geupload.` : `${slot.label} is geupload (${dimensions.width} Ã— ${dimensions.height} px). Aanbevolen is ${slot.width} Ã— ${slot.height} px.` });
+      setPreview(false); setResult(null);
+    } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
+    finally { setUploadingSlot(""); }
+  }
+
+  async function removeImage(slotKey) {
+    const image = form.images?.[slotKey];
+    if (image?.path) await supabase.storage.from("marketing-assets").remove([image.path]);
+    setForm((current) => ({ ...current, images: { ...current.images, [slotKey]: null } }));
+    setPreview(false); setResult(null);
+  }
 
   async function loadEventCampaigns() {
     if (!workspaceId) return;
@@ -59,7 +102,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (new Date(form.end) <= new Date(form.start)) return "Het eindmoment moet na het beginmoment liggen.";
     if (form.ticketType === "paid" && Number(form.ticketPrice) <= 0) return "Vul een geldige ticketprijs in.";
     if (form.preparePromotion && form.channels.brevo && !form.brevoSubject.trim()) return "Vul voor Brevo een onderwerpregel in.";
-    if (form.preparePromotion && form.channels.brevo && !form.brevoAudience.trim()) return "Kies of noteer voor Brevo minimaal één doelgroep.";
+    if (form.preparePromotion && form.channels.brevo && !form.brevoAudience.trim()) return "Kies of noteer voor Brevo minimaal Ã©Ã©n doelgroep.";
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
     if (form.preparePromotion && form.channels.google && (!form.ctaUrl.trim() || !form.shortDescription.trim())) return "Google heeft een korte tekst en knoplink nodig.";
@@ -72,21 +115,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (!form.preparePromotion) return { skipped: true };
     const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
     if (!integration?.id) return { warning: "Promotieconcept kon niet worden opgeslagen: marketingkoppeling ontbreekt." };
+    const imageFor = (key, fallbackKeys = []) => form.images?.[key]?.url || fallbackKeys.map((item) => form.images?.[item]?.url).find(Boolean) || form.imageUrl.trim();
     const common = {
       title: form.title.trim(), short_description: form.shortDescription.trim(), description: form.description.trim(),
-      start: form.start, end: form.end, location: form.location.trim(), image_url: form.imageUrl.trim(), video_url: form.videoUrl.trim(),
+      start: form.start, end: form.end, location: form.location.trim(), image_url: imageFor("landscape", ["square", "portrait", "vertical"]), images: form.images, video_url: form.videoUrl.trim(),
       organizer: form.organizer.trim(), contact_email: form.contactEmail.trim(), language: form.language,
       cta: { label: form.ctaLabel, url: form.ctaUrl.trim() || websiteEvent.url },
       tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity }, website_url: websiteEvent.url,
     };
     const channel_payloads = {
-      brevo: { subject: form.brevoSubject.trim(), preview_text: form.brevoPreview.trim(), audience: form.brevoAudience.trim() },
-      facebook: { text: form.facebookText.trim() || form.shortDescription.trim(), cta: common.cta },
-      instagram: { format: form.instagramFormat, caption: form.instagramCaption.trim() || form.shortDescription.trim() },
-      tiktok: { caption: form.tiktokCaption.trim() || form.shortDescription.trim(), privacy: form.tiktokPrivacy, comments_enabled: form.tiktokComments },
-      whatsapp: { template_name: form.whatsappTemplate.trim(), message: form.whatsappMessage.trim() || form.shortDescription.trim() },
-      google: { topic_type: form.googleTopic, summary: form.shortDescription.trim(), event: { title: form.title.trim(), start: form.start, end: form.end }, call_to_action: common.cta },
-      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim() },
+      brevo: { subject: form.brevoSubject.trim(), preview_text: form.brevoPreview.trim(), audience: form.brevoAudience.trim(), image_url: imageFor("landscape", ["square"]) },
+      facebook: { text: form.facebookText.trim() || form.shortDescription.trim(), cta: common.cta, image_url: imageFor("landscape", ["square"]) },
+      instagram: { format: form.instagramFormat, caption: form.instagramCaption.trim() || form.shortDescription.trim(), image_url: form.instagramFormat === "reel" || form.instagramFormat === "story" ? imageFor("vertical", ["portrait", "square"]) : imageFor("portrait", ["square", "vertical"]) },
+      tiktok: { caption: form.tiktokCaption.trim() || form.shortDescription.trim(), privacy: form.tiktokPrivacy, comments_enabled: form.tiktokComments, image_url: imageFor("vertical", ["portrait"]) },
+      whatsapp: { template_name: form.whatsappTemplate.trim(), message: form.whatsappMessage.trim() || form.shortDescription.trim(), image_url: imageFor("vertical", ["landscape", "square"]) },
+      google: { topic_type: form.googleTopic, summary: form.shortDescription.trim(), event: { title: form.title.trim(), start: form.start, end: form.end }, call_to_action: common.cta, image_url: imageFor("landscape", ["square"]) },
+      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images },
     };
     const channel_status = Object.fromEntries(enabledChannels.map((channel) => {
       const payload = channel_payloads[channel] || {};
@@ -123,7 +167,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   return <section className="panel" style={{ marginBottom: 24 }}>
-    <div className="panelHead"><div><p className="eyebrow">EVENEMENTENBEHEER</p><h2>Nieuw evenement aanmaken</h2><p>Vul de basis één keer in. Horeca OS vraagt daarna alleen wat een gekozen kanaal extra nodig heeft.</p></div></div>
+    <div className="panelHead"><div><p className="eyebrow">EVENEMENTENBEHEER</p><h2>Nieuw evenement aanmaken</h2><p>Vul de basis Ã©Ã©n keer in. Horeca OS vraagt daarna alleen wat een gekozen kanaal extra nodig heeft.</p></div></div>
     <div className="eventCreatorGrid">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
       <label>Evenementnaam *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
@@ -132,7 +176,16 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label className="wide">Locatie<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label>
       <label className="wide">Korte promotietekst<textarea rows={3} value={form.shortDescription} onChange={(e) => update("shortDescription", e.target.value)} placeholder="De kernboodschap voor Google, WhatsApp en sociale media." /></label>
       <label className="wide">Volledige omschrijving<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-      <label>Afbeeldingslink<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="https://...jpg" /></label>
+      <div className="imageUploads wide">
+        <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload alleen de formaten die je nodig hebt. Horeca OS kiest automatisch het beste beeld voor ieder kanaal.</p></div>
+        <div className="imageSlotGrid">{imageSlots.map((slot) => { const uploaded = form.images?.[slot.key]; return <article className={`imageSlot ${uploaded?.matches ? "exact" : ""}`} key={slot.key}>
+          <div><strong>{slot.label}</strong><span>{slot.width} Ã— {slot.height} px Â· {slot.ratio}</span><small>{slot.channels}</small></div>
+          {uploaded ? <div className="uploadedImage"><div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} /><p>{uploaded.width} Ã— {uploaded.height} px {uploaded.matches ? "Â· Perfect formaat" : "Â· Afwijkend formaat"}</p><button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button></div> : <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploadenâ€¦" : "Afbeelding uploaden"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>}
+        </article>; })}</div>
+        <p className="imageHelp">JPG, PNG of WebP Â· maximaal 10 MB per afbeelding.</p>
+        {uploadMessage && <p className={`uploadMessage ${uploadMessage.ok ? "success" : "error"}`}>{uploadMessage.message}</p>}
+      </div>
+      <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
       <label>Videolink<input type="url" value={form.videoUrl} onChange={(e) => update("videoUrl", e.target.value)} placeholder="Verplicht wanneer TikTok is gekozen" /></label>
       <label>Organisator<input value={form.organizer} onChange={(e) => update("organizer", e.target.value)} /></label>
       <label>Contact-e-mail<input type="email" value={form.contactEmail} onChange={(e) => update("contactEmail", e.target.value)} /></label>
@@ -152,24 +205,24 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </fieldset>
 
     {form.preparePromotion && <div className="channelDetails">
-      {form.channels.brevo && <fieldset><legend>Brevo — verplicht voor nieuwsbrief</legend><label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label><label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label><label>Doelgroep(en) *<input value={form.brevoAudience} onChange={(e) => update("brevoAudience", e.target.value)} placeholder="Selecteer later Brevo-lijsten of segmenten" /></label></fieldset>}
+      {form.channels.brevo && <fieldset><legend>Brevo â€” verplicht voor nieuwsbrief</legend><label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label><label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label><label>Doelgroep(en) *<input value={form.brevoAudience} onChange={(e) => update("brevoAudience", e.target.value)} placeholder="Selecteer later Brevo-lijsten of segmenten" /></label></fieldset>}
       {form.channels.facebook && <fieldset><legend>Facebook</legend><label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label></fieldset>}
       {form.channels.instagram && <fieldset><legend>Instagram</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
-      {form.channels.tiktok && <fieldset><legend>TikTok — video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
-      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business — template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
+      {form.channels.tiktok && <fieldset><legend>TikTok â€” video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
+      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business â€” template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
       {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
       {form.channels.predis && <fieldset><legend>Predis</legend><label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label><label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label></fieldset>}
     </div>}
 
-    {preview && <div className="eventPreview"><strong>Controle vóór aanmaken</strong><p><b>{form.title}</b></p><p>{new Date(form.start).toLocaleString("nl-NL")} – {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p><ul><li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>{form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul></div>}
-    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={createEvent} disabled={busy}>{busy ? "Bezig met aanmaken…" : form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken"}</button>}</div>
+    {preview && <div className="eventPreview"><strong>Controle vÃ³Ã³r aanmaken</strong><p><b>{form.title}</b></p><p>{new Date(form.start).toLocaleString("nl-NL")} â€“ {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p><ul><li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>{form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul></div>}
+    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "âœ“" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={createEvent} disabled={busy}>{busy ? "Bezig met aanmakenâ€¦" : form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken"}</button>}</div>
     {eventCampaigns.length > 0 && <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">DOORPLAATSSTATUS</p><h3>Evenementcampagnes</h3></div><button type="button" className="secondaryButton" onClick={loadEventCampaigns}>Status verversen</button></div>
-      {eventCampaigns.map((item) => { const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution" && entry?.source_type === "website_event") || {}; return <article key={item.id}><div><strong>{distribution.common?.title || "Evenement"}</strong><p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Website-evenement openen</a> : "Promotieconcept"}</p></div><div className="statusPills">{(distribution.target_channels || []).map((channel) => { const stored = distribution.channel_status?.[channel]; const label = item.published_at ? "Geplaatst" : item.scheduled_for ? "Ingepland" : stored === "extra_gegevens_nodig" ? "Extra gegevens nodig" : "Klaar voor controle"; return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}><b>{channelLabels[channel] || channel}</b> · {label}</span>; })}</div></article>; })}
+      {eventCampaigns.map((item) => { const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution" && entry?.source_type === "website_event") || {}; return <article key={item.id}><div><strong>{distribution.common?.title || "Evenement"}</strong><p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Website-evenement openen</a> : "Promotieconcept"}</p></div><div className="statusPills">{(distribution.target_channels || []).map((channel) => { const stored = distribution.channel_status?.[channel]; const label = item.published_at ? "Geplaatst" : item.scheduled_for ? "Ingepland" : stored === "extra_gegevens_nodig" ? "Extra gegevens nodig" : "Klaar voor controle"; return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}><b>{channelLabels[channel] || channel}</b> Â· {label}</span>; })}</div></article>; })}
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>}
     <style jsx>{`
-      .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{padding:7px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:13px}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.eventCreatorGrid,.channelDetails,.channelChecks{grid-template-columns:1fr}.wide{grid-column:auto}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
+      .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.imageSlot.exact{border-color:#57ad7d}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.uploadButton{align-self:flex-end;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{padding:7px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:13px}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot{display:block}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
     `}</style>
   </section>;
 }
