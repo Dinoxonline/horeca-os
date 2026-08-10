@@ -420,6 +420,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
   const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
   const [brevoLists, setBrevoLists] = useState([]);
+  const [brevoSenderEmail, setBrevoSenderEmail] = useState("");
   const [selectedListIds, setSelectedListIds] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [selectedDraftId, setSelectedDraftId] = useState("");
@@ -446,6 +447,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
     setBrevoError("");
     setSaveMessage("");
     setBrevoLists([]);
+    setBrevoSenderEmail("");
     setDrafts([]);
     setSelectedListIds([]);
     const headers = { Authorization: `Bearer ${session.access_token}` };
@@ -461,6 +463,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
         } else {
           const lists = listsResponse.result.lists || [];
           setBrevoLists(lists);
+          setBrevoSenderEmail(listsResponse.result.senderEmail || "");
           setSelectedListIds([]);
         }
         if (!draftsResponse.ok) {
@@ -500,6 +503,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
       campaignName: campaignForm.campaignName,
       subject: campaignForm.subject,
       senderName: campaignForm.senderName,
+      senderEmail: brevoSenderEmail,
       content: campaignForm.content,
     });
   }
@@ -611,6 +615,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
       campaignName: draft.internal_name,
       subject: draft.subject,
       senderName: draft.sender_name,
+      senderEmail: brevoSenderEmail,
       content: draft.body,
     });
     setSaveMessage("Bestaand concept geopend. Wijzig het en sla opnieuw op.");
@@ -654,7 +659,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
             {!!selectedListIds.length && <small>{selectedListIds.length} doelgroep(en) geselecteerd. Brevo verwijdert dubbele e-mailadressen bij verzending.</small>}
           </fieldset>
           <label>Interne campagnenaam<input value={campaignForm.campaignName} onChange={(event) => updateField("campaignName", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Friday augustus" required /></label>
-          <label>Naam afzender<input value={campaignForm.senderName} onChange={(event) => updateField("senderName", event.target.value)} placeholder="Caribbean Corner" required /></label>
+          <label>Naam afzender<input value={campaignForm.senderName} onChange={(event) => updateField("senderName", event.target.value)} placeholder="Caribbean Corner" required /><small>Brevo-adres: {brevoSenderEmail || "nog niet ingesteld"}</small></label>
           <label className="full">Onderwerp<input value={campaignForm.subject} onChange={(event) => updateField("subject", event.target.value)} placeholder="Dit ziet de gast in de inbox" required /></label>
           <label className="full">Bericht<textarea value={campaignForm.content} onChange={(event) => updateField("content", event.target.value)} rows="9" placeholder="Schrijf hier de inhoud van de nieuwsbrief." required /></label>
           {brevoError && <div className="notice full">{brevoError}</div>}
@@ -668,20 +673,20 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
         {!preview && <Empty text="Vul links de campagne in en maak een voorbeeld." />}
         {preview && <>
           <div className="scopeBanner"><strong>{preview.business}</strong><span>{preview.listNames?.join(" · ") || preview.listName} · maximaal {preview.recipients} contacten; Brevo verwijdert dubbele adressen</span></div>
-          <div className="factorRow"><div><strong>{preview.subject}</strong><small>Van: {preview.senderName} · Intern: {preview.campaignName}</small></div></div>
+          <div className="factorRow"><div><strong>{preview.subject}</strong><small>Van: {preview.senderName} &lt;{preview.senderEmail || "afzender niet ingesteld"}&gt; · Intern: {preview.campaignName}</small></div></div>
           <div className="sensitiveNote"><strong>Inhoud</strong><span style={{ whiteSpace: "pre-wrap" }}>{preview.content}</span></div>
           <div className="notice successNotice">Voorbeeld gereed. Er is niets naar Brevo of gasten verstuurd.</div>
           <button type="button" className="primary" onClick={saveConcept} disabled={savingDraft}>{savingDraft ? "Concept opslaan..." : selectedDraftId ? "Wijzigingen opslaan" : "Concept opslaan"}</button>
           {selectedDraftId && <div className="sensitiveNote">
             <strong>Definitieve goedkeuring voorbereiden</strong>
-            <span>Controleer nogmaals de vestiging, doelgroep en {preview.recipients} ontvangers. Typ daarna exact de interne campagnenaam. Ook hierna wordt nog niets verzonden.</span>
+            <span>Controleer nogmaals de vestiging, afzender {preview.senderEmail || "niet ingesteld"}, doelgroep en {preview.recipients} ontvangers. Typ daarna exact de interne campagnenaam. Ook hierna wordt nog niets verzonden.</span>
             <label>Campagnenaam ter controle<input value={approvalConfirmation.name} onChange={(event) => setApprovalConfirmation((current) => ({ ...current, name: event.target.value }))} placeholder={preview.campaignName} /></label>
             <label className="checkOption"><input type="checkbox" checked={approvalConfirmation.confirmed} onChange={(event) => setApprovalConfirmation((current) => ({ ...current, confirmed: event.target.checked }))} />Ik heb vestiging, doelgroep en aantal ontvangers gecontroleerd.</label>
             <button type="button" className="secondaryButton" onClick={requestFinalApproval} disabled={requestingApproval || approvalConfirmation.name !== preview.campaignName || !approvalConfirmation.confirmed}>{requestingApproval ? "Controle uitvoeren..." : "Klaarzetten voor definitieve goedkeuring"}</button>
           </div>}
           {selectedDraftId && drafts.find((item) => item.id === selectedDraftId)?.status === "ready_for_approval" && <div className="notice dangerNotice">
             <strong>Definitief verzenden</strong>
-            <p>Dit verstuurt de campagne direct via Brevo. Controleer onderwerp, inhoud, vestiging en alle aangevinkte doelgroepen nog één keer.</p>
+            <p>Dit verstuurt de campagne direct via Brevo vanaf {preview.senderEmail || "een niet-ingestelde afzender"}. Controleer onderwerp, inhoud, vestiging en alle aangevinkte doelgroepen nog één keer.</p>
             <label>Typ exact: VERZEND {preview.campaignName}<input value={sendConfirmation.text} onChange={(event) => setSendConfirmation((current) => ({ ...current, text: event.target.value }))} /></label>
             <label className="checkOption"><input type="checkbox" checked={sendConfirmation.confirmed} onChange={(event) => setSendConfirmation((current) => ({ ...current, confirmed: event.target.checked }))} />Ik begrijp dat deze campagne nu echt naar de geselecteerde gasten wordt verzonden.</label>
             <button type="button" className="primary" onClick={sendApprovedCampaign} disabled={sendingCampaign || sendConfirmation.text !== `VERZEND ${preview.campaignName}` || !sendConfirmation.confirmed}>{sendingCampaign ? "Campagne verzenden..." : "Nu definitief verzenden"}</button>
