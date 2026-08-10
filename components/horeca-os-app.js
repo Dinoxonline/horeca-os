@@ -607,6 +607,81 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${title}`)}&body=${encodeURIComponent(details)}`;
   }
 
+
+  function emailHandoffUrlForCampaign(channel, campaign, distribution) {
+    const target = manualEmailByChannel[channel];
+    if (!target) return "";
+    const preview = distribution?.source_preview || {};
+    const businessName = businesses.find((item) => item.id === selectedBusinessId)?.name || "Horeca OS";
+    const title = preview.title || campaign.body || "Evenement";
+    const details = [
+      `Beste redactie van ${target.label},`,
+      "",
+      `Graag melden wij het volgende evenement van ${businessName} aan:`,
+      "",
+      `Titel: ${title}`,
+      preview.startDate ? `Datum en tijd: ${formatDate(preview.startDate)}` : "",
+      preview.location ? `Locatie: ${preview.location}` : "",
+      campaign.body ? `Omschrijving: ${campaign.body}` : "",
+      distribution?.source_url ? `Evenementpagina: ${distribution.source_url}` : "",
+      preview.image ? `Openbare beeldlink: ${preview.image}` : "",
+      "",
+      "Met vriendelijke groet,",
+      businessName,
+    ].filter(Boolean).join("\n");
+    return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${title}`)}&body=${encodeURIComponent(details)}`;
+  }
+
+  function manualChannelStatusLabel(state) {
+    if (state === "email_sent") return "Verzonden";
+    if (state === "email_skipped") return "Overgeslagen";
+    return "Klaargezet";
+  }
+
+  async function updateManualChannelState(campaign, channel, nextState) {
+    const distributionIndex = (campaign.media || []).findIndex((item) => item?.kind === "campaign_distribution");
+    if (distributionIndex < 0 || !manualEmailByChannel[channel]) return;
+    const now = new Date().toISOString();
+    const currentDistribution = campaign.media[distributionIndex] || {};
+    const handoffs = Array.isArray(currentDistribution.email_handoffs)
+      ? currentDistribution.email_handoffs
+      : [];
+    const existingHandoff = handoffs.find((item) => item.channel === channel) || {};
+    const updatedHandoff = {
+      channel,
+      ...manualEmailByChannel[channel],
+      ...existingHandoff,
+      state: nextState,
+      updated_at: now,
+      updated_by: session.user.email,
+    };
+    const nextDistribution = {
+      ...currentDistribution,
+      channel_states: {
+        ...(currentDistribution.channel_states || {}),
+        [channel]: nextState,
+      },
+      email_handoffs: [
+        ...handoffs.filter((item) => item.channel !== channel),
+        updatedHandoff,
+      ],
+    };
+    const nextMedia = [...campaign.media];
+    nextMedia[distributionIndex] = nextDistribution;
+    setStatus(`${manualEmailByChannel[channel].label}: status opslaan...`);
+    const { error } = await supabase.from("social_content_items")
+      .update({ media: nextMedia, updated_at: now })
+      .eq("id", campaign.id)
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", selectedBusinessId);
+    if (error) {
+      setStatus(`Status kon niet worden opgeslagen: ${error.message}`);
+      return;
+    }
+    setStatus(`${manualEmailByChannel[channel].label}: ${manualChannelStatusLabel(nextState).toLowerCase()}.`);
+    await loadCampaigns();
+  }
+
   function toggleChannel(channel) {
     setChannels((current) => current.includes(channel)
       ? current.filter((item) => item !== channel)
@@ -990,7 +1065,25 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
             <small>{sourceLabels[distribution.source_type] || distribution.source_type?.replaceAll("_", " ") || "Bron"} · {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
             {distribution.source_url && <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a>}
             <div className="formActions" style={{ marginTop: "10px" }}>
-              {(distribution.target_channels || []).map((channel) => <span className="pill" key={channel}>{labels[channel] || channel}: {distribution.channel_states?.[channel] === "confirmation_required" ? "bevestiging nodig" : distribution.channel_states?.[channel] === "email_ready" ? "e-mail klaarzetten" : "gepland"}</span>)}
+              {(distribution.target_channels || []).map((channel) => {
+                const manualTarget = manualEmailByChannel[channel];
+                const channelState = distribution.channel_states?.[channel];
+                if (!manualTarget) {
+                  return <span className="pill" key={channel}>{labels[channel] || channel}: {channelState === "confirmation_required" ? "bevestiging nodig" : "gepland"}</span>;
+                }
+                return <div className="factorRow" key={channel} style={{ width: "100%", padding: "10px 12px", alignItems: "center" }}>
+                  <div>
+                    <strong>{manualTarget.label}</strong>
+                    <small>{manualTarget.email} · {manualChannelStatusLabel(channelState)}</small>
+                  </div>
+                  <div className="formActions">
+                    {channelState !== "email_skipped" && <a className="secondaryButton" href={emailHandoffUrlForCampaign(channel, campaign, distribution)}>E-mail openen</a>}
+                    {channelState !== "email_sent" && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_sent")}>Verzonden</button>}
+                    {channelState !== "email_skipped" && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_skipped")}>Overslaan</button>}
+                    <span className="pill">{manualChannelStatusLabel(channelState)}</span>
+                  </div>
+                </div>;
+              })}
               {distribution.use_predis && <span className="pill">Predis: ingeschakeld</span>}
               {distribution.meta_ads?.enabled && <span className="pill">Meta Ads: € {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag · goedkeuring nodig</span>}
             </div>
