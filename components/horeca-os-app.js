@@ -775,6 +775,8 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
   const [status, setStatus] = useState("");
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const [generatedPostIds, setGeneratedPostIds] = useState([]);
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId);
 
   useEffect(() => {
@@ -796,6 +798,8 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     setConnectedBusinessName(savedBrandId ? businesses.find((item) => item.id === selectedBusinessId)?.name || "" : "");
     setStatus("");
     setPosts([]);
+    setGeneratedPostIds([]);
+    setPolling(false);
   }, [selectedBusinessId, workspaceId, businesses]);
 
   async function checkConnection() {
@@ -824,6 +828,48 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     setLoading(false);
   }
 
+  async function loadGeneratedConcepts(targetIds = generatedPostIds, quiet = false) {
+    if (!selectedBusinessId || !brandId.trim()) return [];
+    if (!quiet) setLoading(true);
+    const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, brandId: brandId.trim() });
+    const response = await fetch(`/api/integrations/predis?${query}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) {
+      if (!quiet) setStatus(result.error || "De Predis-concepten konden niet worden opgehaald.");
+      if (!quiet) setLoading(false);
+      return [];
+    }
+    const recentPosts = result.posts || [];
+    const matchingPosts = targetIds.length
+      ? recentPosts.filter((post) => targetIds.includes(String(post.post_id || post.id || "")))
+      : recentPosts;
+    setPosts(matchingPosts.length ? matchingPosts : recentPosts);
+    if (!quiet) {
+      setStatus(matchingPosts.length || !targetIds.length
+        ? `${matchingPosts.length || recentPosts.length} concept(en) opgehaald. Er is niets gepubliceerd.`
+        : "Predis is nog bezig met het concept.");
+      setLoading(false);
+    }
+    return matchingPosts;
+  }
+
+  async function followGeneration(postIds) {
+    setPolling(true);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => window.setTimeout(resolve, 5000));
+      const completed = await loadGeneratedConcepts(postIds, true);
+      if (completed.length > 0) {
+        setStatus("Het Predis-concept is klaar en staat hieronder. Er is niets gepubliceerd.");
+        setPolling(false);
+        return;
+      }
+    }
+    setStatus("Predis werkt nog aan het concept. Gebruik 'Concepten vernieuwen' om het resultaat op te halen.");
+    setPolling(false);
+  }
+
   async function generateConcept() {
     if (!selectedBusinessId || !brandId.trim()) {
       setStatus("Koppel deze vestiging eerst onder Koppelingen → Predis.");
@@ -834,6 +880,8 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
       return;
     }
     setLoading(true);
+    setPosts([]);
+    setGeneratedPostIds([]);
     setStatus("");
     const response = await fetch("/api/integrations/predis", {
       method: "POST",
@@ -841,10 +889,16 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
       body: JSON.stringify({ workspaceId, businessId: selectedBusinessId, brandId: brandId.trim(), prompt: prompt.trim(), mediaType }),
     }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) : {};
-    setStatus(response?.ok
-      ? `Predis maakt het concept. Status: ${result.status || "in behandeling"}. Er wordt niets gepubliceerd.`
-      : result.error || "Predis kon het concept niet starten.");
+    if (!response?.ok) {
+      setStatus(result.error || "Predis kon het concept niet starten.");
+      setLoading(false);
+      return;
+    }
+    const postIds = (result.postIds || []).map(String);
+    setGeneratedPostIds(postIds);
+    setStatus(`Predis maakt het concept. Status: ${result.status || "in behandeling"}. Horeca OS controleert automatisch wanneer het klaar is.`);
     setLoading(false);
+    followGeneration(postIds);
   }
 
   if (mode === "connect") return <section className="panel formPanel">
@@ -878,15 +932,29 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
       <textarea rows="5" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Beschrijf doelgroep, aanbieding, toon en gewenste actie." />
     </label>
     <div className="formActions">
-      <button type="button" className="primaryButton" onClick={generateConcept} disabled={loading || !brandId}>{loading ? "Bezig..." : "Concept laten maken"}</button>
+      <button type="button" className="primaryButton" onClick={generateConcept} disabled={loading || polling || !brandId}>{loading ? "Starten..." : polling ? "Concept wordt gemaakt..." : "Concept laten maken"}</button>
+      <button type="button" className="secondaryButton" onClick={() => loadGeneratedConcepts()} disabled={loading || polling || !brandId}>Concepten vernieuwen</button>
     </div>
     <p className="securityHint">Predis kan hiervoor credits gebruiken. Horeca OS publiceert dit concept niet automatisch.</p>
     {status && <div className="statusBanner">{status}</div>}
-    {posts.length > 0 && <div className="compactList">
-      {posts.slice(0, 3).map((post, index) => <div className="compactListItem" key={post.post_id || post.id || index}>
-        <strong>{post.caption?.slice?.(0, 90) || post.text?.slice?.(0, 90) || `Predis-concept ${index + 1}`}</strong>
-        <span>{post.status || post.post_status || "Beschikbaar"}</span>
-      </div>)}
+    {posts.length > 0 && <div style={{ display: "grid", gap: "16px", marginTop: "16px" }}>
+      {posts.slice(0, 3).map((post, index) => {
+        const urls = Array.isArray(post.urls) ? post.urls : [];
+        const mediaUrl = urls[0] || post.media_url || post.image_url || "";
+        const caption = post.caption || post.text || `Predis-concept ${index + 1}`;
+        return <article className="panel" key={post.post_id || post.id || index} style={{ padding: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: mediaUrl ? "minmax(180px, 320px) 1fr" : "1fr", gap: "18px", alignItems: "start" }}>
+            {mediaUrl && (post.media_type === "video" || /\\.(mp4|mov|webm)(\\?|$)/i.test(mediaUrl)
+              ? <video src={mediaUrl} controls playsInline style={{ width: "100%", borderRadius: "12px" }} />
+              : <img src={mediaUrl} alt="Predis-concept" style={{ width: "100%", borderRadius: "12px" }} />)}
+            <div>
+              <p className="eyebrow">{selectedBusiness?.name || "Vestiging"} · {post.media_type || mediaType}</p>
+              <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{caption}</p>
+              <strong>Status: {post.status || post.post_status || "Klaar"}</strong>
+            </div>
+          </div>
+        </article>;
+      })}
     </div>}
   </section>;
 }
