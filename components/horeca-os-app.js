@@ -416,6 +416,191 @@ function EmptyModule({ eyebrow, title, description }) {
   return <><section className="pageIntro"><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></section><section className="panel emptyModule"><strong>Klaar voor de eerste databron</strong><p>Dit onderdeel is onderdeel van de nieuwe applicatiestructuur. Er wordt geen voorbeelddata getoond.</p></section></>;
 }
 
+function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
+  const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
+  const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
+  const [sourceType, setSourceType] = useState("facebook_event");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [campaignTitle, setCampaignTitle] = useState("");
+  const [campaignText, setCampaignText] = useState("");
+  const [channels, setChannels] = useState(["brevo", "facebook", "instagram"]);
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [usePredis, setUsePredis] = useState(true);
+  const [metaAds, setMetaAds] = useState(false);
+  const [dailyBudget, setDailyBudget] = useState("");
+  const [campaignEnd, setCampaignEnd] = useState("");
+  const [audience, setAudience] = useState("");
+  const [spendConfirmed, setSpendConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+  const [channelResult, setChannelResult] = useState([]);
+
+  useEffect(() => {
+    setSelectedBusinessId(businessId !== "all" ? businessId : businesses[0]?.id || "");
+  }, [businessId, businesses]);
+
+  const channelOptions = [
+    ["brevo", "Nieuwsbrief via Brevo"],
+    ["facebook", "Facebookpagina"],
+    ["instagram", "Instagram"],
+    ["tiktok", "TikTok"],
+    ["whatsapp", "WhatsApp Business"],
+    ["facebook_groups", "Facebook-groepen"],
+  ];
+
+  function toggleChannel(channel) {
+    setChannels((current) => current.includes(channel)
+      ? current.filter((item) => item !== channel)
+      : [...current, channel]);
+    setStatus("");
+  }
+
+  async function planCampaign(event) {
+    event.preventDefault();
+    if (!selectedBusinessId || !sourceUrl.trim() || !campaignTitle.trim() || !channels.length || !scheduledFor) {
+      setStatus("Vul de bron, campagnenaam, planning en minimaal één doelkanaal in.");
+      return;
+    }
+    if (metaAds && (!dailyBudget || !campaignEnd || !audience.trim() || !spendConfirmed)) {
+      setStatus("Bevestig voor Meta Ads eerst budget, einddatum en doelgroep.");
+      return;
+    }
+    setSaving(true);
+    setStatus("");
+    const { data: accounts, error: accountError } = await supabase.from("integration_accounts")
+      .select("id, provider, connection_status")
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", selectedBusinessId)
+      .eq("connection_status", "connected");
+    if (accountError || !accounts?.length) {
+      setStatus("Koppel voor deze vestiging eerst minimaal één sociaal kanaal.");
+      setSaving(false);
+      return;
+    }
+    const preferredAccount = accounts.find((item) => item.provider === "facebook")
+      || accounts.find((item) => item.provider === "instagram")
+      || accounts[0];
+    const plannedDate = new Date(scheduledFor);
+    const metadata = {
+      kind: "campaign_distribution",
+      source_type: sourceType,
+      source_url: sourceUrl.trim(),
+      use_predis: usePredis,
+      target_channels: channels,
+      channel_states: Object.fromEntries(channels.map((channel) => [
+        channel,
+        channel === "facebook_groups" ? "confirmation_required" : "planned",
+      ])),
+      meta_ads: metaAds ? {
+        enabled: true,
+        daily_budget_eur: Number(dailyBudget),
+        end_date: campaignEnd,
+        audience: audience.trim(),
+        spending_confirmed: true,
+        state: "approval_required",
+      } : { enabled: false },
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam",
+    };
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("social_content_items").insert({
+      workspace_id: workspaceId,
+      business_id: selectedBusinessId,
+      account_id: preferredAccount.id,
+      content_type: "post",
+      direction: "outbound",
+      status: "scheduled",
+      workflow_status: "in_progress",
+      body: campaignText.trim() || campaignTitle.trim(),
+      media: [metadata],
+      scheduled_for: plannedDate.toISOString(),
+      created_by: session.user.id,
+      approved_by: session.user.id,
+      approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+    if (error) {
+      setStatus("De campagne kon niet worden opgeslagen: " + error.message);
+      setSaving(false);
+      return;
+    }
+    const connectedProviders = new Set((accounts || []).map((item) => item.provider));
+    setChannelResult(channels.map((channel) => ({
+      channel,
+      state: channel === "facebook_groups"
+        ? "Bevestiging nodig"
+        : channel === "brevo"
+          ? "Klaargezet in Marketing"
+          : connectedProviders.has(channel) || (channel === "facebook" && connectedProviders.has("meta"))
+            ? "Gepland"
+            : "Koppeling controleren",
+    })));
+    setStatus("Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
+    setSaving(false);
+  }
+
+  return <section className="panel formPanel" style={{ marginBottom: "22px" }}>
+    <div className="sectionHeading">
+      <div><p className="eyebrow">Campagneverdeler</p><h3>Promoot bestaande inhoud op alle kanalen</h3><p>Kies een bestaand bericht of evenement als bron en plan de doorplaatsing vanuit één scherm.</p></div>
+    </div>
+    <form className="employeeForm creationForm" onSubmit={planCampaign}>
+      <label>Vestiging
+        <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
+          {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+        </select>
+      </label>
+      <label>Soort bron
+        <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+          <option value="facebook_post">Facebook-bericht</option>
+          <option value="facebook_event">Facebook-evenement</option>
+          <option value="instagram_post">Instagram-bericht</option>
+          <option value="instagram_reel">Instagram-reel</option>
+          <option value="tiktok_post">TikTok-video</option>
+          <option value="predis_concept">Predis-concept</option>
+        </select>
+      </label>
+      <label className="full">Link naar het bericht of evenement
+        <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Plak hier de Facebook-, Instagram- of TikTok-link" required />
+      </label>
+      <label>Interne campagnenaam
+        <input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} placeholder="Bijvoorbeeld: Caribbean Social Club" required />
+      </label>
+      <label>Publicatiemoment
+        <input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} required />
+      </label>
+      <label className="full">Basistekst
+        <textarea rows="5" value={campaignText} onChange={(event) => setCampaignText(event.target.value)} placeholder="Horeca OS gebruikt deze tekst als basis voor de kanaalvarianten." />
+      </label>
+      <fieldset className="full"><legend>Promoten via</legend>
+        <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
+          {channelOptions.map(([value, label]) => <label className="checkOption" key={value}>
+            <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />{label}
+          </label>)}
+        </div>
+      </fieldset>
+      <label className="checkOption full">
+        <input type="checkbox" checked={usePredis} onChange={(event) => setUsePredis(event.target.checked)} />
+        Predis gebruiken om tekst- en beeldvarianten per kanaal te maken
+      </label>
+      <fieldset className="full"><legend>Betaalde campagne via Meta</legend>
+        <label className="checkOption"><input type="checkbox" checked={metaAds} onChange={(event) => { setMetaAds(event.target.checked); setSpendConfirmed(false); }} />Facebook en Instagram betaald promoten</label>
+        {metaAds && <div className="formGrid" style={{ marginTop: "12px" }}>
+          <label>Dagbudget in euro<input type="number" min="1" step="0.01" value={dailyBudget} onChange={(event) => setDailyBudget(event.target.value)} required /></label>
+          <label>Einddatum<input type="date" value={campaignEnd} onChange={(event) => setCampaignEnd(event.target.value)} required /></label>
+          <label className="full">Doelgroep<input value={audience} onChange={(event) => setAudience(event.target.value)} placeholder="Plaats, leeftijd, interesses en bestaande doelgroep" required /></label>
+          <label className="checkOption full"><input type="checkbox" checked={spendConfirmed} onChange={(event) => setSpendConfirmed(event.target.checked)} />Ik heb budget, looptijd en doelgroep gecontroleerd. Definitief activeren krijgt nog één laatste bevestiging.</label>
+        </div>}
+      </fieldset>
+      {status && <div className="notice full">{status}</div>}
+      {!!channelResult.length && <div className="stackList full">
+        {channelResult.map((item) => <div className="factorRow" key={item.channel}><strong>{channelOptions.find(([value]) => value === item.channel)?.[1] || item.channel}</strong><span className="pill">{item.state}</span></div>)}
+      </div>}
+      <button type="submit" className="primary full" disabled={saving}>{saving ? "Campagne klaarzetten..." : "Alles inplannen"}</button>
+    </form>
+    <p className="securityHint">Betaalde Meta-campagnes worden nooit geactiveerd zonder een afzonderlijke definitieve uitgavenbevestiging.</p>
+  </section>;
+}
+
 function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session }) {
   const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
   const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
@@ -636,6 +821,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
 
   return <>
     <section className="pageIntro"><p className="eyebrow">Commerciële groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vóór verzending.</p></section>
+    <CampaignDistributor workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />
     <section className="userAdminGrid">
       <article className="panel creationPanel">
         <div className="panelHead"><div><h2>{selectedDraftId ? "Campagneconcept bewerken" : "Nieuwe Brevo-campagne"}</h2><p>Concepten worden in Horeca OS opgeslagen. Er wordt niets verzonden of in Brevo gewijzigd.</p></div>{selectedDraftId && <button type="button" onClick={startNewDraft}>Nieuw concept</button>}</div>
