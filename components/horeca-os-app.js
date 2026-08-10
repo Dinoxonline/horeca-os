@@ -583,6 +583,9 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
           <option value="facebook_post">Facebook-bericht</option>
           <option value="facebook_event">Facebook-evenement</option>
+          <option value="website_event">Event van onze website</option>
+          <option value="eventin_event">Event van Eventin</option>
+          <option value="team_winter_event">Event van Team Winter</option>
           <option value="instagram_post">Instagram-bericht</option>
           <option value="instagram_reel">Instagram-reel</option>
           <option value="tiktok_post">TikTok-video</option>
@@ -590,7 +593,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         </select>
       </label>
       <label className="full">Link naar het bericht of evenement
-        <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Plak hier de Facebook-, Instagram- of TikTok-link" required />
+        <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Plak hier de link van Facebook, Instagram, TikTok, je website, Eventin of Team Winter" required />
       </label>
       <label>Interne campagnenaam
         <input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} placeholder="Bijvoorbeeld: Caribbean Social Club" required />
@@ -641,10 +644,21 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           brevo: "Brevo", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
           whatsapp: "WhatsApp", facebook_groups: "Facebook-groepen",
         };
+        const sourceLabels = {
+          facebook_post: "Facebook-bericht",
+          facebook_event: "Facebook-evenement",
+          website_event: "Event van onze website",
+          eventin_event: "Event van Eventin",
+          team_winter_event: "Event van Team Winter",
+          instagram_post: "Instagram-bericht",
+          instagram_reel: "Instagram-reel",
+          tiktok_post: "TikTok-video",
+          predis_concept: "Predis-concept",
+        };
         return <article className="factorRow" key={campaign.id} style={{ alignItems: "flex-start" }}>
           <div>
             <strong>{campaign.body || "Campagne zonder titel"}</strong>
-            <small>{distribution.source_type?.replaceAll("_", " ") || "Bron"} · {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
+            <small>{sourceLabels[distribution.source_type] || distribution.source_type?.replaceAll("_", " ") || "Bron"} · {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
             {distribution.source_url && <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a>}
             <div className="formActions" style={{ marginTop: "10px" }}>
               {(distribution.target_channels || []).map((channel) => <span className="pill" key={channel}>{labels[channel] || channel}: {distribution.channel_states?.[channel] === "confirmation_required" ? "bevestiging nodig" : "gepland"}</span>)}
