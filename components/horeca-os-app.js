@@ -1443,6 +1443,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [facebookConfiguration, setFacebookConfiguration] = useState({ ready: false, missing: [] });
   const [whatsappAccounts, setWhatsappAccounts] = useState([]);
   const [whatsappConfiguration, setWhatsappConfiguration] = useState({ ready: false, missing: [], webhookUrl: "" });
+  const [brevoByBusiness, setBrevoByBusiness] = useState({});
+  const [syncingBrevoBusinessId, setSyncingBrevoBusinessId] = useState("");
   const [microsoftConnection, setMicrosoftConnection] = useState(null);
   const [microsoftConfiguration, setMicrosoftConfiguration] = useState({ ready: false, missing: [] });
   const [integrationMessage, setIntegrationMessage] = useState("");
@@ -1477,6 +1479,49 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
+
+  const loadBrevoForBusiness = useCallback(async (businessId, showProgress = false) => {
+    if (!businessId) return;
+    if (showProgress) setSyncingBrevoBusinessId(businessId);
+    const headers = { Authorization: `Bearer ${session.access_token}` };
+    const query = `workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(businessId)}`;
+    try {
+      const [statusResponse, listsResponse, campaignsResponse] = await Promise.all([
+        fetch(`/api/integrations/brevo?${query}&resource=status`, { headers }),
+        fetch(`/api/integrations/brevo?${query}&resource=lists`, { headers }),
+        fetch(`/api/integrations/brevo?${query}&resource=campaigns`, { headers }),
+      ]);
+      const [statusResult, listsResult, campaignsResult] = await Promise.all([
+        statusResponse.json(), listsResponse.json(), campaignsResponse.json(),
+      ]);
+      const error = statusResult.error || listsResult.error || campaignsResult.error || "";
+      setBrevoByBusiness((current) => ({
+        ...current,
+        [businessId]: {
+          ok: statusResponse.ok && listsResponse.ok && campaignsResponse.ok,
+          error,
+          account: statusResult.account || null,
+          configured: Boolean(statusResult.configured),
+          listIds: statusResult.listIds || [],
+          lists: listsResult.lists || [],
+          campaigns: campaignsResult.campaigns || [],
+        },
+      }));
+      if (showProgress) {
+        if (statusResponse.ok && listsResponse.ok && campaignsResponse.ok) setIntegrationMessage("Brevo is gecontroleerd en de gegevens zijn bijgewerkt.");
+        else setIntegrationError(error || "Brevo kon niet volledig worden geladen.");
+      }
+    } catch {
+      setBrevoByBusiness((current) => ({ ...current, [businessId]: { ok: false, error: "Brevo kon niet worden bereikt.", lists: [], campaigns: [] } }));
+      if (showProgress) setIntegrationError("Brevo kon niet worden bereikt.");
+    } finally {
+      if (showProgress) setSyncingBrevoBusinessId("");
+    }
+  }, [session.access_token, workspaceId]);
+
+  useEffect(() => {
+    businesses.forEach((business) => loadBrevoForBusiness(business.id));
+  }, [businesses, loadBrevoForBusiness]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1663,6 +1708,33 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="panelHead"><div><h2>WhatsApp per vestiging</h2><p>Caribbean Corner en Grandcafé Het Plein blijven volledig gescheiden.</p></div></div>
         {businesses.map((business) => { const account = whatsappAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen WhatsApp-nummer gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst bericht ${formatDate(account.last_synced_at)}` : "Koppel straks het eigen WhatsApp Business-nummer"}</small></div><span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
+    <section className="integrationGrid">
+      <article className="panel integrationSetup">
+        <div className="integrationBrand"><div className="integrationLogo">BR</div><div><h2>Brevo</h2><p>Contactlijsten, nieuwsbrieven en campagneprestaties</p></div></div>
+        <div className="scopeBanner"><strong>Alleen lezen</strong><span>Horeca OS haalt gegevens op uit Brevo, maar verstuurt of wijzigt nog niets.</span></div>
+        <div className="sensitiveNote"><strong>Per vestiging gescheiden</strong><span>Caribbean Corner en Grandcafé Het Plein zien uitsluitend hun toegewezen Brevo-lijsten en campagnes.</span></div>
+        <small>De API-sleutel blijft uitsluitend versleuteld op de server beschikbaar.</small>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>Brevo per vestiging</h2><p>Live controle van de toegewezen lijsten en verzonden campagnes.</p></div></div>
+        {businesses.map((business) => {
+          const brevo = brevoByBusiness[business.id];
+          return <div className="connectionRow" key={business.id}>
+            <div>
+              <strong>{business.name}</strong>
+              <span>{brevo?.ok ? `${brevo.lists.length} lijst(en) · ${brevo.campaigns.length} campagne(s)` : brevo?.error || "Controleren..."}</span>
+              <small>{brevo?.account?.companyName || brevo?.account?.email || (brevo?.configured ? "Brevo-lijsten toegewezen" : "Nog niet ingesteld")}</small>
+            </div>
+            <div className="connectionActions">
+              <button type="button" className="secondary" disabled={syncingBrevoBusinessId === business.id} onClick={() => loadBrevoForBusiness(business.id, true)}>
+                {syncingBrevoBusinessId === business.id ? "Controleren..." : "Brevo verversen"}
+              </button>
+              <span className={`status ${brevo?.ok ? "connected" : brevo ? "degraded" : "pending"}`}>{brevo?.ok ? "Verbonden" : brevo ? "Aandacht nodig" : "Controleren"}</span>
+            </div>
+          </div>;
+        })}
+      </article>
+    </section>
     </section>
   </>;
 }
