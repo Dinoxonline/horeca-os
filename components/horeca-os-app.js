@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
@@ -46,6 +46,7 @@ export default function HorecaOsApp() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
+  const workspaceSessionRefreshAttempted = useRef("");
   const [memberships, setMemberships] = useState([]);
   const [roleAssignments, setRoleAssignments] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(true);
@@ -75,7 +76,11 @@ export default function HorecaOsApp() {
         window.sessionStorage.setItem("horeca-os-password-recovery-verified", "pending");
         setPasswordRecovery(true);
       }
+      if (event === "SIGNED_IN") {
+        workspaceSessionRefreshAttempted.current = "";
+      }
       if (event === "SIGNED_OUT") {
+        workspaceSessionRefreshAttempted.current = "";
         window.sessionStorage.removeItem("horeca-os-password-recovery");
         window.sessionStorage.removeItem("horeca-os-password-recovery-verified");
         setPasswordRecovery(false);
@@ -88,20 +93,42 @@ export default function HorecaOsApp() {
   useEffect(() => {
     if (!session || passwordRecovery) return;
     let active = true;
-    supabase
-      .from("workspace_members")
-      .select("workspace_id, role, workspace:workspaces!workspace_members_workspace_id_fkey(id, name)")
-      .eq("user_id", session.user.id)
-      .then(({ data: rows, error }) => {
+
+    const loadMemberships = async () => {
+      const queryMemberships = () => supabase
+        .from("workspace_members")
+        .select("workspace_id, role, workspace:workspaces!workspace_members_workspace_id_fkey(id, name)")
+        .eq("user_id", session.user.id);
+
+      let { data: rows, error } = await queryMemberships();
+      if (!active) return;
+
+      const issuedInFuture = error?.message?.toLowerCase().includes("jwt issued at future");
+      if (issuedInFuture && workspaceSessionRefreshAttempted.current !== session.user.id) {
+        workspaceSessionRefreshAttempted.current = session.user.id;
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
         if (!active) return;
-        if (error) {
-          setMessage(`Werkruimtes konden niet worden geladen: ${error.message}`);
+        if (refreshError || !refreshed.session) {
+          setMessage("Je beveiligde sessie kon niet worden vernieuwd. Log uit en opnieuw in.");
           return;
         }
-        const available = rows || [];
-        setMemberships(available);
-        setWorkspaceId((current) => current || available[0]?.workspace_id || "");
-      });
+        setMessage("Je beveiligde sessie is vernieuwd. De werkruimtes worden opnieuw geladen.");
+        setSession(refreshed.session);
+        return;
+      }
+
+      if (error) {
+        setMessage(`Werkruimtes konden niet worden geladen: ${error.message}`);
+        return;
+      }
+
+      const available = rows || [];
+      setMemberships(available);
+      setWorkspaceId((current) => current || available[0]?.workspace_id || "");
+      setMessage((current) => current.includes("JWT issued at future") || current.includes("beveiligde sessie") ? "" : current);
+    };
+
+    loadMemberships();
     return () => { active = false; };
   }, [session, mfaState.currentLevel, passwordRecovery]);
 
