@@ -847,6 +847,55 @@ function CalendarOverview({ workspaceId, session }) {
     finally { setWorking(false); }
   }
 
+  async function moveAppointment(event, targetDay) {
+    if (event.type === "occurrence" || event.type === "exception") {
+      setMessage("Open deze terugkerende afspraak en wijzig de gewenste datum handmatig.");
+      return;
+    }
+    const currentStart = new Date(event.start?.dateTime);
+    const currentEnd = new Date(event.end?.dateTime);
+    const duration = currentEnd.getTime() - currentStart.getTime();
+    const newStart = new Date(targetDay);
+    newStart.setHours(currentStart.getHours(), currentStart.getMinutes(), currentStart.getSeconds(), 0);
+    const newEnd = new Date(newStart.getTime() + duration);
+    setWorking(true); setMessage(""); setNotice("");
+    try {
+      const response = await fetch("/api/integrations/microsoft/calendar/action", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          workspaceId,
+          mailbox: event.mailbox,
+          eventId: event.id,
+          subject: event.subject || "",
+          start: newStart.toISOString(),
+          end: newEnd.toISOString(),
+          location: event.location?.displayName || "",
+          description: event.bodyPreview || "",
+          attendees: (event.attendees || []).map((item) => item.emailAddress?.address).filter(Boolean),
+          isAllDay: Boolean(event.isAllDay),
+          recurrence: "none",
+          reminderMinutes: event.isReminderOn ? event.reminderMinutesBeforeStart : -1,
+          showAs: event.showAs || "busy",
+          isPrivate: event.sensitivity === "private",
+          isOnlineMeeting: Boolean(event.isOnlineMeeting),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De afspraak kon niet worden verplaatst.");
+      setNotice("De afspraak is verplaatst.");
+      setSelectedEvent(null);
+      await loadCalendar();
+    } catch (error) { setMessage(error.message); }
+    finally { setWorking(false); }
+  }
+
+  function moveByDays(event, days) {
+    const target = new Date(event.start?.dateTime);
+    target.setDate(target.getDate() + days);
+    moveAppointment(event, target);
+  }
+
   async function deleteAppointment(event) {
     if (!window.confirm(`Afspraak “${event.subject || "(Geen onderwerp)"}” definitief verwijderen?`)) return;
     setWorking(true); setMessage(""); setNotice("");
@@ -921,7 +970,7 @@ function CalendarOverview({ workspaceId, session }) {
       {!selectedEvent.isOrganizer && <p><strong>Jouw reactie:</strong> {selectedEvent.responseStatus?.response === "accepted" ? "Geaccepteerd" : selectedEvent.responseStatus?.response === "tentativelyAccepted" ? "Voorlopig geaccepteerd" : selectedEvent.responseStatus?.response === "declined" ? "Geweigerd" : "Nog niet gereageerd"}</p>}
       {selectedEvent.bodyPreview && <div><strong>Beschrijving:</strong><p>{selectedEvent.bodyPreview}</p></div>}
       {!selectedEvent.isOrganizer && <div className="toolbar"><button type="button" className="primary" onClick={() => respondToInvitation(selectedEvent, "accept")} disabled={working}>Accepteren</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "tentativelyAccept")} disabled={working}>Voorlopig</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "decline")} disabled={working}>Weigeren</button></div>}
-      <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => duplicateAppointment(selectedEvent)}>Dupliceren</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
+      <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => moveByDays(selectedEvent, 1)} disabled={working}>+ 1 dag</button><button type="button" className="secondary" onClick={() => moveByDays(selectedEvent, 7)} disabled={working}>+ 1 week</button><button type="button" className="secondary" onClick={() => duplicateAppointment(selectedEvent)}>Dupliceren</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
     </div>}
     {searchActive && <div className="panel stack">
       <div className="connectionRow"><div><p className="eyebrow">Zoekresultaten</p><h3>{events.length} afspraak{events.length === 1 ? "" : "afspraken"} gevonden voor “{calendarSearch.trim()}”</h3></div><button type="button" className="secondary" onClick={() => setCalendarSearch("")}>Zoeken sluiten</button></div>
@@ -932,7 +981,7 @@ function CalendarOverview({ workspaceId, session }) {
     {!searchActive && (view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
       {days.map((day) => {
         const dayEvents = events.filter((event) => new Date(event.start?.dateTime).toDateString() === day.toDateString());
-        return <div className="panel" key={day.toISOString()} onDoubleClick={() => newAppointment(day)} style={{ minHeight: view === "month" ? "150px" : "260px", padding: "10px", opacity: view === "month" && day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: view === "week" ? "short" : undefined })}</strong><div className="stack">{dayEvents.map((event) => <button type="button" onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`} style={{ display: "block", width: "100%", padding: "6px", background: mailboxColor(event.mailbox), border: 0, borderRadius: "6px", fontSize: "12px", textAlign: "left", cursor: "pointer", color: "#fff" }}><strong>{new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject}</button>)}</div></div>;
+        return <div className="panel" key={day.toISOString()} onDoubleClick={() => newAppointment(day)} onDragOver={(dragEvent) => dragEvent.preventDefault()} onDrop={(dropEvent) => { dropEvent.preventDefault(); const eventId = dropEvent.dataTransfer.getData("text/calendar-event"); const dragged = events.find((item) => item.id === eventId); if (dragged) moveAppointment(dragged, day); }} style={{ minHeight: view === "month" ? "150px" : "260px", padding: "10px", opacity: view === "month" && day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: view === "week" ? "short" : undefined })}</strong><div className="stack">{dayEvents.map((event) => <button type="button" draggable={event.type !== "occurrence" && event.type !== "exception"} onDragStart={(dragEvent) => dragEvent.dataTransfer.setData("text/calendar-event", event.id)} title="Sleep naar een andere dag om te verplaatsen" onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`} style={{ display: "block", width: "100%", padding: "6px", background: mailboxColor(event.mailbox), border: 0, borderRadius: "6px", fontSize: "12px", textAlign: "left", cursor: "pointer", color: "#fff" }}><strong>{new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject}</button>)}</div></div>;
       })}
     </div>}
     {!searchActive && view === "year" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
