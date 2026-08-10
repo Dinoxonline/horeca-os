@@ -100,6 +100,25 @@ export async function PATCH(request) {
   }
 }
 
+export async function PUT(request) {
+  try {
+    const body = await request.json();
+    const auth = await context(request, body.workspaceId, body.mailbox);
+    if (!auth) return NextResponse.json({ error: "Geen toegang tot deze agenda." }, { status: 403 });
+    if (!body.eventId || !["accept", "tentativelyAccept", "decline"].includes(body.response)) {
+      return NextResponse.json({ error: "Kies een geldige reactie op de uitnodiging." }, { status: 400 });
+    }
+    await graph(accessToken(auth.connection), `events/${encodeURIComponent(body.eventId)}/${body.response}`, {
+      method: "POST",
+      body: JSON.stringify({ comment: String(body.comment || ""), sendResponse: true }),
+    });
+    const labels = { accept: "geaccepteerd", tentativelyAccept: "voorlopig geaccepteerd", decline: "geweigerd" };
+    return NextResponse.json({ message: `De uitnodiging is ${labels[body.response]}.` });
+  } catch (error) {
+    return NextResponse.json({ error: error.message || "De reactie kon niet worden verzonden." }, { status: 400 });
+  }
+}
+
 export async function DELETE(request) {
   try {
     const body = await request.json();
