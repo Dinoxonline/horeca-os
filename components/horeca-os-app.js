@@ -583,9 +583,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
           <option value="facebook_post">Facebook-bericht</option>
           <option value="facebook_event">Facebook-evenement</option>
-          <option value="website_event">Event van onze website</option>
-          <option value="eventin_event">Event van Eventin</option>
-          <option value="team_winter_event">Event van Team Winter</option>
+          <option value="website_event">Event van onze website (Eventin van Team Winter)</option>
           <option value="instagram_post">Instagram-bericht</option>
           <option value="instagram_reel">Instagram-reel</option>
           <option value="tiktok_post">TikTok-video</option>
@@ -593,7 +591,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         </select>
       </label>
       <label className="full">Link naar het bericht of evenement
-        <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Plak hier de link van Facebook, Instagram, TikTok, je website, Eventin of Team Winter" required />
+        <input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Plak hier de link van Facebook, Instagram, TikTok of het event op onze website" required />
       </label>
       <label>Interne campagnenaam
         <input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} placeholder="Bijvoorbeeld: Caribbean Social Club" required />
@@ -647,9 +645,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         const sourceLabels = {
           facebook_post: "Facebook-bericht",
           facebook_event: "Facebook-evenement",
-          website_event: "Event van onze website",
-          eventin_event: "Event van Eventin",
-          team_winter_event: "Event van Team Winter",
+          website_event: "Event van onze website (Eventin van Team Winter)",
           instagram_post: "Instagram-bericht",
           instagram_reel: "Instagram-reel",
           tiktok_post: "TikTok-video",
