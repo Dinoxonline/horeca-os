@@ -758,6 +758,7 @@ function PredisBusinessConnectionCard({ workspaceId, business, session }) {
       <button type="button" className={connected ? "primaryButton" : "secondaryButton"} onClick={checkConnection} disabled={loading || connected}>
         {loading ? "Controleren..." : connected ? "Koppeling geslaagd" : "Koppeling controleren"}
       </button>
+      {connected && <Link href="/marketing" className="primaryButton" onClick={() => window.sessionStorage.setItem("horeca-os:predis-generator-business", business.id)}>Concept maken</Link>}
       {connected && <button type="button" className="secondaryButton" onClick={() => { setConnected(false); setStatus(""); }}>Koppeling wijzigen</button>}
     </div>
     {status && <div className="statusBanner">{status}</div>}
@@ -777,8 +778,16 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId);
 
   useEffect(() => {
-    if (businessId !== "all") setSelectedBusinessId(businessId);
-  }, [businessId]);
+    if (businessId !== "all") {
+      setSelectedBusinessId(businessId);
+      return;
+    }
+    const requestedBusinessId = window.sessionStorage.getItem("horeca-os:predis-generator-business");
+    if (requestedBusinessId && businesses.some((item) => item.id === requestedBusinessId)) {
+      setSelectedBusinessId(requestedBusinessId);
+      window.sessionStorage.removeItem("horeca-os:predis-generator-business");
+    }
+  }, [businessId, businesses]);
 
   useEffect(() => {
     if (!selectedBusinessId) return;
