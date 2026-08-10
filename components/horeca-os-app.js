@@ -1754,45 +1754,119 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
 
   async function scheduleConcept(concept) {
     const values = planningValues[concept.id] || {};
-    if (!values.date || !values.time) {
-      setStatus("Kies eerst een publicatiedatum en tijd.");
-      return;
-    }
-    if (!values.channels?.length) {
+    const selectedChannels = values.channels || [];
+    if (!selectedChannels.length) {
       setStatus("Kies minimaal één kanaal: Facebook of Instagram.");
       return;
     }
-    const scheduledFor = new Date(`${values.date}T${values.time}`);
-    if (Number.isNaN(scheduledFor.getTime()) || scheduledFor <= new Date()) {
-      setStatus("Kies een datum en tijd in de toekomst.");
-      return;
+
+    const isRecurring = Boolean(values.recurring);
+    let publicationDates = [];
+    if (isRecurring) {
+      const weekdays = values.weekdays || [];
+      if (!values.startDate || !values.endDate || !values.time || !weekdays.length) {
+        setStatus("Kies voor de herhaling minimaal één weekdag, een begin- en einddatum en een tijd.");
+        return;
+      }
+      const startDate = new Date(`${values.startDate}T${values.time}`);
+      const endDate = new Date(`${values.endDate}T${values.time}`);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
+        setStatus("Controleer de begin- en einddatum van de herhaling.");
+        return;
+      }
+      const cursor = new Date(startDate);
+      while (cursor <= endDate && publicationDates.length < 104) {
+        if (weekdays.includes(cursor.getDay()) && cursor > new Date()) {
+          publicationDates.push(new Date(cursor));
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      if (!publicationDates.length) {
+        setStatus("Binnen deze periode zijn geen toekomstige publicatiemomenten gevonden.");
+        return;
+      }
+    } else {
+      if (!values.date || !values.time) {
+        setStatus("Kies eerst een publicatiedatum en tijd.");
+        return;
+      }
+      const scheduledFor = new Date(`${values.date}T${values.time}`);
+      if (Number.isNaN(scheduledFor.getTime()) || scheduledFor <= new Date()) {
+        setStatus("Kies een datum en tijd in de toekomst.");
+        return;
+      }
+      publicationDates = [scheduledFor];
     }
-    const currentMedia = Array.isArray(concept.media)
+
+    const baseMedia = Array.isArray(concept.media)
       ? concept.media.filter((item) => item?.kind !== "publication_schedule")
       : [];
-    const scheduleMetadata = {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam";
+    const recurrenceId = isRecurring ? crypto.randomUUID() : "";
+    const scheduleMetadata = (date, sequence) => ({
       kind: "publication_schedule",
-      target_channels: values.channels,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam",
-    };
+      target_channels: selectedChannels,
+      timezone,
+      recurrence_id: recurrenceId || undefined,
+      recurrence_sequence: isRecurring ? sequence + 1 : undefined,
+      recurrence_total: isRecurring ? publicationDates.length : undefined,
+      recurrence_weekdays: isRecurring ? values.weekdays : undefined,
+      recurrence_start: isRecurring ? values.startDate : undefined,
+      recurrence_end: isRecurring ? values.endDate : undefined,
+      recurrence_time: values.time,
+      scheduled_for: date.toISOString(),
+      source: "predis",
+    });
+
     setPlanningPostId(concept.id);
-    const { error } = await supabase.from("social_content_items")
+    const firstDate = publicationDates[0];
+    const { error: updateError } = await supabase.from("social_content_items")
       .update({
         status: "scheduled",
         workflow_status: "in_progress",
-        scheduled_for: scheduledFor.toISOString(),
+        scheduled_for: firstDate.toISOString(),
         approved_by: session.user.id,
         approved_at: concept.approved_at || new Date().toISOString(),
-        media: [...currentMedia, scheduleMetadata],
+        media: [...baseMedia, scheduleMetadata(firstDate, 0)],
         updated_at: new Date().toISOString(),
       })
       .eq("id", concept.id)
       .eq("workspace_id", workspaceId)
       .eq("business_id", selectedBusinessId);
+
+    let insertError = null;
+    if (!updateError && publicationDates.length > 1) {
+      const now = new Date().toISOString();
+      const copies = publicationDates.slice(1).map((date, index) => ({
+        workspace_id: workspaceId,
+        business_id: selectedBusinessId,
+        account_id: concept.account_id || socialAccountId,
+        content_type: "post",
+        direction: "outbound",
+        status: "scheduled",
+        workflow_status: "in_progress",
+        body: concept.body,
+        media: [...baseMedia, scheduleMetadata(date, index + 1)],
+        scheduled_for: date.toISOString(),
+        created_by: session.user.id,
+        approved_by: session.user.id,
+        approved_at: concept.approved_at || now,
+        created_at: now,
+        updated_at: now,
+      }));
+      const result = await supabase.from("social_content_items").insert(copies);
+      insertError = result.error;
+    }
+
+    const error = updateError || insertError;
     if (error) {
-      setStatus(`Concept kon niet worden ingepland: ${error.message}`);
+      setStatus(`Planning kon niet volledig worden opgeslagen: ${error.message}`);
+    } else if (isRecurring) {
+      setStatus(`${publicationDates.length} Predis-publicatiemomenten ingepland tussen ${values.startDate} en ${values.endDate}. Er is nog niets gepubliceerd.`);
+      setPlanningValues((current) => ({ ...current, [concept.id]: { ...(current[concept.id] || {}), recurring: false } }));
+      await loadApprovedConcepts();
     } else {
-      setStatus(`Concept ingepland voor ${formatDate(scheduledFor)}. Er is nog niets gepubliceerd.`);
+      setStatus(`Concept ingepland voor ${formatDate(firstDate)}. Er is nog niets gepubliceerd.`);
       await loadApprovedConcepts();
     }
     setPlanningPostId("");
@@ -1900,14 +1974,43 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
               <div>
                 <p>{concept.body}</p>
                 {concept.status === "scheduled" && concept.scheduled_for && <div className="statusBanner">Ingepland voor {formatDate(concept.scheduled_for)} · {selectedChannels.map((channel) => channel === "facebook" ? "Facebook" : "Instagram").join(" + ")}</div>}
-                <div className="formGrid">
+                <fieldset style={{ marginTop: "12px" }}>
+                  <legend>Planning</legend>
+                  <div className="checkGrid">
+                    <label className="checkOption"><input type="radio" name={`planning-${concept.id}`} checked={!planningValues[concept.id]?.recurring} onChange={() => updatePlanningValue(concept.id, "recurring", false)} />Eenmalig</label>
+                    <label className="checkOption"><input type="radio" name={`planning-${concept.id}`} checked={Boolean(planningValues[concept.id]?.recurring)} onChange={() => updatePlanningValue(concept.id, "recurring", true)} />Herhalen via Predis</label>
+                  </div>
+                </fieldset>
+                {!planningValues[concept.id]?.recurring ? <div className="formGrid">
                   <label>Datum
                     <input type="date" min={isoDate(new Date())} value={planningValues[concept.id]?.date || (concept.scheduled_for ? toLocalDateTimeInput(concept.scheduled_for).slice(0, 10) : "")} onChange={(event) => updatePlanningValue(concept.id, "date", event.target.value)} />
                   </label>
                   <label>Tijd
                     <input type="time" value={planningValues[concept.id]?.time || (concept.scheduled_for ? toLocalDateTimeInput(concept.scheduled_for).slice(11, 16) : "")} onChange={(event) => updatePlanningValue(concept.id, "time", event.target.value)} />
                   </label>
-                </div>
+                </div> : <>
+                  <fieldset style={{ marginTop: "12px" }}>
+                    <legend>Publiceren op</legend>
+                    <div className="checkGrid">
+                      {[["Maandag", 1], ["Dinsdag", 2], ["Woensdag", 3], ["Donderdag", 4], ["Vrijdag", 5], ["Zaterdag", 6], ["Zondag", 0]].map(([label, day]) => {
+                        const weekdays = planningValues[concept.id]?.weekdays || [];
+                        return <label className="checkOption" key={day}><input type="checkbox" checked={weekdays.includes(day)} onChange={() => updatePlanningValue(concept.id, "weekdays", weekdays.includes(day) ? weekdays.filter((item) => item !== day) : [...weekdays, day])} />{label}</label>;
+                      })}
+                    </div>
+                  </fieldset>
+                  <div className="formGrid">
+                    <label>Begindatum
+                      <input type="date" min={isoDate(new Date())} value={planningValues[concept.id]?.startDate || ""} onChange={(event) => updatePlanningValue(concept.id, "startDate", event.target.value)} />
+                    </label>
+                    <label>Einddatum
+                      <input type="date" min={planningValues[concept.id]?.startDate || isoDate(new Date())} value={planningValues[concept.id]?.endDate || ""} onChange={(event) => updatePlanningValue(concept.id, "endDate", event.target.value)} />
+                    </label>
+                    <label>Publicatietijd
+                      <input type="time" value={planningValues[concept.id]?.time || ""} onChange={(event) => updatePlanningValue(concept.id, "time", event.target.value)} />
+                    </label>
+                  </div>
+                  <p className="securityHint">Voor iedere aangevinkte dag maakt Horeca OS een afzonderlijk Predis-publicatiemoment. Maximum: 104 momenten.</p>
+                </>}
                 <fieldset style={{ marginTop: "12px" }}>
                   <legend>Kanalen</legend>
                   <div className="checkGrid">
