@@ -642,13 +642,17 @@ function CalendarOverview({ workspaceId, session }) {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editor, setEditor] = useState(null);
   const [calendarSearch, setCalendarSearch] = useState("");
+  const searchActive = Boolean(calendarSearch.trim());
   const mailboxPalette = ["#20869b", "#6d5bd0", "#d97706", "#2f855a", "#c2415d", "#2563a8"];
   const mailboxColor = (address) => mailboxPalette[Math.max(0, accounts.findIndex((account) => account.mailbox === address)) % mailboxPalette.length];
 
   const range = useMemo(() => {
     const date = new Date(anchor);
     let start; let end;
-    if (view === "day") {
+    if (searchActive) {
+      start = new Date(date.getFullYear() - 1, 0, 1);
+      end = new Date(date.getFullYear() + 2, 0, 1);
+    } else if (view === "day") {
       start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       end = new Date(start); end.setDate(end.getDate() + 1);
     } else if (view === "week") {
@@ -663,7 +667,7 @@ function CalendarOverview({ workspaceId, session }) {
       end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
     }
     return { start, end };
-  }, [anchor, view]);
+  }, [anchor, searchActive, view]);
 
   const loadCalendar = useCallback(async () => {
     if (!workspaceId || !session?.access_token) return;
@@ -919,14 +923,19 @@ function CalendarOverview({ workspaceId, session }) {
       {!selectedEvent.isOrganizer && <div className="toolbar"><button type="button" className="primary" onClick={() => respondToInvitation(selectedEvent, "accept")} disabled={working}>Accepteren</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "tentativelyAccept")} disabled={working}>Voorlopig</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "decline")} disabled={working}>Weigeren</button></div>}
       <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => duplicateAppointment(selectedEvent)}>Dupliceren</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
     </div>}
-    {view === "day" && <div className="stack">{!events.length && <div className="panel">Geen afspraken.</div>}{events.map(eventCard)}</div>}
-    {(view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
+    {searchActive && <div className="panel stack">
+      <div className="connectionRow"><div><p className="eyebrow">Zoekresultaten</p><h3>{events.length} afspraak{events.length === 1 ? "" : "afspraken"} gevonden voor “{calendarSearch.trim()}”</h3></div><button type="button" className="secondary" onClick={() => setCalendarSearch("")}>Zoeken sluiten</button></div>
+      {!loading && events.length === 0 && <p>Geen afspraken gevonden. Probeer een andere naam, locatie of zoekterm.</p>}
+      {events.map((event) => <article className="connectionRow" key={`search-${event.mailbox}-${event.id}`} style={{ borderLeft: `6px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "12px" }}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{new Date(event.start?.dateTime).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {event.isAllDay ? "Hele dag" : `${new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} – ${new Date(event.end?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div><button type="button" className="primary" onClick={() => { setSelectedEvent(event); setEditor(null); }}>Openen</button></article>)}
+    </div>}
+    {!searchActive && view === "day" && <div className="stack">{!events.length && <div className="panel">Geen afspraken.</div>}{events.map(eventCard)}</div>}
+    {!searchActive && (view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
       {days.map((day) => {
         const dayEvents = events.filter((event) => new Date(event.start?.dateTime).toDateString() === day.toDateString());
         return <div className="panel" key={day.toISOString()} onDoubleClick={() => newAppointment(day)} style={{ minHeight: view === "month" ? "150px" : "260px", padding: "10px", opacity: view === "month" && day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: view === "week" ? "short" : undefined })}</strong><div className="stack">{dayEvents.map((event) => <button type="button" onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`} style={{ display: "block", width: "100%", padding: "6px", background: mailboxColor(event.mailbox), border: 0, borderRadius: "6px", fontSize: "12px", textAlign: "left", cursor: "pointer", color: "#fff" }}><strong>{new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject}</button>)}</div></div>;
       })}
     </div>}
-    {view === "year" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
+    {!searchActive && view === "year" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
       {Array.from({ length: 12 }, (_, month) => {
         const monthEvents = events.filter((event) => new Date(event.start?.dateTime).getMonth() === month);
         return <div className="panel" key={month}><h3>{new Date(anchor.getFullYear(), month, 1).toLocaleDateString("nl-NL", { month: "long" })}</h3><p>{monthEvents.length} afspraak/afspraken</p>{monthEvents.slice(0, 4).map((event) => <button type="button" className="textButton" style={{ borderLeft: `5px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "8px" }} onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`}><strong>{new Date(event.start?.dateTime).getDate()}</strong> {event.subject}</button>)}</div>;
