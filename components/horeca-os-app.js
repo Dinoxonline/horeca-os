@@ -426,6 +426,8 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   const [campaignForm, setCampaignForm] = useState({ campaignName: "", senderName: "", subject: "", content: "" });
   const [loadingBrevo, setLoadingBrevo] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [requestingApproval, setRequestingApproval] = useState(false);
+  const [approvalConfirmation, setApprovalConfirmation] = useState({ name: "", confirmed: false });
   const [brevoError, setBrevoError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [preview, setPreview] = useState(null);
@@ -521,8 +523,40 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
     setSavingDraft(false);
   }
 
+  async function requestFinalApproval() {
+    if (!selectedDraftId || !preview) return;
+    setRequestingApproval(true);
+    setBrevoError("");
+    setSaveMessage("");
+    const response = await fetch("/api/integrations/brevo", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "request_approval",
+        id: selectedDraftId,
+        workspaceId,
+        businessId: selectedBusinessId,
+        confirmationName: approvalConfirmation.name,
+        confirmed: approvalConfirmation.confirmed,
+      }),
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) {
+      setBrevoError(result.error || "Het concept kon niet worden klaargezet voor goedkeuring.");
+      setRequestingApproval(false);
+      return;
+    }
+    const updated = result.draft;
+    setDrafts((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+    setPreview((current) => current ? { ...current, recipients: Number(updated.recipient_count || 0), listName: updated.list_name } : current);
+    setSaveMessage(result.message || "Klaargezet voor definitieve goedkeuring. Er is niets verzonden.");
+    setApprovalConfirmation({ name: "", confirmed: false });
+    setRequestingApproval(false);
+  }
+
   function openDraft(draft) {
     setSelectedDraftId(draft.id);
+    setApprovalConfirmation({ name: "", confirmed: false });
     setSelectedListId(String(draft.list_id));
     setCampaignForm({
       campaignName: draft.internal_name,
@@ -546,6 +580,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
 
   function startNewDraft() {
     setSelectedDraftId("");
+    setApprovalConfirmation({ name: "", confirmed: false });
     setCampaignForm({ campaignName: "", senderName: "", subject: "", content: "" });
     setSelectedListId(brevoLists[0]?.id ? String(brevoLists[0].id) : "");
     setPreview(null);
@@ -597,6 +632,13 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
           <div className="sensitiveNote"><strong>Inhoud</strong><span style={{ whiteSpace: "pre-wrap" }}>{preview.content}</span></div>
           <div className="notice successNotice">Voorbeeld gereed. Er is niets naar Brevo of gasten verstuurd.</div>
           <button type="button" className="primary" onClick={saveConcept} disabled={savingDraft}>{savingDraft ? "Concept opslaan..." : selectedDraftId ? "Wijzigingen opslaan" : "Concept opslaan"}</button>
+          {selectedDraftId && <div className="sensitiveNote">
+            <strong>Definitieve goedkeuring voorbereiden</strong>
+            <span>Controleer nogmaals de vestiging, doelgroep en {preview.recipients} ontvangers. Typ daarna exact de interne campagnenaam. Ook hierna wordt nog niets verzonden.</span>
+            <label>Campagnenaam ter controle<input value={approvalConfirmation.name} onChange={(event) => setApprovalConfirmation((current) => ({ ...current, name: event.target.value }))} placeholder={preview.campaignName} /></label>
+            <label className="checkOption"><input type="checkbox" checked={approvalConfirmation.confirmed} onChange={(event) => setApprovalConfirmation((current) => ({ ...current, confirmed: event.target.checked }))} />Ik heb vestiging, doelgroep en aantal ontvangers gecontroleerd.</label>
+            <button type="button" className="secondaryButton" onClick={requestFinalApproval} disabled={requestingApproval || approvalConfirmation.name !== preview.campaignName || !approvalConfirmation.confirmed}>{requestingApproval ? "Controle uitvoeren..." : "Klaarzetten voor definitieve goedkeuring"}</button>
+          </div>}
         </>}
       </article>
       <article className="panel" style={{ gridColumn: "1 / -1" }}>
@@ -605,7 +647,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
         {!loadingBrevo && !drafts.length && <Empty text="Nog geen campagneconcepten voor deze vestiging." />}
         <div className="stackList">
           {drafts.map((draft) => <div className="factorRow" key={draft.id}>
-            <div><strong>{draft.internal_name}</strong><small>{draft.subject} · {draft.list_name} · {draft.recipient_count} ontvangers</small><small>Laatst bijgewerkt: {new Date(draft.updated_at).toLocaleString("nl-NL")}</small></div>
+            <div><strong>{draft.internal_name}</strong><small>{draft.subject} · {draft.list_name} · {draft.recipient_count} ontvangers</small><small>Status: {draft.status === "ready_for_approval" ? "Klaar voor definitieve goedkeuring" : "Concept"} · Laatst bijgewerkt: {new Date(draft.updated_at).toLocaleString("nl-NL")}</small></div>
             <button type="button" onClick={() => openDraft(draft)}>Openen</button>
           </div>)}
         </div>
