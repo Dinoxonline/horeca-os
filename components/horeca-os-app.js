@@ -709,6 +709,61 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
 }
 
 
+function PredisBusinessConnectionCard({ workspaceId, business, session }) {
+  const storageKey = `horeca-os:predis:${workspaceId}:${business.id}`;
+  const [brandId, setBrandId] = useState("");
+  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const savedBrandId = window.localStorage.getItem(storageKey) || "";
+    setBrandId(savedBrandId);
+    setConnected(Boolean(savedBrandId));
+    setStatus("");
+  }, [storageKey]);
+
+  async function checkConnection() {
+    if (!brandId.trim()) {
+      setStatus("Vul het Predis-merk-ID voor deze vestiging in.");
+      return;
+    }
+    setLoading(true);
+    setStatus("");
+    const query = new URLSearchParams({ workspaceId, businessId: business.id, brandId: brandId.trim() });
+    const response = await fetch(`/api/integrations/predis?${query}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) {
+      setConnected(false);
+      setStatus(result.error || "Predis kon niet worden gecontroleerd.");
+    } else {
+      window.localStorage.setItem(storageKey, brandId.trim());
+      setConnected(true);
+      setStatus(`Koppeling geslaagd. ${result.posts?.length || 0} recente concepten gevonden.`);
+    }
+    setLoading(false);
+  }
+
+  return <article style={{ border: "1px solid #d9e2ec", borderRadius: "14px", padding: "18px", background: "#fff" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", marginBottom: "14px" }}>
+      <div><h3 style={{ margin: 0 }}>{business.name}</h3><p style={{ margin: "4px 0 0" }}>Eigen Predis-merk voor deze vestiging</p></div>
+      <strong style={{ color: connected ? "#15803d" : "#b45309", whiteSpace: "nowrap" }}>{connected ? "Verbonden" : "Niet gekoppeld"}</strong>
+    </div>
+    <label>Predis-merk-ID
+      <input value={brandId} onChange={(event) => { setBrandId(event.target.value); setConnected(false); setStatus(""); }} placeholder="Merk-ID uit Predis" autoComplete="off" disabled={connected} />
+    </label>
+    <div className="formActions">
+      <button type="button" className={connected ? "primaryButton" : "secondaryButton"} onClick={checkConnection} disabled={loading || connected}>
+        {loading ? "Controleren..." : connected ? "Koppeling geslaagd" : "Koppeling controleren"}
+      </button>
+      {connected && <button type="button" className="secondaryButton" onClick={() => { setConnected(false); setStatus(""); }}>Koppeling wijzigen</button>}
+    </div>
+    {status && <div className="statusBanner">{status}</div>}
+  </article>;
+}
+
 function PredisContentGenerator({ mode = "generate", workspaceId, businessId, businesses, session }) {
   const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
   const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
@@ -784,25 +839,10 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
   }
 
   if (mode === "connect") return <section className="panel formPanel">
-    <div className="sectionHeading"><div><p className="eyebrow">Contentkoppelingen</p><h3>Predis</h3><p>Koppel ieder Predis-merk aan precies één Horeca OS-vestiging.</p></div></div>
-    <div className="formGrid">
-      <label>Vestiging
-        <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
-          <option value="">Kies een vestiging</option>
-          {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
-        </select>
-      </label>
-      <label>Predis-merk-ID
-        <input value={brandId} onChange={(event) => { setBrandId(event.target.value); setConnectedBusinessName(""); }} placeholder="Merk-ID uit Predis" autoComplete="off" />
-      </label>
+    <div className="sectionHeading"><div><p className="eyebrow">Contentkoppelingen</p><h3>Predis</h3><p>Elke vestiging heeft een eigen koppeling. De status is direct zichtbaar.</p></div></div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+      {businesses.map((business) => <PredisBusinessConnectionCard key={business.id} workspaceId={workspaceId} business={business} session={session} />)}
     </div>
-    <div className="formActions">
-      <button type="button" className={connectedBusinessName ? "primaryButton" : "secondaryButton"} onClick={checkConnection} disabled={loading || Boolean(connectedBusinessName)}>
-        {loading ? "Controleren..." : connectedBusinessName ? `Gekoppeld aan ${connectedBusinessName}` : "Koppeling controleren"}
-      </button>
-      {connectedBusinessName && <button type="button" className="secondaryButton" onClick={() => setConnectedBusinessName("")}>Koppeling wijzigen</button>}
-    </div>
-    {status && <div className="statusBanner">{status}</div>}
   </section>;
 
   return <section className="panel formPanel">
