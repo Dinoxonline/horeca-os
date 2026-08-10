@@ -1719,11 +1719,44 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="panelHead"><div><h2>Brevo per vestiging</h2><p>Live controle van de toegewezen lijsten en verzonden campagnes.</p></div></div>
         {businesses.map((business) => {
           const brevo = brevoByBusiness[business.id];
-          return <div className="connectionRow" key={business.id}>
-            <div>
+          const campaigns = brevo?.campaigns || [];
+          const totals = campaigns.reduce((summary, campaign) => {
+            const stats = campaign.statistics || {};
+            summary.delivered += Number(stats.delivered || stats.requested || 0);
+            summary.opens += Number(stats.uniqueOpens || stats.viewed || 0);
+            summary.clicks += Number(stats.uniqueClicks || stats.clicks || 0);
+            summary.unsubscribed += Number(stats.unsubscriptions || 0);
+            return summary;
+          }, { delivered: 0, opens: 0, clicks: 0, unsubscribed: 0 });
+          const openRate = totals.delivered ? Math.round((totals.opens / totals.delivered) * 1000) / 10 : 0;
+          const clickRate = totals.delivered ? Math.round((totals.clicks / totals.delivered) * 1000) / 10 : 0;
+          return <div className="connectionRow brevoBusiness" key={business.id}>
+            <div className="brevoBusinessContent">
               <strong>{business.name}</strong>
-              <span>{brevo?.ok ? `${brevo.lists.length} lijst(en) · ${brevo.campaigns.length} campagne(s)` : brevo?.error || "Controleren..."}</span>
+              <span>{brevo?.ok ? `${brevo.lists.length} lijst(en) · ${campaigns.length} verzonden campagne(s)` : brevo?.error || "Controleren..."}</span>
               <small>{brevo?.account?.companyName || brevo?.account?.email || (brevo?.configured ? "Brevo-lijsten toegewezen" : "Nog niet ingesteld")}</small>
+              {brevo?.ok && <>
+                <div className="scopeBanner">
+                  <strong>Contactlijsten</strong>
+                  <span>{brevo.lists.length ? brevo.lists.map((list) => `${list.name} (${Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten)`).join(" · ") : "Geen toegewezen lijsten gevonden."}</span>
+                </div>
+                <div className="scopeBanner">
+                  <strong>Campagneprestaties</strong>
+                  <span>{campaigns.length ? `${totals.delivered} bezorgd · ${openRate}% geopend · ${clickRate}% geklikt · ${totals.unsubscribed} afmeldingen` : "Er zijn nog geen verzonden campagnes voor deze vestiging gevonden."}</span>
+                </div>
+                {campaigns.slice(0, 5).map((campaign) => {
+                  const stats = campaign.statistics || {};
+                  const delivered = Number(stats.delivered || stats.requested || 0);
+                  const opens = Number(stats.uniqueOpens || stats.viewed || 0);
+                  const clicks = Number(stats.uniqueClicks || stats.clicks || 0);
+                  return <div className="factorRow" key={campaign.id}>
+                    <div>
+                      <strong>{campaign.subject || campaign.name || "Campagne zonder onderwerp"}</strong>
+                      <small>{campaign.sentDate ? new Date(campaign.sentDate).toLocaleDateString("nl-NL") : "Verzenddatum onbekend"} · {delivered} bezorgd · {opens} opens · {clicks} clicks</small>
+                    </div>
+                  </div>;
+                })}
+              </>}
             </div>
             <div className="connectionActions">
               <button type="button" className="secondary" disabled={syncingBrevoBusinessId === business.id} onClick={() => loadBrevoForBusiness(business.id, true)}>
