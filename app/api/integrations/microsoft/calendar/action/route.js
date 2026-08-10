@@ -49,6 +49,12 @@ function eventPayload(body) {
     recurrence,
     isReminderOn: Number(body.reminderMinutes) >= 0,
     reminderMinutesBeforeStart: Math.max(0, Number(body.reminderMinutes) || 0),
+    showAs: ["free", "tentative", "busy", "oof", "workingElsewhere"].includes(body.showAs) ? body.showAs : "busy",
+    sensitivity: body.isPrivate ? "private" : "normal",
+    isOnlineMeeting: Boolean(body.isOnlineMeeting),
+    onlineMeetingProvider: body.isOnlineMeeting ? "teamsForBusiness" : undefined,
+    responseRequested: attendees.length > 0,
+    allowNewTimeProposals: attendees.length > 0,
   };
 }
 
