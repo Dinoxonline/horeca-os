@@ -642,6 +642,7 @@ function CalendarOverview({ workspaceId, session }) {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editor, setEditor] = useState(null);
   const [calendarSearch, setCalendarSearch] = useState("");
+  const [calendarClock, setCalendarClock] = useState(() => new Date());
   const searchActive = Boolean(calendarSearch.trim());
   const mailboxPalette = ["#20869b", "#6d5bd0", "#d97706", "#2f855a", "#c2415d", "#2563a8"];
   const mailboxColor = (address) => mailboxPalette[Math.max(0, accounts.findIndex((account) => account.mailbox === address)) % mailboxPalette.length];
@@ -683,6 +684,7 @@ function CalendarOverview({ workspaceId, session }) {
   }, [range.end, range.start, session?.access_token, workspaceId]);
 
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
+  useEffect(() => { const timer = window.setInterval(() => setCalendarClock(new Date()), 60000); return () => window.clearInterval(timer); }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -847,7 +849,7 @@ function CalendarOverview({ workspaceId, session }) {
     finally { setWorking(false); }
   }
 
-  async function moveAppointment(event, targetDay) {
+  async function moveAppointment(event, targetDay, useTargetTime = false) {
     if (event.type === "occurrence" || event.type === "exception") {
       setMessage("Open deze terugkerende afspraak en wijzig de gewenste datum handmatig.");
       return;
@@ -856,7 +858,7 @@ function CalendarOverview({ workspaceId, session }) {
     const currentEnd = new Date(event.end?.dateTime);
     const duration = currentEnd.getTime() - currentStart.getTime();
     const newStart = new Date(targetDay);
-    newStart.setHours(currentStart.getHours(), currentStart.getMinutes(), currentStart.getSeconds(), 0);
+    if (!useTargetTime) newStart.setHours(currentStart.getHours(), currentStart.getMinutes(), currentStart.getSeconds(), 0);
     const newEnd = new Date(newStart.getTime() + duration);
     setWorking(true); setMessage(""); setNotice("");
     try {
@@ -996,7 +998,8 @@ function CalendarOverview({ workspaceId, session }) {
           </div>
           {timelineDays.map((day) => {
             const timedEvents = events.filter((event) => !event.isAllDay && new Date(event.start?.dateTime).toDateString() === day.toDateString());
-            return <div key={`timeline-${day.toISOString()}`} onDoubleClick={(mouseEvent) => { const bounds = mouseEvent.currentTarget.getBoundingClientRect(); const minutes = Math.max(0, Math.min(1439, Math.round(((mouseEvent.clientY - bounds.top) / calendarHourHeight) * 60 / 15) * 15)); const start = new Date(day); start.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0); newAppointment(start); }} onDragOver={(dragEvent) => dragEvent.preventDefault()} onDrop={(dropEvent) => { dropEvent.preventDefault(); const eventId = dropEvent.dataTransfer.getData("text/calendar-event"); const dragged = events.find((item) => item.id === eventId); if (dragged) moveAppointment(dragged, day); }} style={{ position: "relative", height: `${24 * calendarHourHeight}px`, borderLeft: "1px solid #d8e3ea", backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${calendarHourHeight - 1}px, #dfe7ec ${calendarHourHeight - 1}px, #dfe7ec ${calendarHourHeight}px)` }}>
+            return <div key={`timeline-${day.toISOString()}`} onDoubleClick={(mouseEvent) => { const bounds = mouseEvent.currentTarget.getBoundingClientRect(); const minutes = Math.max(0, Math.min(1439, Math.round(((mouseEvent.clientY - bounds.top) / calendarHourHeight) * 60 / 15) * 15)); const start = new Date(day); start.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0); newAppointment(start); }} onDragOver={(dragEvent) => dragEvent.preventDefault()} onDrop={(dropEvent) => { dropEvent.preventDefault(); const eventId = dropEvent.dataTransfer.getData("text/calendar-event"); const dragged = events.find((item) => item.id === eventId); if (dragged) { const bounds = dropEvent.currentTarget.getBoundingClientRect(); const minutes = Math.max(0, Math.min(1439, Math.round(((dropEvent.clientY - bounds.top) / calendarHourHeight) * 60 / 15) * 15)); const target = new Date(day); target.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0); moveAppointment(dragged, target, true); } }} style={{ position: "relative", height: `${24 * calendarHourHeight}px`, borderLeft: "1px solid #d8e3ea", backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${calendarHourHeight - 1}px, #dfe7ec ${calendarHourHeight - 1}px, #dfe7ec ${calendarHourHeight}px)` }}>
+              {day.toDateString() === calendarClock.toDateString() && <div aria-label="Huidige tijd" style={{ position: "absolute", top: `${(calendarClock.getHours() + calendarClock.getMinutes() / 60) * calendarHourHeight}px`, left: 0, right: 0, height: "2px", background: "#e63946", zIndex: 4, pointerEvents: "none" }}><span style={{ position: "absolute", left: "-5px", top: "-4px", width: "9px", height: "9px", borderRadius: "50%", background: "#e63946" }} /></div>}
               {timedEvents.map((event) => {
                 const startTime = new Date(event.start?.dateTime); const endTime = new Date(event.end?.dateTime);
                 const top = (startTime.getHours() + startTime.getMinutes() / 60) * calendarHourHeight;
