@@ -554,7 +554,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setSelectedBusinessId(businessId !== "all" ? businessId : businesses[0]?.id || "");
   }, [businessId, businesses]);
 
-  const channelOptions = [
+  const directChannelOptions = [
     ["brevo", "Nieuwsbrief via Brevo"],
     ["facebook", "Facebookpagina"],
     ["instagram", "Instagram"],
@@ -564,6 +564,48 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     ["google_business_profile", "Google Bedrijfsprofiel (organisch)"],
     ["google_ads", "Google Ads (betaald)"],
   ];
+  const manualEmailOptions = [
+    ["email_salsa", "Salsa.nl", "redactie@salsa.nl"],
+    ["email_zoetermeer_nieuws", "Zoetermeer.Nieuws.nl", "zoetermeer@nieuws.nl"],
+    ["email_zoetermeers_dagblad", "Zoetermeers Dagblad", "redactie@zoetermeersdagblad.nl"],
+    ["email_streekblad", "Streekblad Zoetermeer", "redactiestreekblad@telstarmediacentrum.nl"],
+    ["email_zfm", "ZFM Zoetermeer", "algemeen@zfmzoetermeer.nl"],
+    ["email_zoetermeer_actief", "Zoetermeer Actief", "info@zoetermeeractief.nl"],
+    ["email_vrijetijdkrant", "Vrijetijdkrant", "info@vrijetijdkrant.nl"],
+    ["email_eventtip", "Eventtip / Culturele Uitagenda", "info@eventconnectors.nl"],
+    ["email_wat_te_doen", "Wat te doen Vandaag", "info@wattedoenvandaag.nl"],
+    ["email_evenementen", "Evenementen.nl", "info@evenementen.nl"],
+  ];
+  const channelOptions = [
+    ...directChannelOptions,
+    ...manualEmailOptions.map(([value, label]) => [value, `${label} (per e-mail)`]),
+  ];
+  const manualEmailByChannel = Object.fromEntries(
+    manualEmailOptions.map(([value, label, email]) => [value, { label, email }]),
+  );
+
+  function emailHandoffUrl(channel) {
+    const target = manualEmailByChannel[channel];
+    if (!target) return "";
+    const businessName = businesses.find((item) => item.id === selectedBusinessId)?.name || "Horeca OS";
+    const title = sourcePreview?.title || campaignTitle;
+    const details = [
+      `Beste redactie van ${target.label},`,
+      "",
+      `Graag melden wij het volgende evenement van ${businessName} aan:`,
+      "",
+      `Titel: ${title}`,
+      sourcePreview?.startDate ? `Datum en tijd: ${formatDate(sourcePreview.startDate)}` : "",
+      sourcePreview?.location ? `Locatie: ${sourcePreview.location}` : "",
+      campaignText.trim() ? `Omschrijving: ${campaignText.trim()}` : "",
+      sourceUrl.trim() ? `Evenementpagina: ${sourceUrl.trim()}` : "",
+      sourcePreview?.image ? `Openbare beeldlink: ${sourcePreview.image}` : "",
+      "",
+      "Met vriendelijke groet,",
+      businessName,
+    ].filter(Boolean).join("\n");
+    return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${title}`)}&body=${encodeURIComponent(details)}`;
+  }
 
   function toggleChannel(channel) {
     setChannels((current) => current.includes(channel)
@@ -714,8 +756,15 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       target_channels: freshChannels,
       channel_states: Object.fromEntries(freshChannels.map((channel) => [
         channel,
-        channel === "facebook_groups" ? "confirmation_required" : "planned",
+        manualEmailByChannel[channel]
+          ? "email_ready"
+          : channel === "facebook_groups"
+            ? "confirmation_required"
+            : "planned",
       ])),
+      email_handoffs: freshChannels
+        .filter((channel) => manualEmailByChannel[channel])
+        .map((channel) => ({ channel, ...manualEmailByChannel[channel], state: "email_ready" })),
       meta_ads: metaAds ? {
         enabled: true,
         daily_budget_eur: Number(dailyBudget),
@@ -754,11 +803,13 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       ...duplicateChannels.map((channel) => ({ channel, state: "Al geplaatst/gepland" })),
       ...freshChannels.map((channel) => ({
       channel,
-      state: channel === "facebook_groups"
-        ? "Bevestiging nodig"
-        : channel === "brevo"
-          ? "Klaargezet in Marketing"
-          : connectedProviders.has(channel)
+      state: manualEmailByChannel[channel]
+        ? "E-mail klaarzetten"
+        : channel === "facebook_groups"
+          ? "Bevestiging nodig"
+          : channel === "brevo"
+            ? "Klaargezet in Marketing"
+            : connectedProviders.has(channel)
             || (channel === "facebook" && connectedProviders.has("meta"))
             || (channel === "google_business_profile" && (connectedProviders.has("google_business_profile") || connectedProviders.has("google_business")))
             || (channel === "google_ads" && connectedProviders.has("google_ads"))
@@ -853,10 +904,20 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       </label>
       <fieldset className="full"><legend>Promoten via</legend>
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
-          {channelOptions.map(([value, label]) => <label className="checkOption" key={value}>
+          {directChannelOptions.map(([value, label]) => <label className="checkOption" key={value}>
             <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
             <span style={{ flex: 1 }}>{label}</span>
             {existingCampaignChannels.has(value) && <span className="pill">Al geplaatst/gepland</span>}
+          </label>)}
+        </div>
+      </fieldset>
+      <fieldset className="full"><legend>Handmatig aanleveren per e-mail</legend>
+        <p className="securityHint">Voor kanalen zonder directe koppeling maakt Horeca OS een ingevulde e-mail met de evenementgegevens, link en openbare beeldlink. Controleer de e-mail en verstuur hem daarna zelf.</p>
+        <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", marginTop: "10px" }}>
+          {manualEmailOptions.map(([value, label, email]) => <label className="checkOption" key={value}>
+            <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
+            <span style={{ flex: 1 }}><strong>{label}</strong><small>{email}</small></span>
+            {existingCampaignChannels.has(value) && <span className="pill">Al aangeleverd/klaargezet</span>}
           </label>)}
         </div>
       </fieldset>
@@ -885,7 +946,16 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       </fieldset>
       {status && <div className="notice full">{status}</div>}
       {!!channelResult.length && <div className="stackList full">
-        {channelResult.map((item) => <div className="factorRow" key={item.channel}><strong>{channelOptions.find(([value]) => value === item.channel)?.[1] || item.channel}</strong><span className="pill">{item.state}</span></div>)}
+        {channelResult.map((item) => <div className="factorRow" key={item.channel}>
+          <div>
+            <strong>{channelOptions.find(([value]) => value === item.channel)?.[1] || item.channel}</strong>
+            {manualEmailByChannel[item.channel] && <small>{manualEmailByChannel[item.channel].email}</small>}
+          </div>
+          <div className="formActions">
+            {manualEmailByChannel[item.channel] && item.state !== "Al geplaatst/gepland" && <a className="secondaryButton" href={emailHandoffUrl(item.channel)}>E-mail openen</a>}
+            <span className="pill">{item.state}</span>
+          </div>
+        </div>)}
       </div>}
       <button type="submit" className="primary full" disabled={saving}>{saving ? "Campagne klaarzetten..." : "Alles inplannen"}</button>
     </form>
@@ -903,6 +973,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           brevo: "Brevo", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
           whatsapp: "WhatsApp", facebook_groups: "Facebook-groepen",
           google_business_profile: "Google Bedrijfsprofiel", google_ads: "Google Ads",
+          ...Object.fromEntries(manualEmailOptions.map(([value, label]) => [value, `${label} (per e-mail)`])),
         };
         const sourceLabels = {
           facebook_post: "Facebook-bericht",
@@ -919,7 +990,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
             <small>{sourceLabels[distribution.source_type] || distribution.source_type?.replaceAll("_", " ") || "Bron"} · {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
             {distribution.source_url && <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a>}
             <div className="formActions" style={{ marginTop: "10px" }}>
-              {(distribution.target_channels || []).map((channel) => <span className="pill" key={channel}>{labels[channel] || channel}: {distribution.channel_states?.[channel] === "confirmation_required" ? "bevestiging nodig" : "gepland"}</span>)}
+              {(distribution.target_channels || []).map((channel) => <span className="pill" key={channel}>{labels[channel] || channel}: {distribution.channel_states?.[channel] === "confirmation_required" ? "bevestiging nodig" : distribution.channel_states?.[channel] === "email_ready" ? "e-mail klaarzetten" : "gepland"}</span>)}
               {distribution.use_predis && <span className="pill">Predis: ingeschakeld</span>}
               {distribution.meta_ads?.enabled && <span className="pill">Meta Ads: € {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag · goedkeuring nodig</span>}
             </div>
