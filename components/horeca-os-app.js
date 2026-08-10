@@ -633,12 +633,24 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   }
 
   function manualChannelStatusLabel(state) {
+    if (state === "published") return "Geplaatst";
+    if (state === "not_published") return "Niet geplaatst";
     if (state === "email_sent") return "Verzonden";
     if (state === "email_skipped") return "Overgeslagen";
     return "Klaargezet";
   }
 
-  async function updateManualChannelState(campaign, channel, nextState) {
+  async function confirmManualPublication(campaign, channel, distribution) {
+    const currentHandoff = (distribution.email_handoffs || []).find((item) => item.channel === channel) || {};
+    const publicationUrl = window.prompt(
+      "Plak de openbare link van de plaatsing. Laat dit leeg als er geen link beschikbaar is.",
+      currentHandoff.publication_url || "",
+    );
+    if (publicationUrl === null) return;
+    await updateManualChannelState(campaign, channel, "published", publicationUrl.trim());
+  }
+
+  async function updateManualChannelState(campaign, channel, nextState, publicationUrl = "") {
     const distributionIndex = (campaign.media || []).findIndex((item) => item?.kind === "campaign_distribution");
     if (distributionIndex < 0 || !manualEmailByChannel[channel]) return;
     const now = new Date().toISOString();
@@ -652,6 +664,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       ...manualEmailByChannel[channel],
       ...existingHandoff,
       state: nextState,
+      publication_url: nextState === "published" ? publicationUrl : existingHandoff.publication_url || "",
       updated_at: now,
       updated_by: session.user.email,
     };
@@ -1077,9 +1090,12 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                     <small>{manualTarget.email} · {manualChannelStatusLabel(channelState)}</small>
                   </div>
                   <div className="formActions">
-                    {channelState !== "email_skipped" && <a className="secondaryButton" href={emailHandoffUrlForCampaign(channel, campaign, distribution)}>E-mail openen</a>}
-                    {channelState !== "email_sent" && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_sent")}>Verzonden</button>}
-                    {channelState !== "email_skipped" && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_skipped")}>Overslaan</button>}
+                    {channelState !== "email_skipped" && channelState !== "not_published" && <a className="secondaryButton" href={emailHandoffUrlForCampaign(channel, campaign, distribution)}>E-mail openen</a>}
+                    {!["email_sent", "published", "not_published"].includes(channelState) && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_sent")}>Verzonden</button>}
+                    {channelState === "email_sent" && <button type="button" className="secondaryButton" onClick={() => confirmManualPublication(campaign, channel, distribution)}>Geplaatst</button>}
+                    {channelState === "email_sent" && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "not_published")}>Niet geplaatst</button>}
+                    {!["email_skipped", "published", "not_published"].includes(channelState) && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_skipped")}>Overslaan</button>}
+                    {channelState === "published" && (distribution.email_handoffs || []).find((item) => item.channel === channel)?.publication_url && <a className="secondaryButton" href={(distribution.email_handoffs || []).find((item) => item.channel === channel).publication_url} target="_blank" rel="noreferrer">Plaatsing openen</a>}
                     <span className="pill">{manualChannelStatusLabel(channelState)}</span>
                   </div>
                 </div>;
