@@ -416,6 +416,54 @@ function EmptyModule({ eyebrow, title, description }) {
   return <><section className="pageIntro"><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></section><section className="panel emptyModule"><strong>Klaar voor de eerste databron</strong><p>Dit onderdeel is onderdeel van de nieuwe applicatiestructuur. Er wordt geen voorbeelddata getoond.</p></section></>;
 }
 
+function normalizeCampaignSource(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.hostname.toLowerCase()}${pathname}${url.search}`;
+  } catch {
+    return raw.toLowerCase().replace(/#.*$/, "").replace(/\/+$/, "");
+  }
+}
+
+function campaignEventKey({ sourceUrl, title, startDate }) {
+  const normalizedUrl = normalizeCampaignSource(sourceUrl);
+  if (normalizedUrl) return `url:${normalizedUrl}`;
+  const normalizedTitle = String(title || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const parsedDate = startDate ? new Date(startDate) : null;
+  const date = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toISOString().slice(0, 10) : "";
+  return normalizedTitle ? `title:${normalizedTitle}|date:${date}` : "";
+}
+
+function findExistingCampaignChannels(rows, sourceUrl, sourcePreview, campaignTitle) {
+  const wantedKey = campaignEventKey({
+    sourceUrl,
+    title: sourcePreview?.title || campaignTitle,
+    startDate: sourcePreview?.startDate,
+  });
+  if (!wantedKey) return new Set();
+
+  const existing = new Set();
+  (rows || []).forEach((campaign) => {
+    if (["cancelled", "canceled", "failed", "deleted"].includes(String(campaign.status || "").toLowerCase())) return;
+    const distribution = Array.isArray(campaign.media)
+      ? campaign.media.find((item) => item?.kind === "campaign_distribution")
+      : null;
+    if (!distribution) return;
+    const storedKey = distribution.event_key || campaignEventKey({
+      sourceUrl: distribution.source_url,
+      title: distribution.source_preview?.title || campaign.body,
+      startDate: distribution.source_preview?.startDate || campaign.scheduled_for,
+    });
+    if (storedKey !== wantedKey) return;
+    (distribution.target_channels || []).forEach((channel) => existing.add(channel));
+  });
+  return existing;
+}
+
 function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
   const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
@@ -440,6 +488,13 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [websiteEvents, setWebsiteEvents] = useState([]);
   const [selectedWebsiteEventId, setSelectedWebsiteEventId] = useState("");
   const [loadingWebsiteEvents, setLoadingWebsiteEvents] = useState(false);
+  const [checkingPlacements, setCheckingPlacements] = useState(false);
+  const [placementCheckedAt, setPlacementCheckedAt] = useState("");
+
+  const existingCampaignChannels = useMemo(
+    () => findExistingCampaignChannels(campaigns, sourceUrl, sourcePreview, campaignTitle),
+    [campaignTitle, campaigns, sourcePreview, sourceUrl],
+  );
 
   const loadCampaigns = useCallback(async () => {
     if (!workspaceId || !selectedBusinessId) {
@@ -553,6 +608,17 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setStatus(`${eventItem.title} geselecteerd. Controleer nu de tekst, kanalen en publicatiedatum.`);
   }
 
+  async function checkPlacements() {
+    if (!sourceUrl.trim() && !campaignTitle.trim()) {
+      setStatus("Kies eerst een evenement of vul een bronlink in.");
+      return;
+    }
+    setCheckingPlacements(true);
+    await loadCampaigns();
+    setPlacementCheckedAt(new Date().toISOString());
+    setCheckingPlacements(false);
+  }
+
   async function planCampaign(event) {
     event.preventDefault();
     if (!selectedBusinessId || !sourceUrl.trim() || !campaignTitle.trim() || !channels.length || !scheduledFor) {
@@ -565,6 +631,33 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     }
     setSaving(true);
     setStatus("");
+
+    const { data: recentItems, error: duplicateCheckError } = await supabase.from("social_content_items")
+      .select("id, body, media, status, workflow_status, scheduled_for, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", selectedBusinessId)
+      .eq("direction", "outbound")
+      .order("created_at", { ascending: false })
+      .limit(250);
+    if (duplicateCheckError) {
+      setStatus("De plaatsingscontrole kon niet worden uitgevoerd: " + duplicateCheckError.message);
+      setSaving(false);
+      return;
+    }
+    const recentCampaigns = (recentItems || []).filter((item) => Array.isArray(item.media)
+      && item.media.some((mediaItem) => mediaItem?.kind === "campaign_distribution"));
+    const alreadyPlaced = findExistingCampaignChannels(recentCampaigns, sourceUrl, sourcePreview, campaignTitle);
+    const duplicateChannels = channels.filter((channel) => alreadyPlaced.has(channel));
+    const freshChannels = channels.filter((channel) => !alreadyPlaced.has(channel));
+    setCampaigns(recentCampaigns);
+    setPlacementCheckedAt(new Date().toISOString());
+    if (!freshChannels.length) {
+      setChannelResult(duplicateChannels.map((channel) => ({ channel, state: "Al geplaatst/gepland" })));
+      setStatus("Dit evenement is op alle gekozen kanalen al geplaatst of ingepland. Er is niets dubbel opgeslagen.");
+      setSaving(false);
+      return;
+    }
+
     const { data: accounts, error: accountError } = await supabase.from("integration_accounts")
       .select("id, provider, connection_status")
       .eq("workspace_id", workspaceId)
@@ -584,9 +677,15 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       source_type: sourceType,
       source_url: sourceUrl.trim(),
       source_preview: sourcePreview,
+      event_key: campaignEventKey({
+        sourceUrl,
+        title: sourcePreview?.title || campaignTitle,
+        startDate: sourcePreview?.startDate,
+      }),
+      placement_checked_at: new Date().toISOString(),
       use_predis: usePredis,
-      target_channels: channels,
-      channel_states: Object.fromEntries(channels.map((channel) => [
+      target_channels: freshChannels,
+      channel_states: Object.fromEntries(freshChannels.map((channel) => [
         channel,
         channel === "facebook_groups" ? "confirmation_required" : "planned",
       ])),
@@ -624,7 +723,9 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       return;
     }
     const connectedProviders = new Set((accounts || []).map((item) => item.provider));
-    setChannelResult(channels.map((channel) => ({
+    setChannelResult([
+      ...duplicateChannels.map((channel) => ({ channel, state: "Al geplaatst/gepland" })),
+      ...freshChannels.map((channel) => ({
       channel,
       state: channel === "facebook_groups"
         ? "Bevestiging nodig"
@@ -636,9 +737,12 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
             || (channel === "google_ads" && connectedProviders.has("google_ads"))
             ? "Gepland"
             : "Koppeling controleren",
-    })));
+    })),
+    ]);
     await loadCampaigns();
-    setStatus("Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
+    setStatus(duplicateChannels.length
+      ? `Nieuwe kanalen zijn ingepland. ${duplicateChannels.length} kanaal/kanalen waren al geplaatst of gepland en zijn overgeslagen.`
+      : "Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
     setSaving(false);
   }
 
@@ -723,10 +827,22 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       <fieldset className="full"><legend>Promoten via</legend>
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
           {channelOptions.map(([value, label]) => <label className="checkOption" key={value}>
-            <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />{label}
+            <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
+            <span style={{ flex: 1 }}>{label}</span>
+            {existingCampaignChannels.has(value) && <span className="pill">Al geplaatst/gepland</span>}
           </label>)}
         </div>
       </fieldset>
+      <div className="notice full">
+        <strong>Plaatsingscontrole</strong>
+        <p>Horeca OS vergelijkt vestiging, eventlink en gekozen kanalen. Kanalen die al voorkomen worden niet opnieuw ingepland.</p>
+        <div className="formActions" style={{ marginTop: "10px" }}>
+          <button type="button" className="secondaryButton" onClick={checkPlacements} disabled={checkingPlacements || loadingCampaigns}>
+            {checkingPlacements ? "Controleren..." : "Controleren of al geplaatst"}
+          </button>
+          {placementCheckedAt && <span className="securityHint">Laatst gecontroleerd: {formatDate(placementCheckedAt)}</span>}
+        </div>
+      </div>
       <label className="checkOption full">
         <input type="checkbox" checked={usePredis} onChange={(event) => setUsePredis(event.target.checked)} />
         Predis gebruiken om tekst- en beeldvarianten per kanaal te maken
