@@ -641,6 +641,7 @@ function CalendarOverview({ workspaceId, session }) {
   const [notice, setNotice] = useState("");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editor, setEditor] = useState(null);
+  const [calendarSearch, setCalendarSearch] = useState("");
   const mailboxPalette = ["#20869b", "#6d5bd0", "#d97706", "#2f855a", "#c2415d", "#2563a8"];
   const mailboxColor = (address) => mailboxPalette[Math.max(0, accounts.findIndex((account) => account.mailbox === address)) % mailboxPalette.length];
 
@@ -707,6 +708,7 @@ function CalendarOverview({ workspaceId, session }) {
 
   const events = accounts.filter((account) => mailbox === "all" || account.mailbox === mailbox)
     .flatMap((account) => account.events.map((event) => ({ ...event, mailbox: account.mailbox })))
+    .filter((event) => !calendarSearch.trim() || [event.subject, event.location?.displayName, event.organizer?.emailAddress?.name, event.organizer?.emailAddress?.address, event.bodyPreview].filter(Boolean).join(" ").toLowerCase().includes(calendarSearch.trim().toLowerCase()))
     .sort((a, b) => new Date(a.start?.dateTime) - new Date(b.start?.dateTime));
 
   function move(direction) {
@@ -735,6 +737,9 @@ function CalendarOverview({ workspaceId, session }) {
       isAllDay: false,
       recurrence: "none",
       reminderMinutes: "15",
+      showAs: "busy",
+      isPrivate: false,
+      isOnlineMeeting: false,
     });
   }
 
@@ -752,6 +757,9 @@ function CalendarOverview({ workspaceId, session }) {
       isAllDay: Boolean(event.isAllDay),
       recurrence: event.recurrence?.pattern?.type === "daily" ? "daily" : event.recurrence?.pattern?.type === "weekly" ? "weekly" : event.recurrence?.pattern?.type === "absoluteMonthly" ? "monthly" : event.recurrence?.pattern?.type === "absoluteYearly" ? "yearly" : "none",
       reminderMinutes: event.isReminderOn ? String(event.reminderMinutesBeforeStart ?? 15) : "-1",
+      showAs: event.showAs || "busy",
+      isPrivate: event.sensitivity === "private",
+      isOnlineMeeting: Boolean(event.isOnlineMeeting),
     });
   }
 
@@ -771,6 +779,9 @@ function CalendarOverview({ workspaceId, session }) {
       isAllDay: form.get("isAllDay") === "on",
       recurrence: String(form.get("recurrence") || "none"),
       reminderMinutes: Number(form.get("reminderMinutes")),
+      showAs: String(form.get("showAs") || "busy"),
+      isPrivate: form.get("isPrivate") === "on",
+      isOnlineMeeting: form.get("isOnlineMeeting") === "on",
     };
     if (new Date(payload.end) <= new Date(payload.start)) { setMessage("De eindtijd moet na de begintijd liggen."); return; }
     setWorking(true); setMessage(""); setNotice("");
@@ -836,7 +847,7 @@ function CalendarOverview({ workspaceId, session }) {
       </div>
       <div className="toolbar">
         <label>Weergave<select value={view} onChange={(event) => setView(event.target.value)}><option value="day">Dag</option><option value="week">Week</option><option value="month">Maand</option><option value="year">Jaar</option></select></label>
-        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label><button type="button" className="secondary" onClick={renewCalendarAccess} disabled={working || !accounts.length}>{working ? "Microsoft openen…" : "Agendarechten vernieuwen"}</button>
+        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label><label>Zoeken<input value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} placeholder="Onderwerp, locatie of organisator" /></label><button type="button" className="secondary" onClick={renewCalendarAccess} disabled={working || !accounts.length}>{working ? "Microsoft openen…" : "Agendarechten vernieuwen"}</button>
       </div>
     </div>
     {editor && <form className="panel stack" onSubmit={saveAppointment}>
@@ -845,6 +856,7 @@ function CalendarOverview({ workspaceId, session }) {
       <label>Onderwerp<input name="subject" defaultValue={editor.subject} required /></label>
       <div className="toolbar"><label>Begintijd<input name="start" type="datetime-local" defaultValue={editor.start} required /></label><label>Eindtijd<input name="end" type="datetime-local" defaultValue={editor.end} required /></label><label><input name="isAllDay" type="checkbox" defaultChecked={editor.isAllDay} /> Hele dag</label></div>
       <div className="toolbar"><label>Herhalen<select name="recurrence" defaultValue={editor.recurrence}><option value="none">Niet herhalen</option><option value="daily">Dagelijks</option><option value="weekly">Wekelijks</option><option value="monthly">Maandelijks</option><option value="yearly">Jaarlijks</option></select></label><label>Herinnering<select name="reminderMinutes" defaultValue={editor.reminderMinutes}><option value="-1">Geen herinnering</option><option value="0">Op begintijd</option><option value="5">5 minuten vooraf</option><option value="15">15 minuten vooraf</option><option value="30">30 minuten vooraf</option><option value="60">1 uur vooraf</option><option value="1440">1 dag vooraf</option></select></label></div>
+      <div className="toolbar"><label>Beschikbaarheid<select name="showAs" defaultValue={editor.showAs}><option value="free">Vrij</option><option value="tentative">Voorlopig</option><option value="busy">Bezet</option><option value="oof">Afwezig</option><option value="workingElsewhere">Elders werkzaam</option></select></label><label><input name="isPrivate" type="checkbox" defaultChecked={editor.isPrivate} /> Privéafspraak</label><label><input name="isOnlineMeeting" type="checkbox" defaultChecked={editor.isOnlineMeeting} /> Teams-vergadering</label></div>
       <label>Locatie<input name="location" defaultValue={editor.location} /></label>
       <label>Deelnemers<input name="attendees" type="text" defaultValue={editor.attendees} placeholder="naam@bedrijf.nl, tweede@bedrijf.nl" /><small>Scheid meerdere e-mailadressen met een komma.</small></label>
       <label>Omschrijving<textarea name="description" defaultValue={editor.description} rows="5" /></label>
@@ -858,8 +870,9 @@ function CalendarOverview({ workspaceId, session }) {
       {selectedEvent.attendees?.length > 0 && <div><strong>Deelnemers:</strong><ul>{selectedEvent.attendees.map((attendee, index) => <li key={`${attendee.emailAddress?.address}-${index}`}>{attendee.emailAddress?.name || attendee.emailAddress?.address || "Onbekend"}{attendee.status?.response && ` · ${attendee.status.response}`}</li>)}</ul></div>}
       {selectedEvent.recurrence && <p><strong>Herhaling:</strong> {selectedEvent.recurrence.pattern?.type === "daily" ? "Dagelijks" : selectedEvent.recurrence.pattern?.type === "weekly" ? "Wekelijks" : selectedEvent.recurrence.pattern?.type === "absoluteMonthly" ? "Maandelijks" : "Jaarlijks"}</p>}
       <p><strong>Herinnering:</strong> {selectedEvent.isReminderOn ? `${selectedEvent.reminderMinutesBeforeStart} minuten vooraf` : "Geen"}</p>
+      <p><strong>Status:</strong> {selectedEvent.showAs === "free" ? "Vrij" : selectedEvent.showAs === "tentative" ? "Voorlopig" : selectedEvent.showAs === "oof" ? "Afwezig" : selectedEvent.showAs === "workingElsewhere" ? "Elders werkzaam" : "Bezet"}{selectedEvent.sensitivity === "private" ? " · Privé" : ""}</p>
       {selectedEvent.bodyPreview && <div><strong>Beschrijving:</strong><p>{selectedEvent.bodyPreview}</p></div>}
-      <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{selectedEvent.onlineMeetingUrl && <a className="secondary" href={selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan online vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
+      <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
     </div>}
     {view === "day" && <div className="stack">{!events.length && <div className="panel">Geen afspraken.</div>}{events.map(eventCard)}</div>}
     {(view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
