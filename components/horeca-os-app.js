@@ -521,7 +521,21 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     }
   }
 
+  function clearWebsiteEventSelection() {
+    setSelectedWebsiteEventId("");
+    setSourceUrl("");
+    setSourcePreview(null);
+    setCampaignTitle("");
+    setCampaignText("");
+    setScheduledFor("");
+    setStatus("Evenementselectie verwijderd. Kies een ander evenement uit de agenda.");
+  }
+
   function selectWebsiteEvent(eventItem) {
+    if (selectedWebsiteEventId === eventItem.id) {
+      clearWebsiteEventSelection();
+      return;
+    }
     setSelectedWebsiteEventId(eventItem.id);
     setSourceUrl(eventItem.sourceUrl || "");
     setSourcePreview(eventItem);
@@ -677,7 +691,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                 loading="lazy"
                 style={{ width: "96px", height: "72px", objectFit: "cover", borderRadius: "10px" }}
               />}
-              <span className="pill">{selectedWebsiteEventId === eventItem.id ? "Geselecteerd" : "Kiezen"}</span>
+              <span className="pill">{selectedWebsiteEventId === eventItem.id ? "Deselecteren" : "Kiezen"}</span>
             </div>
           </button>)}
         </div>
@@ -688,6 +702,9 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         {sourcePreview.location && <p>{sourcePreview.location}</p>}
         {sourcePreview.image && <p>Afbeelding gevonden</p>}
         {sourcePreview.sourceUrl && <a href={sourcePreview.sourceUrl} target="_blank" rel="noreferrer">Evenement op website openen</a>}
+        <div style={{ marginTop: "12px" }}>
+          <button type="button" className="secondaryButton" onClick={clearWebsiteEventSelection}>Selectie verwijderen</button>
+        </div>
       </div>}
       <label>Interne campagnenaam
         <input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} placeholder="Bijvoorbeeld: Caribbean Social Club" required />
