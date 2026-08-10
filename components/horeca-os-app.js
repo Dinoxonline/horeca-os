@@ -594,10 +594,10 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
   const [reply, setReply] = useState("");
   const [status, setStatus] = useState("");
   const [publishing, setPublishing] = useState(false);
-  const provider = channel === "Facebook" ? "facebook" : channel === "Instagram" ? "meta" : "";
+  const provider = channel === "Facebook" ? "facebook" : channel === "Instagram" ? "meta" : channel === "WhatsApp" ? "whatsapp" : "";
   const supported = Boolean(provider);
-  const platformName = channel === "Instagram" ? "Instagram" : "Facebook";
-  const maxLength = channel === "Instagram" ? 2200 : 8000;
+  const platformName = channel === "Instagram" ? "Instagram" : channel === "WhatsApp" ? "WhatsApp" : "Facebook";
+  const maxLength = channel === "Instagram" ? 2200 : channel === "WhatsApp" ? 4096 : 8000;
 
   async function publishReply() {
     const message = reply.trim();
@@ -1142,7 +1142,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
     let query = supabase.from("social_content_items")
       .select("id,business_id,account_id,content_type,direction,status,workflow_status,handled_at,body,media,permalink,published_at,created_at")
       .eq("workspace_id", workspaceId)
-      .in("content_type", ["post", "comment"])
+      .in("content_type", ["post", "comment", "message"])
       .order("published_at", { ascending: false, nullsFirst: false })
       .limit(1000);
     if (businessId !== "all") query = query.eq("business_id", businessId);
@@ -1181,7 +1181,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
       const detail = failures.map((attempt) => `${attempt.provider}: ${attempt.result.error || "synchronisatie mislukt"}`).join(" · ");
       setMessage(`${successes.length} koppeling(en) bijgewerkt. ${detail}`);
     } else {
-      setMessage(`Facebook en Instagram zijn bijgewerkt voor ${targetIds.length} vestiging${targetIds.length === 1 ? "" : "en"}.`);
+      setMessage(`Facebook en Instagram zijn bijgewerkt voor ${targetIds.length} vestiging${targetIds.length === 1 ? "" : "en"}. WhatsApp komt realtime binnen.`);
     }
     setSyncing(false);
   }
@@ -1203,7 +1203,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
   useEffect(() => { setPage(1); }, [businessId, channelFilter, typeFilter, workflowFilter, pageSize]);
 
   const businessNames = Object.fromEntries(businesses.map((business) => [business.id, business.name]));
-  const channelName = (item) => String(item.permalink || "").includes("instagram.com") || accounts[item.account_id]?.provider === "instagram" ? "Instagram" : String(item.permalink || "").includes("facebook.com") || accounts[item.account_id]?.provider === "facebook" ? "Facebook" : accounts[item.account_id]?.display_name || "Sociaal";
+  const channelName = (item) => accounts[item.account_id]?.provider === "whatsapp" ? "WhatsApp" : String(item.permalink || "").includes("instagram.com") || ["instagram", "meta"].includes(accounts[item.account_id]?.provider) ? "Instagram" : String(item.permalink || "").includes("facebook.com") || accounts[item.account_id]?.provider === "facebook" ? "Facebook" : accounts[item.account_id]?.display_name || "Sociaal";
   const filtered = items.filter((item) => (channelFilter === "all" || channelName(item) === channelFilter) && (typeFilter === "all" || item.content_type === typeFilter) && (workflowFilter === "all" || (item.workflow_status || "new") === workflowFilter));
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -1212,9 +1212,9 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
   const openItems = items.filter((item) => item.direction === "inbound" && (item.workflow_status || "new") !== "handled").length;
 
   return <section className="socialInbox">
-    <div className="socialInboxHeader"><div><p className="eyebrow">Sociale kanalen</p><h2>Berichten & reacties</h2><p>Facebook en Instagram centraal, met behoud van de scheiding per vestiging.</p></div><div className="socialInboxFilters">
-      <label>Kanaal<select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}><option value="all">Alle kanalen</option><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option></select></label>
-      <label>Soort<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Alles</option><option value="comment">Reacties</option><option value="post">Berichten</option></select></label>
+    <div className="socialInboxHeader"><div><p className="eyebrow">Sociale kanalen</p><h2>Berichten & reacties</h2><p>WhatsApp, Facebook en Instagram centraal, met behoud van de scheiding per vestiging.</p></div><div className="socialInboxFilters">
+      <label>Kanaal<select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}><option value="all">Alle kanalen</option><option value="WhatsApp">WhatsApp</option><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option></select></label>
+      <label>Soort<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Alles</option><option value="message">Privéberichten</option><option value="comment">Reacties</option><option value="post">Berichten</option></select></label>
       <label>Werkstatus<select value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value)}><option value="all">Alle statussen</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="handled">Afgehandeld</option></select></label>
       <label>Zichtbaar<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{[10,25,100].map((amount) => <option value={amount} key={amount}>{amount}</option>)}</select></label>
       <button type="button" className="secondaryButton" onClick={syncSocialItems} disabled={loading || syncing}>{syncing ? "Synchroniseren…" : loading ? "Ophalen…" : "Kanalen verversen"}</button>
@@ -1231,7 +1231,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
           <small>{businessNames[item.business_id] || "Onbekende vestiging"} · {formatDate(item.published_at || item.created_at)}</small>
           <p>{item.body || "Geen tekst meegeleverd."}</p>
           <div className="socialInboxActions">{item.permalink && <a className="secondaryButton" href={item.permalink} target="_blank" rel="noreferrer">Openen op {channelName(item)}</a>}
-            {canManage && item.content_type === "comment" && <SocialReply item={item} channel={channelName(item)} workspaceId={workspaceId} session={session} onPublished={async () => { const marked = await updateWorkflowStatus(item.id, "handled"); if (marked) await loadSocialItems(); }} />}
+            {canManage && ["comment", "message"].includes(item.content_type) && <SocialReply item={item} channel={channelName(item)} workspaceId={workspaceId} session={session} onPublished={async () => { const marked = await updateWorkflowStatus(item.id, "handled"); if (marked) await loadSocialItems(); }} />}
             {canManage && item.direction === "inbound" && <select aria-label={`Werkstatus voor ${author}`} value={item.workflow_status || "new"} onChange={(event) => updateWorkflowStatus(item.id, event.target.value)}><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="handled">Afgehandeld</option></select>}
           </div>
         </article>;
@@ -1441,6 +1441,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [metaConfiguration, setMetaConfiguration] = useState({ ready: false, missing: [] });
   const [facebookAccounts, setFacebookAccounts] = useState([]);
   const [facebookConfiguration, setFacebookConfiguration] = useState({ ready: false, missing: [] });
+  const [whatsappAccounts, setWhatsappAccounts] = useState([]);
+  const [whatsappConfiguration, setWhatsappConfiguration] = useState({ ready: false, missing: [], webhookUrl: "" });
   const [microsoftConnection, setMicrosoftConnection] = useState(null);
   const [microsoftConfiguration, setMicrosoftConfiguration] = useState({ ready: false, missing: [] });
   const [integrationMessage, setIntegrationMessage] = useState("");
@@ -1452,13 +1454,14 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
 
   const loadAccounts = useCallback(async () => {
     const headers = { Authorization: `Bearer ${session.access_token}` };
-    const [robuustResponse, metaResponse, facebookResponse, microsoftResponse] = await Promise.all([
+    const [robuustResponse, metaResponse, facebookResponse, microsoftResponse, whatsappResponse] = await Promise.all([
       fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
       fetch(`/api/integrations/meta?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
       fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
       fetch(`/api/integrations/microsoft?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
+      fetch(`/api/integrations/whatsapp?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
     ]);
-    const [robuustResult, metaResult, facebookResult, microsoftResult] = await Promise.all([robuustResponse.json(), metaResponse.json(), facebookResponse.json(), microsoftResponse.json()]);
+    const [robuustResult, metaResult, facebookResult, microsoftResult, whatsappResult] = await Promise.all([robuustResponse.json(), metaResponse.json(), facebookResponse.json(), microsoftResponse.json(), whatsappResponse.json()]);
     if (robuustResponse.ok) setAccounts(robuustResult.accounts || []);
     if (metaResponse.ok) {
       setMetaAccounts(metaResult.accounts || []);
@@ -1469,7 +1472,8 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       setFacebookConfiguration(facebookResult.configuration || { ready: false, missing: [] });
     }
     if (microsoftResponse.ok) { setMicrosoftConnection((microsoftResult.connections || [])[0] || null); setMicrosoftConfiguration(microsoftResult.configuration || { ready: false, missing: [] }); }
-    if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok || !microsoftResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || microsoftResult.error || "Koppelingen konden niet worden geladen.");
+    if (whatsappResponse.ok) { setWhatsappAccounts(whatsappResult.accounts || []); setWhatsappConfiguration(whatsappResult.configuration || { ready: false, missing: [], webhookUrl: "" }); }
+    if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok || !microsoftResponse.ok || !whatsappResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || microsoftResult.error || whatsappResult.error || "Koppelingen konden niet worden geladen.");
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
@@ -1644,6 +1648,20 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="panelHead"><div><h2>Facebook per vestiging</h2><p>Voor reacties, paginaberichten en later campagne-KPI's.</p></div></div>
         {!facebookAccounts.length && <Empty text="Nog geen Facebookpagina technisch gekoppeld." />}
         {businesses.map((business) => { const account = facebookAccounts.find((item) => item.business_id === business.id); const canSync = account?.granted_scopes?.includes("pages_read_engagement"); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen Facebookpagina gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel eerst Instagram en daarna Facebook"}</small></div>{account && <button className="secondaryButton" type="button" disabled={!canSync || syncingFacebookBusinessId === business.id} onClick={() => syncFacebook(business.id)}>{canSync ? (syncingFacebookBusinessId === business.id ? "OphalenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Berichten & reacties ophalen") : "Meta-leesrecht vereist"}</button>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
+      </article>
+    </section>
+    <section className="integrationGrid">
+      <article className="panel integrationSetup">
+        <div className="integrationBrand"><div className="integrationLogo">WA</div><div><h2>WhatsApp Business</h2><p>Privéberichten realtime in de Social inbox</p></div></div>
+        <div className="scopeBanner"><strong>Per vestiging en telefoonnummer</strong><span>Elk WhatsApp Business-nummer wordt aan precies één Horeca OS-vestiging gekoppeld.</span></div>
+        {!whatsappConfiguration.ready && <div className="notice">De veilige ontvangst staat klaar. Nog nodig in Meta: {whatsappConfiguration.missing.join(", ") || "WhatsApp-configuratie"}.</div>}
+        {whatsappConfiguration.ready && !whatsappAccounts.length && <div className="notice successNotice">De server is gereed. De volgende stap is het juiste WhatsApp Business-nummer per vestiging autoriseren.</div>}
+        <div className="sensitiveNote"><strong>Realtime</strong><span>Nieuwe berichten komen via een gecontroleerde Meta-webhook binnen. Antwoorden worden altijd vanuit het nummer van dezelfde vestiging verzonden.</span></div>
+        <small>Webhook: {whatsappConfiguration.webhookUrl || "wordt na configuratie getoond"}</small>
+      </article>
+      <article className="panel">
+        <div className="panelHead"><div><h2>WhatsApp per vestiging</h2><p>Caribbean Corner en Grandcafé Het Plein blijven volledig gescheiden.</p></div></div>
+        {businesses.map((business) => { const account = whatsappAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen WhatsApp-nummer gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst bericht ${formatDate(account.last_synced_at)}` : "Koppel straks het eigen WhatsApp Business-nummer"}</small></div><span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
   </>;
