@@ -635,6 +635,52 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${title}`)}&body=${encodeURIComponent(details)}`;
   }
 
+  async function sendManualPromotionEmail(channel, campaign, distribution) {
+    const target = manualEmailByChannel[channel];
+    if (!target) return;
+    const preview = distribution?.source_preview || {};
+    const businessName = businesses.find((item) => item.id === selectedBusinessId)?.name || "Horeca OS";
+    const title = preview.title || campaign.body || "Evenement";
+    const content = [
+      `Beste redactie van ${target.label},`,
+      "",
+      `Graag melden wij het volgende evenement van ${businessName} aan:`,
+      "",
+      `Titel: ${title}`,
+      preview.startDate ? `Datum en tijd: ${formatDate(preview.startDate)}` : "",
+      preview.location ? `Locatie: ${preview.location}` : "",
+      campaign.body ? `Omschrijving: ${campaign.body}` : "",
+      distribution?.source_url ? `Evenementpagina: ${distribution.source_url}` : "",
+      preview.image ? `Openbare beeldlink: ${preview.image}` : "",
+      "",
+      "Met vriendelijke groet,",
+      businessName,
+      manualPromotionSender,
+    ].filter(Boolean).join("\n");
+    if (!window.confirm(`E-mail nu vanuit ${manualPromotionSender} versturen naar ${target.email}?`)) return;
+    setStatus(`E-mail naar ${target.label} wordt verstuurd...`);
+    try {
+      const response = await fetch("/api/integrations/microsoft/messages/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          workspaceId,
+          mailbox: manualPromotionSender,
+          action: "send",
+          to: target.email,
+          subject: `Evenement aanmelden: ${title}`,
+          content,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De e-mail kon niet worden verstuurd.");
+      await updateManualChannelState(campaign, channel, "email_sent");
+      setStatus(`Verzonden vanuit ${manualPromotionSender} naar ${target.email}.`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
   function manualChannelStatusLabel(state) {
     if (state === "published") return "Geplaatst";
     if (state === "not_published") return "Niet geplaatst";
@@ -1093,8 +1139,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                     <small>{manualTarget.email} · {manualChannelStatusLabel(channelState)}</small>
                   </div>
                   <div className="formActions">
-                    {channelState !== "email_skipped" && channelState !== "not_published" && <a className="secondaryButton" href={emailHandoffUrlForCampaign(channel, campaign, distribution)}>E-mail openen</a>}
-                    {!["email_sent", "published", "not_published"].includes(channelState) && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_sent")}>Verzonden</button>}
+                    {channelState !== "email_skipped" && channelState !== "not_published" && <a className="secondaryButton" href={emailHandoffUrlForCampaign(channel, campaign, distribution)}>Concept bekijken</a>}
+                    {!["email_sent", "published", "not_published"].includes(channelState) && <button type="button" className="primary" onClick={() => sendManualPromotionEmail(channel, campaign, distribution)}>Versturen vanuit {manualPromotionSender}</button>}
                     {channelState === "email_sent" && <button type="button" className="secondaryButton" onClick={() => confirmManualPublication(campaign, channel, distribution)}>Geplaatst</button>}
                     {channelState === "email_sent" && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "not_published")}>Niet geplaatst</button>}
                     {!["email_skipped", "published", "not_published"].includes(channelState) && <button type="button" className="secondaryButton" onClick={() => updateManualChannelState(campaign, channel, "email_skipped")}>Overslaan</button>}
