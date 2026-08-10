@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import CentralEventCreator from "./central-event-creator";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
 const priorityLabel = { critical: "Kritiek", high: "Hoog", medium: "Midden", low: "Laag" };
@@ -425,7 +426,7 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && <><MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><PredisContentGenerator mode="generate" workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /></>}
+        {activeView === "marketing" && featureVisibility.marketing && <><CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><PredisContentGenerator mode="generate" workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /></>}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
