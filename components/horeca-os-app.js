@@ -800,6 +800,49 @@ function CalendarOverview({ workspaceId, session }) {
     finally { setWorking(false); }
   }
 
+  function duplicateAppointment(event) {
+    const start = new Date(event.start?.dateTime);
+    const end = new Date(event.end?.dateTime);
+    start.setDate(start.getDate() + 7);
+    end.setDate(end.getDate() + 7);
+    setSelectedEvent(null);
+    setEditor({
+      mode: "create",
+      mailbox: event.mailbox,
+      subject: event.subject || "",
+      start: toLocalDateTimeInput(start),
+      end: toLocalDateTimeInput(end),
+      location: event.location?.displayName || "",
+      description: event.bodyPreview || "",
+      attendees: (event.attendees || []).map((item) => item.emailAddress?.address).filter(Boolean).join(", "),
+      isAllDay: Boolean(event.isAllDay),
+      recurrence: "none",
+      reminderMinutes: event.isReminderOn ? String(event.reminderMinutesBeforeStart ?? 15) : "-1",
+      showAs: event.showAs || "busy",
+      isPrivate: event.sensitivity === "private",
+      isOnlineMeeting: false,
+    });
+  }
+
+  async function respondToInvitation(event, responseType) {
+    const responseLabel = responseType === "accept" ? "accepteren" : responseType === "tentativelyAccept" ? "voorlopig accepteren" : "weigeren";
+    if (!window.confirm(`Wil je deze uitnodiging ${responseLabel}?`)) return;
+    setWorking(true); setMessage(""); setNotice("");
+    try {
+      const response = await fetch("/api/integrations/microsoft/calendar/action", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ workspaceId, mailbox: event.mailbox, eventId: event.id, response: responseType }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De reactie kon niet worden verzonden.");
+      setNotice(result.message);
+      setSelectedEvent(null);
+      await loadCalendar();
+    } catch (error) { setMessage(error.message); }
+    finally { setWorking(false); }
+  }
+
   async function deleteAppointment(event) {
     if (!window.confirm(`Afspraak “${event.subject || "(Geen onderwerp)"}” definitief verwijderen?`)) return;
     setWorking(true); setMessage(""); setNotice("");
@@ -871,8 +914,10 @@ function CalendarOverview({ workspaceId, session }) {
       {selectedEvent.recurrence && <p><strong>Herhaling:</strong> {selectedEvent.recurrence.pattern?.type === "daily" ? "Dagelijks" : selectedEvent.recurrence.pattern?.type === "weekly" ? "Wekelijks" : selectedEvent.recurrence.pattern?.type === "absoluteMonthly" ? "Maandelijks" : "Jaarlijks"}</p>}
       <p><strong>Herinnering:</strong> {selectedEvent.isReminderOn ? `${selectedEvent.reminderMinutesBeforeStart} minuten vooraf` : "Geen"}</p>
       <p><strong>Status:</strong> {selectedEvent.showAs === "free" ? "Vrij" : selectedEvent.showAs === "tentative" ? "Voorlopig" : selectedEvent.showAs === "oof" ? "Afwezig" : selectedEvent.showAs === "workingElsewhere" ? "Elders werkzaam" : "Bezet"}{selectedEvent.sensitivity === "private" ? " · Privé" : ""}</p>
+      {!selectedEvent.isOrganizer && <p><strong>Jouw reactie:</strong> {selectedEvent.responseStatus?.response === "accepted" ? "Geaccepteerd" : selectedEvent.responseStatus?.response === "tentativelyAccepted" ? "Voorlopig geaccepteerd" : selectedEvent.responseStatus?.response === "declined" ? "Geweigerd" : "Nog niet gereageerd"}</p>}
       {selectedEvent.bodyPreview && <div><strong>Beschrijving:</strong><p>{selectedEvent.bodyPreview}</p></div>}
-      <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
+      {!selectedEvent.isOrganizer && <div className="toolbar"><button type="button" className="primary" onClick={() => respondToInvitation(selectedEvent, "accept")} disabled={working}>Accepteren</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "tentativelyAccept")} disabled={working}>Voorlopig</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "decline")} disabled={working}>Weigeren</button></div>}
+      <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => duplicateAppointment(selectedEvent)}>Dupliceren</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
     </div>}
     {view === "day" && <div className="stack">{!events.length && <div className="panel">Geen afspraken.</div>}{events.map(eventCard)}</div>}
     {(view === "week" || view === "month") && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
