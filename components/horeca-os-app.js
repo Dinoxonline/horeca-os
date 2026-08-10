@@ -564,6 +564,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     ["google_business_profile", "Google Bedrijfsprofiel (organisch)"],
     ["google_ads", "Google Ads (betaald)"],
   ];
+  const manualPromotionSender = "info@leclubbbq.nl";
   const manualEmailOptions = [
     ["email_salsa", "Salsa.nl", "redactie@salsa.nl"],
     ["email_zoetermeer_nieuws", "Zoetermeer.Nieuws.nl", "zoetermeer@nieuws.nl"],
@@ -603,6 +604,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       "",
       "Met vriendelijke groet,",
       businessName,
+      manualPromotionSender,
     ].filter(Boolean).join("\n");
     return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${title}`)}&body=${encodeURIComponent(details)}`;
   }
@@ -628,6 +630,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       "",
       "Met vriendelijke groet,",
       businessName,
+      manualPromotionSender,
     ].filter(Boolean).join("\n");
     return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${title}`)}&body=${encodeURIComponent(details)}`;
   }
@@ -1000,11 +1003,11 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         </div>
       </fieldset>
       <fieldset className="full"><legend>Handmatig aanleveren per e-mail</legend>
-        <p className="securityHint">Voor kanalen zonder directe koppeling maakt Horeca OS een ingevulde e-mail met de evenementgegevens, link en openbare beeldlink. Controleer de e-mail en verstuur hem daarna zelf.</p>
+        <p className="securityHint">Voor kanalen zonder directe koppeling maakt Horeca OS een ingevulde e-mail met de evenementgegevens, link en openbare beeldlink. Verstuur deze altijd vanuit <strong>{manualPromotionSender}</strong>; kies dit account in Outlook voordat je op Verzenden klikt.</p>
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", marginTop: "10px" }}>
           {manualEmailOptions.map(([value, label, email]) => <label className="checkOption" key={value}>
             <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
-            <span style={{ flex: 1 }}><strong>{label}</strong><small>{email}</small></span>
+            <span style={{ flex: 1 }}><strong>{label}</strong><small>Aan: {email} · Van: {manualPromotionSender}</small></span>
             {existingCampaignChannels.has(value) && <span className="pill">Al aangeleverd/klaargezet</span>}
           </label>)}
         </div>
