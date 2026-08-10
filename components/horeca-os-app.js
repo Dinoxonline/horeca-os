@@ -479,6 +479,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     ["tiktok", "TikTok"],
     ["whatsapp", "WhatsApp Business"],
     ["facebook_groups", "Facebook-groepen"],
+    ["google_business_profile", "Google Bedrijfsprofiel (organisch)"],
+    ["google_ads", "Google Ads (betaald)"],
   ];
 
   function toggleChannel(channel) {
@@ -628,7 +630,10 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         ? "Bevestiging nodig"
         : channel === "brevo"
           ? "Klaargezet in Marketing"
-          : connectedProviders.has(channel) || (channel === "facebook" && connectedProviders.has("meta"))
+          : connectedProviders.has(channel)
+            || (channel === "facebook" && connectedProviders.has("meta"))
+            || (channel === "google_business_profile" && (connectedProviders.has("google_business_profile") || connectedProviders.has("google_business")))
+            || (channel === "google_ads" && connectedProviders.has("google_ads"))
             ? "Gepland"
             : "Koppeling controleren",
     })));
@@ -754,6 +759,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         const labels = {
           brevo: "Brevo", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
           whatsapp: "WhatsApp", facebook_groups: "Facebook-groepen",
+          google_business_profile: "Google Bedrijfsprofiel", google_ads: "Google Ads",
         };
         const sourceLabels = {
           facebook_post: "Facebook-bericht",
