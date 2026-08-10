@@ -398,12 +398,12 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && <><MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><PredisContentGenerator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /></>}
+        {activeView === "marketing" && featureVisibility.marketing && <><MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><PredisContentGenerator mode="generate" workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /></>}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
         {activeView === "schedule" && featureVisibility.schedule && <ScheduleOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} canManage={isOwner || canUseFeature("schedule:manage")} />}
-        {activeView === "integrations" && featureVisibility.integrations && <RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} />}
+        {activeView === "integrations" && featureVisibility.integrations && <><PredisContentGenerator mode="connect" workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} /></>}
         {activeView === "security" && <SecuritySettings required={mfaRequired} mfaState={mfaState} onRefresh={refreshMfa} />}
       </main>
     </div>
@@ -709,19 +709,30 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
 }
 
 
-function PredisContentGenerator({ workspaceId, businessId, businesses, session }) {
+function PredisContentGenerator({ mode = "generate", workspaceId, businessId, businesses, session }) {
   const initialBusinessId = businessId !== "all" ? businessId : businesses[0]?.id || "";
   const [selectedBusinessId, setSelectedBusinessId] = useState(initialBusinessId);
   const [brandId, setBrandId] = useState("");
+  const [connectedBusinessName, setConnectedBusinessName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [mediaType, setMediaType] = useState("single_image");
   const [status, setStatus] = useState("");
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId);
 
   useEffect(() => {
     if (businessId !== "all") setSelectedBusinessId(businessId);
   }, [businessId]);
+
+  useEffect(() => {
+    if (!selectedBusinessId) return;
+    const savedBrandId = window.localStorage.getItem(`horeca-os:predis:${workspaceId}:${selectedBusinessId}`) || "";
+    setBrandId(savedBrandId);
+    setConnectedBusinessName(savedBrandId ? businesses.find((item) => item.id === selectedBusinessId)?.name || "" : "");
+    setStatus("");
+    setPosts([]);
+  }, [selectedBusinessId, workspaceId, businesses]);
 
   async function checkConnection() {
     if (!selectedBusinessId || !brandId.trim()) {
@@ -737,17 +748,21 @@ function PredisContentGenerator({ workspaceId, businessId, businesses, session }
     const result = response ? await response.json().catch(() => ({})) : {};
     if (!response?.ok) {
       setPosts([]);
+      setConnectedBusinessName("");
       setStatus(result.error || "Predis kon niet worden gecontroleerd.");
     } else {
+      const businessName = result.business?.name || selectedBusiness?.name || "deze vestiging";
+      window.localStorage.setItem(`horeca-os:predis:${workspaceId}:${selectedBusinessId}`, brandId.trim());
+      setConnectedBusinessName(businessName);
       setPosts(result.posts || []);
-      setStatus(`Predis is gekoppeld aan ${result.business?.name || "deze vestiging"}. ${result.posts?.length || 0} recente concepten gevonden.`);
+      setStatus(`Koppeling geslaagd. ${result.posts?.length || 0} recente concepten gevonden.`);
     }
     setLoading(false);
   }
 
   async function generateConcept() {
     if (!selectedBusinessId || !brandId.trim()) {
-      setStatus("Kies een vestiging en vul het bijbehorende Predis-merk-ID in.");
+      setStatus("Koppel deze vestiging eerst onder Koppelingen → Predis.");
       return;
     }
     if (prompt.trim().length < 20) {
@@ -768,19 +783,38 @@ function PredisContentGenerator({ workspaceId, businessId, businesses, session }
     setLoading(false);
   }
 
-  return <section className="panel formPanel">
-    <div className="sectionHeading">
-      <div><p className="eyebrow">Sociale content</p><h3>Predis conceptgenerator</h3><p>Maak beeld- en tekstconcepten per vestiging. Publiceren blijft altijd een aparte, handmatige stap.</p></div>
-    </div>
+  if (mode === "connect") return <section className="panel formPanel">
+    <div className="sectionHeading"><div><p className="eyebrow">Contentkoppelingen</p><h3>Predis</h3><p>Koppel ieder Predis-merk aan precies één Horeca OS-vestiging.</p></div></div>
     <div className="formGrid">
       <label>Vestiging
-        <select value={selectedBusinessId} onChange={(event) => { setSelectedBusinessId(event.target.value); setPosts([]); setStatus(""); }}>
+        <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
           <option value="">Kies een vestiging</option>
           {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
         </select>
       </label>
       <label>Predis-merk-ID
-        <input value={brandId} onChange={(event) => setBrandId(event.target.value)} placeholder="Merk-ID uit Predis" autoComplete="off" />
+        <input value={brandId} onChange={(event) => { setBrandId(event.target.value); setConnectedBusinessName(""); }} placeholder="Merk-ID uit Predis" autoComplete="off" />
+      </label>
+    </div>
+    <div className="formActions">
+      <button type="button" className={connectedBusinessName ? "primaryButton" : "secondaryButton"} onClick={checkConnection} disabled={loading || Boolean(connectedBusinessName)}>
+        {loading ? "Controleren..." : connectedBusinessName ? `Gekoppeld aan ${connectedBusinessName}` : "Koppeling controleren"}
+      </button>
+      {connectedBusinessName && <button type="button" className="secondaryButton" onClick={() => setConnectedBusinessName("")}>Koppeling wijzigen</button>}
+    </div>
+    {status && <div className="statusBanner">{status}</div>}
+  </section>;
+
+  return <section className="panel formPanel">
+    <div className="sectionHeading">
+      <div><p className="eyebrow">Sociale content</p><h3>Predis conceptgenerator</h3><p>Maak beeld- en tekstconcepten per vestiging. Beheer de koppeling onder Koppelingen.</p></div>
+    </div>
+    <div className="formGrid">
+      <label>Vestiging
+        <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
+          <option value="">Kies een vestiging</option>
+          {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+        </select>
       </label>
       <label>Soort concept
         <select value={mediaType} onChange={(event) => setMediaType(event.target.value)}>
@@ -790,12 +824,12 @@ function PredisContentGenerator({ workspaceId, businessId, businesses, session }
         </select>
       </label>
     </div>
+    {brandId ? <div className="statusBanner">Predis is gekoppeld aan {selectedBusiness?.name || "deze vestiging"}.</div> : <div className="warningBanner">Nog niet gekoppeld. Ga naar Koppelingen → Predis.</div>}
     <label>Opdracht voor Predis
       <textarea rows="5" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Beschrijf doelgroep, aanbieding, toon en gewenste actie." />
     </label>
     <div className="formActions">
-      <button type="button" className="secondaryButton" onClick={checkConnection} disabled={loading}>{loading ? "Controleren..." : "Koppeling controleren"}</button>
-      <button type="button" className="primaryButton" onClick={generateConcept} disabled={loading}>{loading ? "Bezig..." : "Concept laten maken"}</button>
+      <button type="button" className="primaryButton" onClick={generateConcept} disabled={loading || !brandId}>{loading ? "Bezig..." : "Concept laten maken"}</button>
     </div>
     <p className="securityHint">Predis kan hiervoor credits gebruiken. Horeca OS publiceert dit concept niet automatisch.</p>
     {status && <div className="statusBanner">{status}</div>}
