@@ -20,7 +20,7 @@ export async function GET(request) {
 
   if (resource === "drafts") {
     const { data, error } = await context.admin.from("brevo_campaign_drafts")
-      .select("id,business_id,list_id,list_name,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,created_at,updated_at")
+      .select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at")
       .eq("workspace_id", workspaceId).eq("business_id", businessId)
       .order("updated_at", { ascending: false }).limit(100);
     if (error) return jsonError("De campagneconcepten konden niet worden geladen.", 500);
@@ -85,6 +85,7 @@ export async function PATCH(request) {
   const body = await request.json().catch(() => null);
   if (!body?.id) return jsonError("Kies eerst een concept om bij te werken.", 400);
   if (body.action === "request_approval") return requestApproval(request, body);
+  if (body.action === "send_campaign") return sendCampaign(request, body);
   return saveDraft(request, body.id, body);
 }
 
@@ -104,9 +105,10 @@ async function saveDraft(request, draftId, suppliedBody = null) {
   const listIds = configuredListIds(business.name);
   if (!listIds.length) return jsonError(`Brevo-lijsten voor ${business.name} zijn nog niet toegewezen.`, 409);
 
-  const listId = Number(body?.listId);
-  if (!Number.isInteger(listId) || !listIds.includes(listId)) {
-    return jsonError("De gekozen Brevo-doelgroep hoort niet bij deze vestiging.", 400);
+  const requestedListIds = [...new Set((Array.isArray(body?.listIds) ? body.listIds : [body?.listId])
+    .map(Number).filter(Number.isInteger))];
+  if (!requestedListIds.length || requestedListIds.some((id) => !listIds.includes(id))) {
+    return jsonError("Een of meer gekozen Brevo-doelgroepen horen niet bij deze vestiging.", 400);
   }
 
   const internalName = clean(body?.campaignName, 200);
@@ -119,14 +121,16 @@ async function saveDraft(request, draftId, suppliedBody = null) {
 
   try {
     const lists = await getConfiguredLists(apiKey, listIds);
-    const list = lists.find((item) => Number(item.id) === listId);
-    if (!list) return jsonError("De gekozen Brevo-doelgroep bestaat niet meer.", 409);
+    const selectedLists = lists.filter((item) => requestedListIds.includes(Number(item.id)));
+    if (selectedLists.length !== requestedListIds.length) return jsonError("Een of meer gekozen Brevo-doelgroepen bestaan niet meer.", 409);
     const record = {
       workspace_id: workspaceId,
       business_id: businessId,
-      list_id: listId,
-      list_name: list.name,
-      recipient_count: Number(list.totalSubscribers || list.uniqueSubscribers || 0),
+      list_id: requestedListIds[0],
+      list_name: selectedLists.map((item) => item.name).join(", "),
+      list_ids: requestedListIds,
+      list_names: selectedLists.map((item) => item.name),
+      recipient_count: selectedLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0),
       internal_name: internalName,
       sender_name: senderName,
       subject,
@@ -142,13 +146,13 @@ async function saveDraft(request, draftId, suppliedBody = null) {
     if (draftId) {
       query = context.admin.from("brevo_campaign_drafts").update(record)
         .eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId)
-        .select("id,business_id,list_id,list_name,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,created_at,updated_at")
+        .select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at")
         .maybeSingle();
     } else {
       query = context.admin.from("brevo_campaign_drafts").insert({
         ...record,
         created_by: context.user.id,
-      }).select("id,business_id,list_id,list_name,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,created_at,updated_at").single();
+      }).select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at").single();
     }
     const { data, error } = await query;
     if (error || !data) return jsonError(draftId ? "Het concept kon niet worden bijgewerkt." : "Het concept kon niet worden opgeslagen.", 500);
@@ -173,7 +177,7 @@ async function requestApproval(request, body) {
   if (!business) return jsonError("Vestiging hoort niet bij deze werkruimte.", 400);
 
   const { data: draft } = await context.admin.from("brevo_campaign_drafts")
-    .select("id,list_id,internal_name,status")
+    .select("id,list_id,list_ids,internal_name,status,sender_name,subject,body")
     .eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
   if (!draft) return jsonError("Het campagneconcept bestaat niet meer.", 404);
   if (confirmationName !== draft.internal_name) {
@@ -183,25 +187,28 @@ async function requestApproval(request, body) {
   const apiKey = process.env.BREVO_API_KEY?.trim();
   if (!apiKey) return jsonError("Brevo is nog niet geconfigureerd op de server.", 503);
   const listIds = configuredListIds(business.name);
-  if (!listIds.includes(Number(draft.list_id))) {
-    return jsonError("De doelgroep hoort niet meer bij deze vestiging.", 409);
+  const draftListIds = (draft.list_ids?.length ? draft.list_ids : [draft.list_id]).map(Number);
+  if (!draftListIds.length || draftListIds.some((id) => !listIds.includes(id))) {
+    return jsonError("Een of meer doelgroepen horen niet meer bij deze vestiging.", 409);
   }
 
   try {
     const lists = await getConfiguredLists(apiKey, listIds);
-    const list = lists.find((item) => Number(item.id) === Number(draft.list_id));
-    if (!list) return jsonError("De gekozen Brevo-doelgroep bestaat niet meer.", 409);
+    const selectedLists = lists.filter((item) => draftListIds.includes(Number(item.id)));
+    if (selectedLists.length !== draftListIds.length) return jsonError("Een of meer gekozen Brevo-doelgroepen bestaan niet meer.", 409);
     const now = new Date().toISOString();
     const { data, error } = await context.admin.from("brevo_campaign_drafts").update({
-      list_name: list.name,
-      recipient_count: Number(list.totalSubscribers || list.uniqueSubscribers || 0),
+      list_name: selectedLists.map((item) => item.name).join(", "),
+      list_ids: draftListIds,
+      list_names: selectedLists.map((item) => item.name),
+      recipient_count: selectedLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0),
       status: "ready_for_approval",
       approval_requested_at: now,
       approval_requested_by: context.user.id,
       updated_by: context.user.id,
       updated_at: now,
     }).eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId)
-      .select("id,business_id,list_id,list_name,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,created_at,updated_at")
+      .select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at")
       .maybeSingle();
     if (error || !data) return jsonError("Het concept kon niet worden klaargezet voor goedkeuring.", 500);
     return NextResponse.json({
@@ -213,6 +220,97 @@ async function requestApproval(request, body) {
   } catch (error) {
     const status = error.status === 401 || error.status === 403 ? error.status : 502;
     return jsonError(error.message || "Brevo kon de doelgroep niet opnieuw controleren.", status);
+  }
+}
+
+
+async function sendCampaign(request, body) {
+  const workspaceId = clean(body?.workspaceId, 100);
+  const businessId = clean(body?.businessId, 100);
+  const draftId = clean(body?.id, 100);
+  const confirmationText = clean(body?.confirmationText, 300);
+  const context = await requireIntegrationManager(request, workspaceId, businessId);
+  if (context.error) return context.error;
+  if (!businessId || !draftId) return jsonError("Kies eerst een geldige goedgekeurde campagne.", 400);
+  if (body?.confirmed !== true) return jsonError("Bevestig eerst dat je de campagne nu wilt verzenden.", 400);
+
+  const business = await getBusiness(context.admin, workspaceId, businessId);
+  if (!business) return jsonError("Vestiging hoort niet bij deze werkruimte.", 400);
+  const { data: draft } = await context.admin.from("brevo_campaign_drafts")
+    .select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at")
+    .eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
+  if (!draft) return jsonError("Het campagneconcept bestaat niet meer.", 404);
+  if (draft.status !== "ready_for_approval") return jsonError("Deze campagne is niet klaar voor definitieve verzending.", 409);
+  if (confirmationText !== `VERZEND ${draft.internal_name}`) {
+    return jsonError("De verzendbevestiging komt niet exact overeen.", 400);
+  }
+
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) return jsonError("Brevo is nog niet geconfigureerd op de server.", 503);
+  const senderEmail = configuredSenderEmail(business.name);
+  if (!senderEmail) return jsonError("Stel eerst het goedgekeurde Brevo-afzenderadres voor deze vestiging in.", 503);
+  const allowedListIds = configuredListIds(business.name);
+  const draftListIds = (draft.list_ids?.length ? draft.list_ids : [draft.list_id]).map(Number);
+  if (!draftListIds.length || draftListIds.some((id) => !allowedListIds.includes(id))) {
+    return jsonError("Een of meer doelgroepen horen niet meer bij deze vestiging.", 409);
+  }
+
+  try {
+    const lists = await getConfiguredLists(apiKey, allowedListIds);
+    const selectedLists = lists.filter((item) => draftListIds.includes(Number(item.id)));
+    if (selectedLists.length !== draftListIds.length) return jsonError("Een of meer gekozen Brevo-doelgroepen bestaan niet meer.", 409);
+    const recipientCount = selectedLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0);
+    const now = new Date().toISOString();
+    const { data: locked } = await context.admin.from("brevo_campaign_drafts").update({
+      status: "sending",
+      list_name: selectedLists.map((item) => item.name).join(", "),
+      list_ids: draftListIds,
+      list_names: selectedLists.map((item) => item.name),
+      recipient_count: recipientCount,
+      updated_by: context.user.id,
+      updated_at: now,
+    }).eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId)
+      .eq("status", "ready_for_approval").select("id").maybeSingle();
+    if (!locked) return jsonError("De campagne wordt al verzonden of is inmiddels gewijzigd.", 409);
+
+    let campaign;
+    try {
+      campaign = await brevo("/emailCampaigns", apiKey, {
+        method: "POST",
+        body: {
+          name: draft.internal_name,
+          subject: draft.subject,
+          sender: { name: draft.sender_name, email: senderEmail },
+          recipients: { listIds: draftListIds },
+          htmlContent: textToSafeHtml(draft.body),
+        },
+      });
+      await brevo(`/emailCampaigns/${campaign.id}/sendNow`, apiKey, { method: "POST" });
+    } catch (error) {
+      await context.admin.from("brevo_campaign_drafts").update({
+        status: "send_failed",
+        brevo_campaign_id: campaign?.id || null,
+        updated_by: context.user.id,
+        updated_at: new Date().toISOString(),
+      }).eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId);
+      throw error;
+    }
+
+    const sentAt = new Date().toISOString();
+    const { data: sent, error } = await context.admin.from("brevo_campaign_drafts").update({
+      status: "sent",
+      brevo_campaign_id: campaign.id,
+      sent_at: sentAt,
+      sent_by: context.user.id,
+      updated_by: context.user.id,
+      updated_at: sentAt,
+    }).eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId)
+      .select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at").maybeSingle();
+    if (error || !sent) return jsonError("De campagne is verzonden, maar de bevestiging kon niet worden opgeslagen.", 500);
+    return NextResponse.json({ ok: true, business, draft: sent, message: `Campagne verzonden naar maximaal ${recipientCount} contacten. Brevo verwijdert dubbele adressen.` });
+  } catch (error) {
+    const status = error.status === 401 || error.status === 403 ? error.status : 502;
+    return jsonError(error.message || "Brevo kon de campagne niet verzenden.", status);
   }
 }
 
@@ -231,6 +329,20 @@ function clean(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
+function configuredSenderEmail(businessName) {
+  const normalized = String(businessName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (normalized.includes("caribbean corner")) return process.env.BREVO_CARIBBEAN_CORNER_SENDER_EMAIL?.trim() || process.env.BREVO_SENDER_EMAIL?.trim() || "";
+  if (normalized.includes("grandcafe het plein")) return process.env.BREVO_GRANDCAFE_HET_PLEIN_SENDER_EMAIL?.trim() || process.env.BREVO_SENDER_EMAIL?.trim() || "";
+  return process.env.BREVO_SENDER_EMAIL?.trim() || "";
+}
+
+function textToSafeHtml(value) {
+  const escaped = String(value || "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+  }[character]));
+  return `<div style="font-family:Arial,sans-serif;white-space:pre-wrap">${escaped}</div>`;
+}
+
 function configuredListIds(businessName) {
   const normalized = String(businessName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const key = Object.keys(LOCATION_LIST_ENV).find((name) => normalized.includes(name));
@@ -239,9 +351,11 @@ function configuredListIds(businessName) {
     .split(",").map((value) => Number(value.trim())).filter(Number.isInteger);
 }
 
-async function brevo(path, apiKey) {
+async function brevo(path, apiKey, options = {}) {
   const response = await fetch(`${BREVO_BASE_URL}${path}`, {
-    headers: { Accept: "application/json", "api-key": apiKey },
+    method: options.method || "GET",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "api-key": apiKey },
+    body: options.body ? JSON.stringify(options.body) : undefined,
     cache: "no-store",
   });
   const result = await response.json().catch(() => ({}));
