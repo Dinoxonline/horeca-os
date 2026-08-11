@@ -150,14 +150,25 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const sourceRatio = loaded.width / loaded.height;
       const targetRatio = slot.width / slot.height;
       const ratioDifference = Math.abs(sourceRatio - targetRatio) / targetRatio;
-      if (ratioDifference > 0.01) {
-        throw new Error(`${slot.label} heeft verhouding ${slot.ratio} nodig. Deze foto is ${loaded.width} × ${loaded.height} px en kan daarom niet zonder afsnijden worden aangepast.`);
+      const cropped = ratioDifference > 0.01;
+      let sourceX = 0;
+      let sourceY = 0;
+      let sourceWidth = loaded.width;
+      let sourceHeight = loaded.height;
+
+      if (sourceRatio > targetRatio) {
+        sourceWidth = loaded.height * targetRatio;
+        sourceX = (loaded.width - sourceWidth) / 2;
+      } else if (sourceRatio < targetRatio) {
+        sourceHeight = loaded.width / targetRatio;
+        sourceY = (loaded.height - sourceHeight) / 2;
       }
-      if (loaded.width < slot.width || loaded.height < slot.height) {
-        throw new Error(`${slot.label} moet minimaal ${slot.width} × ${slot.height} px zijn. Deze foto is ${loaded.width} × ${loaded.height} px.`);
+
+      if (sourceWidth < slot.width || sourceHeight < slot.height) {
+        throw new Error(`${slot.label} heeft na het bijsnijden minimaal ${slot.width} × ${slot.height} bruikbare pixels nodig. Deze foto is ${loaded.width} × ${loaded.height} px.`);
       }
-      if (loaded.width === slot.width && loaded.height === slot.height) {
-        return { file, width: loaded.width, height: loaded.height, resized: false, originalWidth: loaded.width, originalHeight: loaded.height };
+      if (!cropped && loaded.width === slot.width && loaded.height === slot.height) {
+        return { file, width: loaded.width, height: loaded.height, resized: false, cropped: false, originalWidth: loaded.width, originalHeight: loaded.height };
       }
 
       const canvas = document.createElement("canvas");
@@ -167,13 +178,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (!context) throw new Error("De afbeelding kon niet automatisch worden aangepast.");
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.drawImage(loaded.image, 0, 0, slot.width, slot.height);
+      context.drawImage(loaded.image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, slot.width, slot.height);
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, file.type, file.type === "image/png" ? undefined : 0.92));
       if (!blob) throw new Error("De afbeelding kon niet automatisch worden aangepast.");
       const extension = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
       const baseName = extension ? file.name.slice(0, -extension.length) : file.name;
       const resizedFile = new File([blob], `${baseName}-${slot.width}x${slot.height}${extension}`, { type: file.type, lastModified: Date.now() });
-      return { file: resizedFile, width: slot.width, height: slot.height, resized: true, originalWidth: loaded.width, originalHeight: loaded.height };
+      return { file: resizedFile, width: slot.width, height: slot.height, resized: true, cropped, originalWidth: loaded.width, originalHeight: loaded.height };
     } finally {
       URL.revokeObjectURL(loaded.url);
     }
@@ -193,13 +204,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const { data } = supabase.storage.from("marketing-assets").getPublicUrl(path);
       setForm((current) => ({ ...current, images: { ...current.images, [slot.key]: {
         url: data.publicUrl, path, name: prepared.file.name, width: prepared.width, height: prepared.height,
-        originalWidth: prepared.originalWidth, originalHeight: prepared.originalHeight, matches: true, resized: prepared.resized,
+        originalWidth: prepared.originalWidth, originalHeight: prepared.originalHeight, matches: true, resized: prepared.resized, cropped: prepared.cropped,
       } } }));
       setUploadMessage({
         ok: true,
-        message: prepared.resized
-          ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px en geüpload.`
-          : `${slot.label} is correct geüpload.`,
+        message: prepared.cropped
+          ? `${slot.label} is automatisch gecentreerd bijgesneden en aangepast van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px.`
+          : prepared.resized
+            ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px en geüpload.`
+            : `${slot.label} is correct geüpload.`,
       });
       setPreview(false); setResult(null);
     } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
