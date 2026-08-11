@@ -87,3 +87,15 @@ Deze fundering activeert geen leveranciers-, factuur- of POS-koppeling.
 Dagelijkse logische snapshots worden maximaal 30 dagen bewaard.
 
 Dit is geen vervanging voor een externe databaseback-up. Een tweede kopie buiten Supabase blijft noodzakelijk.
+
+## AI-assistent
+
+De AI-module gebruikt de OpenAI Responses API uitsluitend vanuit een Next.js serverroute.
+`OPENAI_API_KEY` is een Vercel/server-secret en wordt nooit naar de browser gestuurd of
+in Supabase opgeslagen. Iedere aanvraag valideert opnieuw de Supabase-sessie, het
+`ai:use`-recht en de workspace-, bedrijfs- en optionele vestigingsscope.
+
+Gesprekshistorie is alleen zichtbaar voor de maker en blijft onder RLS. De assistent
+krijgt uitsluitend reeds tenant-gefilterde context. Audit-events bevatten gebruiksdoel,
+model, status, tokens en doorlooptijd, maar geen prompt, antwoord of API-sleutel. Externe
+acties en publicaties vallen buiten deze basis; de assistent geeft alleen advies.
