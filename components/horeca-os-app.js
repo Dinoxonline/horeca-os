@@ -518,6 +518,15 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [loadingWebsiteEvents, setLoadingWebsiteEvents] = useState(false);
   const [checkingPlacements, setCheckingPlacements] = useState(false);
   const [placementCheckedAt, setPlacementCheckedAt] = useState("");
+  const [campaignImages, setCampaignImages] = useState({});
+  const [uploadingImage, setUploadingImage] = useState("");
+
+  const campaignImageProfiles = [
+    { key: "square", label: "Vierkant", channels: "Facebook, Instagram-feed en Google", width: 1080, height: 1080, ratio: "1:1" },
+    { key: "landscape", label: "Liggend", channels: "Facebook-link, nieuwsbrief en Google", width: 1200, height: 630, ratio: "1.91:1" },
+    { key: "portrait", label: "Staand", channels: "Instagram-feed", width: 1080, height: 1350, ratio: "4:5" },
+    { key: "story", label: "Story / Reel", channels: "Instagram, Facebook en TikTok", width: 1080, height: 1920, ratio: "9:16" },
+  ];
 
   const existingCampaignChannels = useMemo(
     () => findExistingCampaignChannels(campaigns, sourceUrl, sourcePreview, campaignTitle),
@@ -815,6 +824,96 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setStatus(`${eventItem.title} geselecteerd. Controleer nu de tekst, kanalen en publicatiedatum.`);
   }
 
+  function getImageDimensions(file) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      image.onload = () => {
+        resolve({ width: image.naturalWidth, height: image.naturalHeight });
+        URL.revokeObjectURL(objectUrl);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("De afmetingen van deze afbeelding konden niet worden gelezen."));
+      };
+      image.src = objectUrl;
+    });
+  }
+
+  async function uploadCampaignImage(profile, file) {
+    if (!file || !workspaceId || !selectedBusinessId) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setStatus("Gebruik een JPG-, PNG- of WebP-afbeelding.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setStatus("De afbeelding is groter dan 10 MB. Kies een kleiner bestand.");
+      return;
+    }
+
+    setUploadingImage(profile.key);
+    setStatus("");
+    try {
+      const dimensions = await getImageDimensions(file);
+      const safeName = file.name
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "campagnebeeld";
+      const uniqueId = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+      const storagePath = `${workspaceId}/${selectedBusinessId}/${Date.now()}-${uniqueId}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("marketing-assets")
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = supabase.storage.from("marketing-assets").getPublicUrl(storagePath);
+      const asset = {
+        profile: profile.key,
+        label: profile.label,
+        path: storagePath,
+        url: publicData.publicUrl,
+        name: file.name,
+        content_type: file.type,
+        size: file.size,
+        width: dimensions.width,
+        height: dimensions.height,
+        recommended_width: profile.width,
+        recommended_height: profile.height,
+      };
+      setCampaignImages((current) => ({ ...current, [profile.key]: asset }));
+      setStatus(`${profile.label} campagnebeeld is veilig geüpload (${dimensions.width} × ${dimensions.height} px).`);
+    } catch (error) {
+      setStatus("Uploaden is niet gelukt: " + error.message);
+    } finally {
+      setUploadingImage("");
+    }
+  }
+
+  async function removeCampaignImage(profileKey) {
+    const asset = campaignImages[profileKey];
+    if (!asset) return;
+    setUploadingImage(profileKey);
+    setStatus("");
+    const { error } = await supabase.storage.from("marketing-assets").remove([asset.path]);
+    if (error) {
+      setStatus("Verwijderen is niet gelukt: " + error.message);
+    } else {
+      setCampaignImages((current) => {
+        const next = { ...current };
+        delete next[profileKey];
+        return next;
+      });
+      setStatus("Campagnebeeld verwijderd.");
+    }
+    setUploadingImage("");
+  }
+
   async function checkPlacements() {
     if (!sourceUrl.trim() && !campaignTitle.trim()) {
       setStatus("Kies eerst een evenement of vul een bronlink in.");
@@ -890,6 +989,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         startDate: sourcePreview?.startDate,
       }),
       placement_checked_at: new Date().toISOString(),
+      campaign_assets: Object.values(campaignImages),
       use_predis: usePredis,
       target_channels: freshChannels,
       channel_states: Object.fromEntries(freshChannels.map((channel) => [
@@ -1040,6 +1140,48 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       <label className="full">Basistekst
         <textarea rows="5" value={campaignText} onChange={(event) => setCampaignText(event.target.value)} placeholder="Horeca OS gebruikt deze tekst als basis voor de kanaalvarianten." />
       </label>
+      <fieldset className="full"><legend>Campagnebeelden</legend>
+        <p className="securityHint">Upload per toepassing het juiste formaat. Horeca OS bewaart de bestanden veilig per werkruimte en vestiging. JPG, PNG of WebP, maximaal 10 MB per bestand.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: "12px", marginTop: "12px" }}>
+          {campaignImageProfiles.map((profile) => {
+            const asset = campaignImages[profile.key];
+            const exactSize = asset && asset.width === profile.width && asset.height === profile.height;
+            return <div key={profile.key} className="integrationCard" style={{ padding: "14px", display: "grid", gap: "10px" }}>
+              <div>
+                <strong>{profile.label}</strong>
+                <p style={{ margin: "4px 0 0" }}>{profile.channels}</p>
+                <small>Advies: {profile.width} × {profile.height} px · {profile.ratio}</small>
+              </div>
+              {asset && <img
+                src={asset.url}
+                alt={`${profile.label} campagnebeeld`}
+                width={profile.width}
+                height={profile.height}
+                style={{ width: "100%", aspectRatio: `${profile.width} / ${profile.height}`, objectFit: "cover", borderRadius: "10px", background: "#eef3f6" }}
+              />}
+              {asset && <div>
+                <strong>{asset.width} × {asset.height} px</strong>
+                <p style={{ margin: "4px 0 0" }}>{exactSize ? "Perfect formaat" : `Wijkt af van het advies ${profile.width} × ${profile.height} px`}</p>
+              </div>}
+              <label className="secondaryButton" style={{ textAlign: "center", cursor: uploadingImage ? "wait" : "pointer" }}>
+                {uploadingImage === profile.key ? "Uploaden..." : asset ? "Andere afbeelding kiezen" : "Afbeelding uploaden"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={Boolean(uploadingImage)}
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) uploadCampaignImage(profile, file);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              {asset && <button type="button" className="secondaryButton" disabled={Boolean(uploadingImage)} onClick={() => removeCampaignImage(profile.key)}>Afbeelding verwijderen</button>}
+            </div>;
+          })}
+        </div>
+      </fieldset>
       <fieldset className="full"><legend>Promoten via</legend>
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
           {directChannelOptions.map(([value, label]) => <label className="checkOption" key={value}>
