@@ -520,6 +520,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [placementCheckedAt, setPlacementCheckedAt] = useState("");
   const [campaignImages, setCampaignImages] = useState({});
   const [uploadingImage, setUploadingImage] = useState("");
+  const [draggingImageProfile, setDraggingImageProfile] = useState("");
 
   const campaignImageProfiles = [
     { key: "square", label: "Vierkant", channels: "Facebook, Instagram-feed en Google", width: 1080, height: 1080, ratio: "1:1" },
@@ -840,6 +841,18 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     });
   }
 
+  function handleCampaignImageDrop(profile, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingImageProfile("");
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.length > 1) {
+      setStatus("Sleep één afbeelding tegelijk naar een afbeeldingsvak.");
+      return;
+    }
+    if (files[0]) uploadCampaignImage(profile, files[0]);
+  }
+
   async function uploadCampaignImage(profile, file) {
     if (!file || !workspaceId || !selectedBusinessId) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -1146,7 +1159,22 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           {campaignImageProfiles.map((profile) => {
             const asset = campaignImages[profile.key];
             const exactSize = asset && asset.width === profile.width && asset.height === profile.height;
-            return <div key={profile.key} className="integrationCard" style={{ padding: "14px", display: "grid", gap: "10px" }}>
+            const isDragging = draggingImageProfile === profile.key;
+            return <div
+              key={profile.key}
+              className="integrationCard"
+              onDragEnter={(event) => { event.preventDefault(); if (!uploadingImage) setDraggingImageProfile(profile.key); }}
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; if (!uploadingImage) setDraggingImageProfile(profile.key); }}
+              onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDraggingImageProfile(""); }}
+              onDrop={(event) => { if (uploadingImage) { event.preventDefault(); return; } handleCampaignImageDrop(profile, event); }}
+              style={{
+                padding: "14px", display: "grid", gap: "10px",
+                border: isDragging ? "2px dashed #18879a" : undefined,
+                background: isDragging ? "#e7f6f8" : undefined,
+                transform: isDragging ? "translateY(-2px)" : undefined,
+                transition: "border-color 120ms ease, background 120ms ease, transform 120ms ease",
+              }}
+            >
               <div>
                 <strong>{profile.label}</strong>
                 <p style={{ margin: "4px 0 0" }}>{profile.channels}</p>
@@ -1163,8 +1191,11 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                 <strong>{asset.width} × {asset.height} px</strong>
                 <p style={{ margin: "4px 0 0" }}>{exactSize ? "Perfect formaat" : `Wijkt af van het advies ${profile.width} × ${profile.height} px`}</p>
               </div>}
-              <label className="secondaryButton" style={{ textAlign: "center", cursor: uploadingImage ? "wait" : "pointer" }}>
-                {uploadingImage === profile.key ? "Uploaden..." : asset ? "Andere afbeelding kiezen" : "Afbeelding uploaden"}
+              <div style={{ padding: "14px", border: "2px dashed #b8cbd2", borderRadius: "10px", textAlign: "center", background: isDragging ? "#d9f1f4" : "#f7fafb" }}>
+                <strong>{isDragging ? "Laat de afbeelding hier los" : "Sleep een afbeelding hierheen"}</strong>
+                <p style={{ margin: "4px 0 10px" }}>of kies een bestand op je apparaat</p>
+                <label className="secondaryButton" style={{ display: "inline-block", textAlign: "center", cursor: uploadingImage ? "wait" : "pointer" }}>
+                  {uploadingImage === profile.key ? "Uploaden..." : asset ? "Andere afbeelding kiezen" : "Afbeelding kiezen"}
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -1176,7 +1207,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                     event.target.value = "";
                   }}
                 />
-              </label>
+                </label>
+              </div>
               {asset && <button type="button" className="secondaryButton" disabled={Boolean(uploadingImage)} onClick={() => removeCampaignImage(profile.key)}>Afbeelding verwijderen</button>}
             </div>;
           })}
