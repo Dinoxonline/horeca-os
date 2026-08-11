@@ -97,26 +97,70 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (files[0]) uploadImage(slot, files[0]);
   }
 
+  async function prepareImageForSlot(file, slot) {
+    const loaded = await new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => resolve({ image, url, width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Afbeelding kon niet worden gelezen.")); };
+      image.src = url;
+    });
+
+    try {
+      const sourceRatio = loaded.width / loaded.height;
+      const targetRatio = slot.width / slot.height;
+      const ratioDifference = Math.abs(sourceRatio - targetRatio) / targetRatio;
+      if (ratioDifference > 0.01) {
+        throw new Error(`${slot.label} heeft verhouding ${slot.ratio} nodig. Deze foto is ${loaded.width} × ${loaded.height} px en kan daarom niet zonder afsnijden worden aangepast.`);
+      }
+      if (loaded.width < slot.width || loaded.height < slot.height) {
+        throw new Error(`${slot.label} moet minimaal ${slot.width} × ${slot.height} px zijn. Deze foto is ${loaded.width} × ${loaded.height} px.`);
+      }
+      if (loaded.width === slot.width && loaded.height === slot.height) {
+        return { file, width: loaded.width, height: loaded.height, resized: false, originalWidth: loaded.width, originalHeight: loaded.height };
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = slot.width;
+      canvas.height = slot.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("De afbeelding kon niet automatisch worden aangepast.");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(loaded.image, 0, 0, slot.width, slot.height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, file.type, file.type === "image/png" ? undefined : 0.92));
+      if (!blob) throw new Error("De afbeelding kon niet automatisch worden aangepast.");
+      const extension = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+      const baseName = extension ? file.name.slice(0, -extension.length) : file.name;
+      const resizedFile = new File([blob], `${baseName}-${slot.width}x${slot.height}${extension}`, { type: file.type, lastModified: Date.now() });
+      return { file: resizedFile, width: slot.width, height: slot.height, resized: true, originalWidth: loaded.width, originalHeight: loaded.height };
+    } finally {
+      URL.revokeObjectURL(loaded.url);
+    }
+  }
+
   async function uploadImage(slot, file) {
     if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return setUploadMessage({ ok: false, message: "Gebruik een JPG-, PNG- of WebP-afbeelding." });
     if (file.size > 10 * 1024 * 1024) return setUploadMessage({ ok: false, message: "De afbeelding mag maximaal 10 MB zijn." });
     setUploadingSlot(slot.key); setUploadMessage(null);
     try {
-      const dimensions = await new Promise((resolve, reject) => {
-        const url = URL.createObjectURL(file); const image = new Image();
-        image.onload = () => { resolve({ width: image.naturalWidth, height: image.naturalHeight }); URL.revokeObjectURL(url); };
-        image.onerror = () => { reject(new Error("Afbeelding kon niet worden gelezen.")); URL.revokeObjectURL(url); };
-        image.src = url;
-      });
-      const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+      const prepared = await prepareImageForSlot(file, slot);
+      const safeName = prepared.file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
       const path = `${workspaceId}/${selectedBusiness?.id || businessId || "algemeen"}/${slot.key}-${Date.now()}-${safeName}`;
-      const { error } = await supabase.storage.from("marketing-assets").upload(path, file, { cacheControl: "31536000", contentType: file.type, upsert: false });
+      const { error } = await supabase.storage.from("marketing-assets").upload(path, prepared.file, { cacheControl: "31536000", contentType: prepared.file.type, upsert: false });
       if (error) throw error;
       const { data } = supabase.storage.from("marketing-assets").getPublicUrl(path);
-      const matches = dimensions.width === slot.width && dimensions.height === slot.height;
-      setForm((current) => ({ ...current, images: { ...current.images, [slot.key]: { url: data.publicUrl, path, name: file.name, ...dimensions, matches } } }));
-      setUploadMessage({ ok: true, message: matches ? `${slot.label} is correct geupload.` : `${slot.label} is geupload (${dimensions.width} Ã— ${dimensions.height} px). Aanbevolen is ${slot.width} Ã— ${slot.height} px.` });
+      setForm((current) => ({ ...current, images: { ...current.images, [slot.key]: {
+        url: data.publicUrl, path, name: prepared.file.name, width: prepared.width, height: prepared.height,
+        originalWidth: prepared.originalWidth, originalHeight: prepared.originalHeight, matches: true, resized: prepared.resized,
+      } } }));
+      setUploadMessage({
+        ok: true,
+        message: prepared.resized
+          ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px en geüpload.`
+          : `${slot.label} is correct geüpload.`,
+      });
       setPreview(false); setResult(null);
     } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
     finally { setUploadingSlot(""); }
