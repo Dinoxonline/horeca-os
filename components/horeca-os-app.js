@@ -499,9 +499,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [sourceUrl, setSourceUrl] = useState("");
   const [campaignTitle, setCampaignTitle] = useState("");
   const [campaignText, setCampaignText] = useState("");
-  const [channels, setChannels] = useState(["brevo", "facebook", "instagram"]);
+  const [channels, setChannels] = useState(["brevo", "facebook", "instagram", "predis"]);
   const [scheduledFor, setScheduledFor] = useState("");
-  const [usePredis, setUsePredis] = useState(true);
   const [metaAds, setMetaAds] = useState(false);
   const [dailyBudget, setDailyBudget] = useState("");
   const [campaignEnd, setCampaignEnd] = useState("");
@@ -573,6 +572,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     ["brevo", "Nieuwsbrief via Brevo"],
     ["facebook", "Facebookpagina"],
     ["instagram", "Instagram"],
+    ["predis", "Predis"],
     ["tiktok", "TikTok"],
     ["whatsapp", "WhatsApp Business"],
     ["facebook_groups", "Facebook-groepen"],
@@ -1078,6 +1078,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       brevo: ["brevo"],
       facebook: ["facebook", "meta"],
       instagram: ["instagram", "meta"],
+      predis: ["predis"],
       tiktok: ["tiktok"],
       whatsapp: ["whatsapp", "meta"],
       google_business_profile: ["google_business_profile", "google_business", "google"],
@@ -1104,13 +1105,13 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       }),
       placement_checked_at: new Date().toISOString(),
       campaign_assets: Object.values(campaignImages),
-      use_predis: usePredis,
+      use_predis: freshChannels.includes("predis"),
       target_channels: freshChannels,
       channel_states: Object.fromEntries(freshChannels.map((channel) => [
         channel,
         channelConnectionState(channel),
       ])),
-      predis_state: usePredis ? "ready_for_concept" : "not_selected",
+      predis_state: freshChannels.includes("predis") ? "ready_for_concept" : "not_selected",
       email_handoffs: freshChannels
         .filter((channel) => manualEmailByChannel[channel])
         .map((channel) => ({ channel, ...manualEmailByChannel[channel], state: "email_ready" })),
@@ -1401,10 +1402,6 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           {placementCheckedAt && <span className="securityHint">Laatst gecontroleerd: {formatDate(placementCheckedAt)}</span>}
         </div>
       </div>
-      <label className="checkOption full">
-        <input type="checkbox" checked={usePredis} onChange={(event) => setUsePredis(event.target.checked)} />
-        Predis gebruiken om tekst- en beeldvarianten per kanaal te maken
-      </label>
       <fieldset className="full"><legend>Betaalde campagne via Meta</legend>
         <label className="checkOption"><input type="checkbox" checked={metaAds} onChange={(event) => { setMetaAds(event.target.checked); setSpendConfirmed(false); }} />Facebook en Instagram betaald promoten</label>
         {metaAds && <div className="formGrid" style={{ marginTop: "12px" }}>
@@ -1442,7 +1439,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         const labels = {
           brevo: "Brevo", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
           whatsapp: "WhatsApp", facebook_groups: "Facebook-groepen",
-          google_business_profile: "Google Bedrijfsprofiel", google_ads: "Google Ads",
+          google_business_profile: "Google Bedrijfsprofiel", google_ads: "Google Ads", predis: "Predis",
           ...Object.fromEntries(manualEmailOptions.map(([value, label]) => [value, `${label} (per e-mail)`])),
         };
         const sourceLabels = {
