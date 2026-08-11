@@ -331,7 +331,7 @@ export default function HorecaOsApp() {
     window.location.assign("/dashboard");
   }
 
-  if (loading) return <main className="center">Horeca OS ladenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</main>;
+  if (loading) return <main className="center">Horeca OS ladenÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦</main>;
   if (recoveryPage && !passwordRecovery) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode lockResetMode />;
   if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode={passwordRecovery} />;
   if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} email={session?.user?.email} />;
@@ -339,7 +339,7 @@ export default function HorecaOsApp() {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
-  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controlerenÃ¢â‚¬Â¦</main>;
+  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controlerenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</main>;
   if (mfaRequired && !verifiedMfaFactor) {
     return <MfaEnrollment required onComplete={refreshMfa} />;
   }
@@ -375,7 +375,7 @@ export default function HorecaOsApp() {
           <div className="toolbar">
             {memberships.length > 1 && <label>Werkruimte<select value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setBusinessId("all"); }}>{memberships.map((item) => <option key={item.workspace_id} value={item.workspace_id}>{item.workspace?.name || item.workspace_id}</option>)}</select></label>}
             <label>Vestiging<select value={businessId} onChange={(event) => setBusinessId(event.target.value)}>{hasWorkspaceWideRole && <option value="all">Alle vestigingen</option>}{visibleBusinesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
-            <button className="refresh" onClick={loadData} disabled={refreshing}>{refreshing ? "VerversenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Data verversen"}</button>
+            <button className="refresh" onClick={loadData} disabled={refreshing}>{refreshing ? "VerversenÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦" : "Data verversen"}</button>
           </div>
         </header>
 
@@ -401,7 +401,7 @@ export default function HorecaOsApp() {
         </section>
 
         <section className="dashboardGrid">
-          <Panel title="Topprioriteiten" subtitle="Wat vandaag bestuurlijke aandacht vraagt">{priorities.length === 0 && <Empty text="Geen openstaande prioriteiten." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Ãƒâ€šÃ‚Â· {statusLabel[task.status] || task.status}</span></div><span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span></div>)}</Panel>
+          <Panel title="Topprioriteiten" subtitle="Wat vandaag bestuurlijke aandacht vraagt">{priorities.length === 0 && <Empty text="Geen openstaande prioriteiten." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {statusLabel[task.status] || task.status}</span></div><span className="pill">{task.assignee?.full_name || "Nog niet toegewezen"}</span></div>)}</Panel>
           <Panel title="Komende agenda" subtitle="Eerstvolgende afspraken en evenementen">{data.events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{data.events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
           <Panel title="Topverkopers" subtitle="Hoogste aantallen in de huidige maand">{analytics.topProducts.length === 0 && <Empty text="Nog geen productverkoop voor deze maand." />}{analytics.topProducts.map((product, index) => <div className="rankRow" key={product.name}><span className="rank">{index + 1}</span><b>{product.name}</b><strong>{product.quantity}</strong></div>)}</Panel>
           <Panel title="Systemen" subtitle="Status van de belangrijkste koppelingen">{data.integrations.length === 0 && <Empty text="Geen integraties gevonden." />}{data.integrations.map((integration) => <div className="systemRow" key={integration.id}><div><b>{integration.provider}</b><span>{integration.last_synced_at ? `Laatste sync ${formatDate(integration.last_synced_at)}` : "Nog niet gesynchroniseerd"}</span></div><span className={`status ${String(integration.status).toLowerCase()}`}>{integration.status}</span></div>)}</Panel>
@@ -924,7 +924,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setDraggingImageProfile("");
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 1) {
-      setStatus("Sleep één afbeelding tegelijk naar een afbeeldingsvak.");
+      setStatus("Sleep Ã©Ã©n afbeelding tegelijk naar een afbeeldingsvak.");
       return;
     }
     if (files[0]) uploadCampaignImage(profile, files[0]);
@@ -977,7 +977,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         recommended_height: profile.height,
       };
       setCampaignImages((current) => ({ ...current, [profile.key]: asset }));
-      setStatus(`${profile.label} campagnebeeld is veilig geüpload (${dimensions.width} × ${dimensions.height} px).`);
+      setStatus(`${profile.label} campagnebeeld is veilig geÃ¼pload (${dimensions.width} Ã— ${dimensions.height} px).`);
     } catch (error) {
       setStatus("Uploaden is niet gelukt: " + error.message);
     } finally {
@@ -1018,7 +1018,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   async function planCampaign(event) {
     event.preventDefault();
     if (!selectedBusinessId || !sourceUrl.trim() || !campaignTitle.trim() || !channels.length || !scheduledFor) {
-      setStatus("Vul de bron, campagnenaam, planning en minimaal één doelkanaal in.");
+      setStatus("Vul de bron, campagnenaam, planning en minimaal Ã©Ã©n doelkanaal in.");
       return;
     }
     if (metaAds && (!dailyBudget || !campaignEnd || !audience.trim() || !spendConfirmed)) {
@@ -1060,7 +1060,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       .eq("business_id", selectedBusinessId)
       .eq("connection_status", "connected");
     if (accountError || !accounts?.length) {
-      setStatus("Koppel voor deze vestiging eerst minimaal één sociaal kanaal.");
+      setStatus("Koppel voor deze vestiging eerst minimaal Ã©Ã©n sociaal kanaal.");
       setSaving(false);
       return;
     }
@@ -1074,6 +1074,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       return;
     }
     const connectedProviders = new Set((accounts || []).map((item) => String(item.provider || "").toLowerCase()));
+    const predisBrandId = window.localStorage.getItem(`horeca-os:predis:${workspaceId}:${selectedBusinessId}`) || "";
     const providerAliases = {
       brevo: ["brevo"],
       facebook: ["facebook", "meta"],
@@ -1088,6 +1089,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       if (manualEmailByChannel[channel]) return "email_ready";
       if (channel === "facebook_groups") return "confirmation_required";
       if (channel === "google_ads") return "approval_required";
+      if (channel === "predis") return predisBrandId ? "ready_for_concept" : "connection_required";
       const aliases = providerAliases[channel] || [channel];
       return aliases.some((provider) => connectedProviders.has(provider))
         ? "ready_to_publish"
@@ -1171,7 +1173,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
 
   return <section className="panel formPanel" style={{ marginBottom: "22px" }}>
     <div className="sectionHeading">
-      <div><p className="eyebrow">Campagneverdeler</p><h3>Promoot bestaande inhoud op alle kanalen</h3><p>Kies een bestaand bericht of evenement als bron en plan de doorplaatsing vanuit één scherm.</p></div>
+      <div><p className="eyebrow">Campagneverdeler</p><h3>Promoot bestaande inhoud op alle kanalen</h3><p>Kies een bestaand bericht of evenement als bron en plan de doorplaatsing vanuit Ã©Ã©n scherm.</p></div>
     </div>
     <form className="employeeForm creationForm" onSubmit={planCampaign}>
       <label>Vestiging
@@ -1337,7 +1339,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
               <div>
                 <strong>{profile.label}</strong>
                 <p style={{ margin: "4px 0 0" }}>{profile.channels}</p>
-                <small>Advies: {profile.width} × {profile.height} px · {profile.ratio}</small>
+                <small>Advies: {profile.width} Ã— {profile.height} px Â· {profile.ratio}</small>
               </div>
               {asset && <img
                 src={asset.url}
@@ -1347,8 +1349,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                 style={{ width: "100%", aspectRatio: `${profile.width} / ${profile.height}`, objectFit: "cover", borderRadius: "10px", background: "#eef3f6" }}
               />}
               {asset && <div>
-                <strong>{asset.width} × {asset.height} px</strong>
-                <p style={{ margin: "4px 0 0" }}>{exactSize ? "Perfect formaat" : `Wijkt af van het advies ${profile.width} × ${profile.height} px`}</p>
+                <strong>{asset.width} Ã— {asset.height} px</strong>
+                <p style={{ margin: "4px 0 0" }}>{exactSize ? "Perfect formaat" : `Wijkt af van het advies ${profile.width} Ã— ${profile.height} px`}</p>
               </div>}
               <div style={{ padding: "14px", border: "2px dashed #b8cbd2", borderRadius: "10px", textAlign: "center", background: isDragging ? "#d9f1f4" : "#f7fafb" }}>
                 <strong>{isDragging ? "Laat de afbeelding hier los" : "Sleep een afbeelding hierheen"}</strong>
@@ -1387,7 +1389,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", marginTop: "10px" }}>
           {manualEmailOptions.map(([value, label, email]) => <label className="checkOption" key={value}>
             <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
-            <span style={{ flex: 1 }}><strong>{label}</strong><small>Aan: {email} · Van: {manualPromotionSender}</small></span>
+            <span style={{ flex: 1 }}><strong>{label}</strong><small>Aan: {email} Â· Van: {manualPromotionSender}</small></span>
             {existingCampaignChannels.has(value) && <span className="pill">Al aangeleverd/klaargezet</span>}
           </label>)}
         </div>
@@ -1408,7 +1410,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           <label>Dagbudget in euro<input type="number" min="1" step="0.01" value={dailyBudget} onChange={(event) => setDailyBudget(event.target.value)} required /></label>
           <label>Einddatum<input type="date" value={campaignEnd} onChange={(event) => setCampaignEnd(event.target.value)} required /></label>
           <label className="full">Doelgroep<input value={audience} onChange={(event) => setAudience(event.target.value)} placeholder="Plaats, leeftijd, interesses en bestaande doelgroep" required /></label>
-          <label className="checkOption full"><input type="checkbox" checked={spendConfirmed} onChange={(event) => setSpendConfirmed(event.target.checked)} />Ik heb budget, looptijd en doelgroep gecontroleerd. Definitief activeren krijgt nog één laatste bevestiging.</label>
+          <label className="checkOption full"><input type="checkbox" checked={spendConfirmed} onChange={(event) => setSpendConfirmed(event.target.checked)} />Ik heb budget, looptijd en doelgroep gecontroleerd. Definitief activeren krijgt nog Ã©Ã©n laatste bevestiging.</label>
         </div>}
       </fieldset>
       {status && <div className="notice full">{status}</div>}
@@ -1426,7 +1428,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       </div>}
       <button type="submit" className="primary full" disabled={saving}>{saving ? "Testcampagne klaarzetten..." : "Testcampagne klaarzetten"}</button>
     </form>
-    <p className="securityHint">Dit maakt één gecontroleerd campagneplan. Een kanaal wordt pas als geplaatst getoond nadat de aanbieder dat heeft bevestigd. Betaalde Meta-campagnes worden nooit geactiveerd zonder een afzonderlijke definitieve uitgavenbevestiging.</p>
+    <p className="securityHint">Dit maakt Ã©Ã©n gecontroleerd campagneplan. Een kanaal wordt pas als geplaatst getoond nadat de aanbieder dat heeft bevestigd. Betaalde Meta-campagnes worden nooit geactiveerd zonder een afzonderlijke definitieve uitgavenbevestiging.</p>
     <div className="sectionHeading" style={{ marginTop: "28px" }}>
       <div><p className="eyebrow">Campagnecontrole</p><h3>Ingeplande campagnes</h3><p>Hier zie je per vestiging wat werkelijk is opgeslagen en welke kanalen nog aandacht nodig hebben.</p></div>
       <button type="button" className="secondaryButton" onClick={loadCampaigns} disabled={loadingCampaigns}>{loadingCampaigns ? "Vernieuwen..." : "Overzicht vernieuwen"}</button>
@@ -1436,6 +1438,16 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     <div className="stackList">
       {campaigns.map((campaign) => {
         const distribution = campaign.media.find((item) => item?.kind === "campaign_distribution") || {};
+        const cleanCampaignText = String(campaign.body || "")
+          .replace(/\*\*/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        const campaignHeading = distribution.source_preview?.title
+          || cleanCampaignText.split(/[.!?]/)[0]?.slice(0, 90)
+          || "Campagne zonder titel";
+        const campaignSummary = cleanCampaignText && cleanCampaignText !== campaignHeading
+          ? `${cleanCampaignText.slice(0, 240)}${cleanCampaignText.length > 240 ? "â€¦" : ""}`
+          : "";
         const labels = {
           brevo: "Brevo", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
           whatsapp: "WhatsApp", facebook_groups: "Facebook-groepen",
@@ -1452,10 +1464,11 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           predis_concept: "Predis-concept",
         };
         return <article className="factorRow" key={campaign.id} style={{ alignItems: "flex-start" }}>
-          <div>
-            <strong>{campaign.body || "Campagne zonder titel"}</strong>
-            <small>{sourceLabels[distribution.source_type] || distribution.source_type?.replaceAll("_", " ") || "Bron"} · {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
-            {distribution.source_url && <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a>}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <strong style={{ display: "block", fontSize: "1.05rem", lineHeight: 1.35 }}>{campaignHeading}</strong>
+            <small>{sourceLabels[distribution.source_type] || distribution.source_type?.replaceAll("_", " ") || "Bron"} Â· {campaign.scheduled_for ? formatDate(campaign.scheduled_for) : "Nog niet gepland"}</small>
+            {campaignSummary && <p style={{ margin: "10px 0", maxWidth: "78ch", lineHeight: 1.55, fontWeight: 400 }}>{campaignSummary}</p>}
+            {distribution.source_url && <a href={distribution.source_url} target="_blank" rel="noreferrer">Bekijk oorspronkelijke inhoud</a>}
             <div className="formActions" style={{ marginTop: "10px" }}>
               {(distribution.target_channels || []).map((channel) => {
                 const manualTarget = manualEmailByChannel[channel];
@@ -1463,6 +1476,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                 if (!manualTarget) {
                   const stateLabels = {
                     ready_to_publish: "klaar voor publicatie",
+                    ready_for_concept: "klaar voor concept",
                     connection_required: "koppeling nodig",
                     confirmation_required: "bevestiging nodig",
                     approval_required: "goedkeuring nodig",
@@ -1474,7 +1488,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                 return <div className="factorRow" key={channel} style={{ width: "100%", padding: "10px 12px", alignItems: "center" }}>
                   <div>
                     <strong>{manualTarget.label}</strong>
-                    <small>{manualTarget.email} · {manualChannelStatusLabel(channelState)}</small>
+                    <small>{manualTarget.email} Â· {manualChannelStatusLabel(channelState)}</small>
                   </div>
                   <div className="formActions">
                     {channelState !== "email_skipped" && channelState !== "not_published" && <a className="secondaryButton" href={emailHandoffUrlForCampaign(channel, campaign, distribution)}>Concept bekijken</a>}
@@ -1487,8 +1501,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                   </div>
                 </div>;
               })}
-              {distribution.use_predis && <span className="pill">Predis: ingeschakeld</span>}
-              {distribution.meta_ads?.enabled && <span className="pill">Meta Ads: € {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag · goedkeuring nodig</span>}
+              {distribution.meta_ads?.enabled && <span className="pill">Meta Ads: â‚¬ {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag Â· goedkeuring nodig</span>}
             </div>
           </div>
           <span className="status scheduled">{campaign.status === "scheduled" ? "Ingepland" : campaign.status}</span>
@@ -1575,7 +1588,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   function buildPreview(event) {
     event?.preventDefault();
     const selectedLists = brevoLists.filter((item) => selectedListIds.includes(String(item.id)));
-    if (!selectedLists.length) { setBrevoError("Vink minimaal één geldige Brevo-doelgroep aan."); return; }
+    if (!selectedLists.length) { setBrevoError("Vink minimaal Ã©Ã©n geldige Brevo-doelgroep aan."); return; }
     setBrevoError("");
     setPreview({
       business: businesses.find((item) => item.id === selectedBusinessId)?.name || "Vestiging",
@@ -1717,7 +1730,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   }
 
   return <>
-    <section className="pageIntro"><p className="eyebrow">Commerciële groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vóór verzending.</p></section>
+    <section className="pageIntro"><p className="eyebrow">CommerciÃ«le groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vÃ³Ã³r verzending.</p></section>
     <CampaignDistributor workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />
     <section className="userAdminGrid">
       <article className="panel creationPanel">
@@ -1738,7 +1751,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
           <fieldset className="full"><legend>Doelgroepen</legend>
             {loadingBrevo && <small>Lijsten laden...</small>}
             {!loadingBrevo && !brevoLists.length && <small>Geen lijst beschikbaar</small>}
-            <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>{brevoLists.map((list) => <label className="checkOption" key={list.id}><input type="checkbox" checked={selectedListIds.includes(String(list.id))} onChange={() => toggleList(list.id)} />{list.name} · {Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten</label>)}</div>
+            <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>{brevoLists.map((list) => <label className="checkOption" key={list.id}><input type="checkbox" checked={selectedListIds.includes(String(list.id))} onChange={() => toggleList(list.id)} />{list.name} Â· {Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten</label>)}</div>
             {!!selectedListIds.length && <small>{selectedListIds.length} doelgroep(en) geselecteerd. Brevo verwijdert dubbele e-mailadressen bij verzending.</small>}
           </fieldset>
           <label>Interne campagnenaam<input value={campaignForm.campaignName} onChange={(event) => updateField("campaignName", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Friday augustus" required /></label>
@@ -1752,11 +1765,11 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
         </form>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>Campagnevoorbeeld</h2><p>Controleer vestiging, doelgroep en inhoud vóór je het concept opslaat.</p></div></div>
+        <div className="panelHead"><div><h2>Campagnevoorbeeld</h2><p>Controleer vestiging, doelgroep en inhoud vÃ³Ã³r je het concept opslaat.</p></div></div>
         {!preview && <Empty text="Vul links de campagne in en maak een voorbeeld." />}
         {preview && <>
-          <div className="scopeBanner"><strong>{preview.business}</strong><span>{preview.listNames?.join(" · ") || preview.listName} · maximaal {preview.recipients} contacten; Brevo verwijdert dubbele adressen</span></div>
-          <div className="factorRow"><div><strong>{preview.subject}</strong><small>Van: {preview.senderName} &lt;{preview.senderEmail || "afzender niet ingesteld"}&gt; · Intern: {preview.campaignName}</small></div></div>
+          <div className="scopeBanner"><strong>{preview.business}</strong><span>{preview.listNames?.join(" Â· ") || preview.listName} Â· maximaal {preview.recipients} contacten; Brevo verwijdert dubbele adressen</span></div>
+          <div className="factorRow"><div><strong>{preview.subject}</strong><small>Van: {preview.senderName} &lt;{preview.senderEmail || "afzender niet ingesteld"}&gt; Â· Intern: {preview.campaignName}</small></div></div>
           <div className="sensitiveNote"><strong>Inhoud</strong><span style={{ whiteSpace: "pre-wrap" }}>{preview.content}</span></div>
           <div className="notice successNotice">Voorbeeld gereed. Er is niets naar Brevo of gasten verstuurd.</div>
           <button type="button" className="primary" onClick={saveConcept} disabled={savingDraft}>{savingDraft ? "Concept opslaan..." : selectedDraftId ? "Wijzigingen opslaan" : "Concept opslaan"}</button>
@@ -1769,7 +1782,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
           </div>}
           {selectedDraftId && drafts.find((item) => item.id === selectedDraftId)?.status === "ready_for_approval" && <div className="notice dangerNotice">
             <strong>Definitief verzenden</strong>
-            <p>Dit verstuurt de campagne direct via Brevo vanaf {preview.senderEmail || "een niet-ingestelde afzender"}. Controleer onderwerp, inhoud, vestiging en alle aangevinkte doelgroepen nog één keer.</p>
+            <p>Dit verstuurt de campagne direct via Brevo vanaf {preview.senderEmail || "een niet-ingestelde afzender"}. Controleer onderwerp, inhoud, vestiging en alle aangevinkte doelgroepen nog Ã©Ã©n keer.</p>
             <label>Typ exact: VERZEND {preview.campaignName}<input value={sendConfirmation.text} onChange={(event) => setSendConfirmation((current) => ({ ...current, text: event.target.value }))} /></label>
             <label className="checkOption"><input type="checkbox" checked={sendConfirmation.confirmed} onChange={(event) => setSendConfirmation((current) => ({ ...current, confirmed: event.target.checked }))} />Ik begrijp dat deze campagne nu echt naar de geselecteerde gasten wordt verzonden.</label>
             <button type="button" className="primary" onClick={sendApprovedCampaign} disabled={sendingCampaign || sendConfirmation.text !== `VERZEND ${preview.campaignName}` || !sendConfirmation.confirmed}>{sendingCampaign ? "Campagne verzenden..." : "Nu definitief verzenden"}</button>
@@ -1782,7 +1795,7 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
         {!loadingBrevo && !drafts.length && <Empty text="Nog geen campagneconcepten voor deze vestiging." />}
         <div className="stackList">
           {drafts.map((draft) => <div className="factorRow" key={draft.id}>
-            <div><strong>{draft.internal_name}</strong><small>{draft.subject} · {draft.list_name} · {draft.recipient_count} ontvangers</small><small>Status: {draft.status === "ready_for_approval" ? "Klaar voor definitieve goedkeuring" : draft.status === "sent" ? "Verzonden" : draft.status === "send_failed" ? "Verzending mislukt" : draft.status === "sending" ? "Wordt verzonden" : "Concept"} · Laatst bijgewerkt: {new Date(draft.updated_at).toLocaleString("nl-NL")}</small></div>
+            <div><strong>{draft.internal_name}</strong><small>{draft.subject} Â· {draft.list_name} Â· {draft.recipient_count} ontvangers</small><small>Status: {draft.status === "ready_for_approval" ? "Klaar voor definitieve goedkeuring" : draft.status === "sent" ? "Verzonden" : draft.status === "send_failed" ? "Verzending mislukt" : draft.status === "sending" ? "Wordt verzonden" : "Concept"} Â· Laatst bijgewerkt: {new Date(draft.updated_at).toLocaleString("nl-NL")}</small></div>
             <button type="button" onClick={() => openDraft(draft)}>Openen</button>
           </div>)}
         </div>
@@ -2003,7 +2016,7 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
 
   async function generateConcept() {
     if (!selectedBusinessId || !brandId.trim()) {
-      setStatus("Koppel deze vestiging eerst onder Koppelingen → Predis.");
+      setStatus("Koppel deze vestiging eerst onder Koppelingen â†’ Predis.");
       return;
     }
     if (prompt.trim().length < 20) {
@@ -2094,7 +2107,7 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     const values = planningValues[concept.id] || {};
     const selectedChannels = values.channels || [];
     if (!selectedChannels.length) {
-      setStatus("Kies minimaal één kanaal: Facebook of Instagram.");
+      setStatus("Kies minimaal Ã©Ã©n kanaal: Facebook of Instagram.");
       return;
     }
 
@@ -2103,7 +2116,7 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
     if (isRecurring) {
       const weekdays = values.weekdays || [];
       if (!values.startDate || !values.endDate || !values.time || !weekdays.length) {
-        setStatus("Kies voor de herhaling minimaal één weekdag, een begin- en einddatum en een tijd.");
+        setStatus("Kies voor de herhaling minimaal Ã©Ã©n weekdag, een begin- en einddatum en een tijd.");
         return;
       }
       const startDate = new Date(`${values.startDate}T${values.time}`);
@@ -2236,7 +2249,7 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
         </select>
       </label>
     </div>
-    {brandId ? <div className="statusBanner">Predis is gekoppeld aan {selectedBusiness?.name || "deze vestiging"}.</div> : <div className="warningBanner">Nog niet gekoppeld. Ga naar Koppelingen → Predis.</div>}
+    {brandId ? <div className="statusBanner">Predis is gekoppeld aan {selectedBusiness?.name || "deze vestiging"}.</div> : <div className="warningBanner">Nog niet gekoppeld. Ga naar Koppelingen â†’ Predis.</div>}
     <label>Opdracht voor Predis
       <textarea rows="5" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Beschrijf doelgroep, aanbieding, toon en gewenste actie." />
     </label>
@@ -2257,7 +2270,7 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
               ? <video src={mediaUrl} controls playsInline style={{ width: "100%", borderRadius: "12px" }} />
               : <img src={mediaUrl} alt="Predis-concept" style={{ width: "100%", borderRadius: "12px" }} />)}
             <div>
-              <p className="eyebrow">{selectedBusiness?.name || "Vestiging"} · {post.media_type || mediaType}</p>
+              <p className="eyebrow">{selectedBusiness?.name || "Vestiging"} Â· {post.media_type || mediaType}</p>
               <label>Tekst voor publicatie
                 <textarea
                   rows="7"
@@ -2311,7 +2324,7 @@ function PredisContentGenerator({ mode = "generate", workspaceId, businessId, bu
                 : <img src={mediaItem.url} alt="Goedgekeurd concept" style={{ width: "100%", borderRadius: "12px" }} />)}
               <div>
                 <p>{concept.body}</p>
-                {concept.status === "scheduled" && concept.scheduled_for && <div className="statusBanner">Ingepland voor {formatDate(concept.scheduled_for)} · {selectedChannels.map((channel) => channel === "facebook" ? "Facebook" : "Instagram").join(" + ")}</div>}
+                {concept.status === "scheduled" && concept.scheduled_for && <div className="statusBanner">Ingepland voor {formatDate(concept.scheduled_for)} Â· {selectedChannels.map((channel) => channel === "facebook" ? "Facebook" : "Instagram").join(" + ")}</div>}
                 <fieldset style={{ marginTop: "12px" }}>
                   <legend>Planning</legend>
                   <div className="checkGrid">
@@ -2378,7 +2391,7 @@ function StaffDashboard({ priorities, events }) {
   return <>
     <section className="pageIntro"><p className="eyebrow">Mijn werk</p><h2>Werkzaamheden en planning</h2><p>Alleen informatie binnen jouw toegewezen vestiging en rol wordt getoond.</p></section>
     <section className="dashboardGrid">
-      <Panel title="Mijn prioriteiten" subtitle="Openstaande operationele werkzaamheden">{priorities.length === 0 && <Empty text="Geen openstaande werkzaamheden." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Ã‚Â· {statusLabel[task.status] || task.status}</span></div></div>)}</Panel>
+      <Panel title="Mijn prioriteiten" subtitle="Openstaande operationele werkzaamheden">{priorities.length === 0 && <Empty text="Geen openstaande werkzaamheden." />}{priorities.map((task) => <div className={`task ${task.priority || "medium"}`} key={task.id}><div><b>{task.title}</b><span>{priorityLabel[task.priority] || task.priority} Ãƒâ€šÃ‚Â· {statusLabel[task.status] || task.status}</span></div></div>)}</Panel>
       <Panel title="Mijn planning" subtitle="Eerstvolgende afspraken binnen jouw vestiging">{events.length === 0 && <Empty text="Geen komende afspraken gevonden." />}{events.map((event) => <div className="event" key={event.id}><div className="dateBadge"><strong>{new Date(event.starts_at).getDate()}</strong><span>{new Intl.DateTimeFormat("nl-NL", { month: "short" }).format(new Date(event.starts_at))}</span></div><div><b>{event.title}</b><span>{formatDate(event.starts_at)}</span></div></div>)}</Panel>
     </section>
   </>;
@@ -2424,10 +2437,10 @@ function TimeClock({ workspaceId, businessId, businesses, userId }) {
     <div><p className="eyebrow">Urenregistratie</p><h2>{openEntry ? "Je bent ingeklokt" : "Klaar om te starten"}</h2><p>{openEntry ? `Sinds ${formatTime(openEntry.clocked_in_at)}` : "Kies je vestiging en klok in bij aanvang van je dienst."}</p></div>
     <div className="clockActions">
       {!openEntry && <label>Vestiging<select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>}
-      <button className={openEntry ? "secondaryButton" : "primary"} onClick={toggleClock} disabled={busy || (!openEntry && !selectedBusinessId)}>{busy ? "BezigÃ¢â‚¬Â¦" : openEntry ? "Uitklokken" : "Inklokken"}</button>
+      <button className={openEntry ? "secondaryButton" : "primary"} onClick={toggleClock} disabled={busy || (!openEntry && !selectedBusinessId)}>{busy ? "BezigÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : openEntry ? "Uitklokken" : "Inklokken"}</button>
     </div>
     {feedback && <p className="clockFeedback">{feedback}</p>}
-    {entries.length > 0 && <div className="clockHistory"><strong>Recente diensten</strong>{entries.slice(0, 4).map((entry) => <span key={entry.id}>{formatDate(entry.clocked_in_at)} Ã‚Â· {formatTime(entry.clocked_in_at)} Ã¢â‚¬â€œ {entry.clocked_out_at ? formatTime(entry.clocked_out_at) : "actief"}</span>)}</div>}
+    {entries.length > 0 && <div className="clockHistory"><strong>Recente diensten</strong>{entries.slice(0, 4).map((entry) => <span key={entry.id}>{formatDate(entry.clocked_in_at)} Ãƒâ€šÃ‚Â· {formatTime(entry.clocked_in_at)} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ {entry.clocked_out_at ? formatTime(entry.clocked_out_at) : "actief"}</span>)}</div>}
   </section>;
 }
 
@@ -2489,8 +2502,8 @@ function HoursOverview({ workspaceId, businessId, businesses }) {
       <Card label="Gemiddeld per dienst" value={formatDuration(entries.length ? Math.round(totalMinutes / entries.length) : 0)} sub="Inclusief actieve diensten" />
     </section>
     <section className="dashboardGrid hoursGrid">
-      <Panel title="Per medewerker" subtitle="Totaal binnen de gekozen periode">{loadingHours && <Empty text="Uren ladenÃ¢â‚¬Â¦" />}{!loadingHours && people.length === 0 && <Empty text="Nog geen uren geregistreerd." />}{people.map((person) => <div className="hoursPerson" key={person.id}><div><b>{person.name}</b><span>{person.shifts} dienst{person.shifts === 1 ? "" : "en"}{person.open ? " Ã‚Â· nu ingeklokt" : ""}</span></div><strong>{formatDuration(person.minutes)}</strong></div>)}</Panel>
-      <Panel title="Recente registraties" subtitle="Laatste in- en uitklokmomenten">{loadingHours && <Empty text="Registraties ladenÃ¢â‚¬Â¦" />}{!loadingHours && entries.length === 0 && <Empty text="Nog geen registraties gevonden." />}{entries.slice(0, 15).map((entry) => <TimeEntryEditor entry={entry} businesses={businesses} minutes={minutesFor(entry)} onCorrect={correctEntry} key={entry.id} />)}</Panel>
+      <Panel title="Per medewerker" subtitle="Totaal binnen de gekozen periode">{loadingHours && <Empty text="Uren ladenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" />}{!loadingHours && people.length === 0 && <Empty text="Nog geen uren geregistreerd." />}{people.map((person) => <div className="hoursPerson" key={person.id}><div><b>{person.name}</b><span>{person.shifts} dienst{person.shifts === 1 ? "" : "en"}{person.open ? " Ãƒâ€šÃ‚Â· nu ingeklokt" : ""}</span></div><strong>{formatDuration(person.minutes)}</strong></div>)}</Panel>
+      <Panel title="Recente registraties" subtitle="Laatste in- en uitklokmomenten">{loadingHours && <Empty text="Registraties ladenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" />}{!loadingHours && entries.length === 0 && <Empty text="Nog geen registraties gevonden." />}{entries.slice(0, 15).map((entry) => <TimeEntryEditor entry={entry} businesses={businesses} minutes={minutesFor(entry)} onCorrect={correctEntry} key={entry.id} />)}</Panel>
     </section>
   </>;
 }
@@ -2534,9 +2547,9 @@ function ScheduleOverview({ workspaceId, businessId, businesses, userId, canMana
   }
 
   return <>
-    <section className="pageIntro scheduleIntro"><div><p className="eyebrow">Personeelsplanning</p><h2>Rooster & beschikbaarheid</h2><p>Diensten plannen per vestiging en beschikbaarheid vooraf verzamelen.</p></div><div className="weekControls"><button className="secondaryButton" onClick={() => setWeekOffset((value) => value - 1)}>Vorige</button><b>{formatShortDate(weekStart)} Ã¢â‚¬â€œ {formatShortDate(addDays(weekStart, 6))}</b><button className="secondaryButton" onClick={() => setWeekOffset((value) => value + 1)}>Volgende</button></div></section>
+    <section className="pageIntro scheduleIntro"><div><p className="eyebrow">Personeelsplanning</p><h2>Rooster & beschikbaarheid</h2><p>Diensten plannen per vestiging en beschikbaarheid vooraf verzamelen.</p></div><div className="weekControls"><button className="secondaryButton" onClick={() => setWeekOffset((value) => value - 1)}>Vorige</button><b>{formatShortDate(weekStart)} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ {formatShortDate(addDays(weekStart, 6))}</b><button className="secondaryButton" onClick={() => setWeekOffset((value) => value + 1)}>Volgende</button></div></section>
     {scheduleMessage && <div className="notice">{scheduleMessage}</div>}
-    <section className="scheduleWeek">{weekDays.map((day) => { const dayShifts = shifts.filter((shift) => isoDate(new Date(shift.starts_at)) === isoDate(day)); const dayAvailability = availability.filter((item) => item.available_date === isoDate(day)); return <article className="scheduleDay" key={isoDate(day)}><header><b>{new Intl.DateTimeFormat("nl-NL", { weekday: "short" }).format(day)}</b><span>{day.getDate()}</span></header>{dayShifts.map((shift) => <div className="shiftCard" key={shift.id}><strong>{formatTime(shift.starts_at)}Ã¢â‚¬â€œ{formatTime(shift.ends_at)}</strong><b>{timeEntryEmployeeName(shift)}</b><small>{shift.role_label || shift.business?.name || "Dienst"}</small></div>)}{dayShifts.length === 0 && <small className="noShift">Geen diensten</small>}<footer>{dayAvailability.filter((item) => item.status !== "unavailable").length} beschikbaar</footer></article>; })}</section>
+    <section className="scheduleWeek">{weekDays.map((day) => { const dayShifts = shifts.filter((shift) => isoDate(new Date(shift.starts_at)) === isoDate(day)); const dayAvailability = availability.filter((item) => item.available_date === isoDate(day)); return <article className="scheduleDay" key={isoDate(day)}><header><b>{new Intl.DateTimeFormat("nl-NL", { weekday: "short" }).format(day)}</b><span>{day.getDate()}</span></header>{dayShifts.map((shift) => <div className="shiftCard" key={shift.id}><strong>{formatTime(shift.starts_at)}ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“{formatTime(shift.ends_at)}</strong><b>{timeEntryEmployeeName(shift)}</b><small>{shift.role_label || shift.business?.name || "Dienst"}</small></div>)}{dayShifts.length === 0 && <small className="noShift">Geen diensten</small>}<footer>{dayAvailability.filter((item) => item.status !== "unavailable").length} beschikbaar</footer></article>; })}</section>
     <section className="dashboardGrid scheduleForms">
       {canManage && <Panel title="Dienst inplannen" subtitle="Voeg een medewerker toe aan het weekrooster"><form className="scheduleForm" onSubmit={addShift}><label>Medewerker<select name="userId" required defaultValue=""><option value="" disabled>Kies medewerker</option>{employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name}</option>)}</select></label><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Datum<input type="date" name="date" required defaultValue={isoDate(weekStart)} /></label><label>Start<input type="time" name="start" required /></label><label>Einde<input type="time" name="end" required /></label><label>Functie<input name="roleLabel" placeholder="Bijv. bediening" /></label><label className="full">Notitie<input name="note" /></label><button className="primary">Dienst toevoegen</button></form></Panel>}
       <Panel title="Mijn beschikbaarheid" subtitle="Geef aan wanneer je kunt werken"><form className="scheduleForm" onSubmit={saveAvailability}><label>Datum<input type="date" name="date" required defaultValue={isoDate(weekStart)} /></label><label>Status<select name="status" defaultValue="available"><option value="available">Beschikbaar</option><option value="preferred">Voorkeur</option><option value="unavailable">Niet beschikbaar</option></select></label><label>Vanaf<input type="time" name="from" /></label><label>Tot<input type="time" name="until" /></label><label className="full">Toelichting<input name="note" placeholder="Optioneel" /></label><button className="primary">Beschikbaarheid opslaan</button></form></Panel>
@@ -2578,7 +2591,7 @@ function SocialReply({ item, channel, workspaceId, session, onPublished }) {
   return <details className="socialReply">
     <summary>Reageren</summary>
     <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Schrijf je reactie aan de gast" maxLength={maxLength} disabled={!supported || publishing} />
-    <button type="button" className="primary" onClick={publishReply} disabled={!supported || publishing || !reply.trim()}>{publishing ? "Plaatsen…" : supported ? `Reactie plaatsen op ${platformName}` : "Kanaal niet beschikbaar"}</button>
+    <button type="button" className="primary" onClick={publishReply} disabled={!supported || publishing || !reply.trim()}>{publishing ? "Plaatsenâ€¦" : supported ? `Reactie plaatsen op ${platformName}` : "Kanaal niet beschikbaar"}</button>
     <small>{supported ? `Voor plaatsing op ${platformName} volgt altijd nog een definitieve bevestiging.` : "Reageren is voor dit kanaal nog niet beschikbaar."}</small>
     {status && <small className="notice">{status}</small>}
   </details>;
@@ -2853,7 +2866,7 @@ function CalendarOverview({ workspaceId, session }) {
   }
 
   async function deleteAppointment(event) {
-    if (!window.confirm(`Afspraak “${event.subject || "(Geen onderwerp)"}” definitief verwijderen?`)) return;
+    if (!window.confirm(`Afspraak â€œ${event.subject || "(Geen onderwerp)"}â€ definitief verwijderen?`)) return;
     setWorking(true); setMessage(""); setNotice("");
     try {
       const response = await fetch("/api/integrations/microsoft/calendar/action", {
@@ -2871,13 +2884,13 @@ function CalendarOverview({ workspaceId, session }) {
   }
 
   const periodLabel = view === "day" ? anchor.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
-    : view === "week" ? `${range.start.toLocaleDateString("nl-NL")} – ${new Date(range.end.getTime() - 86400000).toLocaleDateString("nl-NL")}`
+    : view === "week" ? `${range.start.toLocaleDateString("nl-NL")} â€“ ${new Date(range.end.getTime() - 86400000).toLocaleDateString("nl-NL")}`
     : view === "year" ? String(anchor.getFullYear())
     : anchor.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
 
   const eventCard = (event) => {
     const start = new Date(event.start?.dateTime); const end = new Date(event.end?.dateTime);
-    return <article className="connectionRow" key={`${event.mailbox}-${event.id}`} style={{ borderLeft: `6px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "12px" }}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? "Hele dag" : `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div><button type="button" className="secondary" onClick={() => { setSelectedEvent(event); setEditor(null); }}>Bekijken</button></article>;
+    return <article className="connectionRow" key={`${event.mailbox}-${event.id}`} style={{ borderLeft: `6px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "12px" }}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{event.isAllDay ? "Hele dag" : `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} â€“ ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div><button type="button" className="secondary" onClick={() => { setSelectedEvent(event); setEditor(null); }}>Bekijken</button></article>;
   };
 
   const days = [];
@@ -2893,7 +2906,7 @@ function CalendarOverview({ workspaceId, session }) {
   const timelineDays = view === "day" ? [new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())] : view === "week" ? days : [];
 
   return <section className="stack">
-    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Microsoft-agenda’s beheren per dag, week, maand of jaar.</p></div><div className="toolbar"><button type="button" className="primary" onClick={() => newAppointment()} disabled={!accounts.length}>Nieuwe afspraak</button><button type="button" className="secondary" onClick={loadCalendar} disabled={loading}>{loading ? "Laden…" : "Agenda verversen"}</button></div></div>
+    <div className="section-heading"><div><p className="eyebrow">Planning</p><h2>Agenda</h2><p>Microsoft-agendaâ€™s beheren per dag, week, maand of jaar.</p></div><div className="toolbar"><button type="button" className="primary" onClick={() => newAppointment()} disabled={!accounts.length}>Nieuwe afspraak</button><button type="button" className="secondary" onClick={loadCalendar} disabled={loading}>{loading ? "Ladenâ€¦" : "Agenda verversen"}</button></div></div>
     {notice && <div className="notice successNotice">{notice}</div>}
     {message && <div className="notice warning">{message}<p>Geeft Microsoft aan dat je onvoldoende rechten hebt? Vernieuw dan eenmalig de agendarechten via Mail.</p></div>}
     <div className="panel stack">
@@ -2903,7 +2916,7 @@ function CalendarOverview({ workspaceId, session }) {
       </div>
       <div className="toolbar">
         <label>Weergave<select value={view} onChange={(event) => setView(event.target.value)}><option value="day">Dag</option><option value="week">Week</option><option value="month">Maand</option><option value="year">Jaar</option></select></label>
-        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agenda’s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label><label>Zoeken<input value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} placeholder="Onderwerp, locatie of organisator" /></label><button type="button" className="secondary" onClick={renewCalendarAccess} disabled={working || !accounts.length}>{working ? "Microsoft openen…" : "Agendarechten vernieuwen"}</button>
+        <label>Agenda<select value={mailbox} onChange={(event) => setMailbox(event.target.value)}><option value="all">Alle agendaâ€™s</option>{accounts.map((account) => <option key={account.mailbox} value={account.mailbox}>{account.mailbox}</option>)}</select></label><label>Zoeken<input value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} placeholder="Onderwerp, locatie of organisator" /></label><button type="button" className="secondary" onClick={renewCalendarAccess} disabled={working || !accounts.length}>{working ? "Microsoft openenâ€¦" : "Agendarechten vernieuwen"}</button>
       </div>
     </div>
     {editor && <form className="panel stack" onSubmit={saveAppointment}>
@@ -2912,30 +2925,30 @@ function CalendarOverview({ workspaceId, session }) {
       <label>Onderwerp<input name="subject" defaultValue={editor.subject} required /></label>
       <div className="toolbar"><label>Begintijd<input name="start" type="datetime-local" defaultValue={editor.start} required /></label><label>Eindtijd<input name="end" type="datetime-local" defaultValue={editor.end} required /></label><label><input name="isAllDay" type="checkbox" defaultChecked={editor.isAllDay} /> Hele dag</label></div>
       <div className="toolbar"><label>Herhalen<select name="recurrence" defaultValue={editor.recurrence}><option value="none">Niet herhalen</option><option value="daily">Dagelijks</option><option value="weekly">Wekelijks</option><option value="monthly">Maandelijks</option><option value="yearly">Jaarlijks</option></select></label><label>Herinnering<select name="reminderMinutes" defaultValue={editor.reminderMinutes}><option value="-1">Geen herinnering</option><option value="0">Op begintijd</option><option value="5">5 minuten vooraf</option><option value="15">15 minuten vooraf</option><option value="30">30 minuten vooraf</option><option value="60">1 uur vooraf</option><option value="1440">1 dag vooraf</option></select></label></div>
-      <div className="toolbar"><label>Beschikbaarheid<select name="showAs" defaultValue={editor.showAs}><option value="free">Vrij</option><option value="tentative">Voorlopig</option><option value="busy">Bezet</option><option value="oof">Afwezig</option><option value="workingElsewhere">Elders werkzaam</option></select></label><label><input name="isPrivate" type="checkbox" defaultChecked={editor.isPrivate} /> Privéafspraak</label><label><input name="isOnlineMeeting" type="checkbox" defaultChecked={editor.isOnlineMeeting} /> Teams-vergadering</label></div>
+      <div className="toolbar"><label>Beschikbaarheid<select name="showAs" defaultValue={editor.showAs}><option value="free">Vrij</option><option value="tentative">Voorlopig</option><option value="busy">Bezet</option><option value="oof">Afwezig</option><option value="workingElsewhere">Elders werkzaam</option></select></label><label><input name="isPrivate" type="checkbox" defaultChecked={editor.isPrivate} /> PrivÃ©afspraak</label><label><input name="isOnlineMeeting" type="checkbox" defaultChecked={editor.isOnlineMeeting} /> Teams-vergadering</label></div>
       <label>Locatie<input name="location" defaultValue={editor.location} /></label>
       <label>Deelnemers<input name="attendees" type="text" defaultValue={editor.attendees} placeholder="naam@bedrijf.nl, tweede@bedrijf.nl" /><small>Scheid meerdere e-mailadressen met een komma.</small></label>
       <label>Omschrijving<textarea name="description" defaultValue={editor.description} rows="5" /></label>
-      <button type="submit" className="primary" disabled={working}>{working ? "Opslaan…" : "Afspraak opslaan"}</button>
+      <button type="submit" className="primary" disabled={working}>{working ? "Opslaanâ€¦" : "Afspraak opslaan"}</button>
     </form>}
     {selectedEvent && !editor && <div className="panel stack">
       <div className="connectionRow"><div><p className="eyebrow">{selectedEvent.mailbox}</p><h3>{selectedEvent.subject || "(Geen onderwerp)"}</h3></div><button type="button" className="secondary" onClick={() => setSelectedEvent(null)}>Sluiten</button></div>
-      <p><strong>Wanneer:</strong> {selectedEvent.isAllDay ? "Hele dag" : `${new Date(selectedEvent.start?.dateTime).toLocaleString("nl-NL")} – ${new Date(selectedEvent.end?.dateTime).toLocaleString("nl-NL")}`}</p>
+      <p><strong>Wanneer:</strong> {selectedEvent.isAllDay ? "Hele dag" : `${new Date(selectedEvent.start?.dateTime).toLocaleString("nl-NL")} â€“ ${new Date(selectedEvent.end?.dateTime).toLocaleString("nl-NL")}`}</p>
       {selectedEvent.location?.displayName && <p><strong>Locatie:</strong> {selectedEvent.location.displayName}</p>}
-      {selectedEvent.organizer?.emailAddress && <p><strong>Organisator:</strong> {selectedEvent.organizer.emailAddress.name || selectedEvent.organizer.emailAddress.address}{selectedEvent.organizer.emailAddress.address && ` · ${selectedEvent.organizer.emailAddress.address}`}</p>}
-      {selectedEvent.attendees?.length > 0 && <div><strong>Deelnemers:</strong><ul>{selectedEvent.attendees.map((attendee, index) => <li key={`${attendee.emailAddress?.address}-${index}`}>{attendee.emailAddress?.name || attendee.emailAddress?.address || "Onbekend"}{attendee.status?.response && ` · ${attendee.status.response}`}</li>)}</ul></div>}
+      {selectedEvent.organizer?.emailAddress && <p><strong>Organisator:</strong> {selectedEvent.organizer.emailAddress.name || selectedEvent.organizer.emailAddress.address}{selectedEvent.organizer.emailAddress.address && ` Â· ${selectedEvent.organizer.emailAddress.address}`}</p>}
+      {selectedEvent.attendees?.length > 0 && <div><strong>Deelnemers:</strong><ul>{selectedEvent.attendees.map((attendee, index) => <li key={`${attendee.emailAddress?.address}-${index}`}>{attendee.emailAddress?.name || attendee.emailAddress?.address || "Onbekend"}{attendee.status?.response && ` Â· ${attendee.status.response}`}</li>)}</ul></div>}
       {selectedEvent.recurrence && <p><strong>Herhaling:</strong> {selectedEvent.recurrence.pattern?.type === "daily" ? "Dagelijks" : selectedEvent.recurrence.pattern?.type === "weekly" ? "Wekelijks" : selectedEvent.recurrence.pattern?.type === "absoluteMonthly" ? "Maandelijks" : "Jaarlijks"}</p>}
       <p><strong>Herinnering:</strong> {selectedEvent.isReminderOn ? `${selectedEvent.reminderMinutesBeforeStart} minuten vooraf` : "Geen"}</p>
-      <p><strong>Status:</strong> {selectedEvent.showAs === "free" ? "Vrij" : selectedEvent.showAs === "tentative" ? "Voorlopig" : selectedEvent.showAs === "oof" ? "Afwezig" : selectedEvent.showAs === "workingElsewhere" ? "Elders werkzaam" : "Bezet"}{selectedEvent.sensitivity === "private" ? " · Privé" : ""}</p>
+      <p><strong>Status:</strong> {selectedEvent.showAs === "free" ? "Vrij" : selectedEvent.showAs === "tentative" ? "Voorlopig" : selectedEvent.showAs === "oof" ? "Afwezig" : selectedEvent.showAs === "workingElsewhere" ? "Elders werkzaam" : "Bezet"}{selectedEvent.sensitivity === "private" ? " Â· PrivÃ©" : ""}</p>
       {!selectedEvent.isOrganizer && <p><strong>Jouw reactie:</strong> {selectedEvent.responseStatus?.response === "accepted" ? "Geaccepteerd" : selectedEvent.responseStatus?.response === "tentativelyAccepted" ? "Voorlopig geaccepteerd" : selectedEvent.responseStatus?.response === "declined" ? "Geweigerd" : "Nog niet gereageerd"}</p>}
       {selectedEvent.bodyPreview && <div><strong>Beschrijving:</strong><p>{selectedEvent.bodyPreview}</p></div>}
       {!selectedEvent.isOrganizer && <div className="toolbar"><button type="button" className="primary" onClick={() => respondToInvitation(selectedEvent, "accept")} disabled={working}>Accepteren</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "tentativelyAccept")} disabled={working}>Voorlopig</button><button type="button" className="secondary" onClick={() => respondToInvitation(selectedEvent, "decline")} disabled={working}>Weigeren</button></div>}
       <div className="toolbar"><button type="button" className="primary" onClick={() => editAppointment(selectedEvent)}>Wijzigen</button><button type="button" className="secondary" onClick={() => moveByDays(selectedEvent, 1)} disabled={working}>+ 1 dag</button><button type="button" className="secondary" onClick={() => moveByDays(selectedEvent, 7)} disabled={working}>+ 1 week</button><button type="button" className="secondary" onClick={() => duplicateAppointment(selectedEvent)}>Dupliceren</button><button type="button" className="secondary" onClick={() => deleteAppointment(selectedEvent)} disabled={working}>Verwijderen</button>{(selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl) && <a className="secondary" href={selectedEvent.onlineMeeting?.joinUrl || selectedEvent.onlineMeetingUrl} target="_blank" rel="noreferrer">Deelnemen aan Teams-vergadering</a>}{selectedEvent.webLink && <a className="secondary" href={selectedEvent.webLink} target="_blank" rel="noreferrer">Openen in Outlook</a>}</div>
     </div>}
     {searchActive && <div className="panel stack">
-      <div className="connectionRow"><div><p className="eyebrow">Zoekresultaten</p><h3>{events.length} afspraak{events.length === 1 ? "" : "afspraken"} gevonden voor “{calendarSearch.trim()}”</h3></div><button type="button" className="secondary" onClick={() => setCalendarSearch("")}>Zoeken sluiten</button></div>
+      <div className="connectionRow"><div><p className="eyebrow">Zoekresultaten</p><h3>{events.length} afspraak{events.length === 1 ? "" : "afspraken"} gevonden voor â€œ{calendarSearch.trim()}â€</h3></div><button type="button" className="secondary" onClick={() => setCalendarSearch("")}>Zoeken sluiten</button></div>
       {!loading && events.length === 0 && <p>Geen afspraken gevonden. Probeer een andere naam, locatie of zoekterm.</p>}
-      {events.map((event) => <article className="connectionRow" key={`search-${event.mailbox}-${event.id}`} style={{ borderLeft: `6px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "12px" }}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{new Date(event.start?.dateTime).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · {event.isAllDay ? "Hele dag" : `${new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} – ${new Date(event.end?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div><button type="button" className="primary" onClick={() => { setSelectedEvent(event); setEditor(null); }}>Openen</button></article>)}
+      {events.map((event) => <article className="connectionRow" key={`search-${event.mailbox}-${event.id}`} style={{ borderLeft: `6px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "12px" }}><div><p className="eyebrow">{event.mailbox}</p><h3>{event.subject || "(Geen onderwerp)"}</h3><p>{new Date(event.start?.dateTime).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} Â· {event.isAllDay ? "Hele dag" : `${new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} â€“ ${new Date(event.end?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</p>{event.location?.displayName && <small>{event.location.displayName}</small>}</div><button type="button" className="primary" onClick={() => { setSelectedEvent(event); setEditor(null); }}>Openen</button></article>)}
     </div>}
     {!searchActive && (view === "day" || view === "week") && <div className="panel" style={{ overflow: "auto", padding: 0 }}>
       <div style={{ minWidth: view === "week" ? "980px" : "560px" }}>
@@ -2958,7 +2971,7 @@ function CalendarOverview({ workspaceId, session }) {
                 const startTime = new Date(event.start?.dateTime); const endTime = new Date(event.end?.dateTime);
                 const top = (startTime.getHours() + startTime.getMinutes() / 60) * calendarHourHeight;
                 const height = Math.max(28, ((endTime.getTime() - startTime.getTime()) / 3600000) * calendarHourHeight);
-                return <button type="button" draggable={event.type !== "occurrence" && event.type !== "exception"} onDragStart={(dragEvent) => dragEvent.dataTransfer.setData("text/calendar-event", event.id)} onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`timeline-event-${event.mailbox}-${event.id}`} title={`${event.subject || "(Geen onderwerp)"} · ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}–${endTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`} style={{ position: "absolute", top: `${top}px`, left: "4px", right: "4px", height: `${height}px`, minHeight: "28px", overflow: "hidden", padding: "4px 6px", border: "1px solid rgba(255,255,255,.75)", borderRadius: "6px", background: mailboxColor(event.mailbox), color: "#fff", textAlign: "left", fontSize: "11px", zIndex: 2, cursor: "pointer" }}><strong>{startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}–{endTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong><span style={{ display: "block" }}>{event.subject || "(Geen onderwerp)"}</span></button>;
+                return <button type="button" draggable={event.type !== "occurrence" && event.type !== "exception"} onDragStart={(dragEvent) => dragEvent.dataTransfer.setData("text/calendar-event", event.id)} onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`timeline-event-${event.mailbox}-${event.id}`} title={`${event.subject || "(Geen onderwerp)"} Â· ${startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}â€“${endTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`} style={{ position: "absolute", top: `${top}px`, left: "4px", right: "4px", height: `${height}px`, minHeight: "28px", overflow: "hidden", padding: "4px 6px", border: "1px solid rgba(255,255,255,.75)", borderRadius: "6px", background: mailboxColor(event.mailbox), color: "#fff", textAlign: "left", fontSize: "11px", zIndex: 2, cursor: "pointer" }}><strong>{startTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}â€“{endTime.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong><span style={{ display: "block" }}>{event.subject || "(Geen onderwerp)"}</span></button>;
               })}
             </div>;
           })}
@@ -2968,13 +2981,13 @@ function CalendarOverview({ workspaceId, session }) {
     {!searchActive && view === "month" && <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "8px" }}>
       {days.map((day) => {
         const dayEvents = events.filter((event) => new Date(event.start?.dateTime).toDateString() === day.toDateString());
-        return <div className="panel" key={day.toISOString()} onDoubleClick={() => newAppointment(day)} onDragOver={(dragEvent) => dragEvent.preventDefault()} onDrop={(dropEvent) => { dropEvent.preventDefault(); const eventId = dropEvent.dataTransfer.getData("text/calendar-event"); const dragged = events.find((item) => item.id === eventId); if (dragged) moveAppointment(dragged, day); }} style={{ minHeight: "150px", padding: "10px", opacity: day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric" })}</strong><div className="stack">{dayEvents.map((event) => <button type="button" draggable={event.type !== "occurrence" && event.type !== "exception"} onDragStart={(dragEvent) => dragEvent.dataTransfer.setData("text/calendar-event", event.id)} title="Sleep naar een andere dag om te verplaatsen" onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`} style={{ display: "block", width: "100%", padding: "6px", background: mailboxColor(event.mailbox), border: 0, borderRadius: "6px", fontSize: "12px", textAlign: "left", cursor: "pointer", color: "#fff" }}><strong>{event.isAllDay ? "Hele dag" : `${new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}–${new Date(event.end?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</strong><span style={{ display: "block", marginTop: "2px" }}>{event.subject || "(Geen onderwerp)"}</span></button>)}</div></div>;
+        return <div className="panel" key={day.toISOString()} onDoubleClick={() => newAppointment(day)} onDragOver={(dragEvent) => dragEvent.preventDefault()} onDrop={(dropEvent) => { dropEvent.preventDefault(); const eventId = dropEvent.dataTransfer.getData("text/calendar-event"); const dragged = events.find((item) => item.id === eventId); if (dragged) moveAppointment(dragged, day); }} style={{ minHeight: "150px", padding: "10px", opacity: day.getMonth() !== anchor.getMonth() ? 0.55 : 1 }}><strong>{day.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric" })}</strong><div className="stack">{dayEvents.map((event) => <button type="button" draggable={event.type !== "occurrence" && event.type !== "exception"} onDragStart={(dragEvent) => dragEvent.dataTransfer.setData("text/calendar-event", event.id)} title="Sleep naar een andere dag om te verplaatsen" onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`} style={{ display: "block", width: "100%", padding: "6px", background: mailboxColor(event.mailbox), border: 0, borderRadius: "6px", fontSize: "12px", textAlign: "left", cursor: "pointer", color: "#fff" }}><strong>{event.isAllDay ? "Hele dag" : `${new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}â€“${new Date(event.end?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`}</strong><span style={{ display: "block", marginTop: "2px" }}>{event.subject || "(Geen onderwerp)"}</span></button>)}</div></div>;
       })}
     </div>}
     {!searchActive && view === "year" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
       {Array.from({ length: 12 }, (_, month) => {
         const monthEvents = events.filter((event) => new Date(event.start?.dateTime).getMonth() === month);
-        return <div className="panel" key={month}><h3>{new Date(anchor.getFullYear(), month, 1).toLocaleDateString("nl-NL", { month: "long" })}</h3><p>{monthEvents.length} afspraak/afspraken</p>{monthEvents.slice(0, 4).map((event) => <button type="button" className="textButton" style={{ borderLeft: `5px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "8px" }} onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`}><strong>{new Date(event.start?.dateTime).getDate()} · {event.isAllDay ? "Hele dag" : new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject || "(Geen onderwerp)"}</button>)}</div>;
+        return <div className="panel" key={month}><h3>{new Date(anchor.getFullYear(), month, 1).toLocaleDateString("nl-NL", { month: "long" })}</h3><p>{monthEvents.length} afspraak/afspraken</p>{monthEvents.slice(0, 4).map((event) => <button type="button" className="textButton" style={{ borderLeft: `5px solid ${mailboxColor(event.mailbox)}`, paddingLeft: "8px" }} onClick={() => { setSelectedEvent(event); setEditor(null); }} key={`${event.mailbox}-${event.id}`}><strong>{new Date(event.start?.dateTime).getDate()} Â· {event.isAllDay ? "Hele dag" : new Date(event.start?.dateTime).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</strong> {event.subject || "(Geen onderwerp)"}</button>)}</div>;
       })}
     </div>}
   </section>;
@@ -3054,13 +3067,13 @@ function MailAgenda({ workspaceId, session }) {
   return <section className="stack">
     <div className="section-heading">
       <div><p className="eyebrow">CEO-communicatie</p><h2>Mail</h2><p>Beheer iedere mailbox afzonderlijk vanuit Horeca OS.</p></div>
-      <div className="toolbar"><button type="button" className="primary" disabled={!connected.length} onClick={() => setCompose({ open: true, mailbox: connected[0]?.mailbox || "", to: "", subject: "", content: "" })}>Nieuwe e-mail</button><button type="button" className="secondary" onClick={() => loadMail()} disabled={loading}>{loading ? "Laden…" : "Mail verversen"}</button></div>
+      <div className="toolbar"><button type="button" className="primary" disabled={!connected.length} onClick={() => setCompose({ open: true, mailbox: connected[0]?.mailbox || "", to: "", subject: "", content: "" })}>Nieuwe e-mail</button><button type="button" className="secondary" onClick={() => loadMail()} disabled={loading}>{loading ? "Ladenâ€¦" : "Mail verversen"}</button></div>
     </div>
     {connectionNotice && <div className="notice successNotice">{connectionNotice}</div>}
     {message && <div className="notice warning">{message}</div>}
     <div className="panel stack">
       <h3>Mailboxen</h3>
-      {mailboxes.map((item) => <div className="connectionRow" key={item.mailbox}><div><strong>{item.mailbox}</strong><small>{item.connected ? "Ingelogd bij Microsoft" : "Nog niet gekoppeld"}</small></div><div className="toolbar">{item.connected && <span className="status connected">Ingelogd</span>}<button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting)}>{connecting === item.mailbox ? "Microsoft openen…" : item.connected ? "Mailrechten vernieuwen" : "Inloggen"}</button></div></div>)}
+      {mailboxes.map((item) => <div className="connectionRow" key={item.mailbox}><div><strong>{item.mailbox}</strong><small>{item.connected ? "Ingelogd bij Microsoft" : "Nog niet gekoppeld"}</small></div><div className="toolbar">{item.connected && <span className="status connected">Ingelogd</span>}<button type="button" className={item.connected ? "secondary" : "primary"} onClick={() => connectMicrosoft(item.mailbox)} disabled={Boolean(connecting)}>{connecting === item.mailbox ? "Microsoft openenâ€¦" : item.connected ? "Mailrechten vernieuwen" : "Inloggen"}</button></div></div>)}
     </div>
     {compose.open && <div className="panel stack"><h3>Nieuwe e-mail</h3><label>Van<select value={compose.mailbox} onChange={(event) => setCompose({ ...compose, mailbox: event.target.value })}>{connected.map((item) => <option key={item.mailbox}>{item.mailbox}</option>)}</select></label><label>Aan<input value={compose.to} onChange={(event) => setCompose({ ...compose, to: event.target.value })} placeholder="naam@bedrijf.nl" /></label><label>Onderwerp<input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} /></label><label>Bericht<textarea value={compose.content} onChange={(event) => setCompose({ ...compose, content: event.target.value })} /></label><div className="toolbar"><button className="primary" type="button" disabled={Boolean(working)} onClick={() => mailAction(compose.mailbox, { action: "send", to: compose.to, subject: compose.subject, content: compose.content }, `E-mail naar ${compose.to} verzenden?`)}>Verzenden</button><button className="secondary" type="button" onClick={() => setCompose({ ...compose, open: false })}>Annuleren</button></div></div>}
     <div className="panel stack">
@@ -3070,9 +3083,9 @@ function MailAgenda({ workspaceId, session }) {
       </div>
       {!loading && visible.length === 0 && <p>Nog geen e-mails gevonden.</p>}
       {visible.map((mail) => <article className="panel stack" key={`${mail.mailbox}-${mail.id}`}>
-        <div className="connectionRow"><div><p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p><h3>{mail.subject || "(Geen onderwerp)"}</h3><p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? ` · ${mail.from.emailAddress.address}` : ""}</p><small>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</small></div>{mail.webLink && <a className="secondary" href={mail.webLink} target="_blank" rel="noreferrer">Volledig openen</a>}</div>
+        <div className="connectionRow"><div><p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p><h3>{mail.subject || "(Geen onderwerp)"}</h3><p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? ` Â· ${mail.from.emailAddress.address}` : ""}</p><small>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</small></div>{mail.webLink && <a className="secondary" href={mail.webLink} target="_blank" rel="noreferrer">Volledig openen</a>}</div>
         {mail.bodyPreview && <p>{mail.bodyPreview}</p>}
-        <div className="toolbar"><button type="button" className="secondary" onClick={() => setReplying((current) => ({ ...current, [mail.id]: current[mail.id] ?? "" }))}>Beantwoorden</button><button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "read", messageId: mail.id, isRead: !mail.isRead })}>{mail.isRead ? "Ongelezen" : "Gelezen"}</button>{selectedMailbox !== "all" && <select defaultValue="" onChange={(event) => event.target.value && mailAction(mail.mailbox, { action: "move", messageId: mail.id, folderId: event.target.value }, "Deze e-mail verplaatsen?")}><option value="">Verplaatsen naar…</option>{(activeBox?.folders || []).map((folder) => <option key={folder.id} value={folder.id}>{folder.displayName}</option>)}</select>}<button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "delete", messageId: mail.id }, "Deze e-mail verwijderen?")}>Verwijderen</button></div>
+        <div className="toolbar"><button type="button" className="secondary" onClick={() => setReplying((current) => ({ ...current, [mail.id]: current[mail.id] ?? "" }))}>Beantwoorden</button><button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "read", messageId: mail.id, isRead: !mail.isRead })}>{mail.isRead ? "Ongelezen" : "Gelezen"}</button>{selectedMailbox !== "all" && <select defaultValue="" onChange={(event) => event.target.value && mailAction(mail.mailbox, { action: "move", messageId: mail.id, folderId: event.target.value }, "Deze e-mail verplaatsen?")}><option value="">Verplaatsen naarâ€¦</option>{(activeBox?.folders || []).map((folder) => <option key={folder.id} value={folder.id}>{folder.displayName}</option>)}</select>}<button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "delete", messageId: mail.id }, "Deze e-mail verwijderen?")}>Verwijderen</button></div>
         {Object.prototype.hasOwnProperty.call(replying, mail.id) && <div className="stack"><textarea placeholder="Schrijf je antwoord" value={replying[mail.id]} onChange={(event) => setReplying({ ...replying, [mail.id]: event.target.value })} /><button type="button" className="primary" disabled={!replying[mail.id]?.trim() || Boolean(working)} onClick={() => mailAction(mail.mailbox, { action: "reply", messageId: mail.id, comment: replying[mail.id] }, "Dit antwoord nu verzenden?")}>Antwoord verzenden</button></div>}
       </article>)}
     </div>
@@ -3132,7 +3145,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
     const successes = attempts.filter((attempt) => attempt.response.ok);
     await loadSocialItems();
     if (failures.length) {
-      const detail = failures.map((attempt) => `${attempt.provider}: ${attempt.result.error || "synchronisatie mislukt"}`).join(" · ");
+      const detail = failures.map((attempt) => `${attempt.provider}: ${attempt.result.error || "synchronisatie mislukt"}`).join(" Â· ");
       setMessage(`${successes.length} koppeling(en) bijgewerkt. ${detail}`);
     } else {
       setMessage(`Facebook en Instagram zijn bijgewerkt voor ${targetIds.length} vestiging${targetIds.length === 1 ? "" : "en"}. WhatsApp komt realtime binnen.`);
@@ -3168,13 +3181,13 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
   return <section className="socialInbox">
     <div className="socialInboxHeader"><div><p className="eyebrow">Sociale kanalen</p><h2>Berichten & reacties</h2><p>WhatsApp, Facebook en Instagram centraal, met behoud van de scheiding per vestiging.</p></div><div className="socialInboxFilters">
       <label>Kanaal<select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)}><option value="all">Alle kanalen</option><option value="WhatsApp">WhatsApp</option><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option></select></label>
-      <label>Soort<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Alles</option><option value="message">Privéberichten</option><option value="comment">Reacties</option><option value="post">Berichten</option></select></label>
+      <label>Soort<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">Alles</option><option value="message">PrivÃ©berichten</option><option value="comment">Reacties</option><option value="post">Berichten</option></select></label>
       <label>Werkstatus<select value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value)}><option value="all">Alle statussen</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="handled">Afgehandeld</option></select></label>
       <label>Zichtbaar<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{[10,25,100].map((amount) => <option value={amount} key={amount}>{amount}</option>)}</select></label>
-      <button type="button" className="secondaryButton" onClick={syncSocialItems} disabled={loading || syncing}>{syncing ? "Synchroniseren…" : loading ? "Ophalen…" : "Kanalen verversen"}</button>
+      <button type="button" className="secondaryButton" onClick={syncSocialItems} disabled={loading || syncing}>{syncing ? "Synchroniserenâ€¦" : loading ? "Ophalenâ€¦" : "Kanalen verversen"}</button>
     </div></div>
     {message && <div className="notice">{message}</div>}
-    <div className="socialInboxSummary"><strong>{items.length}</strong> items <span>·</span><strong>{inbound}</strong> reacties van gasten <span>·</span><strong>{openItems}</strong> open <span>·</span><strong>{new Set(items.map((item) => item.business_id)).size}</strong> vestigingen</div>
+    <div className="socialInboxSummary"><strong>{items.length}</strong> items <span>Â·</span><strong>{inbound}</strong> reacties van gasten <span>Â·</span><strong>{openItems}</strong> open <span>Â·</span><strong>{new Set(items.map((item) => item.business_id)).size}</strong> vestigingen</div>
     <div className="socialInboxList">
       {!loading && visible.length === 0 && <Empty text="Nog geen sociale berichten of reacties voor deze selectie." />}
       {visible.map((item) => {
@@ -3182,7 +3195,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
         const author = media.sender_name || (item.direction === "outbound" ? accounts[item.account_id]?.display_name : "Gast");
         return <article className={`socialInboxItem ${item.direction}`} key={item.id}>
           <header><div><span className={`channelBadge ${channelName(item).toLowerCase()}`}>{channelName(item)}</span><b>{author}</b></div><span className="status">{item.workflow_status === "handled" ? "Afgehandeld" : item.workflow_status === "in_progress" ? "In behandeling" : "Nieuw"}</span></header>
-          <small>{businessNames[item.business_id] || "Onbekende vestiging"} · {formatDate(item.published_at || item.created_at)}</small>
+          <small>{businessNames[item.business_id] || "Onbekende vestiging"} Â· {formatDate(item.published_at || item.created_at)}</small>
           <p>{item.body || "Geen tekst meegeleverd."}</p>
           <div className="socialInboxActions">{item.permalink && <a className="secondaryButton" href={item.permalink} target="_blank" rel="noreferrer">Openen op {channelName(item)}</a>}
             {canManage && ["comment", "message"].includes(item.content_type) && <SocialReply item={item} channel={channelName(item)} workspaceId={workspaceId} session={session} onPublished={async () => { const marked = await updateWorkflowStatus(item.id, "handled"); if (marked) await loadSocialItems(); }} />}
@@ -3191,7 +3204,7 @@ function SocialInbox({ workspaceId, businessId, businesses, canManage, session }
         </article>;
       })}
     </div>
-    {filtered.length > pageSize && <nav className="reviewPagination" aria-label="Social-inbox pagina's"><button type="button" className="secondaryButton" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Vorige</button><span>Pagina {currentPage} van {pageCount} · {filtered.length} items</span><button type="button" className="secondaryButton" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Volgende</button></nav>}
+    {filtered.length > pageSize && <nav className="reviewPagination" aria-label="Social-inbox pagina's"><button type="button" className="secondaryButton" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Vorige</button><span>Pagina {currentPage} van {pageCount} Â· {filtered.length} items</span><button type="button" className="secondaryButton" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Volgende</button></nav>}
   </section>;
 }
 
@@ -3211,10 +3224,10 @@ function ReviewsInbox({ workspaceId, businessId, businesses, session, canManage,
     const business = String(form.get("businessId")); const source = String(form.get("source"));
     const payload = rows.slice(0, 500).map((row) => ({ workspace_id: workspaceId, business_id: business, source, reviewer_name: row.name || null, rating: row.rating, title: row.title || null, review_text: row.text, reviewed_at: reviewDateIso(row.date) }));
     const { error } = await supabase.from("customer_reviews").insert(payload);
-    setReviewMessage(error ? `Upload niet verwerkt: ${error.message}` : `${payload.length} reviews succesvol geÃƒÂ¯mporteerd.`); if (!error) { event.currentTarget.reset(); loadReviews(); }
+    setReviewMessage(error ? `Upload niet verwerkt: ${error.message}` : `${payload.length} reviews succesvol geÃƒÆ’Ã‚Â¯mporteerd.`); if (!error) { event.currentTarget.reset(); loadReviews(); }
   }
   const filteredReviews = statusFilter === "all" ? reviews : reviews.filter((review) => review.status === statusFilter); const pageCount = Math.max(1, Math.ceil(filteredReviews.length / reviewPageSize)); const currentPage = Math.min(reviewPage, pageCount); const visibleReviews = filteredReviews.slice((currentPage - 1) * reviewPageSize, currentPage * reviewPageSize); const ratedReviews = reviews.filter((item) => Number.isFinite(Number(item.rating)) && Number(item.rating) >= 1); const average = ratedReviews.length ? ratedReviews.reduce((sum, item) => sum + Number(item.rating), 0) / ratedReviews.length : 0; const positive = ratedReviews.filter((item) => item.rating >= 4).length; const open = reviews.filter((item) => item.status === "new" || item.status === "in_progress").length; const negative = ratedReviews.filter((item) => item.rating <= 2).length; const withoutRating = reviews.length - ratedReviews.length;
-  return <><section className="pageIntro reviewIntro"><div><p className="eyebrow">Reputatiemanagement</p><h2>Reviews</h2><p>Alle gastreacties centraal beoordelen, opvolgen en beantwoorden.</p></div><div className="reviewFilters"><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Alle reviews</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select></label><label>Zichtbaar<select value={reviewPageSize} onChange={(event) => { setReviewPageSize(Number(event.target.value)); setReviewPage(1); }}>{[2,10,25,100].map((amount) => <option value={amount} key={amount}>{amount} reviews</option>)}</select></label></div></section>{reviewMessage && <div className="notice">{reviewMessage}</div>}<section className="kpis secondary"><Card label="Totaal reviews" value={reviews.length} sub={`${ratedReviews.length} met cijfer Ã‚Â· ${withoutRating} zonder cijfer`} /><Card label="Gemiddelde score" value={average ? average.toFixed(2) : "Ã¢â‚¬â€œ"} sub={`Gebaseerd op ${ratedReviews.length} broncijfers`} /><Card label="Goede reviews" value={positive} sub="4 of 5 sterren" tone="success" /><Card label="Kritieke reviews" value={negative} sub="1 of 2 sterren" tone={negative ? "danger" : "success"} /><Card label="Op te volgen" value={open} sub="Nieuw of in behandeling" tone={open ? "warning" : "success"} /><Card label="Beantwoord" value={reviews.filter((item) => item.status === "responded").length} sub="Afgeronde reacties" /></section><section className="reviewLayout"><Panel title="Review-inbox" subtitle="Nieuwste reacties bovenaan">{filteredReviews.length === 0 && <Empty text="Nog geen reviews gevonden." />}{visibleReviews.map((review) => { const hasRating = Number.isFinite(Number(review.rating)) && Number(review.rating) >= 1; return <article className={`reviewCard ${hasRating ? `rating${review.rating}` : "ratingUnknown"}`} key={review.id}><header><div><strong>{hasRating ? `${"\u2605".repeat(review.rating)}${"\u2606".repeat(5-review.rating)}` : "Geen cijfer aangeleverd"}</strong><b>{review.reviewer_name || "Anonieme gast"}</b></div><span className="status">{reviewStatusLabel(review.status)}</span></header><small>{review.source} Ã‚Â· {formatDate(review.reviewed_at)}</small>{review.title && <h3>{review.title}</h3>}<p>{review.review_text}</p>{canManage && <details className="reviewReply"><summary>Reageren</summary><form onSubmit={(event) => publishReview(event, review.id)}><textarea name="response" defaultValue={review.response_text || ""} placeholder="Schrijf je reactie aan de gast" required /><button className="primary" disabled={publishingReviewId === review.id}>{publishingReviewId === review.id ? "PlaatsenÃ¢â‚¬Â¦" : "Reactie plaatsen"}</button><small>De status verandert pas naar beantwoord nadat het reviewplatform de plaatsing bevestigt.</small></form></details>}</article>; })}{filteredReviews.length > reviewPageSize && <nav className="reviewPagination" aria-label="Reviewpagina's"><button type="button" className="secondaryButton" disabled={currentPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Vorige</button><span>Pagina {currentPage} van {pageCount} Ã‚Â· {filteredReviews.length} reviews</span><button type="button" className="secondaryButton" disabled={currentPage === pageCount} onClick={() => setReviewPage((page) => Math.min(pageCount, page + 1))}>Volgende</button></nav>}</Panel>{canAdd && <Panel title="Reviews uploaden" subtitle="Importeer maximaal 500 reviews uit een CSV-bestand"><form className="reviewForm uploadReviews" onSubmit={uploadReviews}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>CSV-bestand<input name="file" type="file" accept=".csv,text/csv" required /></label><small>Kolommen: score, review, naam, datum en titel. Score en review zijn verplicht.</small><button className="primary">Reviews uploaden</button></form></Panel>}{canAdd && <Panel title="Review toevoegen" subtitle="Handmatig, totdat bronnen automatisch gekoppeld zijn"><form className="reviewForm" onSubmit={addReview}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>Gast<input name="reviewer" /></label><label>Score<select name="rating" defaultValue="5">{[5,4,3,2,1].map((score) => <option value={score} key={score}>{score} sterren</option>)}</select></label><label>Titel<input name="title" /></label><label>Review<textarea name="text" required /></label><button className="primary">Review toevoegen</button></form></Panel>}</section></>;
+  return <><section className="pageIntro reviewIntro"><div><p className="eyebrow">Reputatiemanagement</p><h2>Reviews</h2><p>Alle gastreacties centraal beoordelen, opvolgen en beantwoorden.</p></div><div className="reviewFilters"><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Alle reviews</option><option value="new">Nieuw</option><option value="in_progress">In behandeling</option><option value="responded">Beantwoord</option><option value="archived">Gearchiveerd</option></select></label><label>Zichtbaar<select value={reviewPageSize} onChange={(event) => { setReviewPageSize(Number(event.target.value)); setReviewPage(1); }}>{[2,10,25,100].map((amount) => <option value={amount} key={amount}>{amount} reviews</option>)}</select></label></div></section>{reviewMessage && <div className="notice">{reviewMessage}</div>}<section className="kpis secondary"><Card label="Totaal reviews" value={reviews.length} sub={`${ratedReviews.length} met cijfer Ãƒâ€šÃ‚Â· ${withoutRating} zonder cijfer`} /><Card label="Gemiddelde score" value={average ? average.toFixed(2) : "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“"} sub={`Gebaseerd op ${ratedReviews.length} broncijfers`} /><Card label="Goede reviews" value={positive} sub="4 of 5 sterren" tone="success" /><Card label="Kritieke reviews" value={negative} sub="1 of 2 sterren" tone={negative ? "danger" : "success"} /><Card label="Op te volgen" value={open} sub="Nieuw of in behandeling" tone={open ? "warning" : "success"} /><Card label="Beantwoord" value={reviews.filter((item) => item.status === "responded").length} sub="Afgeronde reacties" /></section><section className="reviewLayout"><Panel title="Review-inbox" subtitle="Nieuwste reacties bovenaan">{filteredReviews.length === 0 && <Empty text="Nog geen reviews gevonden." />}{visibleReviews.map((review) => { const hasRating = Number.isFinite(Number(review.rating)) && Number(review.rating) >= 1; return <article className={`reviewCard ${hasRating ? `rating${review.rating}` : "ratingUnknown"}`} key={review.id}><header><div><strong>{hasRating ? `${"\u2605".repeat(review.rating)}${"\u2606".repeat(5-review.rating)}` : "Geen cijfer aangeleverd"}</strong><b>{review.reviewer_name || "Anonieme gast"}</b></div><span className="status">{reviewStatusLabel(review.status)}</span></header><small>{review.source} Ãƒâ€šÃ‚Â· {formatDate(review.reviewed_at)}</small>{review.title && <h3>{review.title}</h3>}<p>{review.review_text}</p>{canManage && <details className="reviewReply"><summary>Reageren</summary><form onSubmit={(event) => publishReview(event, review.id)}><textarea name="response" defaultValue={review.response_text || ""} placeholder="Schrijf je reactie aan de gast" required /><button className="primary" disabled={publishingReviewId === review.id}>{publishingReviewId === review.id ? "PlaatsenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Reactie plaatsen"}</button><small>De status verandert pas naar beantwoord nadat het reviewplatform de plaatsing bevestigt.</small></form></details>}</article>; })}{filteredReviews.length > reviewPageSize && <nav className="reviewPagination" aria-label="Reviewpagina's"><button type="button" className="secondaryButton" disabled={currentPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Vorige</button><span>Pagina {currentPage} van {pageCount} Ãƒâ€šÃ‚Â· {filteredReviews.length} reviews</span><button type="button" className="secondaryButton" disabled={currentPage === pageCount} onClick={() => setReviewPage((page) => Math.min(pageCount, page + 1))}>Volgende</button></nav>}</Panel>{canAdd && <Panel title="Reviews uploaden" subtitle="Importeer maximaal 500 reviews uit een CSV-bestand"><form className="reviewForm uploadReviews" onSubmit={uploadReviews}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>CSV-bestand<input name="file" type="file" accept=".csv,text/csv" required /></label><small>Kolommen: score, review, naam, datum en titel. Score en review zijn verplicht.</small><button className="primary">Reviews uploaden</button></form></Panel>}{canAdd && <Panel title="Review toevoegen" subtitle="Handmatig, totdat bronnen automatisch gekoppeld zijn"><form className="reviewForm" onSubmit={addReview}><label>Vestiging<select name="businessId" required defaultValue={businessId === "all" ? businesses[0]?.id : businessId}>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label><label>Bron<select name="source" defaultValue="Google"><option>Google</option><option>Robuust</option><option>Tripadvisor</option><option>Facebook</option><option>Overig</option></select></label><label>Gast<input name="reviewer" /></label><label>Score<select name="rating" defaultValue="5">{[5,4,3,2,1].map((score) => <option value={score} key={score}>{score} sterren</option>)}</select></label><label>Titel<input name="title" /></label><label>Review<textarea name="text" required /></label><button className="primary">Review toevoegen</button></form></Panel>}</section></>;
 }
 
 function reviewStatusLabel(status) { return ({ new: "Nieuw", in_progress: "In behandeling", responded: "Beantwoord", archived: "Gearchiveerd" })[status] || status; }
@@ -3225,26 +3238,26 @@ function FoodcostDashboard({ analytics }) {
   return <>
     <section className="pageIntro"><p className="eyebrow">Foodcost dashboard</p><h2>Marge en prijsbewaking</h2><p>Actuele berekening uit inkoopprijzen, recepturen en verkoopprijzen.</p></section>
     <section className="kpis">
-      <Card label="Gemiddelde foodcost" value={analytics.average == null ? "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â" : `${analytics.average.toFixed(1)}%`} sub={`${analytics.items.length} verkoopbare gerechten`} />
-      <Card label="Beste marge" value={analytics.best?.name || "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"} sub={analytics.best ? `${analytics.best.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone="success" />
-      <Card label="Hoogste foodcost" value={analytics.worst?.name || "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"} sub={analytics.worst ? `${analytics.worst.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone={analytics.worst?.foodcost > 40 ? "danger" : "normal"} />
+      <Card label="Gemiddelde foodcost" value={analytics.average == null ? "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â" : `${analytics.average.toFixed(1)}%`} sub={`${analytics.items.length} verkoopbare gerechten`} />
+      <Card label="Beste marge" value={analytics.best?.name || "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â"} sub={analytics.best ? `${analytics.best.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone="success" />
+      <Card label="Hoogste foodcost" value={analytics.worst?.name || "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â"} sub={analytics.worst ? `${analytics.worst.foodcost.toFixed(1)}% foodcost` : "Nog geen complete kostprijs"} tone={analytics.worst?.foodcost > 40 ? "danger" : "normal"} />
       <Card label="Prijswaarschuwingen" value={analytics.warnings.length} sub="Gerechten boven doel of 40%" tone={analytics.warnings.length ? "warning" : "success"} />
     </section>
     <section className="panel"><div className="panelHead"><h2>Gerechten</h2><p>Foodcost is exclusief btw-effecten en volgt de actuele productprijs.</p></div>
       <div className="tableWrap"><table><thead><tr><th>Gerecht</th><th>Kostprijs</th><th>Verkoopprijs</th><th>Foodcost</th><th>Doel</th><th>Status</th></tr></thead><tbody>
-        {analytics.items.map((item) => <tr key={item.id}><td><b>{item.name}</b></td><td>{money(item.cost)}</td><td>{money(item.sellingPrice)}</td><td>{item.foodcost.toFixed(1)}%</td><td>{item.target ? `${item.target}%` : "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"}</td><td><span className={`status ${item.warning ? "pending" : "connected"}`}>{item.warning ? "Controleren" : "Op koers"}</span></td></tr>)}
-      </tbody></table></div>{!analytics.items.length && <Empty text="Voeg producten, ingrediÃƒÆ’Ã‚Â«nten, receptregels en menu-items toe om foodcost te berekenen." />}
+        {analytics.items.map((item) => <tr key={item.id}><td><b>{item.name}</b></td><td>{money(item.cost)}</td><td>{money(item.sellingPrice)}</td><td>{item.foodcost.toFixed(1)}%</td><td>{item.target ? `${item.target}%` : "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â"}</td><td><span className={`status ${item.warning ? "pending" : "connected"}`}>{item.warning ? "Controleren" : "Op koers"}</span></td></tr>)}
+      </tbody></table></div>{!analytics.items.length && <Empty text="Voeg producten, ingrediÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«nten, receptregels en menu-items toe om foodcost te berekenen." />}
     </section>
   </>;
 }
 
 function ProductOverview({ products, suppliers }) {
   const supplierMap = new Map(suppliers.map((item) => [item.id, item.name]));
-  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"} {product.content_unit || ""} Ãƒâ€šÃ‚Â· {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
+  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â"} {product.content_unit || ""} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
 }
 
 function RecipeOverview({ analytics }) {
-  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) Ãƒâ€šÃ‚Â· {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
+  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
 }
 
 function SupplierOverview({ suppliers, products }) {
@@ -3282,7 +3295,7 @@ function Assistant({ workspaceId, businessId, session, conversations, onRefresh 
     <section className="assistantLayout"><aside className="panel chatHistory"><button className="primary" onClick={() => { setConversationId(""); setChat([]); }}>Nieuw gesprek</button><h3>Geschiedenis</h3>{conversations.map((item) => <button className={conversationId === item.id ? "history active" : "history"} key={item.id} onClick={() => openConversation(item.id)}><b>{item.title}</b><small>{item.use_case}</small></button>)}</aside>
       <article className="panel chatPanel"><div className="useCases">{[["ceo","CEO"],["foodcost","Foodcost"],["reviews","Reviews"],["marketing","Marketing"],["operations","Operatie"]].map(([key,label]) => <button key={key} className={useCase === key ? "chip active" : "chip"} onClick={() => setUseCase(key)} disabled={Boolean(conversationId)}>{label}</button>)}</div>
         <div className="messages">{!chat.length && <Empty text="Stel een vraag. De assistent gebruikt alleen gegevens die jij binnen deze werkruimte mag zien." />}{chat.map((item) => <div className={`messageBubble ${item.role}`} key={item.id}>{item.content}</div>)}</div>
-        {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "AnalyserenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Versturen"}</button></form>
+        {error && <div className="notice">{error}</div>}<form action={sendMessage} className="chatComposer"><textarea name="message" maxLength="4000" required placeholder="Bijvoorbeeld: welke gerechten vragen vandaag marge-aandacht?" /><button className="primary" disabled={sending}>{sending ? "AnalyserenÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦" : "Versturen"}</button></form>
       </article></section></>;
 }
 
@@ -3308,7 +3321,7 @@ function MfaChallenge({ factor, onComplete }) {
     {error && <div className="notice">{error}</div>}
     <form onSubmit={verifyMfa} className="stack">
       <label>Beveiligingscode<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
-      <button className="primary" disabled={verifying}>{verifying ? "ControlerenÃ¢â‚¬Â¦" : "Veilig inloggen"}</button>
+      <button className="primary" disabled={verifying}>{verifying ? "ControlerenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Veilig inloggen"}</button>
     </form>
     <button className="textButton" onClick={() => supabase.auth.signOut()}>Terug naar inloggen</button>
   </section></main>;
@@ -3349,12 +3362,12 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
     <p className="eyebrow">Accountbeveiliging</p><h1>{required ? "Stel tweestapsverificatie in" : "Authenticator koppelen"}</h1>
     <p>{required ? "Voor Eigenaren en Managers is een tweede beveiligingsstap verplicht." : "Scan de QR-code met Google Authenticator, Microsoft Authenticator of 1Password."}</p>
     {error && <div className="notice">{error}</div>}
-    {!enrollment && !error && <p>Beveiligde QR-code voorbereidenÃ¢â‚¬Â¦</p>}
+    {!enrollment && !error && <p>Beveiligde QR-code voorbereidenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</p>}
     {enrollment && <form onSubmit={confirmEnrollment} className="stack">
       <div className="mfaQr"><img src={enrollment.qr} alt="QR-code voor de authenticator-app" /></div>
       <details><summary>QR-code werkt niet?</summary><p>Voer deze sleutel handmatig in:</p><code className="mfaSecret">{enrollment.secret}</code></details>
       <label>Code uit authenticator<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
-      <button className="primary" disabled={verifying}>{verifying ? "ActiverenÃ¢â‚¬Â¦" : "2FA activeren"}</button>
+      <button className="primary" disabled={verifying}>{verifying ? "ActiverenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "2FA activeren"}</button>
     </form>}
     {!required && <button className="textButton" onClick={cancelEnrollment}>Annuleren</button>}
     {required && <button className="textButton" onClick={() => supabase.auth.signOut()}>Uitloggen</button>}
@@ -3588,11 +3601,11 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="integrationBrand"><div className="integrationLogo">M365</div><div><h2>Persoonlijke Microsoft-agenda</h2><p>Eigen Outlook-agenda en gedelegeerde agenda&apos;s</p></div></div>
         <div className="scopeBanner"><strong>Alleen lezen</strong><span>Iedere medewerker koppelt het eigen @leclubbbq.nl-account. Gedeelde agenda&apos;s zijn alleen zichtbaar wanneer Microsoft daar al toegang voor heeft verleend.</span></div>
         {!microsoftConfiguration.ready && <div className="notice">Microsoft 365 is nog niet gereed. Ontbrekend: {microsoftConfiguration.missing.join(", ") || "configuratie controleren"}.</div>}
-        <button className="primary" type="button" onClick={() => connectMicrosoft(microsoftConnection?.email || session.user.email)} disabled={connecting || !microsoftConfiguration.ready}>{connecting ? "Microsoft openen…" : microsoftConnection ? "Microsoft-agenda opnieuw koppelen" : "Microsoft-agenda koppelen"}</button>
+        <button className="primary" type="button" onClick={() => connectMicrosoft(microsoftConnection?.email || session.user.email)} disabled={connecting || !microsoftConfiguration.ready}>{connecting ? "Microsoft openenâ€¦" : microsoftConnection ? "Microsoft-agenda opnieuw koppelen" : "Microsoft-agenda koppelen"}</button>
       </article>
       <article className="panel">
         <div className="panelHead"><div><h2>Jouw agendakoppeling</h2><p>Persoonlijk per medewerker, nooit gedeeld met andere gebruikers.</p></div></div>
-        {!microsoftConnection ? <Empty text="Nog geen persoonlijke Microsoft-agenda gekoppeld." /> : <div className="connectionRow"><div><strong>{microsoftConnection.display_name || microsoftConnection.email}</strong><span>{microsoftConnection.email}</span><small>Eigen agenda en toegestane gedeelde agenda&apos;s · alleen lezen</small></div><span className="status connected">Verbonden</span></div>}
+        {!microsoftConnection ? <Empty text="Nog geen persoonlijke Microsoft-agenda gekoppeld." /> : <div className="connectionRow"><div><strong>{microsoftConnection.display_name || microsoftConnection.email}</strong><span>{microsoftConnection.email}</span><small>Eigen agenda en toegestane gedeelde agenda&apos;s Â· alleen lezen</small></div><span className="status connected">Verbonden</span></div>}
         <div className="apiScopeList"><h3>Gedeelde agenda&apos;s</h3><span>admin@leclubbbq.nl</span><span>info@leclubbbq.nl</span><span>verhuur@leclubbbq.nl</span><small>Zichtbaar zodra deze agenda&apos;s in Microsoft met jou zijn gedeeld.</small></div>
       </article>
     </section>
@@ -3605,14 +3618,14 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
           <label>Robuust PID<input name="pid" required placeholder="Jouw Robuust bedrijfs-ID" autoComplete="off" /></label>
           <label>Robuust API-sleutel<input name="apiKey" type="password" required autoComplete="new-password" placeholder="Eenmalig invoeren" /></label>
           <div className="sensitiveNote"><strong>Versleuteld</strong><span>De API-sleutel wordt opgeslagen in Supabase Vault en verschijnt daarna niet meer op het scherm.</span></div>
-          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controlerenÃ¢â‚¬Â¦" : "Robuust verbinden"}</button>
+          <button className="primary" disabled={connecting}>{connecting ? "Verbinding controlerenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Robuust verbinden"}</button>
         </form>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>OfficiÃƒÂ«le Robuust Reserveringen-API.</p></div></div>
+        <div className="panelHead"><div><h2>Verbindingsstatus</h2><p>OfficiÃƒÆ’Ã‚Â«le Robuust Reserveringen-API.</p></div></div>
         {!accounts.length && <Empty text="Nog geen Robuust-koppeling ingesteld." />}
         {accounts.map((account) => <div className="connectionRow" key={account.id}><div><strong>{account.display_name || "Robuust"}</strong><span>PID: {account.external_account_id}</span><small>{account.last_synced_at ? `Gecontroleerd op ${formatDate(account.last_synced_at)}` : "Nog niet gecontroleerd"}</small></div><span className={`status ${account.connection_status}`}>{statusLabel[account.connection_status] || account.connection_status}</span></div>)}
-        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>Ã¢Å“â€œ Partnerbedrijf herkennen</span><span>Ã¢Å“â€œ Beschikbaarheid van reserveringen controleren</span><span>Ã¢â‚¬â€œ Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
+        <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Partnerbedrijf herkennen</span><span>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Beschikbaarheid van reserveringen controleren</span><span>ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
       </article>
     </section>
     <section className="integrationGrid">
@@ -3623,13 +3636,13 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <form action={connectMeta} className="stack">
           <label>Horeca OS-vestiging<select name="businessId" required defaultValue=""><option value="" disabled>Kies een vestiging</option>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label>
           <div className="sensitiveNote"><strong>Veilig opgeslagen</strong><span>Het toegangstoken wordt versleuteld en is alleen server-side beschikbaar voor deze vestiging.</span></div>
-          <button className="primary" disabled={connecting || !metaConfiguration.ready}>{connecting ? "Instagram openenÃ¢â‚¬Â¦" : "Instagram-profiel koppelen"}</button>
+          <button className="primary" disabled={connecting || !metaConfiguration.ready}>{connecting ? "Instagram openenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Instagram-profiel koppelen"}</button>
         </form>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>Instagram per vestiging</h2><p>Elk profiel hoort bij precies ÃƒÂ©ÃƒÂ©n Horeca OS-bedrijf.</p></div></div>
+        <div className="panelHead"><div><h2>Instagram per vestiging</h2><p>Elk profiel hoort bij precies ÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©n Horeca OS-bedrijf.</p></div></div>
         {!metaAccounts.length && <Empty text="Nog geen Instagram-profiel technisch gekoppeld." />}
-        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div>{account && <div><button className="secondaryButton" type="button" disabled={testingMetaBusinessId === business.id || syncingMetaBusinessId === business.id} onClick={() => verifyMeta(business.id)}>{testingMetaBusinessId === business.id ? "TestenÃ¢â‚¬Â¦" : "Verbinding testen"}</button><button className="secondaryButton" type="button" disabled={syncingMetaBusinessId === business.id || testingMetaBusinessId === business.id} onClick={() => syncMeta(business.id)}>{syncingMetaBusinessId === business.id ? "OphalenÃ¢â‚¬Â¦" : "Reacties ophalen"}</button></div>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
+        {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div>{account && <div><button className="secondaryButton" type="button" disabled={testingMetaBusinessId === business.id || syncingMetaBusinessId === business.id} onClick={() => verifyMeta(business.id)}>{testingMetaBusinessId === business.id ? "TestenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Verbinding testen"}</button><button className="secondaryButton" type="button" disabled={syncingMetaBusinessId === business.id || testingMetaBusinessId === business.id} onClick={() => syncMeta(business.id)}>{syncingMetaBusinessId === business.id ? "OphalenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Reacties ophalen"}</button></div>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
     <section className="integrationGrid">
@@ -3640,33 +3653,33 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <form action={connectFacebook} className="stack">
           <label>Horeca OS-vestiging<select name="businessId" required defaultValue=""><option value="" disabled>Kies een vestiging</option>{businesses.map((business) => <option value={business.id} key={business.id}>{business.name}</option>)}</select></label>
           <div className="sensitiveNote"><strong>Automatisch gekoppeld</strong><span>De Facebookpagina moet bij het Instagram-profiel van dezelfde vestiging horen. Toegangssleutels blijven versleuteld op de server.</span></div>
-          <button className="primary" disabled={connecting || !facebookConfiguration.ready}>{connecting ? "Facebook openenâ€¦" : "Facebookpagina koppelen"}</button>
+          <button className="primary" disabled={connecting || !facebookConfiguration.ready}>{connecting ? "Facebook openenÃ¢â‚¬Â¦" : "Facebookpagina koppelen"}</button>
         </form>
       </article>
       <article className="panel">
         <div className="panelHead"><div><h2>Facebook per vestiging</h2><p>Voor reacties, paginaberichten en later campagne-KPI's.</p></div></div>
         {!facebookAccounts.length && <Empty text="Nog geen Facebookpagina technisch gekoppeld." />}
-        {businesses.map((business) => { const account = facebookAccounts.find((item) => item.business_id === business.id); const canSync = account?.granted_scopes?.includes("pages_read_engagement"); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen Facebookpagina gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel eerst Instagram en daarna Facebook"}</small></div>{account && <button className="secondaryButton" type="button" disabled={!canSync || syncingFacebookBusinessId === business.id} onClick={() => syncFacebook(business.id)}>{canSync ? (syncingFacebookBusinessId === business.id ? "OphalenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Berichten & reacties ophalen") : "Meta-leesrecht vereist"}</button>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
+        {businesses.map((business) => { const account = facebookAccounts.find((item) => item.business_id === business.id); const canSync = account?.granted_scopes?.includes("pages_read_engagement"); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen Facebookpagina gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel eerst Instagram en daarna Facebook"}</small></div>{account && <button className="secondaryButton" type="button" disabled={!canSync || syncingFacebookBusinessId === business.id} onClick={() => syncFacebook(business.id)}>{canSync ? (syncingFacebookBusinessId === business.id ? "OphalenÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦" : "Berichten & reacties ophalen") : "Meta-leesrecht vereist"}</button>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
     <section className="integrationGrid">
       <article className="panel integrationSetup">
-        <div className="integrationBrand"><div className="integrationLogo">WA</div><div><h2>WhatsApp Business</h2><p>Privéberichten realtime in de Social inbox</p></div></div>
-        <div className="scopeBanner"><strong>Per vestiging en telefoonnummer</strong><span>Elk WhatsApp Business-nummer wordt aan precies één Horeca OS-vestiging gekoppeld.</span></div>
+        <div className="integrationBrand"><div className="integrationLogo">WA</div><div><h2>WhatsApp Business</h2><p>PrivÃ©berichten realtime in de Social inbox</p></div></div>
+        <div className="scopeBanner"><strong>Per vestiging en telefoonnummer</strong><span>Elk WhatsApp Business-nummer wordt aan precies Ã©Ã©n Horeca OS-vestiging gekoppeld.</span></div>
         {!whatsappConfiguration.ready && <div className="notice">De veilige ontvangst staat klaar. Nog nodig in Meta: {whatsappConfiguration.missing.join(", ") || "WhatsApp-configuratie"}.</div>}
         {whatsappConfiguration.ready && !whatsappAccounts.length && <div className="notice successNotice">De server is gereed. De volgende stap is het juiste WhatsApp Business-nummer per vestiging autoriseren.</div>}
         <div className="sensitiveNote"><strong>Realtime</strong><span>Nieuwe berichten komen via een gecontroleerde Meta-webhook binnen. Antwoorden worden altijd vanuit het nummer van dezelfde vestiging verzonden.</span></div>
         <small>Webhook: {whatsappConfiguration.webhookUrl || "wordt na configuratie getoond"}</small>
       </article>
       <article className="panel">
-        <div className="panelHead"><div><h2>WhatsApp per vestiging</h2><p>Caribbean Corner en Grandcafé Het Plein blijven volledig gescheiden.</p></div></div>
+        <div className="panelHead"><div><h2>WhatsApp per vestiging</h2><p>Caribbean Corner en GrandcafÃ© Het Plein blijven volledig gescheiden.</p></div></div>
         {businesses.map((business) => { const account = whatsappAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account?.display_name || "Geen WhatsApp-nummer gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst bericht ${formatDate(account.last_synced_at)}` : "Koppel straks het eigen WhatsApp Business-nummer"}</small></div><span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     <section className="integrationGrid">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">BR</div><div><h2>Brevo</h2><p>Contactlijsten, nieuwsbrieven en campagneprestaties</p></div></div>
         <div className="scopeBanner"><strong>Alleen lezen</strong><span>Horeca OS haalt gegevens op uit Brevo, maar verstuurt of wijzigt nog niets.</span></div>
-        <div className="sensitiveNote"><strong>Per vestiging gescheiden</strong><span>Caribbean Corner en Grandcafé Het Plein zien uitsluitend hun toegewezen Brevo-lijsten en campagnes.</span></div>
+        <div className="sensitiveNote"><strong>Per vestiging gescheiden</strong><span>Caribbean Corner en GrandcafÃ© Het Plein zien uitsluitend hun toegewezen Brevo-lijsten en campagnes.</span></div>
         <small>De API-sleutel blijft uitsluitend versleuteld op de server beschikbaar.</small>
       </article>
       <article className="panel">
@@ -3687,16 +3700,16 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
           return <div className="connectionRow brevoBusiness" key={business.id}>
             <div className="brevoBusinessContent">
               <strong>{business.name}</strong>
-              <span>{brevo?.ok ? `${brevo.lists.length} lijst(en) · ${campaigns.length} verzonden campagne(s)` : brevo?.error || "Controleren..."}</span>
+              <span>{brevo?.ok ? `${brevo.lists.length} lijst(en) Â· ${campaigns.length} verzonden campagne(s)` : brevo?.error || "Controleren..."}</span>
               <small>{brevo?.account?.companyName || brevo?.account?.email || (brevo?.configured ? "Brevo-lijsten toegewezen" : "Nog niet ingesteld")}</small>
               {brevo?.ok && <>
                 <div className="scopeBanner">
                   <strong>Contactlijsten</strong>
-                  <span>{brevo.lists.length ? brevo.lists.map((list) => `${list.name} (${Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten)`).join(" · ") : "Geen toegewezen lijsten gevonden."}</span>
+                  <span>{brevo.lists.length ? brevo.lists.map((list) => `${list.name} (${Number(list.totalSubscribers || list.uniqueSubscribers || 0)} contacten)`).join(" Â· ") : "Geen toegewezen lijsten gevonden."}</span>
                 </div>
                 <div className="scopeBanner">
                   <strong>Campagneprestaties</strong>
-                  <span>{campaigns.length ? `${totals.delivered} bezorgd · ${openRate}% geopend · ${clickRate}% geklikt · ${totals.unsubscribed} afmeldingen` : "Er zijn nog geen verzonden campagnes voor deze vestiging gevonden."}</span>
+                  <span>{campaigns.length ? `${totals.delivered} bezorgd Â· ${openRate}% geopend Â· ${clickRate}% geklikt Â· ${totals.unsubscribed} afmeldingen` : "Er zijn nog geen verzonden campagnes voor deze vestiging gevonden."}</span>
                 </div>
                 {campaigns.slice(0, 5).map((campaign) => {
                   const stats = campaign.statistics || {};
@@ -3706,7 +3719,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
                   return <div className="factorRow" key={campaign.id}>
                     <div>
                       <strong>{campaign.subject || campaign.name || "Campagne zonder onderwerp"}</strong>
-                      <small>{campaign.sentDate ? new Date(campaign.sentDate).toLocaleDateString("nl-NL") : "Verzenddatum onbekend"} · {delivered} bezorgd · {opens} opens · {clicks} clicks</small>
+                      <small>{campaign.sentDate ? new Date(campaign.sentDate).toLocaleDateString("nl-NL") : "Verzenddatum onbekend"} Â· {delivered} bezorgd Â· {opens} opens Â· {clicks} clicks</small>
                     </div>
                   </div>;
                 })}
@@ -3815,25 +3828,25 @@ function UsersAdmin({ workspaceId, session }) {
           <label>Telefoonnummer<input name="phone" type="tel" /></label>
           <label>Eerste dag loonverband<input name="employmentStart" type="date" /></label>
           <label>Laatste dag loonverband<input name="employmentEnd" type="date" /></label>
-          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiÃƒÂ«ne, wijnkennis" /></label>
+          <label className="full">Competenties<input name="competencies" placeholder="Bijvoorbeeld BHV, sociale hygiÃƒÆ’Ã‚Â«ne, wijnkennis" /></label>
           <label>Adres<input name="address" autoComplete="street-address" /></label>
           <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" /></label><label>Woonplaats<input name="city" autoComplete="address-level2" /></label></div>
           <label>Geboorteplaats<input name="birthplace" /></label>
           <label>Geboortedatum<input name="birthDate" type="date" /></label>
           <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} />{label}</label>)}</div></fieldset>
           <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" />Uurloon (oproepkracht)</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" />Maandloon (vaste dienst)</label></fieldset>
-          <label>Loon (Ã¢â€šÂ¬)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
+          <label>Loon (ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬)<input name="wageAmount" type="number" min="0" step="0.01" /></label>
           <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
           <label>Bankrekening<input name="iban" autoComplete="off" placeholder="Wordt versleuteld opgeslagen" /></label>
           <label>Ranking<input name="ranking" type="number" min="-1" defaultValue="10" /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
           <label>Robuust medewerker-ID<input name="externalEmployeeId" placeholder="Later automatisch gevuld door koppeling" /></label>
           <div className="sensitiveNote full"><strong>Extra beveiligd</strong><span>BSN, bankrekening, pincode, geboortedatum en loon worden versleuteld opgeslagen. Horeca OS-rollen blijven gescheiden van Robuust-functies.</span></div>
-          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduldÃ¢â‚¬Â¦" : "Medewerker aanmaken"}</button></div>
+          <div className="formActions full"><button type="reset" className="secondaryButton">Leegmaken</button><button className="primary" disabled={loadingUsers}>{loadingUsers ? "Even geduldÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Medewerker aanmaken"}</button></div>
         </form>
       </article>
       <article className="panel usersPanel">
         <div className="panelHead"><div><h2>Actieve en uitgenodigde gebruikers</h2><p>{adminData.users.length} gebruiker(s) binnen deze werkruimte.</p></div></div>
-        {loadingUsers && <Empty text="Gebruikers ladenÃ¢â‚¬Â¦" />}
+        {loadingUsers && <Empty text="Gebruikers ladenÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" />}
         {!loadingUsers && !adminData.users.length && <Empty text="Nog geen gebruikers gevonden." />}
         <div className="userList">{adminData.users.map((user) => {
           const assignment = user.assignments[0];
@@ -3861,7 +3874,7 @@ const PERMISSION_OPTIONS = [
   ["time:manage", "Uren van medewerkers corrigeren"],
   ["schedule:read", "Eigen rooster en beschikbaarheid bekijken"],
   ["schedule:manage", "Roosters en diensten beheren"],
-  ["finance:read", "FinanciÃƒÂ«n bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
+  ["finance:read", "FinanciÃƒÆ’Ã‚Â«n bekijken"], ["foodcost:read", "Foodcost, producten en recepten bekijken"],
   ["foodcost:manage", "Foodcost, producten en recepten beheren"], ["kitchen:manage", "Keuken beheren"],
   ["reviews:read", "Reviews bekijken"], ["reviews:respond", "Op reviews reageren"],
   ["reviews:manage", "Reviews beheren"], ["marketing:read", "Marketing bekijken"],
@@ -3884,7 +3897,7 @@ function AccessFields({ roles, businesses, initialRoleId = "", initialBusinessId
     <label>{compact ? "Toegang" : "Vestigingstoegang"}<select name="businessId" defaultValue={initialBusinessId || ""}><option value="">Alle vestigingen</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
     {role && <fieldset className={`permissionPicker full ${custom ? "editable" : "readOnly"}`}><legend>{custom ? "Machtigingen voor deze gebruiker *" : `Toegang met de rol ${role.name}`}</legend><p>{custom ? "Vink alleen aan wat deze gebruiker binnen de gekozen vestiging mag doen." : "Dit is het vaste rechtenpakket van deze rol. Kies Aangepast wanneer je losse rechten wilt aanvinken."}</p>{custom
       ? <div className="permissionGrid">{customOptions.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="permissions" value={value} defaultChecked={initialPermissions.includes(value)} />{label}</label>)}</div>
-      : <div className="permissionGrid permissionSummary">{PERMISSION_OPTIONS.map(([value, label]) => <span className={fixedPermissions.has(value) || role.role_key === "owner" ? "granted" : "denied"} key={value}><b>{fixedPermissions.has(value) || role.role_key === "owner" ? "Ã¢Å“â€œ" : "Ã¢â‚¬â€œ"}</b>{label}</span>)}</div>}</fieldset>}
+      : <div className="permissionGrid permissionSummary">{PERMISSION_OPTIONS.map(([value, label]) => <span className={fixedPermissions.has(value) || role.role_key === "owner" ? "granted" : "denied"} key={value}><b>{fixedPermissions.has(value) || role.role_key === "owner" ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“" : "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“"}</b>{label}</span>)}</div>}</fieldset>}
   </>;
 }
 
@@ -3916,19 +3929,19 @@ function EmployeeEditor({ user, onSave }) {
       <fieldset className="full"><legend>Robuust-rollen *</legend><div className="checkGrid">{ROBUUST_ROLE_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="robuustRoles" value={value} defaultChecked={selectedRoles.includes(value)} />{label}</label>)}</div></fieldset>
       <label>E-mail *<input name="email" type="email" required defaultValue={employee.email || user.email} /></label>
       <label>Personeelsnummer<input name="employeeNumber" defaultValue={employee.employee_number || ""} /></label>
-      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld Ã¢â‚¬â€ leeg laten om te behouden" : "Nieuwe pincode"} /></label>
+      <label>Pincode<input name="pinCode" type="password" inputMode="numeric" autoComplete="new-password" placeholder={employee.has_pin ? "Ingesteld ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â leeg laten om te behouden" : "Nieuwe pincode"} /></label>
       <label>Telefoonnummer<input name="phone" type="tel" defaultValue={employee.phone || ""} /></label>
       <label>Eerste dag loonverband<input name="employmentStart" type="date" defaultValue={employee.employment_start || ""} /></label>
       <label>Laatste dag loonverband<input name="employmentEnd" type="date" defaultValue={employee.employment_end || ""} /></label>
-      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiÃƒÂ«ne, wijnkennis" /></label>
+      <label className="full">Competenties<input name="competencies" defaultValue={(employee.competencies || []).join(", ")} placeholder="Bijvoorbeeld BHV, sociale hygiÃƒÆ’Ã‚Â«ne, wijnkennis" /></label>
       <label>Adres<input name="address" autoComplete="street-address" defaultValue={employee.address || ""} /></label>
       <div className="splitFields"><label>Postcode<input name="postalCode" autoComplete="postal-code" defaultValue={employee.postal_code || ""} /></label><label>Woonplaats<input name="city" autoComplete="address-level2" defaultValue={employee.city || ""} /></label></div>
       <label>Geboorteplaats<input name="birthplace" defaultValue={employee.birthplace || ""} /></label>
       <label>Geboortedatum<input name="birthDate" type="date" defaultValue={employee.birth_date || ""} /></label>
       <fieldset className="full"><legend>Functie(s)</legend><div className="checkGrid">{EMPLOYEE_FUNCTION_OPTIONS.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="functions" value={value} defaultChecked={selectedFunctions.includes(value)} />{label}</label>)}</div></fieldset>
       <fieldset><legend>Loonkosten type</legend><label className="radioOption"><input type="radio" name="wageType" value="hourly" defaultChecked={employee.wage_type === "hourly"} />Uurloon</label><label className="radioOption"><input type="radio" name="wageType" value="monthly" defaultChecked={employee.wage_type === "monthly"} />Maandloon</label></fieldset>
-      <label>Loon (Ã¢â€šÂ¬)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
-      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢ ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
+      <label>Loon (ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬)<input name="wageAmount" type="number" min="0" step="0.01" defaultValue={employee.wage_amount ?? ""} /></label>
+      <label>BSN-nummer<input name="bsn" inputMode="numeric" autoComplete="off" placeholder={employee.has_bsn ? `Ingesteld ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ${employee.bsn_last_four}` : "Wordt versleuteld opgeslagen"} /></label>
       <label>Bankrekening<input name="iban" autoComplete="off" placeholder={employee.has_iban ? employee.iban_masked : "Wordt versleuteld opgeslagen"} /></label>
       <label>Ranking<input name="ranking" type="number" min="-1" defaultValue={employee.ranking ?? 10} /><small>-1 verbergt de medewerker in Robuust-lijsten.</small></label>
       <label>Robuust medewerker-ID<input name="externalEmployeeId" defaultValue={employee.external_employee_id || ""} placeholder="Later automatisch gevuld door koppeling" /></label>
@@ -4039,7 +4052,7 @@ function Card({ label, value, sub, tone = "normal" }) { return <article classNam
 function ChannelCard({ label, revenue, orders, share: channelShare }) { return <article className="channelCard"><div><span>{label}</span><strong>{money(revenue)}</strong></div><div className="channelMeta"><small>{number(orders)} orders</small><small>{channelShare.toFixed(1)}% van omzet</small></div></article>; }
 function Panel({ title, subtitle, children }) { return <article className="panel"><div className="panelHead"><div><h2>{title}</h2><p>{subtitle}</p></div></div>{children}</article>; }
 function Empty({ text }) { return <p className="empty">{text}</p>; }
-function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃƒÆ’Ã‚Â«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
+function buildAdvice({ criticalTasks, sales, events, securityWarnings }) { if (criticalTasks.length) return `Pak eerst ${criticalTasks.length} kritieke taak${criticalTasks.length === 1 ? "" : "en"} op.`; if (securityWarnings) return `${securityWarnings} beveiligingscontrole${securityWarnings === 1 ? " vraagt" : "s vragen"} aandacht.`; if (!sales.revenue) return "Er is vandaag nog geen omzet geregistreerd."; if (!events.length) return "De komende agenda is leeg; controleer evenementen en commerciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â«le planning."; return "De basis is stabiel. Volg omzet en operationele prioriteiten per vestiging."; }
 function rowsBetween(rows, start, end) { const from = isoDate(start); const through = isoDate(end); return rows.filter((row) => row.sales_date >= from && row.sales_date <= through); }
 function sum(rows, key) { return rows.reduce((total, row) => total + number(row[key]), 0); }
 function share(value, total) { return total ? (value / total) * 100 : 0; }
@@ -4062,6 +4075,6 @@ function toLocalDateTimeInput(value) { if (!value) return ""; const date = new D
 function localInputToIso(value) { return value ? new Date(String(value)).toISOString() : null; }
 
 function TimeEntryEditor({ entry, businesses, minutes, onCorrect }) {
-  return <div className="hoursRecord"><div className="hoursEntry"><div><b>{timeEntryEmployeeName(entry)} {entry.corrected_at && <em className="restoredBadge">Hersteld</em>}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} Ã‚Â· {formatDate(entry.clocked_in_at)}{entry.break_minutes ? ` Ã‚Â· ${entry.break_minutes} min pauze` : ""}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutes) : "Actief"}</strong></div>{entry.correction_reason && <small className="correctionReason">Reden: {entry.correction_reason}</small>}<details className="correctionEditor"><summary>Tijd corrigeren</summary><form onSubmit={(event) => onCorrect(event, entry.id)}><label>Ingeklokt<input name="clockedIn" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_in_at)} required /></label><label>Uitgeklokt<input name="clockedOut" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_out_at)} required /></label><label>Pauze (min)<input name="breakMinutes" type="number" min="0" defaultValue={entry.break_minutes || 0} /></label><label>Reden correctie<input name="reason" required maxLength="500" placeholder="Bijv. vergeten uit te klokken" /></label><button className="secondaryButton">Correctie opslaan</button></form></details></div>;
+  return <div className="hoursRecord"><div className="hoursEntry"><div><b>{timeEntryEmployeeName(entry)} {entry.corrected_at && <em className="restoredBadge">Hersteld</em>}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} Ãƒâ€šÃ‚Â· {formatDate(entry.clocked_in_at)}{entry.break_minutes ? ` Ãƒâ€šÃ‚Â· ${entry.break_minutes} min pauze` : ""}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutes) : "Actief"}</strong></div>{entry.correction_reason && <small className="correctionReason">Reden: {entry.correction_reason}</small>}<details className="correctionEditor"><summary>Tijd corrigeren</summary><form onSubmit={(event) => onCorrect(event, entry.id)}><label>Ingeklokt<input name="clockedIn" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_in_at)} required /></label><label>Uitgeklokt<input name="clockedOut" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_out_at)} required /></label><label>Pauze (min)<input name="breakMinutes" type="number" min="0" defaultValue={entry.break_minutes || 0} /></label><label>Reden correctie<input name="reason" required maxLength="500" placeholder="Bijv. vergeten uit te klokken" /></label><button className="secondaryButton">Correctie opslaan</button></form></details></div>;
 }
 
