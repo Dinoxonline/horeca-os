@@ -426,7 +426,7 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && <><CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><PredisContentGenerator mode="generate" workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /></>}
+        {activeView === "marketing" && featureVisibility.marketing && <MarketingWorkspace workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
@@ -442,6 +442,49 @@ function NavLink({ active, children, href }) { return <Link className={`nav ${ac
 
 function EmptyModule({ eyebrow, title, description }) {
   return <><section className="pageIntro"><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></section><section className="panel emptyModule"><strong>Klaar voor de eerste databron</strong><p>Dit onderdeel is onderdeel van de nieuwe applicatiestructuur. Er wordt geen voorbeelddata getoond.</p></section></>;
+}
+
+function MarketingWorkspace({ workspaceId, businessId, businesses, session }) {
+  const [workflow, setWorkflow] = useState("create");
+  const workflows = [
+    { id: "create", title: "Nieuwe campagne of evenement", description: "Maak nieuwe content en vul alle gegevens één keer in." },
+    { id: "promote", title: "Bestaande inhoud promoten", description: "Kies een bestaand bericht of evenement en verspreid het verder." },
+    { id: "newsletter", title: "Nieuwsbrief maken", description: "Maak en beheer een Brevo-campagne voor de gekozen doelgroep." },
+    { id: "predis", title: "Predis-concept maken", description: "Laat een beeld- en tekstconcept maken voor een vestiging." },
+  ];
+  const selected = workflows.find((item) => item.id === workflow) || workflows[0];
+
+  return <>
+    <section className="panel marketingWorkspacePicker">
+      <p className="eyebrow">Marketingwerkplek</p>
+      <div className="marketingWorkspaceHeading">
+        <div>
+          <h2>Wat wil je doen?</h2>
+          <p>Kies één activiteit. Je blijft op deze pagina en ziet alleen de onderdelen die je daarvoor nodig hebt.</p>
+        </div>
+        <div className="marketingSelectedWorkflow"><span>Gekozen</span><strong>{selected.title}</strong></div>
+      </div>
+      <div className="marketingWorkflowGrid">
+        {workflows.map((item) => <button
+          key={item.id}
+          type="button"
+          className={`marketingWorkflowChoice ${workflow === item.id ? "active" : ""}`}
+          aria-pressed={workflow === item.id}
+          onClick={() => setWorkflow(item.id)}
+        >
+          <strong>{item.title}</strong>
+          <span>{item.description}</span>
+        </button>)}
+      </div>
+    </section>
+
+    <div className="marketingWorkflowContent">
+      {workflow === "create" && <CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />}
+      {workflow === "promote" && <CampaignDistributor workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />}
+      {workflow === "newsletter" && <MarketingCampaignBuilder workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />}
+      {workflow === "predis" && <PredisContentGenerator mode="generate" workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />}
+    </div>
+  </>;
 }
 
 function normalizeCampaignSource(value) {
