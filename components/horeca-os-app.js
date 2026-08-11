@@ -991,6 +991,30 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       || accounts.find((item) => item.provider === "instagram")
       || accounts[0];
     const plannedDate = new Date(scheduledFor);
+    if (Number.isNaN(plannedDate.getTime()) || plannedDate.getTime() <= Date.now()) {
+      setStatus("Kies een geldig publicatiemoment in de toekomst.");
+      setSaving(false);
+      return;
+    }
+    const connectedProviders = new Set((accounts || []).map((item) => String(item.provider || "").toLowerCase()));
+    const providerAliases = {
+      brevo: ["brevo"],
+      facebook: ["facebook", "meta"],
+      instagram: ["instagram", "meta"],
+      tiktok: ["tiktok"],
+      whatsapp: ["whatsapp", "meta"],
+      google_business_profile: ["google_business_profile", "google_business", "google"],
+      google_ads: ["google_ads", "google"],
+    };
+    const channelConnectionState = (channel) => {
+      if (manualEmailByChannel[channel]) return "email_ready";
+      if (channel === "facebook_groups") return "confirmation_required";
+      if (channel === "google_ads") return "approval_required";
+      const aliases = providerAliases[channel] || [channel];
+      return aliases.some((provider) => connectedProviders.has(provider))
+        ? "ready_to_publish"
+        : "connection_required";
+    };
     const metadata = {
       kind: "campaign_distribution",
       source_type: sourceType,
@@ -1007,12 +1031,9 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       target_channels: freshChannels,
       channel_states: Object.fromEntries(freshChannels.map((channel) => [
         channel,
-        manualEmailByChannel[channel]
-          ? "email_ready"
-          : channel === "facebook_groups"
-            ? "confirmation_required"
-            : "planned",
+        channelConnectionState(channel),
       ])),
+      predis_state: usePredis ? "ready_for_concept" : "not_selected",
       email_handoffs: freshChannels
         .filter((channel) => manualEmailByChannel[channel])
         .map((channel) => ({ channel, ...manualEmailByChannel[channel], state: "email_ready" })),
@@ -1049,24 +1070,19 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       setSaving(false);
       return;
     }
-    const connectedProviders = new Set((accounts || []).map((item) => item.provider));
+    const resultLabels = {
+      email_ready: "E-mail klaarzetten",
+      confirmation_required: "Handmatige bevestiging nodig",
+      approval_required: "Goedkeuring nodig",
+      ready_to_publish: "Klaar voor publicatie",
+      connection_required: "Koppeling nodig",
+    };
     setChannelResult([
       ...duplicateChannels.map((channel) => ({ channel, state: "Al geplaatst/gepland" })),
       ...freshChannels.map((channel) => ({
-      channel,
-      state: manualEmailByChannel[channel]
-        ? "E-mail klaarzetten"
-        : channel === "facebook_groups"
-          ? "Bevestiging nodig"
-          : channel === "brevo"
-            ? "Klaargezet in Marketing"
-            : connectedProviders.has(channel)
-            || (channel === "facebook" && connectedProviders.has("meta"))
-            || (channel === "google_business_profile" && (connectedProviders.has("google_business_profile") || connectedProviders.has("google_business")))
-            || (channel === "google_ads" && connectedProviders.has("google_ads"))
-            ? "Gepland"
-            : "Koppeling controleren",
-    })),
+        channel,
+        state: resultLabels[channelConnectionState(channel)] || "Controle nodig",
+      })),
     ]);
     await loadCampaigns();
     setStatus(duplicateChannels.length
@@ -1269,9 +1285,9 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           </div>
         </div>)}
       </div>}
-      <button type="submit" className="primary full" disabled={saving}>{saving ? "Campagne klaarzetten..." : "Alles inplannen"}</button>
+      <button type="submit" className="primary full" disabled={saving}>{saving ? "Testcampagne klaarzetten..." : "Testcampagne klaarzetten"}</button>
     </form>
-    <p className="securityHint">Betaalde Meta-campagnes worden nooit geactiveerd zonder een afzonderlijke definitieve uitgavenbevestiging.</p>
+    <p className="securityHint">Dit maakt één gecontroleerd campagneplan. Een kanaal wordt pas als geplaatst getoond nadat de aanbieder dat heeft bevestigd. Betaalde Meta-campagnes worden nooit geactiveerd zonder een afzonderlijke definitieve uitgavenbevestiging.</p>
     <div className="sectionHeading" style={{ marginTop: "28px" }}>
       <div><p className="eyebrow">Campagnecontrole</p><h3>Ingeplande campagnes</h3><p>Hier zie je per vestiging wat werkelijk is opgeslagen en welke kanalen nog aandacht nodig hebben.</p></div>
       <button type="button" className="secondaryButton" onClick={loadCampaigns} disabled={loadingCampaigns}>{loadingCampaigns ? "Vernieuwen..." : "Overzicht vernieuwen"}</button>
@@ -1306,7 +1322,15 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                 const manualTarget = manualEmailByChannel[channel];
                 const channelState = distribution.channel_states?.[channel];
                 if (!manualTarget) {
-                  return <span className="pill" key={channel}>{labels[channel] || channel}: {channelState === "confirmation_required" ? "bevestiging nodig" : "gepland"}</span>;
+                  const stateLabels = {
+                    ready_to_publish: "klaar voor publicatie",
+                    connection_required: "koppeling nodig",
+                    confirmation_required: "bevestiging nodig",
+                    approval_required: "goedkeuring nodig",
+                    planned: "ingepland",
+                    published: "geplaatst",
+                  };
+                  return <span className="pill" key={channel}>{labels[channel] || channel}: {stateLabels[channelState] || "controle nodig"}</span>;
                 }
                 return <div className="factorRow" key={channel} style={{ width: "100%", padding: "10px 12px", alignItems: "center" }}>
                   <div>
