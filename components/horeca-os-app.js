@@ -516,6 +516,10 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [websiteEvents, setWebsiteEvents] = useState([]);
   const [selectedWebsiteEventId, setSelectedWebsiteEventId] = useState("");
   const [loadingWebsiteEvents, setLoadingWebsiteEvents] = useState(false);
+  const [facebookEvents, setFacebookEvents] = useState([]);
+  const [selectedFacebookEventId, setSelectedFacebookEventId] = useState("");
+  const [loadingFacebookEvents, setLoadingFacebookEvents] = useState(false);
+  const [showPastFacebookEvents, setShowPastFacebookEvents] = useState(false);
   const [checkingPlacements, setCheckingPlacements] = useState(false);
   const [placementCheckedAt, setPlacementCheckedAt] = useState("");
   const [campaignImages, setCampaignImages] = useState({});
@@ -825,6 +829,79 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     setStatus(`${eventItem.title} geselecteerd. Controleer nu de tekst, kanalen en publicatiedatum.`);
   }
 
+  async function loadFacebookEvents(includePast = showPastFacebookEvents) {
+    if (!selectedBusinessId) {
+      setStatus("Kies eerst een vestiging.");
+      return;
+    }
+    setLoadingFacebookEvents(true);
+    setStatus("");
+    try {
+      const query = new URLSearchParams({
+        workspaceId,
+        businessId: selectedBusinessId,
+        includePast: String(includePast),
+      });
+      const response = await fetch(`/api/integrations/facebook/events?${query}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De Facebook-evenementen konden niet worden geladen.");
+      setFacebookEvents(result.events || []);
+      setStatus(result.events?.length
+        ? `${result.events.length} Facebook-evenementen van ${result.pageName || "de gekozen pagina"} geladen.`
+        : "Er zijn geen passende Facebook-evenementen gevonden.");
+    } catch (error) {
+      setFacebookEvents([]);
+      setStatus(error.message || "De Facebook-evenementen konden niet worden geladen.");
+    } finally {
+      setLoadingFacebookEvents(false);
+    }
+  }
+
+  function clearFacebookEventSelection() {
+    setSelectedFacebookEventId("");
+    setSourceUrl("");
+    setSourcePreview(null);
+    setCampaignTitle("");
+    setCampaignText("");
+    setScheduledFor("");
+    setStatus("Facebook-evenement gedeselecteerd. Kies een ander evenement.");
+  }
+
+  function selectFacebookEvent(eventItem) {
+    if (selectedFacebookEventId === eventItem.id) {
+      clearFacebookEventSelection();
+      return;
+    }
+    setSelectedFacebookEventId(eventItem.id);
+    setSelectedWebsiteEventId("");
+    setSourceUrl(eventItem.sourceUrl || "");
+    setSourcePreview(eventItem);
+    setCampaignTitle(eventItem.title || "");
+    setCampaignText(eventItem.description || "");
+    if (eventItem.startDate) {
+      const date = new Date(eventItem.startDate);
+      if (!Number.isNaN(date.getTime())) {
+        const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        setScheduledFor(local);
+      }
+    }
+    setStatus(`${eventItem.title} geselecteerd. De gegevens en afbeelding zijn overgenomen; controleer nu de kanalen en publicatiedatum.`);
+  }
+
+  function changeSourceType(nextSourceType) {
+    setSourceType(nextSourceType);
+    setSelectedFacebookEventId("");
+    setSelectedWebsiteEventId("");
+    setSourceUrl("");
+    setSourcePreview(null);
+    setCampaignTitle("");
+    setCampaignText("");
+    setScheduledFor("");
+    setStatus("");
+  }
+
   function getImageDimensions(file) {
     return new Promise((resolve, reject) => {
       const image = new Image();
@@ -1097,12 +1174,20 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
     </div>
     <form className="employeeForm creationForm" onSubmit={planCampaign}>
       <label>Vestiging
-        <select value={selectedBusinessId} onChange={(event) => setSelectedBusinessId(event.target.value)}>
+        <select value={selectedBusinessId} onChange={(event) => {
+          setSelectedBusinessId(event.target.value);
+          setFacebookEvents([]);
+          setWebsiteEvents([]);
+          setSelectedFacebookEventId("");
+          setSelectedWebsiteEventId("");
+          setSourceUrl("");
+          setSourcePreview(null);
+        }}>
           {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
         </select>
       </label>
       <label>Soort bron
-        <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+        <select value={sourceType} onChange={(event) => changeSourceType(event.target.value)}>
           <option value="facebook_post">Facebook-bericht</option>
           <option value="facebook_event">Facebook-evenement</option>
           <option value="website_event">Event van onze website (Eventin)</option>
@@ -1112,9 +1197,62 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
           <option value="predis_concept">Predis-concept</option>
         </select>
       </label>
-      {sourceType !== "website_event" && <label className="full">Link naar het bericht of evenement
+      {sourceType !== "website_event" && sourceType !== "facebook_event" && <label className="full">Link naar het bericht of evenement
         <input type="url" value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setSourcePreview(null); }} placeholder="Plak hier de link van Facebook, Instagram, TikTok of Predis" required />
       </label>}
+      {sourceType === "facebook_event" && <div className="full">
+        <div className="sectionHeading">
+          <div>
+            <strong>Evenementen van de gekoppelde Facebookpagina</strong>
+            <p>Kies een evenement; titel, tekst, datum, link en afbeelding worden automatisch ingevuld.</p>
+          </div>
+          <button type="button" className="secondaryButton" onClick={() => loadFacebookEvents()} disabled={loadingFacebookEvents}>
+            {loadingFacebookEvents ? "Evenementen laden..." : facebookEvents.length ? "Evenementen vernieuwen" : "Evenementen laden"}
+          </button>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: "9px", margin: "10px 0 14px" }}>
+          <input
+            type="checkbox"
+            checked={showPastFacebookEvents}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setShowPastFacebookEvents(checked);
+              loadFacebookEvents(checked);
+            }}
+            disabled={loadingFacebookEvents}
+            style={{ width: "auto" }}
+          />
+          Verlopen evenementen tonen
+        </label>
+        {!loadingFacebookEvents && !facebookEvents.length && <Empty text="Laad de evenementen van de Facebookpagina die bij deze vestiging hoort." />}
+        <div className="stackList">
+          {facebookEvents.map((eventItem) => <button
+            type="button"
+            key={eventItem.id}
+            className={`factorRow ${selectedFacebookEventId === eventItem.id ? "selected" : ""}`}
+            onClick={() => selectFacebookEvent(eventItem)}
+            style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong>{eventItem.title}</strong>
+              {eventItem.startDate && <small>{new Intl.DateTimeFormat("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(eventItem.startDate))}</small>}
+              {eventItem.location && <small>{eventItem.location}</small>}
+              <span>{eventItem.description?.slice(0, 180)}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
+              {eventItem.image && <img
+                src={eventItem.image}
+                alt=""
+                width="96"
+                height="72"
+                loading="lazy"
+                style={{ width: "96px", height: "72px", objectFit: "cover", borderRadius: "10px" }}
+              />}
+              <span className="pill">{selectedFacebookEventId === eventItem.id ? "Deselecteren" : "Kiezen"}</span>
+            </div>
+          </button>)}
+        </div>
+      </div>}
       {sourceType === "website_event" && <div className="full">
         <div className="sectionHeading">
           <div><strong>Evenementenagenda van de website</strong><p>Klik op een evenement om het als campagnebron te gebruiken.</p></div>
@@ -1151,13 +1289,17 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         </div>
       </div>}
       {sourcePreview && <div className="notice full">
-        <strong>{sourcePreview.title || "Website-event"}</strong>
+        <strong>{sourcePreview.title || "Evenement"}</strong>
         {sourcePreview.startDate && <p>{formatDate(sourcePreview.startDate)}</p>}
         {sourcePreview.location && <p>{sourcePreview.location}</p>}
-        {sourcePreview.image && <p>Afbeelding gevonden</p>}
-        {sourcePreview.sourceUrl && <a href={sourcePreview.sourceUrl} target="_blank" rel="noreferrer">Evenement op website openen</a>}
+        {sourcePreview.image && <img
+          src={sourcePreview.image}
+          alt={`Afbeelding van ${sourcePreview.title || "het evenement"}`}
+          style={{ display: "block", width: "min(240px, 100%)", marginTop: 12, borderRadius: 10 }}
+        />}
+        {sourcePreview.sourceUrl && <a href={sourcePreview.sourceUrl} target="_blank" rel="noreferrer">Evenement openen</a>}
         <div style={{ marginTop: "12px" }}>
-          <button type="button" className="secondaryButton" onClick={clearWebsiteEventSelection}>Selectie verwijderen</button>
+          <button type="button" className="secondaryButton" onClick={sourcePreview.provider === "facebook" ? clearFacebookEventSelection : clearWebsiteEventSelection}>Selectie verwijderen</button>
         </div>
       </div>}
       <label>Interne campagnenaam
@@ -3925,6 +4067,4 @@ function localInputToIso(value) { return value ? new Date(String(value)).toISOSt
 function TimeEntryEditor({ entry, businesses, minutes, onCorrect }) {
   return <div className="hoursRecord"><div className="hoursEntry"><div><b>{timeEntryEmployeeName(entry)} {entry.corrected_at && <em className="restoredBadge">Hersteld</em>}</b><span>{entry.business?.name || businesses.find((item) => item.id === entry.business_id)?.name || "Vestiging"} Ã‚Â· {formatDate(entry.clocked_in_at)}{entry.break_minutes ? ` Ã‚Â· ${entry.break_minutes} min pauze` : ""}</span></div><strong>{entry.clocked_out_at ? formatDuration(minutes) : "Actief"}</strong></div>{entry.correction_reason && <small className="correctionReason">Reden: {entry.correction_reason}</small>}<details className="correctionEditor"><summary>Tijd corrigeren</summary><form onSubmit={(event) => onCorrect(event, entry.id)}><label>Ingeklokt<input name="clockedIn" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_in_at)} required /></label><label>Uitgeklokt<input name="clockedOut" type="datetime-local" defaultValue={toLocalDateTimeInput(entry.clocked_out_at)} required /></label><label>Pauze (min)<input name="breakMinutes" type="number" min="0" defaultValue={entry.break_minutes || 0} /></label><label>Reden correctie<input name="reason" required maxLength="500" placeholder="Bijv. vergeten uit te klokken" /></label><button className="secondaryButton">Correctie opslaan</button></form></details></div>;
 }
-
-
 
