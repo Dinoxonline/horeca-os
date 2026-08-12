@@ -3265,8 +3265,32 @@ function FoodcostDashboard({ analytics }) {
 }
 
 function ProductOverview({ products, suppliers }) {
+  const [searchQuery, setSearchQuery] = useState("");
   const supplierMap = new Map(suppliers.map((item) => [item.id, item.name]));
-  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope"><div className="cardGrid">{products.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "—"} {product.content_unit || ""} · {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>{!products.length && <Empty text="Geen foodcostproducten gevonden." />}</DataPage>;
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("nl-NL");
+  const visibleProducts = normalizedQuery
+    ? products.filter((product) => [
+      product.name,
+      product.category,
+      supplierMap.get(product.supplier_id),
+    ].some((value) => String(value || "").toLocaleLowerCase("nl-NL").includes(normalizedQuery)))
+    : products;
+
+  return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope">
+    {!!products.length && <label style={{ display: "block", maxWidth: 440, marginBottom: 18, fontSize: 12, fontWeight: 800, color: "#445b6e" }}>
+      Producten zoeken
+      <input
+        type="search"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        placeholder="Zoek op product, categorie of leverancier"
+        style={{ display: "block", width: "100%", marginTop: 6, padding: 10, border: "1px solid #cad7e1", borderRadius: 8, background: "#fff", color: "#17324d" }}
+      />
+    </label>}
+    <div className="cardGrid">{visibleProducts.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "—"} {product.content_unit || ""} · {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>
+    {!products.length && <Empty text="Geen foodcostproducten gevonden." />}
+    {!!products.length && !visibleProducts.length && <Empty text="Geen producten gevonden voor deze zoekopdracht." />}
+  </DataPage>;
 }
 
 function RecipeOverview({ analytics }) {
