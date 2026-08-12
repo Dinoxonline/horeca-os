@@ -39,7 +39,7 @@ const emptyForm = {
   staggerEnabled: true, staggerMinMinutes: "15", staggerMaxMinutes: "45",
   tiktokCaption: "", tiktokPrivacy: "PUBLIC_TO_EVERYONE", tiktokComments: true,
   whatsappTemplate: "", whatsappMessage: "",
-  googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek",
+  googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek", predisGenerate: false,
   regularPrice: "", campaignPrice: "", discountCode: "", validFrom: "", validUntil: "",
   groupSize: "", pricePerPerson: "", reviewerName: "", reviewScore: "5", reviewSource: "",
 };
@@ -104,6 +104,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [brevoLoading, setBrevoLoading] = useState(false);
   const [brevoError, setBrevoError] = useState("");
   const [editingBrevoDraftId, setEditingBrevoDraftId] = useState(null);
+  const [predisBrandId, setPredisBrandId] = useState("");
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const selectedBrevoLists = useMemo(() => brevoLists.filter((item) => selectedBrevoListIds.includes(String(item.id))), [brevoLists, selectedBrevoListIds]);
   const brevoRecipientCount = selectedBrevoLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0);
@@ -359,7 +360,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       tiktokCaption: payloads.tiktok?.caption || "", tiktokPrivacy: payloads.tiktok?.privacy || emptyForm.tiktokPrivacy, tiktokComments: payloads.tiktok?.comments_enabled ?? true,
       whatsappTemplate: payloads.whatsapp?.template_name || "", whatsappMessage: payloads.whatsapp?.message || "",
       googleTopic: payloads.google?.topic_type || (storedType === "event" ? "EVENT" : storedType === "offer" ? "OFFER" : "STANDARD"),
-      predisType: payloads.predis?.content_type || "afbeelding", predisTone: payloads.predis?.tone || emptyForm.predisTone,
+      predisType: payloads.predis?.content_type || "afbeelding", predisTone: payloads.predis?.tone || emptyForm.predisTone, predisGenerate: false,
       staggerEnabled: distribution.schedule_settings?.stagger_enabled ?? true,
       staggerMinMinutes: String(distribution.schedule_settings?.min_minutes ?? 15), staggerMaxMinutes: String(distribution.schedule_settings?.max_minutes ?? 45),
       regularPrice: commercial.regular_price || "", campaignPrice: commercial.campaign_price || "", discountCode: commercial.discount_code || "",
@@ -474,6 +475,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
+    if (!workspaceId || !selectedBusinessId) {
+      setPredisBrandId("");
+      return;
+    }
+    setPredisBrandId(window.localStorage.getItem(`horeca-os:predis:${workspaceId}:${selectedBusinessId}`) || "");
+  }, [workspaceId, selectedBusiness?.id, businessId]);
+
+  useEffect(() => {
+    const selectedBusinessId = selectedBusiness?.id || businessId;
     if (!workspaceId || !selectedBusinessId || !form.channels.brevo) {
       setBrevoLists([]);
       setSelectedBrevoListIds([]);
@@ -529,6 +539,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
     if (form.preparePromotion && form.channels.google && (!form.ctaUrl.trim() || !form.shortDescription.trim())) return "Google heeft een korte tekst en knoplink nodig.";
+    if (form.preparePromotion && form.channels.predis && form.predisGenerate && !predisBrandId) return "Koppel voor deze vestiging eerst een Predis-merk onder Koppelingen.";
+    if (form.preparePromotion && form.channels.predis && form.predisGenerate && (form.description.trim().length < 20 || form.description.trim().split(/\s+/).length < 3)) return "Beschrijf voor Predis de campagne met minimaal 20 tekens en 3 woorden.";
     if (form.preparePromotion && form.staggerEnabled && (Number(form.staggerMinMinutes) < 1 || Number(form.staggerMaxMinutes) < 1)) return "Vul voor de spreiding minimaal 1 minuut in.";
     if (form.preparePromotion && form.staggerEnabled && Number(form.staggerMinMinutes) > Number(form.staggerMaxMinutes)) return "De minimale spreiding kan niet hoger zijn dan de maximale spreiding.";
     if (!mediaReady) return `Vul eerst alle kanaalmedia in: ${channelMediaIssues.join(" ")}`;
@@ -565,7 +577,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       tiktok: { caption: form.tiktokCaption.trim() || form.shortDescription.trim(), privacy: form.tiktokPrivacy, comments_enabled: form.tiktokComments, image_url: imageFor("vertical", ["portrait"]) },
       whatsapp: { template_name: form.whatsappTemplate.trim(), message: form.whatsappMessage.trim() || form.shortDescription.trim(), image_url: imageFor("vertical", ["landscape", "square"]) },
       google: { topic_type: form.googleTopic, summary: form.shortDescription.trim(), event: { title: form.title.trim(), start: form.start, end: form.end }, call_to_action: common.cta, image_url: imageFor("landscape", ["square"]) },
-      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images },
+      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images, generate_requested: form.predisGenerate, brand_id: form.predisGenerate ? predisBrandId : "" },
     };
     const channel_status = Object.fromEntries(enabledChannels.map((channel) => {
       const payload = channel_payloads[channel] || {};
@@ -595,11 +607,30 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       brevoDraft = brevoResult.draft;
       setEditingBrevoDraftId(brevoDraft.id);
     }
+    let predisGeneration = null;
+    if (form.channels.predis && form.predisGenerate) {
+      const predisResponse = await fetch("/api/integrations/predis", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          businessId: selectedBusiness?.id || businessId,
+          brandId: predisBrandId,
+          prompt: `${form.description.trim()}\n\nToon: ${form.predisTone.trim()}`,
+          mediaType: form.predisType === "video" ? "video" : form.predisType === "carousel" ? "carousel" : "single_image",
+        }),
+      }).catch(() => null);
+      const predisResult = predisResponse ? await predisResponse.json().catch(() => ({})) : {};
+      if (!predisResponse?.ok) return { warning: predisResult.error || "Het Predis-concept kon niet worden gestart." };
+      predisGeneration = { post_ids: (predisResult.postIds || []).map(String), status: predisResult.status || "inProgress" };
+    }
     const providerDelivery = Object.fromEntries(enabledChannels.map((channel) => [
       channel,
       channel === "brevo" && brevoDraft
         ? { status: "draft_saved", draft_id: brevoDraft.id, recipient_count: brevoDraft.recipient_count }
-        : { status: "not_submitted" },
+        : channel === "predis" && predisGeneration
+          ? { status: "generating", post_ids: predisGeneration.post_ids, provider_status: predisGeneration.status }
+          : { status: "not_submitted" },
     ]));
     const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
       eventin_event_id: websiteEvent.id, common, target_channels: enabledChannels, channel_payloads, channel_status,
@@ -754,7 +785,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       {form.channels.tiktok && <fieldset><legend>TikTok — video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
       {form.channels.whatsapp && <fieldset><legend>WhatsApp Business — template verplicht bij geplande campagne</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
       {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
-      {form.channels.predis && <fieldset><legend>Predis</legend><label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label><label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label></fieldset>}
+      {form.channels.predis && <fieldset><legend>Predis — veilig als concept</legend>
+        <label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label>
+        <label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label>
+        <div className="predisGenerationChoice">
+          <strong>{predisBrandId ? "Predis-merk gevonden voor deze vestiging" : "Predis is nog niet gekoppeld voor deze vestiging"}</strong>
+          <label className="check"><input type="checkbox" checked={Boolean(form.predisGenerate)} disabled={!predisBrandId} onChange={(e) => update("predisGenerate", e.target.checked)} /> Predis-concept laten maken bij opslaan</label>
+          <small>Standaard uit. Ook wanneer dit aanstaat, wordt het resultaat alleen als concept gemaakt en nooit automatisch gepubliceerd.</small>
+        </div>
+      </fieldset>}
       <fieldset className="wide"><legend>Spreiding per kanaal</legend><label className="check"><input type="checkbox" checked={Boolean(form.staggerEnabled)} onChange={(event) => update("staggerEnabled", event.target.checked)} /> Willekeurige wachttijd tussen de kanalen</label>{form.staggerEnabled && <div className="staggerFields"><label>Minimaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMinMinutes} onChange={(event) => update("staggerMinMinutes", event.target.value)} /></label><label>Maximaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMaxMinutes} onChange={(event) => update("staggerMaxMinutes", event.target.value)} /></label></div>}<p>Horeca OS toont vooraf het interne tijdschema. Een kanaal krijgt pas de status ‘geplaatst’ nadat de aanbieder dit heeft bevestigd.</p></fieldset>
     </div>}
 
@@ -830,7 +869,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               const plannedAt = distribution.channel_schedule?.[channel] || item.scheduled_for;
               const label = confirmed
                 ? "Geplaatst (bevestigd)"
-                : plannedAt
+                : delivery.status === "generating"
+                  ? "Predis maakt een concept"
+                  : plannedAt
                   ? `Intern gepland: ${formatNlDateTime(plannedAt)}`
                   : stored === "extra_gegevens_nodig"
                     ? "Extra gegevens nodig"
@@ -849,7 +890,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     <style jsx>{`
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{color:#5c7285}.conceptFilters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
-      .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.predisGenerationChoice{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.predisGenerationChoice small{color:#5c7285}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
       .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.cropFocus{margin-top:14px;padding:12px;border-radius:10px;background:#eef7f9}.cropFocus select{margin-top:2px}.cropFocus small{color:#5c7285;font-weight:500}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff;transition:border-color .15s ease,background .15s ease,transform .15s ease}.imageSlot.imageSlotAll{margin-top:14px;border:2px dashed #25889b;background:#eef9fa}.imageSlot.exact{border-color:#57ad7d}.imageSlot.dragging{border:2px dashed #25889b;background:#e7f6f8;transform:translateY(-2px)}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.imageDropZone{min-width:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px;border:2px dashed #9cbac3;border-radius:10px;background:#f7fbfc;text-align:center}.imageDropZone>strong{color:#176d7f;font-size:13px}.imageDropZone>small,.replaceHint{color:#5c7285;font-weight:600}.uploadButton{align-self:center;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.mediaCheck{margin-top:14px;padding:12px 14px;border-radius:9px}.mediaCheck ul{margin:8px 0 0;padding-left:20px}.mediaCheckReady{background:#e9f6ee;color:#236d46}.mediaCheckWarning{background:#fff2d1;color:#815b00}.channelImagePreviewGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.channelImagePreview{background:#fff;border:1px solid #c6d5df;border-radius:10px;padding:12px}.channelImagePreviewHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.channelImagePreviewHead span{font-size:12px;padding:5px 8px;border-radius:999px}.imageReady{background:#e9f6ee;color:#236d46}.imageMissing{background:#fff2d1;color:#815b00}.channelImagePreview img{display:block;width:100%;height:180px;object-fit:contain;background:#f4f7f9;border-radius:8px}.channelImagePreview p{margin:9px 0 3px}.channelImagePreview small{display:block;color:#5c7285;line-height:1.4}.channelImagePreview .fallbackNotice{color:#815b00}.missingImageNotice{padding:16px;background:#fff8e6;border-radius:8px;color:#815b00}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{padding:7px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:13px}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.campaignTypeGrid,.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid,.conceptFilters,.channelImagePreviewGrid,.staggerFields{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot{display:block}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
     `}</style>
   </section>;
