@@ -105,14 +105,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [brevoError, setBrevoError] = useState("");
   const [editingBrevoDraftId, setEditingBrevoDraftId] = useState(null);
   const [predisBrandId, setPredisBrandId] = useState("");
+  const [pendingPredisGeneration, setPendingPredisGeneration] = useState(null);
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const selectedBrevoLists = useMemo(() => brevoLists.filter((item) => selectedBrevoListIds.includes(String(item.id))), [brevoLists, selectedBrevoListIds]);
   const brevoRecipientCount = selectedBrevoLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0);
   const site = siteForBusiness(selectedBusiness);
-  const update = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setPreview(false); setResult(null); };
+  const update = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    if (key === "predisGenerate" && !value) setPendingPredisGeneration(null);
+    setPreview(false); setResult(null);
+  };
   const selectCampaignType = (campaignType) => {
     setForm((current) => ({ ...current, campaignType, googleTopic: campaignType === "event" ? "EVENT" : campaignType === "offer" ? "OFFER" : "STANDARD" }));
-    setEditingCampaignId(null); setEditingBrevoDraftId(null); setPreview(false); setResult(null);
+    setEditingCampaignId(null); setEditingBrevoDraftId(null); setPendingPredisGeneration(null); setPreview(false); setResult(null);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const toggleFacebookPlacement = (placement) => {
@@ -370,6 +375,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingCampaignId(storedType === "event" ? null : item.id);
     setEditingBrevoDraftId(storedType === "event" ? null : distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
+    setPendingPredisGeneration(null);
     setPreview(false);
     setResult({ ok: true, message: storedType === "event" ? "Het evenement is als basis geopend. Opslaan maakt veilig een nieuw Eventin-evenement." : "Het campagneconcept is geopend en kan nu worden bijgewerkt." });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -379,6 +385,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     openCampaignConcept(item);
     setEditingCampaignId(null);
     setEditingBrevoDraftId(null);
+    setPendingPredisGeneration(null);
     setResult({ ok: true, message: "Het concept is als kopie geopend. Pas eventueel de naam of inhoud aan en sla het op als nieuw concept." });
   }
 
@@ -607,8 +614,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       brevoDraft = brevoResult.draft;
       setEditingBrevoDraftId(brevoDraft.id);
     }
-    let predisGeneration = null;
-    if (form.channels.predis && form.predisGenerate) {
+    let predisGeneration = form.channels.predis && form.predisGenerate ? pendingPredisGeneration : null;
+    if (form.channels.predis && form.predisGenerate && !predisGeneration) {
       const predisResponse = await fetch("/api/integrations/predis", {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -623,6 +630,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const predisResult = predisResponse ? await predisResponse.json().catch(() => ({})) : {};
       if (!predisResponse?.ok) return { warning: predisResult.error || "Het Predis-concept kon niet worden gestart." };
       predisGeneration = { post_ids: (predisResult.postIds || []).map(String), status: predisResult.status || "inProgress" };
+      setPendingPredisGeneration(predisGeneration);
     }
     const providerDelivery = Object.fromEntries(enabledChannels.map((channel) => [
       channel,
