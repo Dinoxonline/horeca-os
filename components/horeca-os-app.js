@@ -407,9 +407,9 @@ export default function HorecaOsApp() {
         </section>
 
         <section className="kpis secondary">
-          <Card label="Gemiddelde bon deze maand" value={money(analytics.month.averageTicket)} sub={`${analytics.month.orders} orders`} />
-          <Card label="Open taken" value={openTasks.length} sub={`${criticalTasks.length} kritiek`} tone={criticalTasks.length ? "danger" : "normal"} />
-          <Card label="Security" value={securityWarnings ? `${securityWarnings} aandacht` : "Op orde"} sub={`${securityOk}/${data.security.length || 0} controles akkoord`} tone={securityWarnings ? "warning" : "success"} />
+          <Card label="Gemiddelde bon deze maand" value={money(analytics.month.averageTicket)} sub={`${analytics.month.orders} ${analytics.month.orders === 1 ? "bestelling" : "bestellingen"}`} />
+          <Card label="Open taken" value={openTasks.length} sub={`${criticalTasks.length} kritieke ${criticalTasks.length === 1 ? "taak" : "taken"}`} tone={criticalTasks.length ? "danger" : "normal"} />
+          <Card label="Security" value={securityWarnings ? `${securityWarnings} ${securityWarnings === 1 ? "aandachtspunt" : "aandachtspunten"}` : "Op orde"} sub={`${securityOk}/${data.security.length || 0} controles akkoord`} tone={securityWarnings ? "warning" : "success"} />
           <Card label="Integraties" value={`${connectedIntegrations}/${data.integrations.length || 0}`} sub="Verbonden databronnen" />
         </section>
 
