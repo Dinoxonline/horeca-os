@@ -3397,6 +3397,48 @@ function RecipeOverview({ recipes, recipeItems, ingredients, products, canManage
     return wasteFactor > 0 ? number(line.quantity) * unitCost / wasteFactor : 0;
   }
 
+  async function saveRecipeSettings(event, recipe) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const yieldQuantity = Number(formData.get("yieldQuantity"));
+    const yieldUnit = String(formData.get("yieldUnit") || "").trim();
+    const sellingPrice = Number(formData.get("sellingPrice"));
+    const targetValue = String(formData.get("targetFoodcost") || "").trim();
+    const targetFoodcost = targetValue ? Number(targetValue) : null;
+    const instructions = String(formData.get("instructions") || "").trim();
+
+    setRecipeNotice("");
+    if (!Number.isFinite(yieldQuantity) || yieldQuantity <= 0 || !yieldUnit) {
+      setRecipeNotice("Vul een geldige opbrengst en eenheid in.");
+      return;
+    }
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      setRecipeNotice("De verkoopprijs mag niet negatief zijn.");
+      return;
+    }
+    if (targetFoodcost !== null && (!Number.isFinite(targetFoodcost) || targetFoodcost <= 0 || targetFoodcost > 100)) {
+      setRecipeNotice("De doel-foodcost moet tussen 1 en 100% liggen.");
+      return;
+    }
+
+    setSavingRecipeId(recipe.id);
+    const result = await supabase.from("recipes").update({
+      yield_quantity: yieldQuantity,
+      yield_unit: yieldUnit,
+      selling_price: sellingPrice,
+      target_foodcost_percentage: targetFoodcost,
+      instructions: instructions || null,
+    }).eq("id", recipe.id);
+    setSavingRecipeId("");
+
+    if (result.error) {
+      setRecipeNotice(`Receptinstellingen konden niet worden opgeslagen: ${result.error.message}`);
+      return;
+    }
+    setRecipeNotice(`Instellingen voor ${recipe.name} zijn opgeslagen.`);
+    await onRefresh();
+  }
+
   async function addRecipeItem(event, recipe) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -3465,11 +3507,28 @@ function RecipeOverview({ recipes, recipeItems, ingredients, products, canManage
       const lines = itemsByRecipe.get(recipe.id) || [];
       const cost = lines.reduce((total, line) => total + lineCost(line), 0);
       const costPerPortion = number(recipe.yield_quantity) > 0 ? cost / number(recipe.yield_quantity) : cost;
+      const sellingPrice = number(recipe.selling_price);
+      const foodcostPercentage = sellingPrice > 0 ? costPerPortion / sellingPrice * 100 : null;
+      const targetFoodcost = number(recipe.target_foodcost_percentage);
       return <article className="entityCard" key={recipe.id}>
         <span>{recipe.category || "Recept"}</span>
         <h3>{recipe.name}</h3>
         <strong>{money(cost)}</strong>
         <small>{lines.length} receptregel(s) · {number(recipe.yield_quantity) ? `${number(recipe.yield_quantity)} ${recipe.yield_unit || "porties"} · ${money(costPerPortion)} per eenheid` : "Totale receptkost"}</small>
+        {sellingPrice > 0 && <small style={{ display: "block", marginTop: 6, color: foodcostPercentage > (targetFoodcost || 40) ? "#9b2c2c" : "#16623f", fontWeight: 800 }}>
+          Verkoopprijs {money(sellingPrice)} · foodcost {number(foodcostPercentage).toFixed(1)}%{targetFoodcost ? ` · doel ${targetFoodcost}%` : ""}
+        </small>}
+        {canManage && <details style={{ marginTop: 12, borderTop: "1px solid #dce6ed", paddingTop: 10 }}>
+          <summary style={{ cursor: "pointer", color: "#1f7182", fontWeight: 800 }}>Receptinstellingen</summary>
+          <form className="stack" onSubmit={(event) => saveRecipeSettings(event, recipe)} style={{ marginTop: 12 }}>
+            <label>Opbrengst<input name="yieldQuantity" type="number" min="0.001" step="any" required defaultValue={recipe.yield_quantity || 1} /></label>
+            <label>Opbrengsteenheid<input name="yieldUnit" required maxLength="40" defaultValue={recipe.yield_unit || "porties"} placeholder="Bijvoorbeeld porties" /></label>
+            <label>Verkoopprijs per eenheid<input name="sellingPrice" type="number" min="0" step="0.01" required defaultValue={recipe.selling_price ?? 0} /></label>
+            <label>Doel-foodcost (%)<input name="targetFoodcost" type="number" min="1" max="100" step="0.1" defaultValue={recipe.target_foodcost_percentage || ""} placeholder="Bijvoorbeeld 30" /></label>
+            <label>Bereidingsinstructies<textarea name="instructions" rows="4" maxLength="5000" defaultValue={recipe.instructions || ""} style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #cad7e1", borderRadius: 8, background: "#fff", resize: "vertical" }} /></label>
+            <button className="primary" disabled={savingRecipeId === recipe.id}>{savingRecipeId === recipe.id ? "Opslaan…" : "Instellingen opslaan"}</button>
+          </form>
+        </details>}
         {!!lines.length && <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
           {lines.map((line) => {
             const ingredient = ingredientMap.get(line.ingredient_id);
