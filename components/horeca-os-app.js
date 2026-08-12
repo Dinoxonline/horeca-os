@@ -433,7 +433,7 @@ export default function HorecaOsApp() {
 
         {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
         {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} ingredients={data.ingredients} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
-        {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview analytics={foodcost} />}
+        {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview recipes={data.recipes} recipeItems={data.recipeItems} ingredients={data.ingredients} products={data.foodProducts} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
         {activeView === "reviews" && featureVisibility.reviews && <ReviewsInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("reviews:manage") || canUseFeature("reviews:respond")} canAdd={isOwner || canUseFeature("reviews:manage")} />}
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
@@ -3377,8 +3377,129 @@ function ProductOverview({ products, suppliers, ingredients, canManage, onRefres
     {!!products.length && !visibleProducts.length && <Empty text="Geen producten gevonden voor deze zoekopdracht." />}
   </DataPage>;
 }
-function RecipeOverview({ analytics }) {
-  return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) · {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
+function RecipeOverview({ recipes, recipeItems, ingredients, products, canManage, onRefresh }) {
+  const [savingRecipeId, setSavingRecipeId] = useState("");
+  const [recipeNotice, setRecipeNotice] = useState("");
+  const ingredientMap = new Map(ingredients.map((item) => [item.id, item]));
+  const productMap = new Map(products.map((item) => [item.id, item]));
+  const itemsByRecipe = new Map();
+  recipeItems.forEach((item) => itemsByRecipe.set(item.recipe_id, [...(itemsByRecipe.get(item.recipe_id) || []), item]));
+
+  function lineCost(line) {
+    const ingredient = ingredientMap.get(line.ingredient_id);
+    const product = productMap.get(ingredient?.product_id || line.product_id);
+    if (!product) return 0;
+    const usableUnits = ingredient
+      ? number(ingredient.units_per_product) * (number(ingredient.yield_percentage || 100) / 100)
+      : number(product.content_quantity || 1);
+    const unitCost = usableUnits ? number(product.purchase_price) / usableUnits : 0;
+    const wasteFactor = 1 - number(line.waste_percentage || 0) / 100;
+    return wasteFactor > 0 ? number(line.quantity) * unitCost / wasteFactor : 0;
+  }
+
+  async function addRecipeItem(event, recipe) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const ingredientId = String(formData.get("ingredientId") || "");
+    const ingredient = ingredientMap.get(ingredientId);
+    const quantity = Number(formData.get("quantity"));
+    const wastePercentage = Number(formData.get("wastePercentage"));
+    const notes = String(formData.get("notes") || "").trim();
+
+    setRecipeNotice("");
+    if (!ingredient) {
+      setRecipeNotice("Kies eerst een geldig ingrediënt.");
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setRecipeNotice("De hoeveelheid moet groter zijn dan nul.");
+      return;
+    }
+    if (!Number.isFinite(wastePercentage) || wastePercentage < 0 || wastePercentage >= 100) {
+      setRecipeNotice("Het snijverlies moet tussen 0 en minder dan 100% liggen.");
+      return;
+    }
+
+    const existingLines = itemsByRecipe.get(recipe.id) || [];
+    setSavingRecipeId(recipe.id);
+    const result = await supabase.from("recipe_items").insert({
+      workspace_id: recipe.workspace_id,
+      business_id: recipe.business_id,
+      location_id: recipe.location_id,
+      recipe_id: recipe.id,
+      ingredient_id: ingredient.id,
+      product_id: ingredient.product_id,
+      quantity,
+      unit: ingredient.base_unit,
+      waste_percentage: wastePercentage,
+      notes: notes || null,
+      line_order: existingLines.length ? Math.max(...existingLines.map((item) => number(item.line_order))) + 1 : 0,
+    });
+    setSavingRecipeId("");
+
+    if (result.error) {
+      setRecipeNotice(`Receptregel kon niet worden opgeslagen: ${result.error.message}`);
+      return;
+    }
+    event.currentTarget.reset();
+    setRecipeNotice(`Ingrediënt is toegevoegd aan ${recipe.name}.`);
+    await onRefresh();
+  }
+
+  async function removeRecipeItem(line, recipeName) {
+    setRecipeNotice("");
+    setSavingRecipeId(line.recipe_id);
+    const result = await supabase.from("recipe_items").delete().eq("id", line.id);
+    setSavingRecipeId("");
+    if (result.error) {
+      setRecipeNotice(`Receptregel kon niet worden verwijderd: ${result.error.message}`);
+      return;
+    }
+    setRecipeNotice(`Ingrediënt is verwijderd uit ${recipeName}.`);
+    await onRefresh();
+  }
+
+  return <DataPage title="Recepturen" subtitle="Koppel ingrediënten en bereken automatisch de kostprijs">
+    {!!recipeNotice && <div className="notice">{recipeNotice}</div>}
+    <div className="cardGrid">{recipes.map((recipe) => {
+      const lines = itemsByRecipe.get(recipe.id) || [];
+      const cost = lines.reduce((total, line) => total + lineCost(line), 0);
+      const costPerPortion = number(recipe.yield_quantity) > 0 ? cost / number(recipe.yield_quantity) : cost;
+      return <article className="entityCard" key={recipe.id}>
+        <span>{recipe.category || "Recept"}</span>
+        <h3>{recipe.name}</h3>
+        <strong>{money(cost)}</strong>
+        <small>{lines.length} receptregel(s) · {number(recipe.yield_quantity) ? `${number(recipe.yield_quantity)} ${recipe.yield_unit || "porties"} · ${money(costPerPortion)} per eenheid` : "Totale receptkost"}</small>
+        {!!lines.length && <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {lines.map((line) => {
+            const ingredient = ingredientMap.get(line.ingredient_id);
+            return <div key={line.id} style={{ padding: 10, borderRadius: 8, background: "#f4f8fa" }}>
+              <b style={{ display: "block" }}>{ingredient?.name || productMap.get(line.product_id)?.name || "Ingrediënt"}</b>
+              <small>{number(line.quantity)} {line.unit} · {number(line.waste_percentage)}% verlies · {money(lineCost(line))}</small>
+              {line.notes && <small style={{ display: "block" }}>{line.notes}</small>}
+              {canManage && <button type="button" className="textButton" disabled={savingRecipeId === recipe.id} onClick={() => removeRecipeItem(line, recipe.name)}>Verwijderen</button>}
+            </div>;
+          })}
+        </div>}
+        {canManage && <details style={{ marginTop: 12, borderTop: "1px solid #dce6ed", paddingTop: 10 }}>
+          <summary style={{ cursor: "pointer", color: "#1f7182", fontWeight: 800 }}>Ingrediënt toevoegen</summary>
+          {ingredients.length ? <form className="stack" onSubmit={(event) => addRecipeItem(event, recipe)} style={{ marginTop: 12 }}>
+            <label>Ingrediënt
+              <select name="ingredientId" required defaultValue="" style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #cad7e1", borderRadius: 8, background: "#fff" }}>
+                <option value="" disabled>Kies een ingrediënt</option>
+                {ingredients.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.name} ({ingredient.base_unit})</option>)}
+              </select>
+            </label>
+            <label>Hoeveelheid<input name="quantity" type="number" min="0.001" step="any" required placeholder="Bijvoorbeeld 250" /></label>
+            <label>Snijverlies (%)<input name="wastePercentage" type="number" min="0" max="99.9" step="0.1" required defaultValue="0" /></label>
+            <label>Notitie<input name="notes" maxLength="500" placeholder="Optioneel" /></label>
+            <button className="primary" disabled={savingRecipeId === recipe.id}>{savingRecipeId === recipe.id ? "Opslaan…" : "Ingrediënt toevoegen"}</button>
+          </form> : <p className="empty">Stel eerst bij Producten minimaal één ingrediënt in.</p>}
+        </details>}
+      </article>;
+    })}</div>
+    {!recipes.length && <Empty text="Nog geen recepturen gevonden." />}
+  </DataPage>;
 }
 
 function SupplierOverview({ suppliers, products }) {
