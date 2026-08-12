@@ -48,7 +48,8 @@ export default function HorecaOsApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
   const workspaceSessionRefreshAttempted = useRef("");
-  const [memberships, setMemberships] = useState([]);\n  const [membershipsLoading, setMembershipsLoading] = useState(true);
+  const [memberships, setMemberships] = useState([]);
+  const [membershipsLoading, setMembershipsLoading] = useState(true);
   const [roleAssignments, setRoleAssignments] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [mfaState, setMfaState] = useState({ loading: true, currentLevel: null, nextLevel: null, factors: [] });
@@ -96,6 +97,7 @@ export default function HorecaOsApp() {
     let active = true;
 
     const loadMemberships = async () => {
+      setMembershipsLoading(true);
       const queryMemberships = () => supabase
         .from("workspace_members")
         .select("workspace_id, role, workspace:workspaces!workspace_members_workspace_id_fkey(id, name)")
@@ -111,6 +113,7 @@ export default function HorecaOsApp() {
         if (!active) return;
         if (refreshError || !refreshed.session) {
           setMessage("Je beveiligde sessie kon niet worden vernieuwd. Log uit en opnieuw in.");
+          setMembershipsLoading(false);
           return;
         }
         setMessage("Je beveiligde sessie is vernieuwd. De werkruimtes worden opnieuw geladen.");
@@ -120,12 +123,14 @@ export default function HorecaOsApp() {
 
       if (error) {
         setMessage(`Werkruimtes konden niet worden geladen: ${error.message}`);
+        setMembershipsLoading(false);
         return;
       }
 
       const available = rows || [];
       setMemberships(available);
       setWorkspaceId((current) => current || available[0]?.workspace_id || "");
+      setMembershipsLoading(false);
       setMessage((current) => current.includes("JWT issued at future") || current.includes("beveiligde sessie") ? "" : current);
     };
 
@@ -338,7 +343,8 @@ export default function HorecaOsApp() {
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
-  if (membershipsLoading) return <main className="center">Werkruimtes laden…</main>;\n  if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
+  if (membershipsLoading) return <main className="center">Werkruimtes laden…</main>;
+  if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
   if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
   if (mfaRequired && !verifiedMfaFactor) {
     return <MfaEnrollment required onComplete={refreshMfa} />;
