@@ -63,6 +63,16 @@ function distributionHasProviderConfirmation(distribution) {
   return Object.values(distribution?.provider_delivery || {}).some(providerDeliveryConfirmed);
 }
 
+function providerDeliverySent(delivery) {
+  const status = String(delivery?.status || "").toLowerCase();
+  return ["submitted", "sent", "accepted", "processing", "queued"].includes(status)
+    || Boolean(delivery?.submitted_at || delivery?.sent_at || delivery?.provider_request_id);
+}
+
+function distributionHasProviderSubmission(distribution) {
+  return Object.values(distribution?.provider_delivery || {}).some(providerDeliverySent);
+}
+
 function formatNlDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -157,7 +167,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const filteredEventCampaigns = useMemo(() => eventCampaigns.filter((item) => {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
     const storedType = distribution.common?.campaign_type || (distribution.source_type === "website_event" ? "event" : distribution.source_type) || "custom";
-    const workStatus = distributionHasProviderConfirmation(distribution) ? "published" : item.scheduled_for ? "scheduled" : item.workflow_status === "approved" ? "approved" : "draft";
+    const workStatus = distributionHasProviderConfirmation(distribution)
+      ? "published"
+      : distributionHasProviderSubmission(distribution)
+        ? "sent"
+        : item.scheduled_for
+          ? "scheduled"
+          : item.workflow_status === "approved"
+            ? "approved"
+            : "draft";
     return (conceptTypeFilter === "all" || storedType === conceptTypeFilter)
       && (conceptStatusFilter === "all" || workStatus === conceptStatusFilter);
   }), [eventCampaigns, conceptTypeFilter, conceptStatusFilter]);
@@ -395,10 +413,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const current = distribution.channel_status?.[channel];
       return [channel, current === "extra_gegevens_nodig" ? current : approved ? "goedgekeurd" : "klaar_voor_controle"];
     }));
-    const scheduledIso = cancel ? null : scheduledFor.toISOString();
-    const nextSchedule = cancel ? {} : buildChannelSchedule(scheduledIso, distribution.target_channels || [], distribution.schedule_settings || {});
-    const nextProviderDelivery = Object.fromEntries((distribution.target_channels || []).map((channel) => [channel, distribution.provider_delivery?.[channel] || { status: "not_submitted" }]));
-    const nextDistribution = { ...distribution, channel_status: nextChannelStatus, channel_schedule: nextSchedule, provider_delivery: nextProviderDelivery, scheduling_status: cancel ? "approved" : "lokaal_ingepland" };
+    const nextProviderDelivery = Object.fromEntries(
+      (distribution.target_channels || []).map((channel) => [
+        channel,
+        distribution.provider_delivery?.[channel] || { status: "not_submitted" },
+      ])
+    );
+    const nextDistribution = {
+      ...distribution,
+      channel_status: nextChannelStatus,
+      provider_delivery: nextProviderDelivery,
+      scheduling_status: approved ? "approved" : "draft",
+      ...(approved ? {} : { channel_schedule: {} }),
+    };
     const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
     setConceptBusyId(item.id);
     setResult(null);
@@ -424,7 +451,28 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const current = distribution.channel_status?.[channel];
       return [channel, current === "extra_gegevens_nodig" ? current : cancel ? "goedgekeurd" : "ingepland"];
     }));
-    const nextDistribution = { ...distribution, channel_status: nextChannelStatus };
+    const scheduledIso = cancel ? null : scheduledFor.toISOString();
+    const scheduleSettings = distribution.schedule_settings || {};
+    const nextSchedule = cancel ? {} : buildChannelSchedule(
+      distribution.target_channels || [],
+      scheduledFor,
+      Number(scheduleSettings.min_minutes || 15),
+      Number(scheduleSettings.max_minutes || 45),
+      scheduleSettings.random_delay !== false
+    );
+    const nextProviderDelivery = Object.fromEntries(
+      (distribution.target_channels || []).map((channel) => [
+        channel,
+        distribution.provider_delivery?.[channel] || { status: "not_submitted" },
+      ])
+    );
+    const nextDistribution = {
+      ...distribution,
+      channel_status: nextChannelStatus,
+      channel_schedule: nextSchedule,
+      provider_delivery: nextProviderDelivery,
+      scheduling_status: cancel ? "approved" : "internally_scheduled",
+    };
     const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
     setConceptBusyId(item.id);
     setResult(null);
@@ -662,7 +710,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "Ã¢Å“â€œ" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
     <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaanÃ¢â‚¬Â¦" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
     {eventCampaigns.length > 0 && <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={loadEventCampaigns}>Status verversen</button></div>
-      <div className="conceptFilters"><label>Soort campagne<select value={conceptTypeFilter} onChange={(event) => setConceptTypeFilter(event.target.value)}><option value="all">Alle soorten</option>{campaignTypes.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Werkstatus<select value={conceptStatusFilter} onChange={(event) => setConceptStatusFilter(event.target.value)}><option value="all">Alle statussen</option><option value="draft">Concept</option><option value="approved">Goedgekeurd</option><option value="scheduled">Ingepland</option><option value="published">Geplaatst</option></select></label></div>
+      <div className="conceptFilters"><label>Soort campagne<select value={conceptTypeFilter} onChange={(event) => setConceptTypeFilter(event.target.value)}><option value="all">Alle soorten</option>{campaignTypes.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Werkstatus<select value={conceptStatusFilter} onChange={(event) => setConceptStatusFilter(event.target.value)}><option value="all">Alle statussen</option><option value="draft">Wacht op goedkeuring</option><option value="approved">Goedgekeurd</option><option value="scheduled">Intern ingepland</option><option value="sent">Verzonden naar kanaal</option><option value="published">Bevestigd geplaatst</option></select></label></div>
       {filteredEventCampaigns.length === 0 && <p className="emptyConcepts">Geen opgeslagen campagnes gevonden met deze filters.</p>}
       {filteredEventCampaigns.map((item) => {
         const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
@@ -672,13 +720,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const conceptBusy = conceptBusyId === item.id;
         const approved = item.workflow_status === "approved";
         const providerConfirmed = distributionHasProviderConfirmation(distribution);
+          const providerSubmitted = distributionHasProviderSubmission(distribution);
 
         return <article key={item.id}>
           <div>
             <div className="conceptHeading">
               <span className="campaignKind">{typeLabel}</span>
               <span className={`approvalState ${approved ? "approved" : "draft"}`}>
-                {providerConfirmed ? "Geplaatst bevestigd" : item.scheduled_for ? "Intern ingepland" : approved ? "Goedgekeurd" : "Concept"}
+                {providerConfirmed ? "Bevestigd geplaatst" : providerSubmitted ? "Verzonden naar kanaal" : item.scheduled_for ? "Intern ingepland" : approved ? "Goedgekeurd" : "Wacht op goedkeuring"}
               </span>
             </div>
             <strong>{distribution.common?.title || typeLabel}</strong>
@@ -703,14 +752,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               const stored = distribution.channel_status?.[channel];
               const delivery = distribution.provider_delivery?.[channel] || {};
               const confirmed = providerDeliveryConfirmed(delivery);
+              const submitted = providerDeliverySent(delivery);
               const plannedAt = distribution.channel_schedule?.[channel] || item.scheduled_for;
+              const submittedAt = delivery.submitted_at || delivery.sent_at;
               const label = confirmed
-                ? "Geplaatst (bevestigd)"
-                : plannedAt
-                  ? `Intern gepland: ${formatNlDateTime(plannedAt)}`
-                  : stored === "extra_gegevens_nodig"
-                    ? "Extra gegevens nodig"
-                    : approved ? "Goedgekeurd" : "Klaar voor controle";
+                ? "Bevestigd geplaatst"
+                : submitted
+                  ? `Verzonden naar kanaal${submittedAt ? `: ${formatNlDateTime(submittedAt)}` : ""}`
+                  : plannedAt
+                    ? `Intern ingepland: ${formatNlDateTime(plannedAt)}`
+                    : stored === "extra_gegevens_nodig"
+                      ? "Extra gegevens nodig"
+                      : approved ? "Goedgekeurd" : "Wacht op goedkeuring";
 
               return <span className={`status ${stored || "klaar_voor_controle"}`} key={channel}>
                 <b>{channelLabels[channel] || channel}</b> Â· {label}
