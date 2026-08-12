@@ -55,8 +55,11 @@ export default function HorecaOsApp() {
   const [mfaState, setMfaState] = useState({ loading: true, currentLevel: null, nextLevel: null, factors: [] });
   const [workspaceId, setWorkspaceId] = useState("");
   const [businessId, setBusinessId] = useState("all");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [data, setData] = useState(emptyData);
   const activeView = routeViews[pathname] || "dashboard";
+
+  useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
 
   useEffect(() => {
     const recoveryFromUrl = window.location.hash.includes("type=recovery")
@@ -353,8 +356,11 @@ export default function HorecaOsApp() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">Horeca OS</div>
-        <nav>
+        <div className="sidebarHeader">
+          <div className="brand">Horeca OS</div>
+          <button type="button" className="mobileMenuToggle" aria-expanded={mobileMenuOpen} aria-controls="main-navigation" onClick={() => setMobileMenuOpen((open) => !open)}>{mobileMenuOpen ? "Sluiten" : "Menu"}</button>
+        </div>
+        <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
