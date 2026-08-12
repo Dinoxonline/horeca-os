@@ -395,10 +395,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const current = distribution.channel_status?.[channel];
       return [channel, current === "extra_gegevens_nodig" ? current : approved ? "goedgekeurd" : "klaar_voor_controle"];
     }));
-    const scheduledIso = cancel ? null : scheduledFor.toISOString();
-    const nextSchedule = cancel ? {} : buildChannelSchedule(scheduledIso, distribution.target_channels || [], distribution.schedule_settings || {});
-    const nextProviderDelivery = Object.fromEntries((distribution.target_channels || []).map((channel) => [channel, distribution.provider_delivery?.[channel] || { status: "not_submitted" }]));
-    const nextDistribution = { ...distribution, channel_status: nextChannelStatus, channel_schedule: nextSchedule, provider_delivery: nextProviderDelivery, scheduling_status: cancel ? "approved" : "lokaal_ingepland" };
+    const nextDistribution = {
+      ...distribution,
+      channel_status: nextChannelStatus,
+      ...(approved ? {} : { channel_schedule: {}, scheduling_status: "draft" }),
+    };
     const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
     setConceptBusyId(item.id);
     setResult(null);
@@ -424,7 +425,26 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const current = distribution.channel_status?.[channel];
       return [channel, current === "extra_gegevens_nodig" ? current : cancel ? "goedgekeurd" : "ingepland"];
     }));
-    const nextDistribution = { ...distribution, channel_status: nextChannelStatus };
+    const scheduledIso = cancel ? null : scheduledFor.toISOString();
+    const scheduleSettings = distribution.schedule_settings || {};
+    const nextSchedule = cancel ? {} : buildChannelSchedule(
+      distribution.target_channels || [],
+      scheduledFor,
+      Number(scheduleSettings.min_minutes ?? 15),
+      Number(scheduleSettings.max_minutes ?? 45),
+      scheduleSettings.stagger_enabled ?? true,
+    );
+    const nextProviderDelivery = Object.fromEntries((distribution.target_channels || []).map((channel) => [
+      channel,
+      distribution.provider_delivery?.[channel] || { status: "not_submitted" },
+    ]));
+    const nextDistribution = {
+      ...distribution,
+      channel_status: nextChannelStatus,
+      channel_schedule: nextSchedule,
+      provider_delivery: nextProviderDelivery,
+      scheduling_status: cancel ? "approved" : "lokaal_ingepland",
+    };
     const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
     setConceptBusyId(item.id);
     setResult(null);
