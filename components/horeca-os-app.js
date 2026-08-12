@@ -500,6 +500,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [campaignTitle, setCampaignTitle] = useState("");
   const [campaignText, setCampaignText] = useState("");
   const [channels, setChannels] = useState(["brevo", "facebook", "instagram", "predis"]);
+  const [repostChannels, setRepostChannels] = useState([]);
   const [scheduledFor, setScheduledFor] = useState("");
   const [metaAds, setMetaAds] = useState(false);
   const [dailyBudget, setDailyBudget] = useState("");
@@ -760,7 +761,18 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   }
 
   function toggleChannel(channel) {
-    setChannels((current) => current.includes(channel)
+    const removing = channels.includes(channel);
+    setChannels((current) => removing
+      ? current.filter((item) => item !== channel)
+      : [...current, channel]);
+    if (removing) {
+      setRepostChannels((current) => current.filter((item) => item !== channel));
+    }
+    setStatus("");
+  }
+
+  function toggleRepostChannel(channel) {
+    setRepostChannels((current) => current.includes(channel)
       ? current.filter((item) => item !== channel)
       : [...current, channel]);
     setStatus("");
@@ -1044,12 +1056,18 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       && item.media.some((mediaItem) => mediaItem?.kind === "campaign_distribution"));
     const alreadyPlaced = findExistingCampaignChannels(recentCampaigns, sourceUrl, sourcePreview, campaignTitle);
     const duplicateChannels = channels.filter((channel) => alreadyPlaced.has(channel));
-    const freshChannels = channels.filter((channel) => !alreadyPlaced.has(channel));
+    const repostSet = new Set(repostChannels);
+    const selectedChannels = channels.filter((channel) => !alreadyPlaced.has(channel) || repostSet.has(channel));
+    const skippedDuplicateChannels = duplicateChannels.filter((channel) => !repostSet.has(channel));
+    const repeatedChannels = duplicateChannels.filter((channel) => repostSet.has(channel));
     setCampaigns(recentCampaigns);
     setPlacementCheckedAt(new Date().toISOString());
-    if (!freshChannels.length) {
-      setChannelResult(duplicateChannels.map((channel) => ({ channel, state: "Al geplaatst/gepland" })));
-      setStatus("Dit evenement is op alle gekozen kanalen al geplaatst of ingepland. Er is niets dubbel opgeslagen.");
+    if (!selectedChannels.length) {
+      setChannelResult(duplicateChannels.map((channel) => ({
+        channel,
+        state: "Al geplaatst/gepland — opnieuw plaatsen niet aangevinkt",
+      })));
+      setStatus("Alle gekozen kanalen zijn al gebruikt. Vink bij het gewenste kanaal ‘Toch opnieuw plaatsen’ aan om bewust opnieuw te publiceren.");
       setSaving(false);
       return;
     }
@@ -1107,14 +1125,14 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       }),
       placement_checked_at: new Date().toISOString(),
       campaign_assets: Object.values(campaignImages),
-      use_predis: freshChannels.includes("predis"),
-      target_channels: freshChannels,
-      channel_states: Object.fromEntries(freshChannels.map((channel) => [
+      use_predis: selectedChannels.includes("predis"),
+      target_channels: selectedChannels,
+      channel_states: Object.fromEntries(selectedChannels.map((channel) => [
         channel,
         channelConnectionState(channel),
       ])),
-      predis_state: freshChannels.includes("predis") ? "ready_for_concept" : "not_selected",
-      email_handoffs: freshChannels
+      predis_state: selectedChannels.includes("predis") ? "ready_for_concept" : "not_selected",
+      email_handoffs: selectedChannels
         .filter((channel) => manualEmailByChannel[channel])
         .map((channel) => ({ channel, ...manualEmailByChannel[channel], state: "email_ready" })),
       meta_ads: metaAds ? {
@@ -1158,16 +1176,23 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       connection_required: "Koppeling nodig",
     };
     setChannelResult([
-      ...duplicateChannels.map((channel) => ({ channel, state: "Al geplaatst/gepland" })),
-      ...freshChannels.map((channel) => ({
+      ...skippedDuplicateChannels.map((channel) => ({
         channel,
-        state: resultLabels[channelConnectionState(channel)] || "Controle nodig",
+        state: "Al geplaatst/gepland — overgeslagen",
+      })),
+      ...selectedChannels.map((channel) => ({
+        channel,
+        state: repeatedChannels.includes(channel)
+          ? `Opnieuw: ${resultLabels[channelConnectionState(channel)] || "Controle nodig"}`
+          : resultLabels[channelConnectionState(channel)] || "Controle nodig",
       })),
     ]);
     await loadCampaigns();
-    setStatus(duplicateChannels.length
-      ? `Nieuwe kanalen zijn ingepland. ${duplicateChannels.length} kanaal/kanalen waren al geplaatst of gepland en zijn overgeslagen.`
-      : "Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
+    setStatus(skippedDuplicateChannels.length
+      ? `Campagne klaargezet. ${skippedDuplicateChannels.length} eerder gebruikt(e) kanaal/kanalen zijn overgeslagen. Vink ‘Toch opnieuw plaatsen’ aan om ze bewust te herhalen.`
+      : repeatedChannels.length
+        ? `Campagne klaargezet, inclusief ${repeatedChannels.length} kanaal/kanalen die je bewust opnieuw wilt plaatsen.`
+        : "Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
     setSaving(false);
   }
 
@@ -1377,26 +1402,38 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       </fieldset>
       <fieldset className="full"><legend>Promoten via</legend>
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
-          {directChannelOptions.map(([value, label]) => <label className="checkOption" key={value}>
-            <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
-            <span style={{ flex: 1 }}>{label}</span>
-            {existingCampaignChannels.has(value) && <span className="pill">Al geplaatst/gepland</span>}
-          </label>)}
+          {directChannelOptions.map(([value, label]) => <div key={value}>
+            <label className="checkOption">
+              <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
+              <span style={{ flex: 1 }}>{label}</span>
+              {existingCampaignChannels.has(value) && <span className="pill">Al geplaatst/gepland</span>}
+            </label>
+            {channels.includes(value) && existingCampaignChannels.has(value) && <label className="checkOption" style={{ marginLeft: "28px", marginTop: "6px" }}>
+              <input type="checkbox" checked={repostChannels.includes(value)} onChange={() => toggleRepostChannel(value)} />
+              <span><strong>Toch opnieuw plaatsen</strong><small>Bewuste herhaling; de eerdere plaatsing blijft zichtbaar.</small></span>
+            </label>}
+          </div>)}
         </div>
       </fieldset>
       <fieldset className="full"><legend>Handmatig aanleveren per e-mail</legend>
         <p className="securityHint">Voor kanalen zonder directe koppeling maakt Horeca OS een ingevulde e-mail met de evenementgegevens, link en openbare beeldlink. Verstuur deze altijd vanuit <strong>{manualPromotionSender}</strong>; kies dit account in Outlook voordat je op Verzenden klikt.</p>
         <div className="checkGrid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", marginTop: "10px" }}>
-          {manualEmailOptions.map(([value, label, email]) => <label className="checkOption" key={value}>
-            <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
-            <span style={{ flex: 1 }}><strong>{label}</strong><small>Aan: {email} Â· Van: {manualPromotionSender}</small></span>
-            {existingCampaignChannels.has(value) && <span className="pill">Al aangeleverd/klaargezet</span>}
-          </label>)}
+          {manualEmailOptions.map(([value, label, email]) => <div key={value}>
+            <label className="checkOption">
+              <input type="checkbox" checked={channels.includes(value)} onChange={() => toggleChannel(value)} />
+              <span style={{ flex: 1 }}><strong>{label}</strong><small>Aan: {email} Â· Van: {manualPromotionSender}</small></span>
+              {existingCampaignChannels.has(value) && <span className="pill">Al aangeleverd/klaargezet</span>}
+            </label>
+            {channels.includes(value) && existingCampaignChannels.has(value) && <label className="checkOption" style={{ marginLeft: "28px", marginTop: "6px" }}>
+              <input type="checkbox" checked={repostChannels.includes(value)} onChange={() => toggleRepostChannel(value)} />
+              <span><strong>Toch opnieuw aanleveren</strong><small>Bewuste herhaling; de eerdere aanlevering blijft zichtbaar.</small></span>
+            </label>}
+          </div>)}
         </div>
       </fieldset>
       <div className="notice full">
         <strong>Plaatsingscontrole</strong>
-        <p>Horeca OS vergelijkt vestiging, eventlink en gekozen kanalen. Kanalen die al voorkomen worden niet opnieuw ingepland.</p>
+        <p>Horeca OS vergelijkt vestiging, eventlink en gekozen kanalen. Eerdere plaatsingen blijven zichtbaar als waarschuwing. Je kunt per kanaal bewust kiezen voor <strong>Toch opnieuw plaatsen</strong>.</p>
         <div className="formActions" style={{ marginTop: "10px" }}>
           <button type="button" className="secondaryButton" onClick={checkPlacements} disabled={checkingPlacements || loadingCampaigns}>
             {checkingPlacements ? "Controleren..." : "Controleren of al geplaatst"}
