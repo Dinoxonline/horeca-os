@@ -367,7 +367,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
     });
     setEditingCampaignId(storedType === "event" ? null : item.id);
-    setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
+    setEditingBrevoDraftId(storedType === "event" ? null : distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
     setPreview(false);
     setResult({ ok: true, message: storedType === "event" ? "Het evenement is als basis geopend. Opslaan maakt veilig een nieuw Eventin-evenement." : "Het campagneconcept is geopend en kan nu worden bijgewerkt." });
@@ -377,6 +377,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   function duplicateCampaignConcept(item) {
     openCampaignConcept(item);
     setEditingCampaignId(null);
+    setEditingBrevoDraftId(null);
     setResult({ ok: true, message: "Het concept is als kopie geopend. Pas eventueel de naam of inhoud aan en sla het op als nieuw concept." });
   }
 
@@ -519,6 +520,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.campaignType === "offer" && (!form.campaignPrice || !form.validUntil)) return "Vul de actieprijs en einddatum in.";
     if (form.campaignType === "review" && !form.description.trim()) return "Vul de reviewtekst in.";
     if (form.preparePromotion && form.channels.brevo && !form.brevoSubject.trim()) return "Vul voor Brevo een onderwerpregel in.";
+    if (form.preparePromotion && form.channels.brevo && !form.organizer.trim()) return "Vul voor Brevo een afzendernaam in.";
+    if (form.preparePromotion && form.channels.brevo && !(form.description.trim() || form.shortDescription.trim())) return "Vul voor Brevo een promotietekst of volledige omschrijving in.";
     if (form.preparePromotion && form.channels.brevo && brevoLoading) return "Wacht tot de Brevo-doelgroepen zijn geladen.";
     if (form.preparePromotion && form.channels.brevo && brevoError) return brevoError;
     if (form.preparePromotion && form.channels.brevo && selectedBrevoListIds.length === 0) return "Kies voor Brevo minimaal één doelgroep.";
