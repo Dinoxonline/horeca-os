@@ -432,7 +432,7 @@ export default function HorecaOsApp() {
         </>}
 
         {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
-        {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} />}
+        {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} ingredients={data.ingredients} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview analytics={foodcost} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
         {activeView === "reviews" && featureVisibility.reviews && <ReviewsInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("reviews:manage") || canUseFeature("reviews:respond")} canAdd={isOwner || canUseFeature("reviews:manage")} />}
@@ -3264,9 +3264,12 @@ function FoodcostDashboard({ analytics }) {
   </>;
 }
 
-function ProductOverview({ products, suppliers }) {
+function ProductOverview({ products, suppliers, ingredients, canManage, onRefresh }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [savingProductId, setSavingProductId] = useState("");
+  const [ingredientNotice, setIngredientNotice] = useState("");
   const supplierMap = new Map(suppliers.map((item) => [item.id, item.name]));
+  const ingredientMap = new Map(ingredients.map((item) => [item.product_id, item]));
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("nl-NL");
   const visibleProducts = normalizedQuery
     ? products.filter((product) => [
@@ -3276,7 +3279,57 @@ function ProductOverview({ products, suppliers }) {
     ].some((value) => String(value || "").toLocaleLowerCase("nl-NL").includes(normalizedQuery)))
     : products;
 
+  async function saveIngredient(event, product) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const name = String(formData.get("name") || "").trim();
+    const baseUnit = String(formData.get("baseUnit") || "");
+    const unitsPerProduct = Number(formData.get("unitsPerProduct"));
+    const yieldPercentage = Number(formData.get("yieldPercentage"));
+
+    setIngredientNotice("");
+    if (!name || !["g", "kg", "ml", "l", "piece", "portion"].includes(baseUnit)) {
+      setIngredientNotice("Vul een geldige ingrediëntnaam en basiseenheid in.");
+      return;
+    }
+    if (!Number.isFinite(unitsPerProduct) || unitsPerProduct <= 0) {
+      setIngredientNotice("De bruikbare hoeveelheid moet groter zijn dan nul.");
+      return;
+    }
+    if (!Number.isFinite(yieldPercentage) || yieldPercentage <= 0 || yieldPercentage > 100) {
+      setIngredientNotice("Het opbrengstpercentage moet tussen 1 en 100 liggen.");
+      return;
+    }
+
+    const existing = ingredientMap.get(product.id);
+    const payload = {
+      workspace_id: product.workspace_id,
+      business_id: product.business_id,
+      location_id: product.location_id,
+      product_id: product.id,
+      name,
+      base_unit: baseUnit,
+      units_per_product: unitsPerProduct,
+      yield_percentage: yieldPercentage,
+      active: true,
+    };
+
+    setSavingProductId(product.id);
+    const result = existing
+      ? await supabase.from("ingredients").update(payload).eq("id", existing.id)
+      : await supabase.from("ingredients").insert(payload);
+    setSavingProductId("");
+
+    if (result.error) {
+      setIngredientNotice(`Ingrediënt kon niet worden opgeslagen: ${result.error.message}`);
+      return;
+    }
+    setIngredientNotice(`Ingrediënt voor ${product.name} is opgeslagen.`);
+    await onRefresh();
+  }
+
   return <DataPage title="Producten" subtitle="Inkoopprijzen en verpakkingsinhoud per gekozen scope">
+    {!!ingredientNotice && <div className="notice">{ingredientNotice}</div>}
     {!!products.length && <label style={{ display: "block", maxWidth: 440, marginBottom: 18, fontSize: 12, fontWeight: 800, color: "#445b6e" }}>
       Producten zoeken
       <input
@@ -3287,12 +3340,43 @@ function ProductOverview({ products, suppliers }) {
         style={{ display: "block", width: "100%", marginTop: 6, padding: 10, border: "1px solid #cad7e1", borderRadius: 8, background: "#fff", color: "#17324d" }}
       />
     </label>}
-    <div className="cardGrid">{visibleProducts.map((product) => <article className="entityCard" key={product.id}><span>{product.category || "Ongecategoriseerd"}</span><h3>{product.name}</h3><strong>{money(product.purchase_price)}</strong><small>{product.content_quantity || "—"} {product.content_unit || ""} · {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small></article>)}</div>
+    <div className="cardGrid">{visibleProducts.map((product) => {
+      const ingredient = ingredientMap.get(product.id);
+      return <article className="entityCard" key={product.id}>
+        <span>{product.category || "Ongecategoriseerd"}</span>
+        <h3>{product.name}</h3>
+        <strong>{money(product.purchase_price)}</strong>
+        <small>{product.content_quantity || "—"} {product.content_unit || ""} · {supplierMap.get(product.supplier_id) || "Geen leverancier"}</small>
+        {ingredient && <small style={{ display: "block", marginTop: 8, color: "#16623f", fontWeight: 700 }}>
+          Ingrediënt: {number(ingredient.units_per_product)} {ingredient.base_unit} · {number(ingredient.yield_percentage)}% opbrengst
+        </small>}
+        {canManage && <details style={{ marginTop: 12, borderTop: "1px solid #dce6ed", paddingTop: 10 }}>
+          <summary style={{ cursor: "pointer", color: "#1f7182", fontWeight: 800 }}>
+            {ingredient ? "Ingrediënt aanpassen" : "Ingrediënt instellen"}
+          </summary>
+          <form className="stack" onSubmit={(event) => saveIngredient(event, product)} style={{ marginTop: 12 }}>
+            <label>Ingrediëntnaam<input name="name" required defaultValue={ingredient?.name || product.name} /></label>
+            <label>Basiseenheid
+              <select name="baseUnit" required defaultValue={ingredient?.base_unit || "g"} style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #cad7e1", borderRadius: 8, background: "#fff" }}>
+                <option value="g">Gram</option>
+                <option value="kg">Kilogram</option>
+                <option value="ml">Milliliter</option>
+                <option value="l">Liter</option>
+                <option value="piece">Stuk</option>
+                <option value="portion">Portie</option>
+              </select>
+            </label>
+            <label>Bruikbare hoeveelheid per verpakking<input name="unitsPerProduct" type="number" min="0.001" step="any" required defaultValue={ingredient?.units_per_product || ""} placeholder="Bijvoorbeeld 5000" /></label>
+            <label>Opbrengstpercentage<input name="yieldPercentage" type="number" min="1" max="100" step="0.1" required defaultValue={ingredient?.yield_percentage || 100} /></label>
+            <button className="primary" disabled={savingProductId === product.id}>{savingProductId === product.id ? "Opslaan…" : "Ingrediënt opslaan"}</button>
+          </form>
+        </details>}
+      </article>;
+    })}</div>
     {!products.length && <Empty text="Geen foodcostproducten gevonden." />}
     {!!products.length && !visibleProducts.length && <Empty text="Geen producten gevonden voor deze zoekopdracht." />}
   </DataPage>;
 }
-
 function RecipeOverview({ analytics }) {
   return <DataPage title="Recepturen" subtitle="Kostprijsopbouw gekoppeld aan actieve menu-items"><div className="cardGrid">{analytics.items.map((recipe) => <article className="entityCard" key={recipe.id}><span>{recipe.category || "Menu"}</span><h3>{recipe.name}</h3><strong>{money(recipe.cost)}</strong><small>{recipe.lines} receptregel(s) · {recipe.foodcost.toFixed(1)}% foodcost</small></article>)}</div>{!analytics.items.length && <Empty text="Nog geen complete recepturen gevonden." />}</DataPage>;
 }
