@@ -1384,7 +1384,39 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Eventin heeft de actie niet geaccepteerd.");
+      let calendarDelivery = distribution.calendar_delivery || null;
+      let calendarSyncError = "";
+      if ((cancellingOnline || cancellingAndDeleting) && calendarDelivery?.event_id && calendarDelivery?.mailbox) {
+        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", {
+          method: cancellingAndDeleting ? "DELETE" : "PATCH",
+          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(cancellingAndDeleting
+            ? { workspaceId, mailbox: calendarDelivery.mailbox, eventId: calendarDelivery.event_id }
+            : {
+                workspaceId, mailbox: calendarDelivery.mailbox, eventId: calendarDelivery.event_id,
+                subject: `GEANNULEERD – ${distribution.common?.title || "Evenement"}`,
+                description: `GEANNULEERD\n\n${distribution.common?.description || item.body || ""}\n\nWebsite: ${distribution.source_url || ""}`,
+                start: distribution.common?.start, end: distribution.common?.end, location: distribution.common?.location || "",
+                attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "free",
+              }),
+        });
+        const calendarResult = await calendarResponse.json().catch(() => ({}));
+        if (calendarResponse.ok) {
+          calendarDelivery = { ...calendarDelivery, status: cancellingAndDeleting ? "deleted" : "cancelled", updated_at: new Date().toISOString(), error: "" };
+        } else {
+          calendarSyncError = calendarResult.error || "De gekoppelde agenda-afspraak kon niet worden aangepast.";
+          calendarDelivery = { ...calendarDelivery, status: "failed", error: calendarSyncError, updated_at: new Date().toISOString() };
+        }
+      }
       if (cancellingAndDeleting) {
+        if (calendarSyncError) {
+          const failedDistribution = { ...distribution, website_event_status: "deleted", calendar_delivery: calendarDelivery };
+          const failedMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? failedDistribution : entry);
+          await supabase.from("social_content_items").update({ media: failedMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
+          setResult({ ok: false, message: `Het evenement is uit Eventin verwijderd, maar de agenda-afspraak kon niet worden verwijderd: ${calendarSyncError}` });
+          await loadEventCampaigns();
+          return;
+        }
         const { error } = await supabase.from("social_content_items").delete().eq("id", item.id).eq("workspace_id", workspaceId);
         if (error) {
           setResult({ ok: false, message: "Het evenement is uit Eventin verwijderd, maar het Horeca OS-beheerdossier kon niet worden verwijderd. Ververs de status en verwijder het dossier daarna afzonderlijk." });
@@ -1395,7 +1427,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         await loadEventCampaigns();
         return;
       }
-      const nextDistribution = { ...distribution, website_event_status: result.event?.status || (movingToPublish ? "publish" : movingToDraft ? "draft" : "cancelled") };
+      const nextDistribution = { ...distribution, website_event_status: result.event?.status || (movingToPublish ? "publish" : movingToDraft ? "draft" : "cancelled"), calendar_delivery: calendarDelivery };
       const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
       const { error } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) {
@@ -1405,7 +1437,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           ? "Het Eventin-evenement is gepubliceerd en staat nu openbaar op de website. Andere kanalen zijn niet gewijzigd."
           : movingToDraft
             ? "Het website-evenement staat nu als Eventin-concept. Andere kanalen zijn niet gewijzigd."
-            : "Het evenement blijft online staan en wordt duidelijk als Geannuleerd weergegeven. Andere kanalen zijn niet automatisch gewijzigd." });
+            : calendarSyncError
+              ? `Het evenement is in Eventin geannuleerd, maar de agenda kon niet worden bijgewerkt: ${calendarSyncError}`
+              : "Het evenement blijft online staan en wordt in Eventin én Microsoft Agenda duidelijk als Geannuleerd weergegeven. Andere kanalen zijn niet automatisch gewijzigd." });
       }
       await loadEventCampaigns();
     } catch (error) {
@@ -1705,9 +1739,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url && (!isWebsiteEvent || ["publish", "cancelled"].includes(websiteEventStatus)) ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
             {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd — blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
-            {distribution.calendar_delivery && <p className={`websiteEventState ${distribution.calendar_delivery.status === "failed" ? "cancelled" : ""}`}>
-              <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
-              {distribution.calendar_delivery.status === "confirmed" && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
+            {distribution.calendar_delivery && <p className={`websiteEventState ${["failed", "cancelled"].includes(distribution.calendar_delivery.status) ? "cancelled" : ""}`}>
+              <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "cancelled" ? `Geannuleerd in ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "deleted" ? "Afspraak verwijderd" : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
+              {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
             </p>}
             {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
