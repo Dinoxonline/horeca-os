@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../../../lib/server-supabase";
-import { decryptMetaToken } from "../../../../../../lib/meta-oauth";
-
-function accessToken(row) {
-  return decryptMetaToken({ token_ciphertext: row.access_token_ciphertext, token_iv: row.access_token_iv, token_tag: row.access_token_tag });
-}
+import { microsoftAccessToken } from "../../../../../../lib/microsoft-token";
 
 async function context(request, workspaceId, mailbox) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -16,7 +12,7 @@ async function context(request, workspaceId, mailbox) {
   if (member?.role !== "owner") return null;
   const admin = createAdminSupabase();
   const { data: connection } = await admin.from("calendar_connections").select("*").eq("workspace_id", workspaceId).eq("user_id", data.user.id).eq("provider", "microsoft").eq("email", mailbox).maybeSingle();
-  return connection ? { connection } : null;
+  return connection ? { connection, admin } : null;
 }
 
 function eventPayload(body) {
@@ -58,17 +54,19 @@ function eventPayload(body) {
   };
 }
 
-async function graph(token, path, options = {}) {
-  const response = await fetch(`https://graph.microsoft.com/v1.0/me/${path}`, {
+async function graph(connection, admin, path, options = {}) {
+  const request = async (forceRefresh = false) => fetch(`https://graph.microsoft.com/v1.0/me/${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${await microsoftAccessToken(connection, admin, { forceRefresh })}`,
       "Content-Type": "application/json",
       Prefer: 'outlook.timezone="Europe/Amsterdam"',
       ...(options.headers || {}),
     },
     cache: "no-store",
   });
+  let response = await request();
+  if (response.status === 401) response = await request(true);
   const result = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) throw new Error(result?.error?.message || "De afspraak kon niet worden aangepast.");
   return result;
@@ -80,7 +78,7 @@ export async function POST(request) {
     const auth = await context(request, body.workspaceId, body.mailbox);
     if (!auth) return NextResponse.json({ error: "Geen toegang tot deze agenda." }, { status: 403 });
     if (!body.start || !body.end) return NextResponse.json({ error: "Vul een begin- en eindtijd in." }, { status: 400 });
-    const event = await graph(accessToken(auth.connection), "events", { method: "POST", body: JSON.stringify(eventPayload(body)) });
+    const event = await graph(auth.connection, auth.admin, "events", { method: "POST", body: JSON.stringify(eventPayload(body)) });
     return NextResponse.json({ event, message: "De afspraak is aangemaakt." });
   } catch (error) {
     return NextResponse.json({ error: error.message || "De afspraak kon niet worden aangemaakt." }, { status: 400 });
@@ -93,7 +91,7 @@ export async function PATCH(request) {
     const auth = await context(request, body.workspaceId, body.mailbox);
     if (!auth) return NextResponse.json({ error: "Geen toegang tot deze agenda." }, { status: 403 });
     if (!body.eventId || !body.start || !body.end) return NextResponse.json({ error: "De afspraakgegevens zijn niet compleet." }, { status: 400 });
-    const event = await graph(accessToken(auth.connection), `events/${encodeURIComponent(body.eventId)}`, { method: "PATCH", body: JSON.stringify(eventPayload(body)) });
+    const event = await graph(auth.connection, auth.admin, `events/${encodeURIComponent(body.eventId)}`, { method: "PATCH", body: JSON.stringify(eventPayload(body)) });
     return NextResponse.json({ event, message: "De afspraak is gewijzigd." });
   } catch (error) {
     return NextResponse.json({ error: error.message || "De afspraak kon niet worden gewijzigd." }, { status: 400 });
@@ -108,7 +106,7 @@ export async function PUT(request) {
     if (!body.eventId || !["accept", "tentativelyAccept", "decline"].includes(body.response)) {
       return NextResponse.json({ error: "Kies een geldige reactie op de uitnodiging." }, { status: 400 });
     }
-    await graph(accessToken(auth.connection), `events/${encodeURIComponent(body.eventId)}/${body.response}`, {
+    await graph(auth.connection, auth.admin, `events/${encodeURIComponent(body.eventId)}/${body.response}`, {
       method: "POST",
       body: JSON.stringify({ comment: String(body.comment || ""), sendResponse: true }),
     });
@@ -125,7 +123,7 @@ export async function DELETE(request) {
     const auth = await context(request, body.workspaceId, body.mailbox);
     if (!auth) return NextResponse.json({ error: "Geen toegang tot deze agenda." }, { status: 403 });
     if (!body.eventId) return NextResponse.json({ error: "De afspraak ontbreekt." }, { status: 400 });
-    await graph(accessToken(auth.connection), `events/${encodeURIComponent(body.eventId)}`, { method: "DELETE" });
+    await graph(auth.connection, auth.admin, `events/${encodeURIComponent(body.eventId)}`, { method: "DELETE" });
     return NextResponse.json({ message: "De afspraak is verwijderd." });
   } catch (error) {
     return NextResponse.json({ error: error.message || "De afspraak kon niet worden verwijderd." }, { status: 400 });

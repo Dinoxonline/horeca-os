@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../../lib/server-supabase";
-import { decryptMetaToken } from "../../../../../lib/meta-oauth";
-
-function accessToken(row) {
-  return decryptMetaToken({ token_ciphertext: row.access_token_ciphertext, token_iv: row.access_token_iv, token_tag: row.access_token_tag });
-}
+import { microsoftAccessToken } from "../../../../../lib/microsoft-token";
 async function context(request, workspaceId) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token || !workspaceId) return null;
@@ -15,8 +11,9 @@ async function context(request, workspaceId) {
   if (member?.role !== "owner") return null;
   return { user: data.user, admin: createAdminSupabase() };
 }
-async function graph(token, path) {
-  const response = await fetch(`https://graph.microsoft.com/v1.0/me/${path}`, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Europe/Amsterdam"' }, cache: "no-store" });
+async function graph(connection, admin, path, forceRefresh = false) {
+  let response = await fetch(`https://graph.microsoft.com/v1.0/me/${path}`, { headers: { Authorization: `Bearer ${await microsoftAccessToken(connection, admin, { forceRefresh })}`, Prefer: 'outlook.timezone="Europe/Amsterdam"' }, cache: "no-store" });
+  if (response.status === 401 && !forceRefresh) return graph(connection, admin, path, true);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.message || "De Microsoft-agenda kon niet worden gelezen.");
   return result.value || [];
@@ -31,11 +28,8 @@ export async function GET(request) {
   const { data: connections } = await auth.admin.from("calendar_connections").select("*").eq("workspace_id", workspaceId).eq("user_id", auth.user.id).eq("provider", "microsoft");
   const accounts = await Promise.all((connections || []).map(async (connection) => {
     try {
-      const token = accessToken(connection);
-      const [calendars, events] = await Promise.all([
-        graph(token, "calendars?$select=id,name,color,canEdit,owner"),
-        graph(token, `calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview,isAllDay,webLink,showAs,onlineMeetingUrl,onlineMeeting,recurrence,isReminderOn,reminderMinutesBeforeStart,type,sensitivity,showAs,isOnlineMeeting,isOrganizer,responseStatus&$orderby=start/dateTime&$top=500`),
-      ]);
+      const calendars = await graph(connection, auth.admin, "calendars?$select=id,name,color,canEdit,owner");
+      const events = await graph(connection, auth.admin, `calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview,isAllDay,webLink,showAs,onlineMeetingUrl,onlineMeeting,recurrence,isReminderOn,reminderMinutesBeforeStart,type,sensitivity,showAs,isOnlineMeeting,isOrganizer,responseStatus&$orderby=start/dateTime&$top=500`);
       return { mailbox: connection.email, calendars, events, error: null };
     } catch (error) {
       return { mailbox: connection.email, calendars: [], events: [], error: error.message };
