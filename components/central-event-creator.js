@@ -16,6 +16,7 @@ const imageSlots = [
 ];
 
 const emptyImages = Object.fromEntries(imageSlots.map(({ key }) => [key, null]));
+const defaultTicketVariation = { id: "ticket-1", name: "Gratis ticket", type: "free", price: "0", capacity: "", salesStart: "", salesEnd: "", minQuantity: "1", maxQuantity: "10" };
 
 const campaignTypes = [
   ["event", "Evenement", "Met Eventin, datum, tickets en agenda"],
@@ -40,7 +41,7 @@ const emptyForm = {
   title: "", shortDescription: "", description: "", start: "", end: "",
   location: "Caribbean Corner, Dorpsstraat 114A, Zoetermeer", imageUrl: "", eventinImage: null, images: emptyImages, videoUrl: "",
   organizer: "Caribbean Corner", contactEmail: "info@caribbeancorner.nl", language: "nl",
-  ctaLabel: "Meer informatie", ctaUrl: "", ticketType: "free", ticketPrice: "0", capacity: "",
+  ctaLabel: "Meer informatie", ctaUrl: "", ticketType: "free", ticketPrice: "0", capacity: "", ticketVariations: [{ ...defaultTicketVariation }],
   status: "draft", calendarMailbox: "info@leclubbbq.nl", addToCalendar: true, preparePromotion: true,
   channels: channelDefaults,
   brevoSubject: "", brevoPreview: "", brevoAudience: "",
@@ -217,6 +218,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (key === "predisGenerate" && !value) setPendingPredisGeneration(null);
     setPreview(false); setResult(null);
   };
+  const updateTicketVariation = (id, key, value) => setForm((current) => ({
+    ...current,
+    ticketVariations: (current.ticketVariations || []).map((ticket) => ticket.id === id ? { ...ticket, [key]: value } : ticket),
+  }));
+  const addTicketVariation = () => setForm((current) => ({
+    ...current,
+    ticketVariations: [...(current.ticketVariations || []), { ...defaultTicketVariation, id: `ticket-${Date.now()}`, name: `Ticket ${(current.ticketVariations || []).length + 1}` }],
+  }));
+  const removeTicketVariation = (id) => setForm((current) => ({ ...current, ticketVariations: (current.ticketVariations || []).filter((ticket) => ticket.id !== id) }));
   const selectCampaignType = (campaignType) => {
     if (campaignType === form.campaignType) return;
     if (formHasCampaignContent(form) && !window.confirm("Je hebt al campagnegegevens ingevuld. Wil je deze wissen en doorgaan met een ander campagnetype?")) return;
@@ -576,7 +586,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         contact_email: "",
         language: "nl",
         cta: { label: "Meer informatie", url: eventItem.url || "" },
-        tickets: { type: "free", price: "0", capacity: "" },
+        tickets: { type: "free", price: "0", capacity: "", variations: [{ ...defaultTicketVariation }] },
         website_url: eventItem.url || "",
       };
       const distribution = {
@@ -652,7 +662,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           website_status: event.status || distribution.website_event_status || common.website_status,
           website_url: event.url || common.website_url,
           cta: { ...(common.cta || {}), url: event.url || common.cta?.url || distribution.source_url || "" },
-          tickets: { ...(common.tickets || {}), ...(event.tickets || {}) },
+          tickets: { ...(common.tickets || {}), ...(event.tickets || {}), variations: event.ticketVariations?.length ? event.ticketVariations : common.tickets?.variations },
         };
       } catch (error) {
         setResult({ ok: false, message: `${error.message || "Eventin kon niet worden geladen"} Het evenement is niet geopend, zodat bestaande gegevens niet per ongeluk worden overschreven.` });
@@ -678,6 +688,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
+      ticketVariations: common.tickets?.variations?.length ? common.tickets.variations : [{ ...defaultTicketVariation, type: common.tickets?.type || "free", price: common.tickets?.price || "0", capacity: common.tickets?.capacity || "" }],
       preparePromotion: targetChannels.length > 0, channels,
       brevoSubject: payloads.brevo?.subject || "", brevoPreview: payloads.brevo?.preview_text || "", brevoAudience: payloads.brevo?.list_names?.join(", ") || payloads.brevo?.audience || "",
       facebookText: payloads.facebook?.text || "", facebookPlacements: payloads.facebook?.placements || ["feed"], instagramFormat: payloads.instagram?.format || "post", instagramCaption: payloads.instagram?.caption || "",
@@ -1026,7 +1037,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (isEvent && !form.location.trim()) return "Vul de locatie van het evenement in.";
     if (isEvent && !form.contactEmail.trim()) return "Vul het contact-e-mailadres van de vestiging in.";
     if (isEvent && new Date(form.end) <= new Date(form.start)) return "Het eindmoment moet na het beginmoment liggen.";
-    if (isEvent && form.ticketType === "paid" && Number(form.ticketPrice) <= 0) return "Vul een geldige ticketprijs in.";
+    if (isEvent) {
+      for (const ticket of form.ticketVariations || []) {
+        if (!ticket.name?.trim()) return "Geef ieder tickettype een naam.";
+        if (ticket.type === "paid" && Number(ticket.price) <= 0) return `Vul een geldige prijs in voor ${ticket.name}.`;
+        if (ticket.capacity && Number(ticket.capacity) < 1) return `Vul een geldige capaciteit in voor ${ticket.name}.`;
+        if (ticket.salesStart && ticket.salesEnd && new Date(ticket.salesEnd) <= new Date(ticket.salesStart)) return `De verkoopperiode van ${ticket.name} is niet geldig.`;
+        if (Number(ticket.minQuantity || 1) < 1 || Number(ticket.maxQuantity || 1) < Number(ticket.minQuantity || 1)) return `Controleer de minimale en maximale afname van ${ticket.name}.`;
+      }
+    }
     if (form.campaignType === "offer" && (!form.campaignPrice || !form.validUntil)) return "Vul de actieprijs en einddatum in.";
     if (form.campaignType === "review" && !form.description.trim()) return "Vul de reviewtekst in.";
     if (form.preparePromotion && form.channels.brevo && !form.brevoSubject.trim()) return "Vul voor Brevo een onderwerpregel in.";
@@ -1065,7 +1084,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         start: form.start, end: form.end, location: form.location.trim(), image_url: imageFor("landscape", ["square", "portrait", "vertical"]), images: form.images, video_url: form.videoUrl.trim(),
         organizer: form.organizer.trim(), contact_email: form.contactEmail.trim(), language: form.language,
         cta: { label: form.ctaLabel, url: form.ctaUrl.trim() },
-        tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity }, website_url: "",
+        tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity, variations: form.ticketVariations || [] }, website_url: "",
         commercial: { regular_price: form.regularPrice, campaign_price: form.campaignPrice, discount_code: form.discountCode, valid_from: form.validFrom, valid_until: form.validUntil, group_size: form.groupSize, price_per_person: form.pricePerPerson },
         review: { reviewer_name: form.reviewerName.trim(), score: form.reviewScore, source: form.reviewSource.trim() },
       };
@@ -1138,7 +1157,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       start: form.start, end: form.end, location: form.location.trim(), image_url: imageFor("landscape", ["square", "portrait", "vertical"]), images: form.images, video_url: form.videoUrl.trim(),
       organizer: form.organizer.trim(), contact_email: form.contactEmail.trim(), language: form.language,
       cta: { label: form.ctaLabel, url: form.ctaUrl.trim() || websiteEvent.url },
-      tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity }, website_url: websiteEvent.url,
+      tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity, variations: form.ticketVariations || [] }, website_url: websiteEvent.url,
       commercial: { regular_price: form.regularPrice, campaign_price: form.campaignPrice, discount_code: form.discountCode, valid_from: form.validFrom, valid_until: form.validUntil, group_size: form.groupSize, price_per_person: form.pricePerPerson },
       review: { reviewer_name: form.reviewerName.trim(), score: form.reviewScore, source: form.reviewSource.trim() },
     };
@@ -1406,9 +1425,23 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label>Contact-e-mail *<input type="email" value={form.contactEmail} onChange={(e) => update("contactEmail", e.target.value)} /></label>
       <label>Knoptekst<input value={form.ctaLabel} onChange={(e) => update("ctaLabel", e.target.value)} /></label>
       <label>Knoplink<input type="url" value={form.ctaUrl} onChange={(e) => update("ctaUrl", e.target.value)} placeholder="Leeg = de nieuwe evenementpagina" /></label>
-      {isEvent && <><label>Tickets<select value={form.ticketType} onChange={(e) => update("ticketType", e.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option><option value="none">Geen tickets</option></select></label>
-      <label>Prijs per ticket<input type="number" min="0" step="0.01" disabled={form.ticketType !== "paid"} value={form.ticketPrice} onChange={(e) => update("ticketPrice", e.target.value)} /></label>
-      <label>Capaciteit<input type="number" min="1" value={form.capacity} onChange={(e) => update("capacity", e.target.value)} /></label></>}
+      {isEvent && <fieldset className="ticketEditor wide"><legend>Tickets</legend>
+        <p>Maak meerdere tickettypen, bijvoorbeeld Earlybird, Regular en Latebird. Geen ticketregels betekent: geen tickets.</p>
+        {(form.ticketVariations || []).map((ticket, index) => <article className="ticketVariation" key={ticket.id}>
+          <div className="ticketVariationHead"><strong>Tickettype {index + 1}</strong><button type="button" className="removeTicket" onClick={() => removeTicketVariation(ticket.id)}>Verwijderen</button></div>
+          <div className="ticketVariationGrid">
+            <label>Naam *<input value={ticket.name} onChange={(e) => updateTicketVariation(ticket.id, "name", e.target.value)} placeholder="Bijvoorbeeld Earlybird" /></label>
+            <label>Soort<select value={ticket.type} onChange={(e) => updateTicketVariation(ticket.id, "type", e.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option></select></label>
+            <label>Prijs<input type="number" min="0" step="0.01" disabled={ticket.type !== "paid"} value={ticket.price} onChange={(e) => updateTicketVariation(ticket.id, "price", e.target.value)} /></label>
+            <label>Capaciteit<input type="number" min="1" value={ticket.capacity} onChange={(e) => updateTicketVariation(ticket.id, "capacity", e.target.value)} placeholder="Leeg = onbeperkt" /></label>
+            <label>Verkoopstart<input type="datetime-local" value={ticket.salesStart} onChange={(e) => updateTicketVariation(ticket.id, "salesStart", e.target.value)} /></label>
+            <label>Verkoopeinde<input type="datetime-local" value={ticket.salesEnd} onChange={(e) => updateTicketVariation(ticket.id, "salesEnd", e.target.value)} /></label>
+            <label>Minimum per bestelling<input type="number" min="1" value={ticket.minQuantity} onChange={(e) => updateTicketVariation(ticket.id, "minQuantity", e.target.value)} /></label>
+            <label>Maximum per bestelling<input type="number" min="1" value={ticket.maxQuantity} onChange={(e) => updateTicketVariation(ticket.id, "maxQuantity", e.target.value)} /></label>
+          </div>
+        </article>)}
+        <button type="button" className="addTicket" onClick={addTicketVariation}>+ Tickettype toevoegen</button>
+      </fieldset>}
     </div>
 
     <fieldset className="eventDestinations"><legend>Bestemmingen</legend>
@@ -1622,6 +1655,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
     <style jsx>{`
+      .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
       .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
       .websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptPublishEventButton{border:1px solid #23804f;color:#17613d;background:#eefaf3}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}
       .channelActions,.channelPlanningActions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.channelPlanningActions input{width:190px;padding:6px 8px;font-size:11px}.channelManageLink{display:inline-flex;align-items:center;border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;text-decoration:none}.cancelChannelButton{color:#a12f2f!important}
@@ -1629,6 +1663,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{color:#5c7285}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
       .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.predisGenerationChoice{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.predisGenerationChoice small{color:#5c7285}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.eventinDestination{display:grid;grid-template-columns:minmax(240px,1fr) minmax(240px,1fr);align-items:end;gap:10px;padding:13px;border:1px solid #57ad7d;border-radius:10px;background:#e9f6ee}.eventinDestination>.check{align-self:center;color:#236d46}.eventinDestination>small{grid-column:1/-1;color:#405866}
       .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.channelCheck{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:1px solid #d5e0e7;border-radius:9px;background:#fff}.channelCheck .check{margin:0}.channelCheck small{padding:4px 7px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:11px;white-space:nowrap}.channelSafetyNote{margin:0;padding:10px 12px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#405866}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.eventinImageStatus{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:14px;padding:13px;border-radius:10px;border:1px solid #d5e0e7}.eventinImageStatus>div:first-child{display:flex;flex-direction:column;gap:4px}.eventinImageStatus span{font-weight:800}.eventinImageStatus small{color:#5c7285}.eventinImageStatus.ready{border-color:#57ad7d;background:#e9f6ee}.eventinImageStatus.ready span{color:#236d46}.eventinImageStatus.empty{background:#fff}.eventinImagePreview{display:grid;grid-template-columns:72px minmax(80px,160px);align-items:center;gap:9px}.eventinImagePreview img{display:block;width:72px;height:72px;border-radius:8px;object-fit:cover}.eventinImagePreview small{overflow-wrap:anywhere}.cropFocus{margin-top:14px;padding:12px;border-radius:10px;background:#eef7f9}.cropFocus select{margin-top:2px}.cropFocus small{color:#5c7285;font-weight:500}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff;transition:border-color .15s ease,background .15s ease,transform .15s ease}.imageSlot.imageSlotAll{margin-top:14px;border:2px dashed #25889b;background:#eef9fa}.imageSlot.exact{border-color:#57ad7d}.imageSlot.dragging{border:2px dashed #25889b;background:#e7f6f8;transform:translateY(-2px)}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.imageDropZone{min-width:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px;border:2px dashed #9cbac3;border-radius:10px;background:#f7fbfc;text-align:center}.imageDropZone>strong{color:#176d7f;font-size:13px}.imageDropZone>small,.replaceHint{color:#5c7285;font-weight:600}.uploadButton{align-self:center;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.mediaCheck{margin-top:14px;padding:12px 14px;border-radius:9px}.mediaCheck ul{margin:8px 0 0;padding-left:20px}.mediaCheckReady{background:#e9f6ee;color:#236d46}.mediaCheckWarning{background:#fff2d1;color:#815b00}.channelImagePreviewGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.channelImagePreview{background:#fff;border:1px solid #c6d5df;border-radius:10px;padding:12px}.channelImagePreviewHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.channelImagePreviewHead span{font-size:12px;padding:5px 8px;border-radius:999px}.imageReady{background:#e9f6ee;color:#236d46}.imageMissing{background:#fff2d1;color:#815b00}.channelImagePreview img{display:block;width:100%;height:180px;object-fit:contain;background:#f4f7f9;border-radius:8px}.channelImagePreview p{margin:9px 0 3px}.channelImagePreview small{display:block;color:#5c7285;line-height:1.4}.channelImagePreview .fallbackNotice{color:#815b00}.missingImageNotice{padding:16px;background:#fff8e6;border-radius:8px;color:#815b00}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.earlyDraftAction{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:14px;border:1px dashed #9cbac3;border-radius:10px;background:#f8fbfc}.earlyDraftAction p{margin:4px 0 0;color:#5c7285}.earlyDraftAction button{flex:0 0 auto;border:1px solid #25889b;border-radius:9px;padding:11px 15px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:12px;background:#e9f6ee;color:#236d46;font-size:13px}.status button{border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;color:inherit;font:inherit;font-weight:800;cursor:pointer}.status button:disabled{opacity:.5;cursor:not-allowed}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.loadMoreCampaigns{display:block;margin:14px auto 4px;border:1px solid #25889b;border-radius:9px;padding:10px 16px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.loadMoreCampaigns:disabled{opacity:.55;cursor:wait}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.earlyDraftAction{display:block}.earlyDraftAction button{width:100%;margin-top:10px}.campaignTypeGrid,.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid,.conceptFilters,.channelImagePreviewGrid,.staggerFields{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot,.eventinImageStatus{display:block}.eventinImagePreview{margin-top:12px}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
+      @media(max-width:760px){.ticketVariationGrid{grid-template-columns:1fr}}
     `}</style>
   </section>;
 }
