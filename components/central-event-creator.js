@@ -678,6 +678,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
+      addToCalendar: Boolean(common.calendar?.enabled), calendarMailbox: common.calendar?.mailbox || emptyForm.calendarMailbox,
       preparePromotion: targetChannels.length > 0, channels,
       brevoSubject: payloads.brevo?.subject || "", brevoPreview: payloads.brevo?.preview_text || "", brevoAudience: payloads.brevo?.list_names?.join(", ") || payloads.brevo?.audience || "",
       facebookText: payloads.facebook?.text || "", facebookPlacements: payloads.facebook?.placements || ["feed"], instagramFormat: payloads.instagram?.format || "post", instagramCaption: payloads.instagram?.caption || "",
@@ -1066,6 +1067,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         organizer: form.organizer.trim(), contact_email: form.contactEmail.trim(), language: form.language,
         cta: { label: form.ctaLabel, url: form.ctaUrl.trim() },
         tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity }, website_url: "",
+        calendar: { enabled: Boolean(form.addToCalendar), mailbox: form.calendarMailbox.trim() },
         commercial: { regular_price: form.regularPrice, campaign_price: form.campaignPrice, discount_code: form.discountCode, valid_from: form.validFrom, valid_until: form.validUntil, group_size: form.groupSize, price_per_person: form.pricePerPerson },
         review: { reviewer_name: form.reviewerName.trim(), score: form.reviewScore, source: form.reviewSource.trim() },
       };
@@ -1139,6 +1141,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       organizer: form.organizer.trim(), contact_email: form.contactEmail.trim(), language: form.language,
       cta: { label: form.ctaLabel, url: form.ctaUrl.trim() || websiteEvent.url },
       tickets: { type: form.ticketType, price: form.ticketPrice, capacity: form.capacity }, website_url: websiteEvent.url,
+      calendar: { enabled: Boolean(form.addToCalendar), mailbox: form.calendarMailbox.trim() },
       commercial: { regular_price: form.regularPrice, campaign_price: form.campaignPrice, discount_code: form.discountCode, valid_from: form.validFrom, valid_until: form.validUntil, group_size: form.groupSize, price_per_person: form.pricePerPerson },
       review: { reviewer_name: form.reviewerName.trim(), score: form.reviewScore, source: form.reviewSource.trim() },
     };
