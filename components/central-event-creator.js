@@ -26,6 +26,15 @@ const campaignTypes = [
   ["custom", "Eigen campagne", "Vrij nieuwsbericht of merkverhaal"],
 ];
 
+const campaignTitleLabels = {
+  event: "Evenementnaam",
+  product: "Productnaam",
+  offer: "Naam van aanbieding",
+  package: "Arrangementnaam",
+  review: "Titel voor reviewbericht",
+  custom: "Campagnenaam",
+};
+
 const emptyForm = {
   campaignType: "event",
   title: "", shortDescription: "", description: "", start: "", end: "",
@@ -229,6 +238,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const mediaReady = channelMediaIssues.length === 0;
   const isEvent = form.campaignType === "event";
   const campaignTypeLabel = campaignTypes.find(([id]) => id === form.campaignType)?.[1] || "Campagne";
+  const campaignTitleLabel = campaignTitleLabels[form.campaignType] || "Campagnenaam";
   const filteredEventCampaigns = useMemo(() => {
     const searchTerm = conceptSearch.trim().toLocaleLowerCase("nl-NL");
     return eventCampaigns.filter((item) => {
@@ -912,7 +922,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
     <div className="eventCreatorGrid">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
-      <label>{campaignTypeLabel}naam *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
+      <label>{campaignTitleLabel} *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
       {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onChange={(e) => update("start", e.target.value)} /></label><label>Eindigt *<input type="datetime-local" value={form.end} onChange={(e) => update("end", e.target.value)} /></label><label className="wide">Locatie *<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
       {(form.campaignType === "product" || form.campaignType === "offer") && <><label>Normale prijs<input type="number" min="0" step="0.01" value={form.regularPrice} onChange={(e) => update("regularPrice", e.target.value)} /></label><label>{form.campaignType === "offer" ? "Actieprijs *" : "Promotieprijs"}<input type="number" min="0" step="0.01" value={form.campaignPrice} onChange={(e) => update("campaignPrice", e.target.value)} /></label></>}
       {form.campaignType === "offer" && <><label>Actiecode<input value={form.discountCode} onChange={(e) => update("discountCode", e.target.value)} /></label><label>Geldig vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Geldig tot *<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
