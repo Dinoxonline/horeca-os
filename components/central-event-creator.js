@@ -658,16 +658,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
     let active = true;
     const storageKey = `horeca-os:predis:${workspaceId}:${selectedBusinessId}`;
-    const localBrandId = window.localStorage.getItem(storageKey) || "";
-    setPredisBrandId(localBrandId);
+    setPredisBrandId("");
     setPredisConnected(false);
+    setForm((current) => ({ ...current, predisGenerate: false }));
+    setPendingPredisGeneration(null);
     const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, config: "1" });
     fetch(`/api/integrations/predis?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       .then(async (response) => ({ response, result: await response.json().catch(() => ({})) }))
       .then(({ response, result }) => {
         if (!active || !response.ok) return;
         const savedBrandId = result.connected ? result.brandId || "" : "";
-        setPredisBrandId(savedBrandId || localBrandId);
+        setPredisBrandId(savedBrandId);
         setPredisConnected(Boolean(savedBrandId));
         if (savedBrandId) {
           setForm((current) => formHasCampaignContent(current)
@@ -739,7 +740,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
     if (form.preparePromotion && form.channels.google && (!form.ctaUrl.trim() || !form.shortDescription.trim())) return "Google heeft een korte tekst en knoplink nodig.";
-    if (form.preparePromotion && form.channels.predis && form.predisGenerate && !predisBrandId) return "Koppel voor deze vestiging eerst een Predis-merk onder Koppelingen.";
+    if (form.preparePromotion && form.channels.predis && form.predisGenerate && (!predisConnected || !predisBrandId)) return "Koppel voor deze vestiging eerst een Predis-merk onder Koppelingen.";
     if (form.preparePromotion && form.channels.predis && form.predisGenerate && (form.description.trim().length < 20 || form.description.trim().split(/\s+/).length < 3)) return "Beschrijf voor Predis de campagne met minimaal 20 tekens en 3 woorden.";
     if (form.preparePromotion && form.staggerEnabled && (Number(form.staggerMinMinutes) < 1 || Number(form.staggerMaxMinutes) < 1)) return "Vul voor de spreiding minimaal 1 minuut in.";
     if (form.preparePromotion && form.staggerEnabled && Number(form.staggerMinMinutes) > Number(form.staggerMaxMinutes)) return "De minimale spreiding kan niet hoger zijn dan de maximale spreiding.";
@@ -855,7 +856,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       tiktok: { caption: form.tiktokCaption.trim() || form.shortDescription.trim(), privacy: form.tiktokPrivacy, comments_enabled: form.tiktokComments, image_url: imageFor("vertical", ["portrait"]) },
       whatsapp: { template_name: form.whatsappTemplate.trim(), message: form.whatsappMessage.trim() || form.shortDescription.trim(), image_url: imageFor("vertical", ["landscape", "square"]) },
       google: { topic_type: form.googleTopic, summary: form.shortDescription.trim(), event: { title: form.title.trim(), start: form.start, end: form.end }, call_to_action: common.cta, image_url: imageFor("landscape", ["square"]) },
-      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images, generate_requested: form.predisGenerate, brand_id: form.predisGenerate ? predisBrandId : "" },
+      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images, generate_requested: form.predisGenerate && predisConnected, brand_id: form.predisGenerate && predisConnected ? predisBrandId : "" },
     };
     const channel_status = Object.fromEntries(enabledChannels.map((channel) => {
       const payload = channel_payloads[channel] || {};
@@ -885,8 +886,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       brevoDraft = brevoResult.draft;
       setEditingBrevoDraftId(brevoDraft.id);
     }
-    let predisGeneration = form.channels.predis && form.predisGenerate ? pendingPredisGeneration : null;
-    if (form.channels.predis && form.predisGenerate && !predisGeneration) {
+    let predisGeneration = form.channels.predis && form.predisGenerate && predisConnected ? pendingPredisGeneration : null;
+    if (form.channels.predis && form.predisGenerate && predisConnected && !predisGeneration) {
       const predisResponse = await fetch("/api/integrations/predis", {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -1084,8 +1085,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label>
         <label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label>
         <div className="predisGenerationChoice">
-          <strong>{predisBrandId ? "Predis-merk gevonden voor deze vestiging" : "Predis is nog niet gekoppeld voor deze vestiging"}</strong>
-          <label className="check"><input type="checkbox" checked={Boolean(form.predisGenerate)} disabled={!predisBrandId} onChange={(e) => update("predisGenerate", e.target.checked)} /> Predis-concept laten maken bij opslaan</label>
+          <strong>{predisConnected ? "Predis-merk gevonden voor deze vestiging" : "Predis is nog niet gekoppeld voor deze vestiging"}</strong>
+          <label className="check"><input type="checkbox" checked={Boolean(form.predisGenerate)} disabled={!predisConnected} onChange={(e) => update("predisGenerate", e.target.checked)} /> Predis-concept laten maken bij opslaan</label>
           <small>Standaard uit. Ook wanneer dit aanstaat, wordt het resultaat alleen als concept gemaakt en nooit automatisch gepubliceerd.</small>
         </div>
       </fieldset>}
