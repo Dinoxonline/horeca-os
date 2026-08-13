@@ -243,7 +243,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const current = form.facebookPlacements || [];
     update("facebookPlacements", current.includes(placement) ? current.filter((item) => item !== placement) : [...current, placement]);
   };
-  const enabledChannels = Object.keys(form.channels).filter((channel) => form.channels[channel]);
+  const enabledChannels = form.preparePromotion ? Object.keys(form.channels).filter((channel) => form.channels[channel]) : [];
   const preferredImageKeys = (channel) => {
     if (channel === "instagram") return form.instagramFormat === "reel" || form.instagramFormat === "story"
       ? ["vertical", "portrait", "square", "landscape"]
@@ -1079,7 +1079,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   async function createPromotionDraft(websiteEvent) {
-    if (!form.preparePromotion && isEvent) return { ok: true, skipped: true };
     const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
     if (!integration?.id) return { warning: "Promotieconcept kon niet worden opgeslagen: marketingkoppeling ontbreekt." };
     const imageFor = (key, fallbackKeys = []) => form.images?.[key]?.url || fallbackKeys.map((item) => form.images?.[item]?.url).find(Boolean) || form.imageUrl.trim();
@@ -1197,7 +1196,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (workspaceId && selectedBusinessId) {
         window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusinessId));
       }
-      setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : "Het evenement is verwerkt.", steps, url: website.event.url }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
+      setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : website.event.status === "draft" ? "Het evenement is als Eventin-concept opgeslagen. Publiceer het hieronder wanneer alles klopt." : "Het evenement is verwerkt.", steps, url: website.event.status === "publish" ? website.event.url : "" }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
 
