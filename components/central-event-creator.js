@@ -415,7 +415,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .select("id,body,media,status,workflow_status,scheduled_for,published_at,permalink,created_at")
       .eq("workspace_id", workspaceId)
       .contains("media", [{ kind: "campaign_distribution" }])
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: conceptSort === "oldest" })
       .range(from, from + campaignPageSize - 1);
     if (selectedBusiness?.id || businessId) query = query.eq("business_id", selectedBusiness?.id || businessId);
     const { data, error } = await query;
@@ -656,7 +656,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     return () => { active = false; };
   }, [workspaceId, selectedBusiness?.id, businessId, form.channels.brevo, session.access_token]);
 
-    useEffect(() => { loadEventCampaigns(); }, [workspaceId, selectedBusiness?.id, businessId]);
+    useEffect(() => { loadEventCampaigns(); }, [workspaceId, selectedBusiness?.id, businessId, conceptSort]);
 
   const validate = () => {
     if (!form.title.trim()) return `Vul een naam in voor ${campaignTypeLabel.toLowerCase()}.`;
