@@ -501,8 +501,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const payload = await response.json().catch(() => ({}));
       if (requestId !== managedEventsRequestRef.current) return;
       if (!response.ok) throw new Error(payload.error || "De bestaande website-evenementen konden niet worden geladen.");
-      setManagedWebsiteEvents((payload.events || []).map((eventItem) => ({ ...eventItem, businessId: selectedBusinessId, site })));
-      setResult({ ok: true, message: `${payload.events?.length || 0} bestaande Eventin-evenementen gevonden. Er is nog niets geïmporteerd of gewijzigd.` });
+      setManagedWebsiteEvents((payload.events || []).map((eventItem) => ({ ...eventItem, businessId: selectedBusinessId, site, readOnly: Boolean(payload.readOnly) })));
+      setResult({ ok: true, message: `${payload.events?.length || 0} bestaande Eventin-evenementen gevonden. Er is nog niets geïmporteerd of gewijzigd.${payload.warning ? ` ${payload.warning}` : ""}` });
     } catch (error) {
       if (requestId !== managedEventsRequestRef.current) return;
       setManagedWebsiteEvents([]);
@@ -559,6 +559,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         source_url: eventItem.url || "",
         eventin_event_id: String(eventItem.id),
         website_event_status: eventItem.status || "publish",
+        eventin_management_mode: eventItem.readOnly ? "read_only" : "secured",
         imported_from_eventin: true,
         imported_at: new Date().toISOString(),
         common,
@@ -1366,7 +1367,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
         const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
         return <article key={eventItem.id}>
-          <div><strong>{eventItem.title}</strong><span>{eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
+          <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
           <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
           {incomplete && <small>Niet alle Eventin-velden zijn beschikbaar. Controleer datum, tijd en locatie vóór je dit evenement bewerkt.</small>}
           <div className="managedEventActions">{eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
@@ -1391,6 +1392,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const isWebsiteEvent = distribution.source_type === "website_event";
         const websiteEventStatus = distribution.website_event_status || "publish";
         const websiteEventCancelled = websiteEventStatus === "trash";
+        const websiteEventReadOnly = distribution.eventin_management_mode === "read_only";
         const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne");
         const conceptBusy = conceptBusyId === item.id;
         const approved = item.workflow_status === "approved";
@@ -1412,14 +1414,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : "Campagneconcept in Horeca OS"}</p>
             {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventCancelled ? "Geannuleerd" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
+            {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
             {editingBlockReason && <p className="protectedCampaignNotice"><b>Bewerken geblokkeerd:</b> {editingBlockReason}</p>}
             {providerConfirmed && <p className="placedCampaignLock"><b>Geplaatste campagne vergrendeld.</b> Goedkeuring en planning blijven ongewijzigd. Gebruik Dupliceren voor een nieuwe versie.</p>}
             <div className="conceptActions">
-              <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || Boolean(editingBlockReason)} title={websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
-              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
-              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy} onClick={() => changeWebsiteEventStatus(item, "trash")}>Evenement annuleren</button>}
+              <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || websiteEventReadOnly || Boolean(editingBlockReason)} title={websiteEventReadOnly ? "Beveiligde Eventin-koppeling vereist" : websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled || websiteEventReadOnly ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
+              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventReadOnly || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventReadOnly ? "Koppeling nodig" : websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
+              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Evenement annuleren</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
               <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>
