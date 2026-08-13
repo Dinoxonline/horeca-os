@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const channelDefaults = {
@@ -189,6 +189,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [conceptSort, setConceptSort] = useState("newest");
   const [conceptSchedule, setConceptSchedule] = useState({});
   const [channelScheduleEdits, setChannelScheduleEdits] = useState({});
+  const [managedWebsiteEvents, setManagedWebsiteEvents] = useState([]);
+  const [managedEventsLoading, setManagedEventsLoading] = useState(false);
+  const [importingEventId, setImportingEventId] = useState("");
+  const managedEventsRequestRef = useRef(0);
   const [brevoLists, setBrevoLists] = useState([]);
   const [selectedBrevoListIds, setSelectedBrevoListIds] = useState([]);
   const [brevoSenderEmail, setBrevoSenderEmail] = useState("");
@@ -484,6 +488,110 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setCampaignListBusy(false);
   }
 
+  async function loadManagedWebsiteEvents() {
+    const selectedBusinessId = selectedBusiness?.id || businessId;
+    if (!workspaceId || !selectedBusinessId) return;
+    const requestId = managedEventsRequestRef.current + 1;
+    managedEventsRequestRef.current = requestId;
+    setManagedEventsLoading(true);
+    setResult(null);
+    try {
+      const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, site });
+      const response = await fetch(`/api/marketing/website-events/create?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const payload = await response.json().catch(() => ({}));
+      if (requestId !== managedEventsRequestRef.current) return;
+      if (!response.ok) throw new Error(payload.error || "De bestaande website-evenementen konden niet worden geladen.");
+      setManagedWebsiteEvents((payload.events || []).map((eventItem) => ({ ...eventItem, businessId: selectedBusinessId, site })));
+      setResult({ ok: true, message: `${payload.events?.length || 0} bestaande Eventin-evenementen gevonden. Er is nog niets geïmporteerd of gewijzigd.` });
+    } catch (error) {
+      if (requestId !== managedEventsRequestRef.current) return;
+      setManagedWebsiteEvents([]);
+      setResult({ ok: false, message: error.message || "De bestaande website-evenementen konden niet worden geladen." });
+    } finally {
+      if (requestId === managedEventsRequestRef.current) setManagedEventsLoading(false);
+    }
+  }
+
+  async function importManagedWebsiteEvent(eventItem) {
+    const selectedBusinessId = selectedBusiness?.id || businessId;
+    if (!selectedBusinessId || !eventItem?.id) return;
+    if (eventItem.businessId !== selectedBusinessId || eventItem.site !== site) {
+      return setResult({ ok: false, message: "De vestiging is tijdens het laden gewijzigd. Laad de Eventin-evenementen opnieuw voor de gekozen vestiging." });
+    }
+    setImportingEventId(eventItem.id);
+    setResult(null);
+    try {
+      const { data: existingRows, error: existingError } = await supabase.from("social_content_items")
+        .select("id,media")
+        .eq("workspace_id", workspaceId)
+        .eq("business_id", selectedBusinessId)
+        .filter("media", "cs", JSON.stringify([{ kind: "campaign_distribution", eventin_event_id: String(eventItem.id) }]))
+        .limit(1);
+      if (existingError) throw existingError;
+      if (existingRows?.length) {
+        setResult({ ok: true, message: `${eventItem.title} is al aan Horeca OS gekoppeld.` });
+        await loadEventCampaigns();
+        return;
+      }
+      const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
+      if (!integration?.id) throw new Error("De interne marketingkoppeling ontbreekt.");
+      const common = {
+        campaign_type: "event",
+        title: eventItem.title || "Bestaand evenement",
+        short_description: "",
+        description: eventItem.description || "",
+        start: eventItem.start || "",
+        end: eventItem.end || "",
+        location: eventItem.location || "",
+        image_url: eventItem.imageUrl || "",
+        images: emptyImages,
+        video_url: "",
+        organizer: selectedBusiness?.name || "",
+        contact_email: "",
+        language: "nl",
+        cta: { label: "Meer informatie", url: eventItem.url || "" },
+        tickets: { type: "free", price: "0", capacity: "" },
+        website_url: eventItem.url || "",
+      };
+      const distribution = {
+        kind: "campaign_distribution",
+        source_type: "website_event",
+        source_url: eventItem.url || "",
+        eventin_event_id: String(eventItem.id),
+        website_event_status: eventItem.status || "publish",
+        imported_from_eventin: true,
+        imported_at: new Date().toISOString(),
+        common,
+        target_channels: [],
+        channel_payloads: {},
+        channel_status: {},
+        channel_schedule: {},
+        provider_delivery: {},
+        scheduling_status: "draft",
+      };
+      const { error } = await supabase.from("social_content_items").insert({
+        workspace_id: workspaceId,
+        business_id: selectedBusinessId,
+        account_id: integration.id,
+        content_type: "post",
+        direction: "outbound",
+        body: eventItem.description || eventItem.title || "Bestaand evenement",
+        media: [distribution],
+        status: "draft",
+        workflow_status: "new",
+        scheduled_for: null,
+        created_by: session.user.id,
+      });
+      if (error) throw error;
+      setResult({ ok: true, message: `${eventItem.title} is aan Horeca OS gekoppeld. Eventin en andere kanalen zijn niet gewijzigd.` });
+      await loadEventCampaigns();
+    } catch (error) {
+      setResult({ ok: false, message: error.message || "Het bestaande evenement kon niet worden gekoppeld." });
+    } finally {
+      setImportingEventId("");
+    }
+  }
+
   function openCampaignConcept(item, asCopy = false) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
     if (!distribution) return;
@@ -731,6 +839,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingWebsiteEvent(null);
     setEditingBrevoDraftId(null);
     setPendingPredisGeneration(null);
+    setManagedWebsiteEvents([]);
+    setImportingEventId("");
+    managedEventsRequestRef.current += 1;
+    setManagedEventsLoading(false);
     setPreview(false);
     setResult(null);
   }, [selectedBusiness?.id]);
@@ -1248,6 +1360,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
     <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : "Basisconcept opslaan"}</button></div>
     <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    {isEvent && <div className="existingWebsiteEvents">
+      <div className="existingWebsiteEventsHead"><div><p className="eyebrow">BESTAANDE WEBSITE-AGENDA</p><h3>Eventin-evenementen koppelen</h3><p>Laden en koppelen verandert niets op de website. Pas na koppelen verschijnt het evenement als beheerdossier in Horeca OS.</p></div><button type="button" className="secondaryButton" onClick={loadManagedWebsiteEvents} disabled={managedEventsLoading}>{managedEventsLoading ? "Evenementen laden…" : "Bestaande evenementen laden"}</button></div>
+      {managedWebsiteEvents.length > 0 && <div className="managedEventGrid">{managedWebsiteEvents.map((eventItem) => {
+        const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
+        const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
+        return <article key={eventItem.id}>
+          <div><strong>{eventItem.title}</strong><span>{eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
+          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
+          {incomplete && <small>Niet alle Eventin-velden zijn beschikbaar. Controleer datum, tijd en locatie vóór je dit evenement bewerkt.</small>}
+          <div className="managedEventActions">{eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
+        </article>;
+      })}</div>}
+    </div>}
     <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
         <strong>Nog geen campagneconcepten opgeslagen</strong>
@@ -1363,6 +1488,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
     <style jsx>{`
+      .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
       .websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}
       .channelActions,.channelPlanningActions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.channelPlanningActions input{width:190px;padding:6px 8px;font-size:11px}.channelManageLink{display:inline-flex;align-items:center;border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;text-decoration:none}.cancelChannelButton{color:#a12f2f!important}
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
