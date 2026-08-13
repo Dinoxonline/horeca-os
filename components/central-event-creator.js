@@ -1838,8 +1838,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
             {approved && !providerConfirmed && <div className="conceptSchedule">
-              <label>Publicatiedatum<input type="date" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.date || ""} onChange={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), date: event.target.value } }))} /></label>
-              <label>Publicatietijd<input type="time" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.time || ""} onChange={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), time: event.target.value } }))} /></label>
+              <label>Publicatiedatum<input type="date" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.date || ""} onInput={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), date: event.currentTarget.value } }))} /></label>
+              <label>Publicatietijd<input type="time" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.time || ""} onInput={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), time: event.currentTarget.value } }))} /></label>
               {item.scheduled_for ? <>
                 <span>Intern basisplan: {formatNlDateTime(item.scheduled_for)}</span>
                 <button type="button" disabled={conceptBusy} onClick={() => scheduleConcept(item, true)}>Planning intrekken</button>
