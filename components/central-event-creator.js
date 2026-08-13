@@ -83,7 +83,7 @@ function channelConceptText(distribution, channel, fallbackBody = "") {
 }
 
 function siteForBusiness(business) {
-  return String(business?.name || "").toLowerCase().includes("plein") ? "grandcafehetplein.com" : "caribbeancorner.nl";
+  return "caribbeancorner.nl";
 }
 
 function defaultsForBusiness(business) {

@@ -7,11 +7,6 @@ const SITES = {
     username: "EVENTIN_CARIBBEAN_USERNAME",
     password: "EVENTIN_CARIBBEAN_APPLICATION_PASSWORD",
   },
-  "grandcafehetplein.com": {
-    origin: "https://grandcafehetplein.com",
-    username: "EVENTIN_PLEIN_USERNAME",
-    password: "EVENTIN_PLEIN_APPLICATION_PASSWORD",
-  },
 };
 
 function text(value, limit = 10000) {
@@ -146,7 +141,7 @@ async function siteMatchesBusiness(context, body) {
     .eq("workspace_id", body.workspaceId)
     .maybeSingle();
   const name = String(data?.name || "").toLowerCase();
-  const expectedSite = name.includes("plein") ? "grandcafehetplein.com" : name.includes("caribbean") ? "caribbeancorner.nl" : "";
+  const expectedSite = name.includes("plein") || name.includes("caribbean") ? "caribbeancorner.nl" : "";
   return Boolean(expectedSite) && text(body.site, 200).toLowerCase() === expectedSite;
 }
 
