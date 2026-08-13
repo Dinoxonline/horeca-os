@@ -1904,6 +1904,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const deletionBlockReason = campaignDeletionBlockReason(item, distribution);
         const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
         const selectedGroupTargets = distribution.channel_payloads?.facebook?.group_sharing?.groups || [];
+        const facebookGroupImage = distribution.channel_payloads?.facebook?.image_url || distribution.common?.image_url || "";
 
         return <article key={item.id}>
           <div className="campaignCardMain">
@@ -1940,7 +1941,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
-            {selectedGroupTargets.length > 0 && <div className="facebookGroupShareActions"><strong>Delen in gekozen Facebookgroepen</strong><p>De tekst wordt gekopieerd. Voeg in Facebook zelf de afbeelding toe en bevestig de plaatsing.</p>{selectedGroupTargets.map((group) => <button type="button" key={group.id || group.url} onClick={() => openFacebookGroup(distribution, group)}>Open {group.name}</button>)}</div>}
+            {selectedGroupTargets.length > 0 && <div className="facebookGroupShareActions"><strong>Delen in gekozen Facebookgroepen</strong><p>De tekst wordt gekopieerd. Open ook de juiste afbeelding en voeg die in Facebook toe voordat je de plaatsing bevestigt.</p>{facebookGroupImage && <a href={facebookGroupImage} target="_blank" rel="noopener noreferrer">Afbeelding openen</a>}{selectedGroupTargets.map((group) => <button type="button" key={group.id || group.url} onClick={() => openFacebookGroup(distribution, group)}>Open {group.name}</button>)}</div>}
             {approved && !providerConfirmed && <div className="conceptSchedule">
               <label>Publicatiedatum<input type="date" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.date || ""} onInput={(event) => { const value = event.currentTarget.value; setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), date: value } })); }} /></label>
               <label>Publicatietijd<input type="time" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.time || ""} onInput={(event) => { const value = event.currentTarget.value; setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), time: value } })); }} /></label>
