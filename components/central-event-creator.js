@@ -391,6 +391,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const payloads = distribution.channel_payloads || {};
     const targetChannels = distribution.target_channels || [];
     const storedType = common.campaign_type || (distribution.source_type === "website_event" ? "event" : distribution.source_type) || "custom";
+    const isWebsiteEvent = distribution.source_type === "website_event";
     const channels = Object.fromEntries(Object.keys(channelDefaults).map((channel) => [channel, targetChannels.includes(channel)]));
     setForm({
       ...emptyForm,
@@ -414,12 +415,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       validFrom: commercial.valid_from || "", validUntil: commercial.valid_until || "", groupSize: commercial.group_size || "", pricePerPerson: commercial.price_per_person || "",
       reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
     });
-    setEditingCampaignId(storedType === "event" ? null : item.id);
-    setEditingBrevoDraftId(storedType === "event" ? null : distribution.provider_delivery?.brevo?.draft_id || null);
+    setEditingCampaignId(isWebsiteEvent ? null : item.id);
+    setEditingBrevoDraftId(isWebsiteEvent ? null : distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
     setPendingPredisGeneration(null);
     setPreview(false);
-    setResult({ ok: true, message: storedType === "event" ? "Het evenement is als basis geopend. Opslaan maakt veilig een nieuw Eventin-evenement." : "Het campagneconcept is geopend en kan nu worden bijgewerkt." });
+    setResult({ ok: true, message: isWebsiteEvent ? "Het website-evenement is als basis geopend. Opslaan maakt veilig een nieuw Eventin-evenement." : "Het campagneconcept is geopend en kan nu op dezelfde plek worden bijgewerkt." });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -687,7 +688,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
         media: [distribution], status: "draft", workflow_status: "new", scheduled_for: null, created_by: session.user.id,
       };
-      const { error } = editingCampaignId && !isEvent
+      const { error } = editingCampaignId
         ? await supabase.from("social_content_items").update(record).eq("id", editingCampaignId).eq("workspace_id", workspaceId)
         : await supabase.from("social_content_items").insert({ ...record, workspace_id: workspaceId });
       if (error) throw error;
@@ -795,7 +796,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
       media: [distribution], status: "draft", workflow_status: "new", scheduled_for: null, created_by: session.user.id,
     };
-    const { error } = editingCampaignId && !isEvent
+    const { error } = editingCampaignId
       ? await supabase.from("social_content_items").update(record).eq("id", editingCampaignId).eq("workspace_id", workspaceId)
       : await supabase.from("social_content_items").insert({ ...record, workspace_id: workspaceId });
     return error ? { warning: "Het evenement staat op de website, maar het promotieconcept kon niet worden opgeslagen." } : { ok: true };
@@ -1006,7 +1007,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         {filteredEventCampaigns.map((item) => {
         const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
         const storedType = distribution.common?.campaign_type || distribution.source_type;
-        const isStoredEvent = storedType === "event" || storedType === "website_event";
+        const isWebsiteEvent = distribution.source_type === "website_event";
         const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne");
         const conceptBusy = conceptBusyId === item.id;
         const approved = item.workflow_status === "approved";
@@ -1026,7 +1027,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : "Campagneconcept in Horeca OS"}</p>
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             <div className="conceptActions">
-              <button type="button" className="conceptOpenButton" disabled={conceptBusy} onClick={() => openCampaignConcept(item)}>{isStoredEvent ? "Als basis gebruiken" : "Concept bewerken"}</button>
+              <button type="button" className="conceptOpenButton" disabled={conceptBusy} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? "Als basis gebruiken" : "Concept bewerken"}</button>
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || (!approved && hasIncompleteChannels)} title={!approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
               <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : "Verwijderen"}</button>
