@@ -111,14 +111,14 @@ function distributionHasProviderConfirmation(distribution) {
 function campaignDeletionBlockReason(item, distribution) {
   if (distributionHasProviderConfirmation(distribution)) return "Deze campagne heeft een bevestigde externe plaatsing en blijft daarom bewaard.";
   if (item?.scheduled_for) return "Trek eerst de interne planning in voordat je dit concept verwijdert.";
-  if (item?.workflow_status === "approved") return "Trek eerst de goedkeuring in voordat je dit concept verwijdert.";
+  if (item?.status === "approved") return "Trek eerst de goedkeuring in voordat je dit concept verwijdert.";
   return "";
 }
 
 function campaignEditingBlockReason(item, distribution) {
   if (distributionHasProviderConfirmation(distribution)) return "Deze campagne heeft een bevestigde externe plaatsing. Dupliceer haar om veilig een nieuwe versie te maken.";
   if (item?.scheduled_for) return "Trek eerst de interne planning in voordat je dit concept bewerkt.";
-  if (item?.workflow_status === "approved") return "Trek eerst de goedkeuring in voordat je dit concept bewerkt.";
+  if (item?.status === "approved") return "Trek eerst de goedkeuring in voordat je dit concept bewerkt.";
   return "";
 }
 
@@ -327,7 +327,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     return eventCampaigns.filter((item) => {
       const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
       const storedType = distribution.common?.campaign_type || (distribution.source_type === "website_event" ? "event" : distribution.source_type) || "custom";
-      const workStatus = distributionHasProviderConfirmation(distribution) ? "published" : item.scheduled_for ? "scheduled" : item.workflow_status === "approved" ? "approved" : "draft";
+      const workStatus = distributionHasProviderConfirmation(distribution) ? "published" : item.scheduled_for ? "scheduled" : item.status === "approved" ? "approved" : "draft";
       const searchableText = [
         distribution.common?.title,
         distribution.common?.short_description,
@@ -831,7 +831,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setConceptBusyId(item.id);
     setResult(null);
     try {
-      const { error } = await supabase.from("social_content_items").update({ workflow_status: approved ? "approved" : "new", scheduled_for: approved ? item.scheduled_for : null, media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
+      const { error } = await supabase.from("social_content_items").update({ status: approved ? "approved" : "draft", workflow_status: approved ? "in_progress" : "new", scheduled_for: approved ? item.scheduled_for : null, media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) throw error;
       setResult({ ok: true, message: approved ? "Het campagneconcept is goedgekeurd. Er is nog niets gepubliceerd." : "De goedkeuring is ingetrokken. Het item staat weer als concept klaar." });
       await loadEventCampaigns();
@@ -883,7 +883,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setConceptBusyId(item.id);
     setResult(null);
     try {
-      const { error } = await supabase.from("social_content_items").update({ workflow_status: "approved", scheduled_for: scheduledIso, media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
+      const { error } = await supabase.from("social_content_items").update({ status: cancel ? "approved" : "scheduled", workflow_status: "in_progress", scheduled_for: scheduledIso, media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) throw error;
       setResult({ ok: true, message: cancel ? "De planning is ingetrokken. De campagne blijft goedgekeurd, maar wordt niet gepubliceerd." : "De campagne is intern ingepland. Per kanaal is een apart tijdstip vastgelegd; pas na een bevestiging van het kanaal tonen we Geplaatst." });
       if (cancel) setConceptSchedule((current) => ({ ...current, [item.id]: "" }));
@@ -938,7 +938,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult(null);
     try {
       const { error } = await supabase.from("social_content_items")
-        .update({ workflow_status: "approved", scheduled_for: remainingDates[0]?.toISOString() || null, media: nextMedia })
+        .update({ status: remainingDates.length ? "scheduled" : "approved", workflow_status: "in_progress", scheduled_for: remainingDates[0]?.toISOString() || null, media: nextMedia })
         .eq("id", item.id)
         .eq("workspace_id", workspaceId);
       if (error) throw error;
@@ -1796,7 +1796,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           || "";
         const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne");
         const conceptBusy = conceptBusyId === item.id;
-        const approved = item.workflow_status === "approved";
+        const approved = item.status === "approved" || item.status === "scheduled";
         const providerConfirmed = distributionHasProviderConfirmation(distribution);
         const incompleteChannels = channelsNeedingDetails(distribution);
         const hasIncompleteChannels = incompleteChannels.length > 0;
