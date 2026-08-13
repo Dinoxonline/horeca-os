@@ -27,7 +27,7 @@ function dateParts(value) {
 
 function eventContent(body) {
   const ticket = body.ticketType === "paid"
-    ? `Ticketprijs: â‚¬ ${Number(body.ticketPrice || 0).toFixed(2)}`
+    ? `Ticketprijs: € ${Number(body.ticketPrice || 0).toFixed(2)}`
     : body.ticketType === "free" ? "Gratis toegang" : "";
   const capacity = body.capacity ? `Capaciteit: ${Number(body.capacity)} personen` : "";
   const image = text(body.imageUrl, 2000);
@@ -64,7 +64,7 @@ function siteCredentials(body) {
   if (!username || !password) {
     return {
       site,
-      error: `De beveiligde Eventin-schrijfkoppeling voor ${body.site} moet nog eenmalig onder Vercel â†’ Environment Variables worden ingesteld (${site.username} en ${site.password}).`,
+      error: `De beveiligde Eventin-schrijfkoppeling voor ${body.site} moet nog eenmalig onder Vercel → Environment Variables worden ingesteld (${site.username} en ${site.password}).`,
       status: 503,
       configurationRequired: true,
     };
