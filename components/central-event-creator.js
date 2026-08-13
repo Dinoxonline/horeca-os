@@ -251,7 +251,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   });
   const channelMediaIssues = form.preparePromotion ? [
     ...(form.channels.facebook && !(form.facebookPlacements || []).length ? ["Facebook: kies Feed, Verhaal of Reel."] : []),
-    ...(enabledChannels.length === 0 ? ["Kies minimaal Ã©Ã©n promotiekanaal."] : []),
+    ...(enabledChannels.length === 0 ? ["Kies minimaal één promotiekanaal."] : []),
     ...channelImagePreviews.flatMap((item) => {
       const videoRequired = item.channel === "tiktok"
         || (item.channel === "instagram" && form.instagramFormat === "reel")
@@ -297,7 +297,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setDraggingSlot("");
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 1) {
-      setUploadMessage({ ok: false, message: "Sleep Ã©Ã©n afbeelding tegelijk naar een afbeeldingsvak." });
+      setUploadMessage({ ok: false, message: "Sleep één afbeelding tegelijk naar een afbeeldingsvak." });
       return;
     }
     if (files[0]) uploadImage(slot, files[0]);
@@ -309,7 +309,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setDraggingSlot("");
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 1) {
-      setUploadMessage({ ok: false, message: "Sleep Ã©Ã©n bronafbeelding tegelijk. Horeca OS maakt daar alle mogelijke formaten van." });
+      setUploadMessage({ ok: false, message: "Sleep één bronafbeelding tegelijk. Horeca OS maakt daar alle mogelijke formaten van." });
       return;
     }
     if (files[0]) uploadImageToAll(files[0]);
@@ -343,7 +343,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
 
       if (sourceWidth < slot.width || sourceHeight < slot.height) {
-        throw new Error(`${slot.label} heeft na het bijsnijden minimaal ${slot.width} Ã— ${slot.height} bruikbare pixels nodig. Deze foto is ${loaded.width} Ã— ${loaded.height} px.`);
+        throw new Error(`${slot.label} heeft na het bijsnijden minimaal ${slot.width} × ${slot.height} bruikbare pixels nodig. Deze foto is ${loaded.width} × ${loaded.height} px.`);
       }
       if (!cropped && loaded.width === slot.width && loaded.height === slot.height) {
         return { file, width: loaded.width, height: loaded.height, resized: false, cropped: false, focus: cropFocus, originalWidth: loaded.width, originalHeight: loaded.height };
@@ -387,10 +387,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setUploadMessage({
         ok: true,
         message: prepared.cropped
-          ? `${slot.label} is automatisch bijgesneden met focus op ${cropFocus === "top" ? "boven" : cropFocus === "bottom" ? "onder" : "het midden"} en aangepast van ${prepared.originalWidth} Ã— ${prepared.originalHeight} naar ${slot.width} Ã— ${slot.height} px.`
+          ? `${slot.label} is automatisch bijgesneden met focus op ${cropFocus === "top" ? "boven" : cropFocus === "bottom" ? "onder" : "het midden"} en aangepast van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px.`
           : prepared.resized
-            ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} Ã— ${prepared.originalHeight} naar ${slot.width} Ã— ${slot.height} px en geÃ¼pload.`
-            : `${slot.label} is correct geÃ¼pload.`,
+            ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px en geüpload.`
+            : `${slot.label} is correct geüpload.`,
       });
       setPreview(false); setResult(null);
     } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
@@ -433,7 +433,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         ok: completed > 0,
         message: failures.length
           ? `${completed} van de ${imageSlots.length} formaten zijn gemaakt. ${failures.join(" ")}`
-          : "Alle vier kanaalformaten zijn automatisch bijgesneden, verkleind en geÃ¼pload.",
+          : "Alle vier kanaalformaten zijn automatisch bijgesneden, verkleind en geüpload.",
       });
     } finally {
       setUploadingSlot("");
@@ -734,7 +734,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.preparePromotion && form.channels.brevo && !(form.description.trim() || form.shortDescription.trim())) return "Vul voor Brevo een promotietekst of volledige omschrijving in.";
     if (form.preparePromotion && form.channels.brevo && brevoLoading) return "Wacht tot de Brevo-doelgroepen zijn geladen.";
     if (form.preparePromotion && form.channels.brevo && brevoError) return brevoError;
-    if (form.preparePromotion && form.channels.brevo && selectedBrevoListIds.length === 0) return "Kies voor Brevo minimaal Ã©Ã©n doelgroep.";
+    if (form.preparePromotion && form.channels.brevo && selectedBrevoListIds.length === 0) return "Kies voor Brevo minimaal één doelgroep.";
     if (form.preparePromotion && form.channels.facebook && !(form.facebookPlacements || []).length) return "Kies voor Facebook minimaal Feed, Verhaal of Reel.";
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
@@ -952,7 +952,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setCopiedChannelKey(key);
       window.setTimeout(() => setCopiedChannelKey((current) => current === key ? "" : current), 2000);
     } catch {
-      setResult({ ok: false, message: "KopiÃ«ren is niet gelukt. Open het concept en selecteer de tekst handmatig." });
+      setResult({ ok: false, message: "Kopiëren is niet gelukt. Open het concept en selecteer de tekst handmatig." });
     }
   }
 
@@ -983,12 +983,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label className="wide">Korte promotietekst<textarea rows={3} value={form.shortDescription} onChange={(e) => update("shortDescription", e.target.value)} placeholder="De kernboodschap voor Google, WhatsApp en sociale media." /></label>
       <label className="wide">{form.campaignType === "review" ? "Reviewtekst *" : "Volledige omschrijving"}<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
       <div className="imageUploads wide">
-        <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload Ã©Ã©n bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
+        <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload één bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
         <label className="cropFocus">Focuspunt bij automatisch bijsnijden
           <select value={cropFocus} onChange={(event) => setCropFocus(event.target.value)}>
-            <option value="top">Boven â€” behoud gezichten of tekst bovenin</option>
-            <option value="center">Midden â€” standaard</option>
-            <option value="bottom">Onder â€” behoud tekst of details onderin</option>
+            <option value="top">Boven — behoud gezichten of tekst bovenin</option>
+            <option value="center">Midden — standaard</option>
+            <option value="bottom">Onder — behoud tekst of details onderin</option>
           </select>
           <small>Horeca OS houdt dit deel zoveel mogelijk in beeld wanneer een foto niet dezelfde verhouding heeft.</small>
         </label>
@@ -999,11 +999,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDraggingSlot(""); }}
           onDrop={handleAllImageDrop}
         >
-          <div><strong>EÃ©n bronafbeelding voor alle formaten</strong><span>Horeca OS maakt automatisch 1,91:1, 1:1, 4:5 en 9:16</span><small>Je kunt een automatisch gemaakte uitsnede hieronder altijd vervangen.</small></div>
+          <div><strong>Eén bronafbeelding voor alle formaten</strong><span>Horeca OS maakt automatisch 1,91:1, 1:1, 4:5 en 9:16</span><small>Je kunt een automatisch gemaakte uitsnede hieronder altijd vervangen.</small></div>
           <div className="imageDropZone">
-            <strong>{draggingSlot === "all" ? "Laat de bronafbeelding hier los" : "Sleep Ã©Ã©n afbeelding hierheen"}</strong>
+            <strong>{draggingSlot === "all" ? "Laat de bronafbeelding hier los" : "Sleep één afbeelding hierheen"}</strong>
             <small>of</small>
-            <label className="uploadButton">{uploadingSlot === "all" ? "Alle formaten makenâ€¦" : "Bronafbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImageToAll(e.target.files?.[0])} /></label>
+            <label className="uploadButton">{uploadingSlot === "all" ? "Alle formaten maken…" : "Bronafbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImageToAll(e.target.files?.[0])} /></label>
           </div>
         </article>
         <div className="imageSlotGrid">{imageSlots.map((slot) => {
@@ -1017,20 +1017,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDraggingSlot(""); }}
             onDrop={(event) => handleImageDrop(slot, event)}
           >
-            <div><strong>{slot.label}</strong><span>{slot.width} Ã— {slot.height} px Â· {slot.ratio}</span><small>{slot.channels}</small></div>
+            <div><strong>{slot.label}</strong><span>{slot.width} × {slot.height} px · {slot.ratio}</span><small>{slot.channels}</small></div>
             {uploaded ? <div className="uploadedImage">
               <div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} />
-              <p>{uploaded.width} Ã— {uploaded.height} px {uploaded.matches ? "Â· Perfect formaat" : "Â· Afwijkend formaat"}</p>
+              <p>{uploaded.width} × {uploaded.height} px {uploaded.matches ? "· Perfect formaat" : "· Afwijkend formaat"}</p>
               <small className="replaceHint">Sleep een nieuwe afbeelding hierheen om te vervangen.</small>
               <button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button>
             </div> : <div className="imageDropZone">
               <strong>{isDragging ? "Laat de afbeelding hier los" : "Sleep een afbeelding hierheen"}</strong>
               <small>of</small>
-              <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploadenâ€¦" : "Afbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>
+              <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploaden…" : "Afbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>
             </div>}
           </article>;
         })}</div>
-        <p className="imageHelp">JPG, PNG of WebP Â· maximaal 10 MB per afbeelding.</p>
+        <p className="imageHelp">JPG, PNG of WebP · maximaal 10 MB per afbeelding.</p>
         {uploadMessage && <p className={`uploadMessage ${uploadMessage.ok ? "success" : "error"}`}>{uploadMessage.message}</p>}
       </div>
       <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
@@ -1056,12 +1056,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </fieldset>
 
     {form.preparePromotion && <div className="channelDetails">
-      {form.channels.brevo && <fieldset><legend>Brevo â€” veilig als concept</legend>
+      {form.channels.brevo && <fieldset><legend>Brevo — veilig als concept</legend>
         <label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label>
         <label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label>
         <div className="brevoAudiencePicker">
           <strong>Doelgroep(en) *</strong>
-          {brevoLoading && <p>Brevo-doelgroepen ladenâ€¦</p>}
+          {brevoLoading && <p>Brevo-doelgroepen laden…</p>}
           {!brevoLoading && brevoError && <p className="brevoAudienceError">{brevoError}</p>}
           {!brevoLoading && !brevoError && brevoLists.length === 0 && <p>Geen Brevo-doelgroepen beschikbaar voor deze vestiging.</p>}
           {brevoLists.map((list) => <label className="check" key={list.id}>
@@ -1072,15 +1072,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             }} />
             {list.name} ({Number(list.totalSubscribers || list.uniqueSubscribers || 0).toLocaleString("nl-NL")} ontvangers)
           </label>)}
-          {selectedBrevoListIds.length > 0 && <p><b>{brevoRecipientCount.toLocaleString("nl-NL")} ontvangers geselecteerd</b>{brevoSenderEmail ? ` Â· afzender ${brevoSenderEmail}` : ""}</p>}
+          {selectedBrevoListIds.length > 0 && <p><b>{brevoRecipientCount.toLocaleString("nl-NL")} ontvangers geselecteerd</b>{brevoSenderEmail ? ` · afzender ${brevoSenderEmail}` : ""}</p>}
           <small>Horeca OS slaat alleen een Brevo-concept op. Vanuit deze stap wordt niets verzonden.</small>
         </div>
-      </fieldset>}      {form.channels.facebook && <fieldset><legend>Facebook â€” intern concept</legend><div className="placementChoices"><span>Plaatsing *</span>{[["feed", "Feed"], ["story", "Verhaal"], ["reel", "Reel"]].map(([value, label]) => <label className="check" key={value}><input type="checkbox" checked={(form.facebookPlacements || []).includes(value)} onChange={() => toggleFacebookPlacement(value)} /> {label}</label>)}</div><label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label></fieldset>}
-      {form.channels.instagram && <fieldset><legend>Instagram â€” intern concept</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
-      {form.channels.tiktok && <fieldset><legend>TikTok â€” intern concept, video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
-      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business â€” intern concept</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
-      {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel â€” intern concept</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
-      {form.channels.predis && <fieldset><legend>Predis â€” veilig als concept</legend>
+      </fieldset>}      {form.channels.facebook && <fieldset><legend>Facebook — intern concept</legend><div className="placementChoices"><span>Plaatsing *</span>{[["feed", "Feed"], ["story", "Verhaal"], ["reel", "Reel"]].map(([value, label]) => <label className="check" key={value}><input type="checkbox" checked={(form.facebookPlacements || []).includes(value)} onChange={() => toggleFacebookPlacement(value)} /> {label}</label>)}</div><label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label></fieldset>}
+      {form.channels.instagram && <fieldset><legend>Instagram — intern concept</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
+      {form.channels.tiktok && <fieldset><legend>TikTok — intern concept, video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
+      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business — intern concept</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
+      {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel — intern concept</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
+      {form.channels.predis && <fieldset><legend>Predis — veilig als concept</legend>
         <label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label>
         <label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label>
         <div className="predisGenerationChoice">
@@ -1089,7 +1089,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           <small>Standaard uit. Ook wanneer dit aanstaat, wordt het resultaat alleen als concept gemaakt en nooit automatisch gepubliceerd.</small>
         </div>
       </fieldset>}
-      <fieldset className="wide"><legend>Spreiding per kanaal</legend><label className="check"><input type="checkbox" checked={Boolean(form.staggerEnabled)} onChange={(event) => update("staggerEnabled", event.target.checked)} /> Willekeurige wachttijd tussen de kanalen</label>{form.staggerEnabled && <div className="staggerFields"><label>Minimaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMinMinutes} onChange={(event) => update("staggerMinMinutes", event.target.value)} /></label><label>Maximaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMaxMinutes} onChange={(event) => update("staggerMaxMinutes", event.target.value)} /></label></div>}<p>Horeca OS toont vooraf het interne tijdschema. Een kanaal krijgt pas de status â€˜geplaatstâ€™ nadat de aanbieder dit heeft bevestigd.</p></fieldset>
+      <fieldset className="wide"><legend>Spreiding per kanaal</legend><label className="check"><input type="checkbox" checked={Boolean(form.staggerEnabled)} onChange={(event) => update("staggerEnabled", event.target.checked)} /> Willekeurige wachttijd tussen de kanalen</label>{form.staggerEnabled && <div className="staggerFields"><label>Minimaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMinMinutes} onChange={(event) => update("staggerMinMinutes", event.target.value)} /></label><label>Maximaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMaxMinutes} onChange={(event) => update("staggerMaxMinutes", event.target.value)} /></label></div>}<p>Horeca OS toont vooraf het interne tijdschema. Een kanaal krijgt pas de status ‘geplaatst’ nadat de aanbieder dit heeft bevestigd.</p></fieldset>
     </div>}
 
     {preview && <div className="eventPreview">
@@ -1111,16 +1111,16 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <img src={item.imageUrl} alt={`Voorbeeld voor ${item.label}`} />
               <p><b>{item.isExternal ? "Externe afbeeldingslink" : selectedSlot?.label}</b>{selectedSlot ? ` - ${selectedSlot.width} x ${selectedSlot.height} px` : ""}</p>
               {item.isFallback && <small className="fallbackNotice">Alternatief gebruikt. Ideaal voor dit kanaal: {preferredSlot?.label} ({preferredSlot?.width} x {preferredSlot?.height} px).</small>}
-              {item.channel === "predis" && <small>Predis ontvangt alle geÃ¼ploade formaten; hierboven staat het primaire voorbeeld.</small>}
+              {item.channel === "predis" && <small>Predis ontvangt alle geüploade formaten; hierboven staat het primaire voorbeeld.</small>}
             </> : <p className="missingImageNotice">Upload bij voorkeur {preferredSlot?.label} ({preferredSlot?.width} x {preferredSlot?.height} px).</p>}
           </article>;
         })}
       </div>}
     </div>}
-    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "âœ“" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
-    <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaanâ€¦" : "Basisconcept opslaan"}</button></div>
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaanâ€¦" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
-    <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes ladenâ€¦" : "Status verversen"}</button></div>
+    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
+    <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : "Basisconcept opslaan"}</button></div>
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
         <strong>Nog geen campagneconcepten opgeslagen</strong>
         <p>Maak hierboven je eerste campagne. Na het opslaan verschijnt die hier met controle-, planning- en kopieerknoppen per kanaal.</p>
@@ -1200,19 +1200,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               const copyKey = `${item.id}-${channel}`;
               const conceptText = channelConceptText(distribution, channel, item.body);
               return <div className={`status ${stored || "klaar_voor_controle"}`} key={channel}>
-                <span><b>{channelLabels[channel] || channel}</b> Â· {label}
-                  {confirmed && delivery.permalink && <> Â· <a href={delivery.permalink} target="_blank" rel="noreferrer">Openen</a></>}
-                  {channel === "predis" && delivery.status === "draft_ready" && delivery.result_url && <> Â· <a href={delivery.result_url} target="_blank" rel="noreferrer">Resultaat openen</a></>}
+                <span><b>{channelLabels[channel] || channel}</b> · {label}
+                  {confirmed && delivery.permalink && <> · <a href={delivery.permalink} target="_blank" rel="noreferrer">Openen</a></>}
+                  {channel === "predis" && delivery.status === "draft_ready" && delivery.result_url && <> · <a href={delivery.result_url} target="_blank" rel="noreferrer">Resultaat openen</a></>}
                 </span>
                 {copyableChannels.has(channel) && <button type="button" disabled={!conceptText} onClick={() => copyChannelConcept(item, distribution, channel)}>
-                  {copiedChannelKey === copyKey ? "Gekopieerd âœ“" : "Tekst kopiÃ«ren"}
+                  {copiedChannelKey === copyKey ? "Gekopieerd ✓" : "Tekst kopiëren"}
                 </button>}
               </div>;
             })}
           </div>
         </article>;
       })}
-        {hasMoreCampaigns && <button type="button" className="loadMoreCampaigns" onClick={() => loadEventCampaigns({ append: true })} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes ladenâ€¦" : "Meer campagnes laden"}</button>}
+        {hasMoreCampaigns && <button type="button" className="loadMoreCampaigns" onClick={() => loadEventCampaigns({ append: true })} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Meer campagnes laden"}</button>}
       </>}
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
@@ -1224,5 +1224,4 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     `}</style>
   </section>;
 }
-
 
