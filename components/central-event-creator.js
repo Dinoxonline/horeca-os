@@ -137,6 +137,14 @@ function formatNlDateTime(value) {
   }).format(date);
 }
 
+function toLocalDateTimeInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 function buildChannelSchedule(channels, baseDate, minMinutes, maxMinutes, enabled) {
   let cursor = baseDate.getTime();
   return Object.fromEntries(channels.map((channel, index) => {
@@ -179,6 +187,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [conceptSearch, setConceptSearch] = useState("");
   const [conceptSort, setConceptSort] = useState("newest");
   const [conceptSchedule, setConceptSchedule] = useState({});
+  const [channelScheduleEdits, setChannelScheduleEdits] = useState({});
   const [brevoLists, setBrevoLists] = useState([]);
   const [selectedBrevoListIds, setSelectedBrevoListIds] = useState([]);
   const [brevoSenderEmail, setBrevoSenderEmail] = useState("");
@@ -631,6 +640,79 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     } finally {
       setConceptBusyId(null);
     }
+  }
+
+  async function updateChannelPlanning(item, channel, cancel = false) {
+    const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
+    const delivery = distribution.provider_delivery?.[channel] || {};
+    if (providerDeliveryConfirmed(delivery)) {
+      return setResult({ ok: false, message: `${channelLabels[channel] || channel} heeft de plaatsing al bevestigd. Beheer deze publicatie via de plaatsingslink of rechtstreeks bij het kanaal.` });
+    }
+    const editKey = `${item.id}-${channel}`;
+    const localValue = channelScheduleEdits[editKey] ?? toLocalDateTimeInput(distribution.channel_schedule?.[channel] || item.scheduled_for);
+    if (!cancel && !localValue) return setResult({ ok: false, message: "Kies eerst een nieuw publicatiemoment voor dit kanaal." });
+    const nextDate = cancel ? null : new Date(localValue);
+    if (!cancel && (Number.isNaN(nextDate.getTime()) || nextDate <= new Date())) {
+      return setResult({ ok: false, message: "Kies een geldig publicatiemoment in de toekomst." });
+    }
+    if (cancel && !window.confirm(`Planning voor ${channelLabels[channel] || channel} intrekken? Andere kanalen blijven ongewijzigd.`)) return;
+
+    const storedSchedule = distribution.channel_schedule || {};
+    const nextSchedule = Object.keys(storedSchedule).length > 0
+      ? { ...storedSchedule }
+      : Object.fromEntries((distribution.target_channels || [])
+        .filter((targetChannel) => !providerDeliveryConfirmed(distribution.provider_delivery?.[targetChannel] || {}))
+        .map((targetChannel) => [targetChannel, item.scheduled_for])
+        .filter(([, value]) => Boolean(value)));
+    if (cancel) delete nextSchedule[channel];
+    else nextSchedule[channel] = nextDate.toISOString();
+    const remainingDates = Object.values(nextSchedule)
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((left, right) => left - right);
+    const nextChannelStatus = {
+      ...(distribution.channel_status || {}),
+      [channel]: cancel ? "goedgekeurd" : "ingepland",
+    };
+    const nextDistribution = {
+      ...distribution,
+      channel_status: nextChannelStatus,
+      channel_schedule: nextSchedule,
+      scheduling_status: remainingDates.length ? "lokaal_ingepland" : "approved",
+    };
+    const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
+    setConceptBusyId(item.id);
+    setResult(null);
+    try {
+      const { error } = await supabase.from("social_content_items")
+        .update({ workflow_status: "approved", scheduled_for: remainingDates[0]?.toISOString() || null, media: nextMedia })
+        .eq("id", item.id)
+        .eq("workspace_id", workspaceId);
+      if (error) throw error;
+      setChannelScheduleEdits((current) => ({ ...current, [editKey]: cancel ? "" : localValue }));
+      setResult({
+        ok: true,
+        message: cancel
+          ? `De interne planning voor ${channelLabels[channel] || channel} is ingetrokken. Andere kanalen zijn niet gewijzigd.`
+          : `Het publicatiemoment voor ${channelLabels[channel] || channel} is aangepast. Er is nog niets extern gewijzigd of gepubliceerd.`,
+      });
+      await loadEventCampaigns();
+    } catch (error) {
+      setResult({ ok: false, message: error.message || "De kanaalplanning kon niet worden aangepast." });
+    } finally {
+      setConceptBusyId(null);
+    }
+  }
+
+  function showChannelManagementGuidance(channel, delivery) {
+    const label = channelLabels[channel] || channel;
+    const hasLink = Boolean(delivery?.permalink || delivery?.result_url);
+    setResult({
+      ok: true,
+      message: hasLink
+        ? `Open de bevestigde plaatsing bij ${label} om haar daar te bewerken of te verwijderen. Horeca OS markeert een externe plaatsing niet als geannuleerd zonder bevestiging van het kanaal.`
+        : `${label} heeft de plaatsing bevestigd, maar geen beheerlink teruggegeven. Beheer of annuleer haar rechtstreeks in ${label}; Horeca OS bewaart de plaatsingshistorie.`,
+    });
   }
 
   useEffect(() => {
@@ -1181,7 +1263,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               const stored = distribution.channel_status?.[channel];
               const delivery = distribution.provider_delivery?.[channel] || {};
               const confirmed = providerDeliveryConfirmed(delivery);
-              const plannedAt = distribution.channel_schedule?.[channel] || item.scheduled_for;
+              const channelSchedule = distribution.channel_schedule || {};
+              const plannedAt = channelSchedule[channel] || (Object.keys(channelSchedule).length === 0 ? item.scheduled_for : null);
               const label = confirmed
                 ? "Geplaatst (bevestigd)"
                 : delivery.status === "draft_saved"
@@ -1199,15 +1282,27 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                             : approved ? "Intern concept goedgekeurd" : "Intern concept klaar voor controle";
 
               const copyKey = `${item.id}-${channel}`;
+              const scheduleEditKey = `${item.id}-${channel}`;
               const conceptText = channelConceptText(distribution, channel, item.body);
               return <div className={`status ${stored || "klaar_voor_controle"}`} key={channel}>
                 <span><b>{channelLabels[channel] || channel}</b> · {label}
                   {confirmed && delivery.permalink && <> · <a href={delivery.permalink} target="_blank" rel="noreferrer">Openen</a></>}
                   {channel === "predis" && delivery.status === "draft_ready" && delivery.result_url && <> · <a href={delivery.result_url} target="_blank" rel="noreferrer">Resultaat openen</a></>}
                 </span>
-                {copyableChannels.has(channel) && <button type="button" disabled={!conceptText} onClick={() => copyChannelConcept(item, distribution, channel)}>
-                  {copiedChannelKey === copyKey ? "Gekopieerd ✓" : "Tekst kopiëren"}
-                </button>}
+                <div className="channelActions">
+                  {plannedAt && !confirmed && <div className="channelPlanningActions">
+                    <input type="datetime-local" aria-label={`Publicatiemoment voor ${channelLabels[channel] || channel}`} value={channelScheduleEdits[scheduleEditKey] ?? toLocalDateTimeInput(plannedAt)} onChange={(event) => setChannelScheduleEdits((current) => ({ ...current, [scheduleEditKey]: event.target.value }))} />
+                    <button type="button" disabled={conceptBusy} onClick={() => updateChannelPlanning(item, channel)}>Tijd opslaan</button>
+                    <button type="button" className="cancelChannelButton" disabled={conceptBusy} onClick={() => updateChannelPlanning(item, channel, true)}>Planning intrekken</button>
+                  </div>}
+                  {confirmed && <>
+                    {(delivery.permalink || delivery.result_url) && <a className="channelManageLink" href={delivery.permalink || delivery.result_url} target="_blank" rel="noreferrer">Plaatsing beheren</a>}
+                    <button type="button" onClick={() => showChannelManagementGuidance(channel, delivery)}>Bewerken of annuleren</button>
+                  </>}
+                  {copyableChannels.has(channel) && <button type="button" disabled={!conceptText} onClick={() => copyChannelConcept(item, distribution, channel)}>
+                    {copiedChannelKey === copyKey ? "Gekopieerd ✓" : "Tekst kopiëren"}
+                  </button>}
+                </div>
               </div>;
             })}
           </div>
@@ -1218,6 +1313,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
     <style jsx>{`
+      .channelActions,.channelPlanningActions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.channelPlanningActions input{width:190px;padding:6px 8px;font-size:11px}.channelManageLink{display:inline-flex;align-items:center;border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;text-decoration:none}.cancelChannelButton{color:#a12f2f!important}
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{color:#5c7285}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
       .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.predisGenerationChoice{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.predisGenerationChoice small{color:#5c7285}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
