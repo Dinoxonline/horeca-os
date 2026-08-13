@@ -1833,11 +1833,25 @@ function PredisBusinessConnectionCard({ workspaceId, business, session }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const savedBrandId = window.localStorage.getItem(storageKey) || "";
-    setBrandId(savedBrandId);
-    setConnected(Boolean(savedBrandId));
-    setStatus("");
-  }, [storageKey]);
+    let active = true;
+    const localBrandId = window.localStorage.getItem(storageKey) || "";
+    setBrandId(localBrandId);
+    setConnected(false);
+    setStatus(localBrandId ? "Controleer de bestaande koppeling één keer om haar veilig voor alle apparaten op te slaan." : "");
+    const query = new URLSearchParams({ workspaceId, businessId: business.id, config: "1" });
+    fetch(`/api/integrations/predis?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+      .then(async (response) => ({ response, result: await response.json().catch(() => ({})) }))
+      .then(({ response, result }) => {
+        if (!active || !response.ok) return;
+        const savedBrandId = result.brandId || "";
+        setBrandId(savedBrandId || localBrandId);
+        setConnected(Boolean(result.connected && savedBrandId));
+        setStatus(result.connected && savedBrandId ? "Koppeling veilig opgeslagen voor deze vestiging." : localBrandId ? "Controleer de bestaande koppeling één keer om haar veilig voor alle apparaten op te slaan." : "");
+        if (savedBrandId) window.localStorage.setItem(storageKey, savedBrandId);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [storageKey, workspaceId, business.id, session.access_token]);
 
   async function checkConnection() {
     if (!brandId.trim()) {
