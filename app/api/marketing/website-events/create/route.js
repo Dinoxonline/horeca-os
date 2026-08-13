@@ -465,14 +465,25 @@ export async function DELETE(request) {
   if (!id) return NextResponse.json({ error: "Het Eventin-evenement ontbreekt." }, { status: 400 });
   if (!await storedEventBelongsToBusiness(context, body, id)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
   if (!await siteMatchesBusiness(context, body)) return NextResponse.json({ error: "De gekozen Eventin-website hoort niet bij deze vestiging." }, { status: 403 });
-  const mode = body.mode === "draft" ? "draft" : "trash";
+  const mode = ["draft", "cancelled"].includes(body.mode) ? body.mode : "trash";
   const credentials = siteCredentials(body);
   if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
   const { site, authorization } = credentials;
+  let cancelledTitle = "";
+  if (mode === "cancelled") {
+    const currentResponse = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}?context=edit`, {
+      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      cache: "no-store",
+    });
+    const current = await currentResponse.json().catch(() => ({}));
+    if (!currentResponse.ok) return NextResponse.json({ error: "Het bestaande Eventin-evenement kon niet worden gelezen." }, { status: currentResponse.status });
+    const currentTitle = text(current.title?.raw || current.title?.rendered || "Evenement");
+    cancelledTitle = /^geannuleerd\s*[—-]/i.test(currentTitle) ? currentTitle : `GEANNULEERD — ${currentTitle}`;
+  }
   const response = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
-    method: mode === "draft" ? "POST" : "DELETE",
+    method: mode === "trash" ? "DELETE" : "POST",
     headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
-    body: mode === "draft" ? JSON.stringify({ status: "draft" }) : undefined,
+    body: mode === "draft" ? JSON.stringify({ status: "draft" }) : mode === "cancelled" ? JSON.stringify({ status: "publish", title: cancelledTitle }) : undefined,
     cache: "no-store",
   });
   const data = await response.json().catch(() => ({}));
@@ -480,5 +491,5 @@ export async function DELETE(request) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `Eventin heeft de actie niet geaccepteerd.${detail}` }, { status: response.status });
   }
-  return NextResponse.json({ event: { id, url: data.link || "", status: mode === "draft" ? "draft" : "trash", website: site.origin } });
+  return NextResponse.json({ event: { id, url: data.link || "", status: mode, website: site.origin } });
 }

@@ -1303,11 +1303,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (!id) return setResult({ ok: false, message: "Het Eventin-ID ontbreekt. Open het evenement via de bronlink en beheer het daar handmatig." });
     const movingToPublish = mode === "publish";
     const movingToDraft = mode === "draft";
+    const cancellingOnline = mode === "cancelled";
+    const cancellingAndDeleting = mode === "trash";
     const confirmed = window.confirm(movingToPublish
       ? "Dit Eventin-concept nu openbaar publiceren op de website? De promotie op andere kanalen verandert niet automatisch."
       : movingToDraft
         ? "Dit evenement van de website halen en als Eventin-concept bewaren? De promotie op andere kanalen verandert niet automatisch."
-        : "Dit website-evenement annuleren en naar de Eventin-prullenbak verplaatsen? Dit kan andere geplaatste kanalen niet automatisch terughalen.");
+        : cancellingOnline
+          ? "Dit evenement annuleren? Het blijft online staan en krijgt duidelijk de status Geannuleerd. Tickets zijn daarna niet meer bedoeld voor verkoop."
+          : "Dit evenement annuleren en verwijderen? Het verdwijnt van de website en het Horeca OS-beheerdossier wordt verwijderd. Dit kan niet vanuit Horeca OS worden teruggedraaid.");
     if (!confirmed) return;
     setConceptBusyId(item.id);
     setResult(null);
@@ -1319,7 +1323,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Eventin heeft de actie niet geaccepteerd.");
-      const nextDistribution = { ...distribution, website_event_status: result.event?.status || (movingToPublish ? "publish" : movingToDraft ? "draft" : "trash") };
+      if (cancellingAndDeleting) {
+        const { error } = await supabase.from("social_content_items").delete().eq("id", item.id).eq("workspace_id", workspaceId);
+        if (error) {
+          setResult({ ok: false, message: "Het evenement is uit Eventin verwijderd, maar het Horeca OS-beheerdossier kon niet worden verwijderd. Ververs de status en verwijder het dossier daarna afzonderlijk." });
+        } else {
+          if (editingCampaignId === item.id) { setEditingCampaignId(null); setEditingWebsiteEvent(null); }
+          setResult({ ok: true, message: "Het evenement is geannuleerd en verwijderd uit Eventin en Horeca OS." });
+        }
+        await loadEventCampaigns();
+        return;
+      }
+      const nextDistribution = { ...distribution, website_event_status: result.event?.status || (movingToPublish ? "publish" : movingToDraft ? "draft" : "cancelled") };
       const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
       const { error } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) {
@@ -1329,7 +1344,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           ? "Het Eventin-evenement is gepubliceerd en staat nu openbaar op de website. Andere kanalen zijn niet gewijzigd."
           : movingToDraft
             ? "Het website-evenement staat nu als Eventin-concept. Andere kanalen zijn niet gewijzigd."
-            : "Het website-evenement is naar de Eventin-prullenbak verplaatst. De campagnehistorie blijft bewaard." });
+            : "Het evenement blijft online staan en wordt duidelijk als Geannuleerd weergegeven. Andere kanalen zijn niet automatisch gewijzigd." });
       }
       await loadEventCampaigns();
     } catch (error) {
@@ -1577,7 +1592,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const storedType = distribution.common?.campaign_type || distribution.source_type;
         const isWebsiteEvent = distribution.source_type === "website_event";
         const websiteEventStatus = distribution.website_event_status || "publish";
-        const websiteEventCancelled = websiteEventStatus === "trash";
+        const websiteEventCancelled = ["cancelled", "trash"].includes(websiteEventStatus);
+        const websiteEventDeleted = websiteEventStatus === "trash";
         const websiteEventReadOnly = distribution.eventin_management_mode === "read_only";
         const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne");
         const conceptBusy = conceptBusyId === item.id;
@@ -1598,8 +1614,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             </div>
             <strong>{distribution.common?.title || typeLabel}</strong>
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
-            <p>{distribution.source_url && (!isWebsiteEvent || websiteEventStatus === "publish") ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
-            {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventCancelled ? "Geannuleerd" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
+            <p>{distribution.source_url && (!isWebsiteEvent || ["publish", "cancelled"].includes(websiteEventStatus)) ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
+            {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd — blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
             {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
@@ -1609,10 +1625,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || websiteEventReadOnly || Boolean(editingBlockReason)} title={websiteEventReadOnly ? "Beveiligde Eventin-koppeling vereist" : websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled || websiteEventReadOnly ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
               {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "draft" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Publiceren…" : websiteEventReadOnly ? "Koppeling nodig" : "Publiceren"}</button>}
               {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventReadOnly || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventReadOnly ? "Koppeling nodig" : websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
-              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Evenement annuleren</button>}
+              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "cancelled")}>Annuleren</button>}
+              {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
-              <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>
+              {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
             {approved && !providerConfirmed && <div className="conceptSchedule">
               <label>Basis publicatiemoment<input type="datetime-local" disabled={hasIncompleteChannels} value={conceptSchedule[item.id] || ""} onChange={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: event.target.value }))} /></label>
@@ -1623,7 +1640,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             </div>}
           </div>
           <div className="statusPills">
-            {(distribution.target_channels || []).length === 0 && <span className="status local">Alleen als concept opgeslagen</span>}
+            {(distribution.target_channels || []).length === 0 && <span className={`status local ${isWebsiteEvent ? websiteEventStatus : ""}`}>
+              {isWebsiteEvent
+                ? websiteEventDeleted
+                  ? "Verwijderd uit Eventin"
+                  : websiteEventCancelled
+                    ? "Eventin · Geannuleerd en online"
+                    : websiteEventStatus === "draft"
+                      ? "Eventin · Alleen als concept opgeslagen"
+                      : "Eventin · Gepubliceerd op de website"
+                : "Alleen als concept opgeslagen"}
+            </span>}
             {(distribution.target_channels || []).map((channel) => {
               const stored = distribution.channel_status?.[channel];
               const delivery = distribution.provider_delivery?.[channel] || {};
@@ -1680,7 +1707,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     <style jsx>{`
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
       .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
-      .websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptPublishEventButton{border:1px solid #23804f;color:#17613d;background:#eefaf3}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}
+      .websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptPublishEventButton{border:1px solid #23804f;color:#17613d;background:#eefaf3}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}.conceptCancelDeleteEventButton{border:1px solid #8f1f1f;color:#fff;background:#a12f2f}
       .channelActions,.channelPlanningActions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.channelPlanningActions input{width:190px;padding:6px 8px;font-size:11px}.channelManageLink{display:inline-flex;align-items:center;border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;text-decoration:none}.cancelChannelButton{color:#a12f2f!important}
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{flex:1;color:#5c7285}.editingNotice button{border:1px solid #25889b;border-radius:8px;padding:8px 11px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
