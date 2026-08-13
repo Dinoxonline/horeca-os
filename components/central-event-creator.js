@@ -103,6 +103,13 @@ function campaignDeletionBlockReason(item, distribution) {
   return "";
 }
 
+function campaignEditingBlockReason(item, distribution) {
+  if (distributionHasProviderConfirmation(distribution)) return "Deze campagne heeft een bevestigde externe plaatsing. Dupliceer haar om veilig een nieuwe versie te maken.";
+  if (item?.scheduled_for) return "Trek eerst de interne planning in voordat je dit concept bewerkt.";
+  if (item?.workflow_status === "approved") return "Trek eerst de goedkeuring in voordat je dit concept bewerkt.";
+  return "";
+}
+
 function channelsNeedingDetails(distribution) {
   return (distribution?.target_channels || []).filter((channel) => distribution?.channel_status?.[channel] === "extra_gegevens_nodig");
 }
@@ -389,16 +396,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEventCampaigns((data || []).filter((item) => (item.media || []).some((entry) => entry?.kind === "campaign_distribution")).slice(0, 10));
   }
 
-  function openCampaignConcept(item) {
+  function openCampaignConcept(item, asCopy = false) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
     if (!distribution) return;
+    const isWebsiteEvent = distribution.source_type === "website_event";
+    const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
+    if (!asCopy && editingBlockReason) return setResult({ ok: false, message: editingBlockReason });
     const common = distribution.common || {};
     const commercial = common.commercial || {};
     const review = common.review || {};
     const payloads = distribution.channel_payloads || {};
     const targetChannels = distribution.target_channels || [];
     const storedType = common.campaign_type || (distribution.source_type === "website_event" ? "event" : distribution.source_type) || "custom";
-    const isWebsiteEvent = distribution.source_type === "website_event";
     const channels = Object.fromEntries(Object.keys(channelDefaults).map((channel) => [channel, targetChannels.includes(channel)]));
     setForm({
       ...emptyForm,
@@ -432,7 +441,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   function duplicateCampaignConcept(item) {
-    openCampaignConcept(item);
+    openCampaignConcept(item, true);
     setEditingCampaignId(null);
     setEditingBrevoDraftId(null);
     setPendingPredisGeneration(null);
@@ -1024,6 +1033,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const incompleteChannels = channelsNeedingDetails(distribution);
         const hasIncompleteChannels = incompleteChannels.length > 0;
         const deletionBlockReason = campaignDeletionBlockReason(item, distribution);
+        const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
 
         return <article key={item.id}>
           <div>
@@ -1037,8 +1047,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : "Campagneconcept in Horeca OS"}</p>
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
+            {editingBlockReason && <p className="protectedCampaignNotice"><b>Bewerken geblokkeerd:</b> {editingBlockReason}</p>}
             <div className="conceptActions">
-              <button type="button" className="conceptOpenButton" disabled={conceptBusy} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? "Als basis gebruiken" : "Concept bewerken"}</button>
+              <button type="button" className="conceptOpenButton" disabled={conceptBusy || Boolean(editingBlockReason)} title={editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? "Als basis gebruiken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || (!approved && hasIncompleteChannels)} title={!approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
               <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>
