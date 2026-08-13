@@ -525,6 +525,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
+  async function campaignAccountForBusiness(selectedBusinessId) {
+    if (!selectedBusinessId) return null;
+    const { data, error } = await supabase.from("integration_accounts")
+      .select("id,provider")
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", selectedBusinessId);
+    if (error) throw error;
+    return (data || []).find((account) => account.provider === "marketing")
+      || (data || []).find((account) => account.provider === "meta")
+      || (data || [])[0]
+      || null;
+  }
+
   async function importManagedWebsiteEvent(eventItem) {
     const selectedBusinessId = selectedBusiness?.id || businessId;
     if (!selectedBusinessId || !eventItem?.id) return;
@@ -546,7 +559,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         await loadEventCampaigns();
         return;
       }
-      const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
+      const integration = await campaignAccountForBusiness(selectedBusinessId);
       if (!integration?.id) throw new Error("De interne marketingkoppeling ontbreekt.");
       const common = {
         campaign_type: "event",
@@ -1005,7 +1018,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setBusy(true);
     setResult(null);
     try {
-      const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
+      const integration = await campaignAccountForBusiness(selectedBusiness?.id || businessId);
       if (!integration?.id) throw new Error("Het interne marketingconcept kan niet worden opgeslagen: marketingkoppeling ontbreekt.");
 
       const imageFor = (key, fallbackKeys = []) => form.images?.[key]?.url || fallbackKeys.map((item) => form.images?.[item]?.url).find(Boolean) || form.imageUrl.trim();
@@ -1079,7 +1092,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   async function createPromotionDraft(websiteEvent) {
-    const { data: integration } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("provider", "marketing").limit(1).maybeSingle();
+    const integration = await campaignAccountForBusiness(selectedBusiness?.id || businessId);
     if (!integration?.id) return { warning: "Promotieconcept kon niet worden opgeslagen: marketingkoppeling ontbreekt." };
     const imageFor = (key, fallbackKeys = []) => form.images?.[key]?.url || fallbackKeys.map((item) => form.images?.[item]?.url).find(Boolean) || form.imageUrl.trim();
     const common = {
@@ -1191,7 +1204,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: "Niet automatisch gewijzigd; controleer de bestaande agenda-afspraak afzonderlijk." });
       }
       const promotion = await createPromotionDraft(website.event);
-      if (form.preparePromotion) steps.push(promotion.ok ? { label: `Marketingconcept (${enabledChannels.length} kanalen)`, ok: true } : { label: "Marketingconcept", ok: false, detail: promotion.warning });
+      steps.push(promotion.ok
+        ? { label: form.preparePromotion ? `Horeca OS-beheerdossier en marketingconcept (${enabledChannels.length} kanalen)` : "Horeca OS-beheerdossier", ok: true }
+        : { label: "Horeca OS-beheerdossier", ok: false, detail: promotion.warning });
+      if (!promotion.ok) {
+        setResult({ ok: false, message: `Eventin-concept ${website.event.id} is aangemaakt, maar het beheerdossier kon niet worden opgeslagen. Maak het evenement niet opnieuw aan.`, steps });
+        return;
+      }
       const selectedBusinessId = selectedBusiness?.id || businessId;
       if (workspaceId && selectedBusinessId) {
         window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusinessId));
