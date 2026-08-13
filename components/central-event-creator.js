@@ -148,6 +148,18 @@ function buildChannelSchedule(channels, baseDate, minMinutes, maxMinutes, enable
   }));
 }
 
+function formHasCampaignContent(form) {
+  return [
+    form.title, form.shortDescription, form.description, form.start, form.end,
+    form.imageUrl, form.videoUrl, form.ctaUrl, form.brevoSubject, form.brevoPreview,
+    form.facebookText, form.instagramCaption, form.tiktokCaption,
+    form.whatsappTemplate, form.whatsappMessage, form.regularPrice, form.campaignPrice,
+    form.discountCode, form.validFrom, form.validUntil, form.groupSize, form.pricePerPerson,
+    form.reviewerName, form.reviewSource,
+    ...Object.values(form.images || {}).map((image) => image?.url || ""),
+  ].some((value) => String(value || "").trim());
+}
+
 export default function CentralEventCreator({ workspaceId, businessId, businesses, session }) {
   const [form, setForm] = useState(emptyForm);
   const [preview, setPreview] = useState(false);
@@ -186,7 +198,24 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPreview(false); setResult(null);
   };
   const selectCampaignType = (campaignType) => {
-    setForm((current) => ({ ...current, campaignType, googleTopic: campaignType === "event" ? "EVENT" : campaignType === "offer" ? "OFFER" : "STANDARD" }));
+    if (campaignType === form.campaignType) return;
+    if (formHasCampaignContent(form) && !window.confirm("Je hebt al campagnegegevens ingevuld. Wil je deze wissen en doorgaan met een ander campagnetype?")) return;
+    setForm((current) => ({
+      ...emptyForm,
+      campaignType,
+      googleTopic: campaignType === "event" ? "EVENT" : campaignType === "offer" ? "OFFER" : "STANDARD",
+      organizer: current.organizer,
+      location: current.location,
+      contactEmail: current.contactEmail,
+      calendarMailbox: current.calendarMailbox,
+      addToCalendar: current.addToCalendar,
+      preparePromotion: current.preparePromotion,
+      channels: current.channels,
+      staggerEnabled: current.staggerEnabled,
+      staggerMinMinutes: current.staggerMinMinutes,
+      staggerMaxMinutes: current.staggerMaxMinutes,
+    }));
+    setSelectedBrevoListIds([]);
     setEditingCampaignId(null); setEditingBrevoDraftId(null); setPendingPredisGeneration(null); setPreview(false); setResult(null);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
