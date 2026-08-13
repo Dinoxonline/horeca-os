@@ -181,6 +181,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [campaignListBusy, setCampaignListBusy] = useState(false);
   const [hasMoreCampaigns, setHasMoreCampaigns] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState(null);
+  const [editingWebsiteEvent, setEditingWebsiteEvent] = useState(null);
   const [conceptBusyId, setConceptBusyId] = useState(null);
   const [conceptTypeFilter, setConceptTypeFilter] = useState("all");
   const [conceptStatusFilter, setConceptStatusFilter] = useState("all");
@@ -226,7 +227,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       staggerMaxMinutes: current.staggerMaxMinutes,
     }));
     setSelectedBrevoListIds([]);
-    setEditingCampaignId(null); setEditingBrevoDraftId(null); setPendingPredisGeneration(null); setPreview(false); setResult(null);
+    setEditingCampaignId(null); setEditingWebsiteEvent(null); setEditingBrevoDraftId(null); setPendingPredisGeneration(null); setPreview(false); setResult(null);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const toggleFacebookPlacement = (placement) => {
@@ -518,18 +519,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       validFrom: commercial.valid_from || "", validUntil: commercial.valid_until || "", groupSize: commercial.group_size || "", pricePerPerson: commercial.price_per_person || "",
       reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
     });
-    setEditingCampaignId(isWebsiteEvent ? null : item.id);
-    setEditingBrevoDraftId(isWebsiteEvent ? null : distribution.provider_delivery?.brevo?.draft_id || null);
+    setEditingCampaignId(item.id);
+    setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url } : null);
+    setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
     setPendingPredisGeneration(null);
     setPreview(false);
-    setResult({ ok: true, message: isWebsiteEvent ? "Het website-evenement is als basis geopend. Opslaan maakt veilig een nieuw Eventin-evenement." : "Het campagneconcept is geopend en kan nu op dezelfde plek worden bijgewerkt." });
+    setResult({ ok: true, message: isWebsiteEvent ? "Het website-evenement is geopend voor bewerking. Opslaan werkt hetzelfde Eventin-evenement en het bestaande marketingdossier bij." : "Het campagneconcept is geopend en kan nu op dezelfde plek worden bijgewerkt." });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function duplicateCampaignConcept(item) {
     openCampaignConcept(item, true);
     setEditingCampaignId(null);
+    setEditingWebsiteEvent(null);
     setEditingBrevoDraftId(null);
     setPendingPredisGeneration(null);
     setResult({ ok: true, message: "Het concept is als kopie geopend. Pas eventueel de naam of inhoud aan en sla het op als nieuw concept." });
@@ -546,7 +549,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     try {
       const { error } = await supabase.from("social_content_items").delete().eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) throw error;
-      if (editingCampaignId === item.id) setEditingCampaignId(null);
+      if (editingCampaignId === item.id) { setEditingCampaignId(null); setEditingWebsiteEvent(null); }
       setResult({ ok: true, message: "Het marketingconcept is verwijderd. Een gekoppeld website-evenement is niet gewijzigd." });
       await loadEventCampaigns();
     } catch (error) {
@@ -725,6 +728,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       contactEmail: defaults.contactEmail,
     }));
     setEditingCampaignId(null);
+    setEditingWebsiteEvent(null);
     setEditingBrevoDraftId(null);
     setPendingPredisGeneration(null);
     setPreview(false);
@@ -901,6 +905,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (error) throw error;
       setResult({ ok: true, message: `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.` });
       setEditingCampaignId(null);
+      setEditingWebsiteEvent(null);
       setPreview(false);
       await loadEventCampaigns();
     } catch (error) {
@@ -995,7 +1000,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           : { status: "not_submitted" },
     ]));
     const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
-      eventin_event_id: websiteEvent.id, common, target_channels: enabledChannels, channel_payloads, channel_status,
+      eventin_event_id: websiteEvent.id, website_event_status: websiteEvent.status || "draft", common, target_channels: enabledChannels, channel_payloads, channel_status,
       schedule_settings: { stagger_enabled: form.staggerEnabled, min_minutes: Number(form.staggerMinMinutes) || 15, max_minutes: Number(form.staggerMaxMinutes) || 45 },
       channel_schedule: {}, provider_delivery: providerDelivery };
     const record = {
@@ -1013,17 +1018,57 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const error = validate(); if (error) return setResult({ ok: false, message: error });
     setBusy(true); setResult(null); const steps = [];
     try {
-      const response = await fetch("/api/marketing/website-events/create", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, site, ...form, businessId: selectedBusiness?.id || businessId || null }) });
-      const website = await response.json(); if (!response.ok) throw new Error(website.error || "Het website-evenement kon niet worden aangemaakt.");
-      steps.push({ label: "Website en Eventin", ok: true, detail: website.event.url });
-      if (form.addToCalendar) {
+      const updatingWebsiteEvent = Boolean(editingWebsiteEvent?.eventId);
+      const response = await fetch("/api/marketing/website-events/create", { method: updatingWebsiteEvent ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, site, ...form, eventId: editingWebsiteEvent?.eventId, campaignId: editingWebsiteEvent?.campaignId, businessId: selectedBusiness?.id || businessId || null }) });
+      const website = await response.json(); if (!response.ok) throw new Error(website.error || (updatingWebsiteEvent ? "Het website-evenement kon niet worden gewijzigd." : "Het website-evenement kon niet worden aangemaakt."));
+      steps.push({ label: updatingWebsiteEvent ? "Website en Eventin bijgewerkt" : "Website en Eventin", ok: true, detail: website.event.url });
+      if (form.addToCalendar && !updatingWebsiteEvent) {
         const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, mailbox: form.calendarMailbox.trim(), subject: form.title.trim(), description: `${form.description.trim()}\n\nWebsite: ${website.event.url}`, start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy" }) });
         const calendar = await calendarResponse.json(); steps.push(calendarResponse.ok ? { label: `Agenda ${form.calendarMailbox}`, ok: true } : { label: `Agenda ${form.calendarMailbox}`, ok: false, detail: calendar.error || "Niet toegevoegd." });
+      } else if (form.addToCalendar && updatingWebsiteEvent) {
+        steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: "Niet automatisch gewijzigd; controleer de bestaande agenda-afspraak afzonderlijk." });
       }
       const promotion = await createPromotionDraft(website.event);
       if (form.preparePromotion) steps.push(promotion.ok ? { label: `Marketingconcept (${enabledChannels.length} kanalen)`, ok: true } : { label: "Marketingconcept", ok: false, detail: promotion.warning });
-      setResult({ ok: true, message: "Het evenement is verwerkt.", steps, url: website.event.url }); setPreview(false); await loadEventCampaigns();
+      setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : "Het evenement is verwerkt.", steps, url: website.event.url }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
+  }
+
+  async function changeWebsiteEventStatus(item, mode) {
+    const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
+    const id = String(distribution.eventin_event_id || "");
+    if (!id) return setResult({ ok: false, message: "Het Eventin-ID ontbreekt. Open het evenement via de bronlink en beheer het daar handmatig." });
+    const movingToDraft = mode === "draft";
+    const confirmed = window.confirm(movingToDraft
+      ? "Dit evenement van de website halen en als Eventin-concept bewaren? De promotie op andere kanalen verandert niet automatisch."
+      : "Dit website-evenement annuleren en naar de Eventin-prullenbak verplaatsen? Dit kan andere geplaatste kanalen niet automatisch terughalen.");
+    if (!confirmed) return;
+    setConceptBusyId(item.id);
+    setResult(null);
+    try {
+      const response = await fetch("/api/marketing/website-events/create", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, site, businessId: item.business_id || selectedBusiness?.id || businessId || null, campaignId: item.id, eventId: id, mode }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Eventin heeft de actie niet geaccepteerd.");
+      const nextDistribution = { ...distribution, website_event_status: result.event?.status || (movingToDraft ? "draft" : "trash") };
+      const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
+      const { error } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
+      if (error) {
+        setResult({ ok: false, message: `Eventin is ${movingToDraft ? "naar concept gezet" : "geannuleerd"}, maar de lokale status kon niet worden bijgewerkt. Ververs de status en controleer het evenement.` });
+      } else {
+        setResult({ ok: true, message: movingToDraft
+          ? "Het website-evenement staat nu als Eventin-concept. Andere kanalen zijn niet gewijzigd."
+          : "Het website-evenement is naar de Eventin-prullenbak verplaatst. De campagnehistorie blijft bewaard." });
+      }
+      await loadEventCampaigns();
+    } catch (error) {
+      setResult({ ok: false, message: error.message || "Het website-evenement kon niet worden aangepast." });
+    } finally {
+      setConceptBusyId(null);
+    }
   }
 
   async function copyChannelConcept(item, distribution, channel) {
@@ -1046,14 +1091,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const promotion = await createPromotionDraft({ id: null, url: form.ctaUrl.trim() });
       if (!promotion.ok) throw new Error(promotion.warning || "Het campagneconcept kon niet worden opgeslagen.");
       setResult({ ok: true, message: `${campaignTypeLabel} is als campagneconcept opgeslagen.` });
-      setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
+      setEditingCampaignId(null); setEditingWebsiteEvent(null); setPreview(false); await loadEventCampaigns();
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); }
     finally { setBusy(false); }
   }
 
   return <section className="panel" style={{ marginBottom: 24 }}>
     <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
-    {editingCampaignId && <div className="editingNotice"><strong>Concept bewerken</strong><span>Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat.</span></div>}
+    {editingCampaignId && <div className="editingNotice"><strong>{editingWebsiteEvent ? "Website-evenement bewerken" : "Concept bewerken"}</strong><span>{editingWebsiteEvent ? "Je wijzigingen worden na bevestiging in hetzelfde Eventin-evenement en marketingdossier opgeslagen." : "Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat."}</span></div>}
     <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
     <div className="eventCreatorGrid">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
@@ -1202,7 +1247,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
     {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
     <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : "Basisconcept opslaan"}</button></div>
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
     <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
         <strong>Nog geen campagneconcepten opgeslagen</strong>
@@ -1219,6 +1264,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
         const storedType = distribution.common?.campaign_type || distribution.source_type;
         const isWebsiteEvent = distribution.source_type === "website_event";
+        const websiteEventStatus = distribution.website_event_status || "publish";
+        const websiteEventCancelled = websiteEventStatus === "trash";
         const typeLabel = campaignTypes.find(([id]) => id === storedType)?.[1] || (storedType === "website_event" ? "Evenement" : "Campagne");
         const conceptBusy = conceptBusyId === item.id;
         const approved = item.workflow_status === "approved";
@@ -1239,12 +1286,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <strong>{distribution.common?.title || typeLabel}</strong>
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : "Campagneconcept in Horeca OS"}</p>
+            {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventCancelled ? "Geannuleerd" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
             {editingBlockReason && <p className="protectedCampaignNotice"><b>Bewerken geblokkeerd:</b> {editingBlockReason}</p>}
             {providerConfirmed && <p className="placedCampaignLock"><b>Geplaatste campagne vergrendeld.</b> Goedkeuring en planning blijven ongewijzigd. Gebruik Dupliceren voor een nieuwe versie.</p>}
             <div className="conceptActions">
-              <button type="button" className="conceptOpenButton" disabled={conceptBusy || Boolean(editingBlockReason)} title={editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? "Als basis gebruiken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
+              <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || Boolean(editingBlockReason)} title={websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
+              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
+              {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy} onClick={() => changeWebsiteEventStatus(item, "trash")}>Evenement annuleren</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
               <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>
@@ -1313,6 +1363,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
     <style jsx>{`
+      .websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}
       .channelActions,.channelPlanningActions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.channelPlanningActions input{width:190px;padding:6px 8px;font-size:11px}.channelManageLink{display:inline-flex;align-items:center;border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;text-decoration:none}.cancelChannelButton{color:#a12f2f!important}
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{color:#5c7285}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
