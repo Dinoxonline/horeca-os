@@ -94,6 +94,24 @@ export async function PATCH(request) {
   return saveDraft(request, body.id, body);
 }
 
+export async function DELETE(request) {
+  const body = await request.json().catch(() => null);
+  const workspaceId = clean(body?.workspaceId, 100);
+  const businessId = clean(body?.businessId, 100);
+  const draftId = clean(body?.id, 100);
+  const context = await requireIntegrationManager(request, workspaceId, businessId);
+  if (context.error) return context.error;
+  if (!businessId || !draftId) return jsonError("Kies eerst een geldig Brevo-concept.", 400);
+  const { data: draft } = await context.admin.from("brevo_campaign_drafts")
+    .select("id,status").eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
+  if (!draft) return NextResponse.json({ ok: true, message: "Het Brevo-concept was al verwijderd." });
+  if (["sent", "sending"].includes(draft.status)) return jsonError("Een verzonden of lopende Brevo-campagne kan niet als concept worden verwijderd.", 409);
+  const { error } = await context.admin.from("brevo_campaign_drafts")
+    .delete().eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId);
+  if (error) return jsonError("Het Brevo-concept kon niet worden verwijderd.", 500);
+  return NextResponse.json({ ok: true, message: "Het Brevo-concept is verwijderd." });
+}
+
 async function saveDraft(request, draftId, suppliedBody = null) {
   const body = suppliedBody || await request.json().catch(() => null);
   const workspaceId = clean(body?.workspaceId, 100);
