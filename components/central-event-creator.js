@@ -770,6 +770,35 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
+  async function cleanupDeletedWebsiteEvent(item) {
+    const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
+    const title = distribution.common?.title || "dit verwijderde evenement";
+    if (!window.confirm(`Dossier van ${title} definitief opruimen? Een nog gekoppelde Microsoft-afspraak wordt eveneens verwijderd.`)) return;
+    setConceptBusyId(item.id);
+    setResult(null);
+    try {
+      const calendarDelivery = distribution.calendar_delivery || {};
+      if (calendarDelivery.event_id && calendarDelivery.mailbox && calendarDelivery.status !== "deleted") {
+        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId, mailbox: calendarDelivery.mailbox, eventId: calendarDelivery.event_id }),
+        });
+        const calendarResult = await calendarResponse.json().catch(() => ({}));
+        if (!calendarResponse.ok) throw new Error(calendarResult.error || "De gekoppelde agenda-afspraak kon niet worden verwijderd.");
+      }
+      const { error } = await supabase.from("social_content_items").delete().eq("id", item.id).eq("workspace_id", workspaceId);
+      if (error) throw error;
+      if (editingCampaignId === item.id) { setEditingCampaignId(null); setEditingWebsiteEvent(null); }
+      setResult({ ok: true, message: "Het achtergebleven Horeca OS-dossier en de gekoppelde agenda-afspraak zijn opgeruimd." });
+      await loadEventCampaigns();
+    } catch (error) {
+      setResult({ ok: false, message: error.message || "Het achtergebleven dossier kon niet veilig worden opgeruimd." });
+    } finally {
+      setConceptBusyId(null);
+    }
+  }
+
   async function setConceptApproval(item, approved) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
     if (distributionHasProviderConfirmation(distribution)) {
@@ -1795,6 +1824,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
+              {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
             {approved && !providerConfirmed && <div className="conceptSchedule">
