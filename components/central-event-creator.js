@@ -591,6 +591,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setImportingEventId(eventItem.id);
     setResult(null);
     try {
+      const detailQuery = new URLSearchParams({
+        workspaceId,
+        businessId: selectedBusinessId,
+        site,
+        eventId: String(eventItem.id),
+        importEvent: "1",
+      });
+      const detailResponse = await fetch(`/api/marketing/website-events/create?${detailQuery}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const detailPayload = await detailResponse.json().catch(() => ({}));
+      if (!detailResponse.ok) throw new Error(detailPayload.error || "De volledige Eventin-gegevens konden niet worden geladen.");
+      const fullEvent = { ...eventItem, ...(detailPayload.event || {}) };
+      if (!fullEvent.start || !fullEvent.end || !fullEvent.location) {
+        throw new Error("Eventin heeft geen volledige datum, tijd en locatie teruggestuurd. Het evenement is daarom niet gekoppeld.");
+      }
       const { data: existingRows, error: existingError } = await supabase.from("social_content_items")
         .select("id,media")
         .eq("workspace_id", workspaceId)
@@ -607,28 +623,30 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (!integration?.id) throw new Error("De interne marketingkoppeling ontbreekt.");
       const common = {
         campaign_type: "event",
-        title: eventItem.title || "Bestaand evenement",
+        title: fullEvent.title || "Bestaand evenement",
         short_description: "",
-        description: eventItem.description || "",
-        start: eventItem.start || "",
-        end: eventItem.end || "",
-        location: eventItem.location || "",
-        image_url: eventItem.imageUrl || "",
+        description: fullEvent.description || "",
+        start: fullEvent.start,
+        end: fullEvent.end,
+        location: fullEvent.location,
+        image_url: fullEvent.imageUrl || "",
         images: emptyImages,
         video_url: "",
         organizer: selectedBusiness?.name || "",
         contact_email: "",
         language: "nl",
-        cta: { label: "Meer informatie", url: eventItem.url || "" },
-        tickets: { type: "free", price: "0", capacity: "", variations: [{ ...defaultTicketVariation }] },
-        website_url: eventItem.url || "",
+        cta: { label: "Meer informatie", url: fullEvent.url || "" },
+        tickets: fullEvent.ticketVariations?.length
+          ? { ...(fullEvent.tickets || {}), variations: fullEvent.ticketVariations }
+          : { ...(fullEvent.tickets || { type: "none", price: "0", capacity: "" }), variations: [] },
+        website_url: fullEvent.url || "",
       };
       const distribution = {
         kind: "campaign_distribution",
         source_type: "website_event",
-        source_url: eventItem.url || "",
+        source_url: fullEvent.url || "",
         eventin_event_id: String(eventItem.id),
-        website_event_status: eventItem.status || "publish",
+        website_event_status: fullEvent.status || "publish",
         eventin_management_mode: eventItem.readOnly ? "read_only" : "secured",
         imported_from_eventin: true,
         imported_at: new Date().toISOString(),
@@ -646,7 +664,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         account_id: integration.id,
         content_type: "post",
         direction: "outbound",
-        body: eventItem.description || eventItem.title || "Bestaand evenement",
+        body: fullEvent.description || fullEvent.title || "Bestaand evenement",
         media: [distribution],
         status: "draft",
         workflow_status: "new",
@@ -1945,7 +1963,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         return <article key={eventItem.id}>
           <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
           <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
-          {incomplete && <small>Niet alle Eventin-velden zijn beschikbaar. Controleer datum, tijd en locatie vóór je dit evenement bewerkt.</small>}
+          {incomplete && <small>De overzichtslijst bevat niet alle Eventin-velden. Bij koppelen haalt Horeca OS eerst de volledige datum, tijd, locatie, afbeelding en tickets op.</small>}
           <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
         </article>;
       })}</div>}

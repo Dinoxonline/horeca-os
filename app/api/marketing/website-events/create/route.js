@@ -312,6 +312,7 @@ export async function GET(request) {
     businessId: url.searchParams.get("businessId"),
     site: url.searchParams.get("site"),
     campaignId: url.searchParams.get("campaignId"),
+    importEvent: url.searchParams.get("importEvent") === "1",
   };
   const context = await ownerContext(request, body.workspaceId);
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag bestaande Eventin-evenementen importeren." }, { status: 403 });
@@ -322,7 +323,7 @@ export async function GET(request) {
   const requestedEventId = eventId(url.searchParams.get("eventId"));
   if (requestedEventId) {
     if (!authorization) return NextResponse.json({ error: "De beveiligde Eventin-koppeling is nodig om dit evenement te bewerken." }, { status: 503 });
-    if (!await storedEventBelongsToBusiness(context, body, requestedEventId)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
+    if (!body.importEvent && !await storedEventBelongsToBusiness(context, body, requestedEventId)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
     const headers = { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" };
     const [eventinResponse, wordpressResponse] = await Promise.all([
       fetch(`${site.origin}/wp-json/eventin/v2/events/${requestedEventId}`, { headers, cache: "no-store" }),
