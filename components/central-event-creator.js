@@ -1452,8 +1452,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const text = channelConceptText(distribution, "facebook", "");
     const common = distribution.common || {};
     const shareText = [common.title, text, common.start ? `Datum: ${formatNlDateTime(common.start)}` : "", common.location ? `Locatie: ${common.location}` : "", common.website_url || distribution.source_url].filter(Boolean).join("\n\n");
+    const groupUrl = group.url || group.group_url;
+    if (!groupUrl) return setResult({ ok: false, message: `Voor ${group.name} ontbreekt de Facebook-groepslink.` });
+    window.open(groupUrl, "_blank", "noopener,noreferrer");
     try { await navigator.clipboard.writeText(shareText); } catch {}
-    window.open(group.url || group.group_url, "_blank", "noopener,noreferrer");
     setResult({ ok: true, message: `De tekst is gekopieerd en ${group.name} is geopend. Voeg daar de evenementafbeelding toe en bevestig de plaatsing in Facebook.` });
   }
 
