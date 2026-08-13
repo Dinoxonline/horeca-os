@@ -754,10 +754,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const deletionBlockReason = campaignDeletionBlockReason(item, distribution);
     if (deletionBlockReason) return setResult({ ok: false, message: deletionBlockReason });
     const title = distribution.common?.title || "dit concept";
-    if (!window.confirm(`Weet je zeker dat je ${title} wilt verwijderen? Alleen het marketingconcept wordt verwijderd; een bestaand website-evenement blijft staan.`)) return;
+    const brevoDraftId = distribution.provider_delivery?.brevo?.draft_id;
+    if (!window.confirm(`Weet je zeker dat je ${title} wilt verwijderen?${brevoDraftId ? " Het gekoppelde Brevo-concept wordt eveneens verwijderd." : ""} Een bestaand website-evenement blijft staan.`)) return;
     setConceptBusyId(item.id);
     setResult(null);
     try {
+      if (brevoDraftId) {
+        const brevoResponse = await fetch("/api/integrations/brevo", {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: brevoDraftId, workspaceId, businessId: item.business_id || selectedBusiness?.id || businessId }),
+        });
+        const brevoResult = await brevoResponse.json().catch(() => ({}));
+        if (!brevoResponse.ok) throw new Error(brevoResult.error || "Het gekoppelde Brevo-concept kon niet worden verwijderd.");
+      }
       const { error } = await supabase.from("social_content_items").delete().eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) throw error;
       if (editingCampaignId === item.id) { setEditingCampaignId(null); setEditingWebsiteEvent(null); }
