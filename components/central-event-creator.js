@@ -390,10 +390,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   async function loadEventCampaigns() {
     if (!workspaceId) return;
-    let query = supabase.from("social_content_items").select("id,body,media,status,workflow_status,scheduled_for,published_at,permalink,created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(30);
+    let query = supabase.from("social_content_items")
+      .select("id,body,media,status,workflow_status,scheduled_for,published_at,permalink,created_at")
+      .eq("workspace_id", workspaceId)
+      .contains("media", [{ kind: "campaign_distribution" }])
+      .order("created_at", { ascending: false })
+      .limit(50);
     if (selectedBusiness?.id || businessId) query = query.eq("business_id", selectedBusiness?.id || businessId);
-    const { data } = await query;
-    setEventCampaigns((data || []).filter((item) => (item.media || []).some((entry) => entry?.kind === "campaign_distribution")).slice(0, 10));
+    const { data, error } = await query;
+    if (error) {
+      setResult({ ok: false, message: "Opgeslagen campagnes konden niet worden geladen." });
+      return;
+    }
+    setEventCampaigns(data || []);
   }
 
   function openCampaignConcept(item, asCopy = false) {
