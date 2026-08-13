@@ -67,13 +67,62 @@ function siteCredentials(body) {
   return { site, authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` };
 }
 
-function eventPayload(body, properties) {
-  return addKnownEventinFields({
+function ticketSlug(body, existingTicket) {
+  if (existingTicket?.etn_ticket_slug) return existingTicket.etn_ticket_slug;
+  const label = text(body.title, 80).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "event";
+  return `horeca-os-${label}-${Date.now().toString(36)}`;
+}
+
+function eventinTicket(body, start, end, existingTicket) {
+  if (body.ticketType === "none") return [];
+  const capacity = Math.max(0, Number.parseInt(body.capacity, 10) || 0);
+  const price = body.ticketType === "paid" ? Math.max(0, Number(body.ticketPrice || 0)) : 0;
+  return [{
+    etn_ticket_name: body.ticketType === "paid" ? "Ticket" : "Gratis ticket",
+    etn_ticket_description: text(body.shortDescription || body.description, 150),
+    etn_ticket_price: price,
+    etn_avaiilable_tickets: capacity || -1,
+    etn_unlimited_tickets: !capacity,
+    etn_sold_tickets: Number(existingTicket?.etn_sold_tickets || 0),
+    etn_min_ticket: 1,
+    etn_max_ticket: capacity ? Math.min(capacity, 10) : 10,
+    etn_ticket_slug: ticketSlug(body, existingTicket),
+    etn_enable_ticket: true,
+    start_date: start.date,
+    end_date: end.date,
+    start_time: start.time,
+    end_time: end.time,
+    pending: 0,
+    optiontics_block_ids: [],
+  }];
+}
+
+function eventinPayload(body, venue, existingEvent = null) {
+  const start = dateParts(body.start);
+  const end = dateParts(body.end);
+  const capacity = Math.max(0, Number.parseInt(body.capacity, 10) || 0);
+  const existingTicket = Array.isArray(existingEvent?.ticket_variations) ? existingEvent.ticket_variations[0] : null;
+  const ticketVariations = eventinTicket(body, start, end, existingTicket);
+  return {
     title: text(body.title, 300),
-    content: eventContent(body),
+    description: eventContent(body),
     excerpt: text(body.description, 500),
-    status: body.status === "publish" ? "publish" : "draft",
-  }, properties, body);
+    visibility_status: body.status === "publish" ? "publish" : "draft",
+    timezone: "Europe/Paris",
+    start_date: start.date,
+    end_date: end.date,
+    start_time: start.time,
+    end_time: end.time,
+    event_type: "offline",
+    location_type: "venue",
+    location: { address: venue },
+    ticket_variations: ticketVariations,
+    total_ticket: capacity || (ticketVariations.length ? -1 : 0),
+    etn_enable_global_stock: false,
+    etn_global_stock: 0,
+    event_banner: text(body.imageUrl, 2000),
+    event_banner_id: Number(body.eventinImage?.mediaId || 0),
+  };
 }
 
 function cleanHtml(value, limit = 10000) {
@@ -145,6 +194,20 @@ async function siteMatchesBusiness(context, body) {
   return Boolean(expectedSite) && text(body.site, 200).toLowerCase() === expectedSite;
 }
 
+async function venueForBusiness(context, body) {
+  const businessId = String(body.businessId || "").trim();
+  if (!businessId) return "";
+  const { data } = await context.client.from("businesses")
+    .select("name")
+    .eq("id", businessId)
+    .eq("workspace_id", body.workspaceId)
+    .maybeSingle();
+  const name = String(data?.name || "").toLowerCase();
+  if (name.includes("plein")) return "Grandcafé Het Plein";
+  if (name.includes("caribbean")) return "Caribbean Corner";
+  return "";
+}
+
 export async function GET(request) {
   const url = new URL(request.url);
   const body = {
@@ -178,42 +241,6 @@ export async function GET(request) {
   });
 }
 
-async function eventinProperties(origin, authorization) {
-  try {
-    const response = await fetch(`${origin}/wp-json/wp/v2/etn`, {
-      method: "OPTIONS",
-      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
-      cache: "no-store",
-    });
-    const schema = response.ok ? await response.json() : null;
-    return schema?.schema?.properties || {};
-  } catch {
-    return {};
-  }
-}
-
-function addKnownEventinFields(payload, properties, body) {
-  const start = dateParts(body.start);
-  const end = dateParts(body.end);
-  if (!start || !end) return payload;
-  const candidates = {
-    etn_start_date: start.date,
-    etn_end_date: end.date,
-    etn_start_time: start.time,
-    etn_end_time: end.time,
-    start_date: start.date,
-    end_date: end.date,
-    start_time: start.time,
-    end_time: end.time,
-    event_location: text(body.location, 500),
-    etn_event_location: text(body.location, 500),
-  };
-  for (const [key, value] of Object.entries(candidates)) {
-    if (Object.prototype.hasOwnProperty.call(properties, key)) payload[key] = value;
-  }
-  return payload;
-}
-
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
   const context = await ownerContext(request, body.workspaceId);
@@ -228,10 +255,11 @@ export async function POST(request) {
   if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
     return NextResponse.json({ error: "Controleer de titel en de begin- en eindtijd." }, { status: 400 });
   }
-  const properties = await eventinProperties(site.origin, authorization);
-  const payload = eventPayload(body, properties);
+  const venue = await venueForBusiness(context, body);
+  if (!venue) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-venue ingesteld." }, { status: 400 });
+  const payload = eventinPayload(body, venue);
 
-  const response = await fetch(`${site.origin}/wp-json/wp/v2/etn`, {
+  const response = await fetch(`${site.origin}/wp-json/eventin/v2/events`, {
     method: "POST",
     headers: {
       Authorization: authorization,
@@ -250,7 +278,7 @@ export async function POST(request) {
     event: {
       id: String(data.id || ""),
       url: data.link || `${site.origin}/?p=${data.id}`,
-      status: data.status || payload.status,
+      status: data.visibility_status || payload.visibility_status,
       website: site.origin,
     },
   });
@@ -272,9 +300,15 @@ export async function PATCH(request) {
   if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
     return NextResponse.json({ error: "Controleer de titel en de begin- en eindtijd." }, { status: 400 });
   }
-  const properties = await eventinProperties(site.origin, authorization);
-  const payload = eventPayload(body, properties);
-  const response = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
+  const currentResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+    headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
+    cache: "no-store",
+  });
+  const currentEvent = currentResponse.ok ? await currentResponse.json().catch(() => null) : null;
+  const venue = await venueForBusiness(context, body);
+  if (!venue) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-venue ingesteld." }, { status: 400 });
+  const payload = eventinPayload(body, venue, currentEvent);
+  const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
     method: "POST",
     headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
     body: JSON.stringify(payload),
@@ -285,7 +319,7 @@ export async function PATCH(request) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `Eventin heeft de wijziging niet geaccepteerd.${detail}` }, { status: response.status });
   }
-  return NextResponse.json({ event: { id, url: data.link || `${site.origin}/?p=${id}`, status: data.status || payload.status, website: site.origin } });
+  return NextResponse.json({ event: { id, url: data.link || `${site.origin}/?p=${id}`, status: data.visibility_status || payload.visibility_status, website: site.origin } });
 }
 
 export async function DELETE(request) {
