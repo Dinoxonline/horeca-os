@@ -21,10 +21,8 @@ function dateParts(value) {
 }
 
 function eventContent(body) {
-  const ticket = body.ticketType === "paid"
-    ? `Ticketprijs: € ${Number(body.ticketPrice || 0).toFixed(2)}`
-    : body.ticketType === "free" ? "Gratis toegang" : "";
-  const capacity = body.capacity ? `Capaciteit: ${Number(body.capacity)} personen` : "";
+  const variations = normalizedTicketInputs(body);
+  const ticket = variations.length ? variations.map((item) => `${text(item.name, 80)}: ${item.type === "paid" ? `€ ${Number(item.price || 0).toFixed(2)}` : "gratis"}${item.capacity ? ` (${Number(item.capacity)} beschikbaar)` : ""}`).join(" · ") : "";
   const image = text(body.imageUrl, 2000);
   return [
     image ? `<figure><img src="${image.replace(/"/g, "&quot;")}" alt="" /></figure>` : "",
@@ -32,7 +30,6 @@ function eventContent(body) {
     "<hr>",
     `<p><strong>Locatie:</strong> ${text(body.location, 500)}</p>`,
     ticket ? `<p><strong>Tickets:</strong> ${ticket}</p>` : "",
-    capacity ? `<p><strong>Capaciteit:</strong> ${capacity}</p>` : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -67,42 +64,68 @@ function siteCredentials(body) {
   return { site, authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` };
 }
 
-function ticketSlug(body, existingTicket) {
+function normalizedTicketInputs(body) {
+  if (Array.isArray(body.ticketVariations)) return body.ticketVariations.slice(0, 20).map((item) => ({
+    id: text(item?.id, 150), name: text(item?.name, 80), type: item?.type === "paid" ? "paid" : "free", price: item?.price,
+    capacity: item?.capacity, salesStart: item?.salesStart, salesEnd: item?.salesEnd,
+    minQuantity: item?.minQuantity, maxQuantity: item?.maxQuantity,
+  })).filter((item) => item.name);
+  if (body.ticketType === "none") return [];
+  return [{ name: body.ticketType === "paid" ? "Ticket" : "Gratis ticket", type: body.ticketType === "paid" ? "paid" : "free", price: body.ticketPrice, capacity: body.capacity, minQuantity: 1, maxQuantity: 10 }];
+}
+
+function ticketValidationError(body) {
+  for (const ticket of normalizedTicketInputs(body)) {
+    if (ticket.type === "paid" && Number(ticket.price) <= 0) return `Vul een geldige prijs in voor ${ticket.name}.`;
+    if (ticket.capacity && (!Number.isInteger(Number(ticket.capacity)) || Number(ticket.capacity) < 1)) return `Vul een geldige capaciteit in voor ${ticket.name}.`;
+    const minimum = Number(ticket.minQuantity || 1);
+    const maximum = Number(ticket.maxQuantity || 10);
+    if (!Number.isInteger(minimum) || !Number.isInteger(maximum) || minimum < 1 || maximum < minimum) return `Controleer de minimale en maximale afname van ${ticket.name}.`;
+    if (ticket.salesStart && !dateParts(ticket.salesStart)) return `De verkoopstart van ${ticket.name} is niet geldig.`;
+    if (ticket.salesEnd && !dateParts(ticket.salesEnd)) return `Het verkoopeinde van ${ticket.name} is niet geldig.`;
+    if (ticket.salesStart && ticket.salesEnd && new Date(ticket.salesEnd) <= new Date(ticket.salesStart)) return `De verkoopperiode van ${ticket.name} is niet geldig.`;
+  }
+  return "";
+}
+
+function ticketSlug(ticket, existingTicket) {
   if (existingTicket?.etn_ticket_slug) return existingTicket.etn_ticket_slug;
-  const label = text(body.title, 80).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "event";
+  const label = text(ticket.name, 80).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ticket";
   return `horeca-os-${label}-${Date.now().toString(36)}`;
 }
 
-function eventinTicket(body, start, end, existingTicket) {
-  if (body.ticketType === "none") return [];
-  const capacity = Math.max(0, Number.parseInt(body.capacity, 10) || 0);
-  const price = body.ticketType === "paid" ? Math.max(0, Number(body.ticketPrice || 0)) : 0;
-  return [{
-    etn_ticket_name: body.ticketType === "paid" ? "Ticket" : "Gratis ticket",
-    etn_ticket_description: text(body.shortDescription || body.description, 150),
-    etn_ticket_price: price,
-    etn_avaiilable_tickets: capacity || -1,
-    etn_unlimited_tickets: !capacity,
-    etn_sold_tickets: Number(existingTicket?.etn_sold_tickets || 0),
-    etn_min_ticket: 1,
-    etn_max_ticket: capacity ? Math.min(capacity, 10) : 10,
-    etn_ticket_slug: ticketSlug(body, existingTicket),
-    etn_enable_ticket: true,
-    start_date: start.date,
-    end_date: end.date,
-    start_time: start.time,
-    end_time: end.time,
-    pending: 0,
-    optiontics_block_ids: [],
-  }];
+function eventinTickets(body, start, end, existingTickets = []) {
+  return normalizedTicketInputs(body).map((ticket, index) => {
+    const capacity = Math.max(0, Number.parseInt(ticket.capacity, 10) || 0);
+    const price = ticket.type === "paid" ? Math.max(0, Number(ticket.price || 0)) : 0;
+    const existingTicket = existingTickets.find((item) => item.etn_ticket_slug === ticket.id || item.etn_ticket_name === ticket.name) || existingTickets[index];
+    const saleStart = dateParts(ticket.salesStart) || start;
+    const saleEnd = dateParts(ticket.salesEnd) || end;
+    return {
+      etn_ticket_name: ticket.name,
+      etn_ticket_description: text(body.shortDescription || body.description, 150),
+      etn_ticket_price: price,
+      etn_avaiilable_tickets: capacity || -1,
+      etn_unlimited_tickets: !capacity,
+      etn_sold_tickets: Number(existingTicket?.etn_sold_tickets || 0),
+      etn_min_ticket: Math.max(1, Number.parseInt(ticket.minQuantity, 10) || 1),
+      etn_max_ticket: Math.max(1, Number.parseInt(ticket.maxQuantity, 10) || 10),
+      etn_ticket_slug: ticketSlug(ticket, existingTicket),
+      etn_enable_ticket: true,
+      start_date: saleStart.date, end_date: saleEnd.date, start_time: saleStart.time, end_time: saleEnd.time,
+      pending: Number(existingTicket?.pending || 0),
+      optiontics_block_ids: existingTicket?.optiontics_block_ids || [],
+    };
+  });
 }
 
 function eventinPayload(body, venue, existingEvent = null) {
   const start = dateParts(body.start);
   const end = dateParts(body.end);
-  const capacity = Math.max(0, Number.parseInt(body.capacity, 10) || 0);
-  const existingTicket = Array.isArray(existingEvent?.ticket_variations) ? existingEvent.ticket_variations[0] : null;
-  const ticketVariations = eventinTicket(body, start, end, existingTicket);
+  const existingTickets = Array.isArray(existingEvent?.ticket_variations) ? existingEvent.ticket_variations : [];
+  const ticketVariations = eventinTickets(body, start, end, existingTickets);
+  const capacities = ticketVariations.map((ticket) => Number(ticket.etn_avaiilable_tickets));
+  const totalCapacity = capacities.some((value) => value < 0) ? -1 : capacities.reduce((sum, value) => sum + value, 0);
   return {
     title: text(body.title, 300),
     description: eventContent(body),
@@ -117,7 +140,7 @@ function eventinPayload(body, venue, existingEvent = null) {
     location_type: "venue",
     location: { address: venue },
     ticket_variations: ticketVariations,
-    total_ticket: capacity || (ticketVariations.length ? -1 : 0),
+    total_ticket: totalCapacity,
     etn_enable_global_stock: false,
     etn_global_stock: 0,
     event_banner: text(body.imageUrl, 2000),
@@ -170,6 +193,22 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
     ? row.event_banner
     : row.event_banner?.url || row.event_banner?.source_url || "";
   const location = typeof row.location === "string" ? row.location : row.location?.address || row.location?.name || "";
+  const ticketVariations = tickets.map((ticket, index) => {
+    const saleStart = eventinDateTime(ticket, "start");
+    const saleEnd = eventinDateTime(ticket, "end");
+    const ticketCapacity = Number(ticket.etn_avaiilable_tickets);
+    return {
+      id: String(ticket.etn_ticket_slug || `ticket-${index + 1}`),
+      name: String(ticket.etn_ticket_name || `Ticket ${index + 1}`),
+      type: Number(ticket.etn_ticket_price || 0) > 0 ? "paid" : "free",
+      price: String(Number(ticket.etn_ticket_price || 0)),
+      capacity: ticket.etn_unlimited_tickets || ticketCapacity < 0 ? "" : String(ticketCapacity || ""),
+      salesStart: saleStart,
+      salesEnd: saleEnd,
+      minQuantity: String(ticket.etn_min_ticket || 1),
+      maxQuantity: String(ticket.etn_max_ticket || 10),
+    };
+  });
   return {
     id: String(row.id || wordpressRow?.id || ""),
     title: cleanHtml(row.title?.rendered || row.title || wordpressRow?.title?.rendered, 300),
@@ -185,6 +224,7 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
       price: String(ticketPrice),
       capacity: unlimited ? "" : String(firstTicket.etn_avaiilable_tickets || row.total_ticket || ""),
     },
+    ticketVariations,
   };
 }
 
@@ -308,6 +348,8 @@ export async function POST(request) {
   if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
     return NextResponse.json({ error: "Controleer de titel en de begin- en eindtijd." }, { status: 400 });
   }
+  const ticketError = ticketValidationError(body);
+  if (ticketError) return NextResponse.json({ error: ticketError }, { status: 400 });
   const venue = await venueForBusiness(context, body);
   if (!venue) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-venue ingesteld." }, { status: 400 });
   const payload = eventinPayload(body, venue);
@@ -368,11 +410,14 @@ export async function PATCH(request) {
   if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
     return NextResponse.json({ error: "Controleer de titel en de begin- en eindtijd." }, { status: 400 });
   }
+  const ticketError = ticketValidationError(body);
+  if (ticketError) return NextResponse.json({ error: ticketError }, { status: 400 });
   const currentResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
     headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
     cache: "no-store",
   });
-  const currentEvent = currentResponse.ok ? await currentResponse.json().catch(() => null) : null;
+  const currentEventResponse = currentResponse.ok ? await currentResponse.json().catch(() => null) : null;
+  const currentEvent = currentEventResponse?.data || currentEventResponse?.event || currentEventResponse;
   const venue = await venueForBusiness(context, body);
   if (!venue) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-venue ingesteld." }, { status: 400 });
   const payload = eventinPayload(body, venue, currentEvent);
