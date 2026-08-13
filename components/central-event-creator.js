@@ -1449,6 +1449,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label>Knoplink<input type="url" value={form.ctaUrl} onChange={(e) => update("ctaUrl", e.target.value)} placeholder="Leeg = de nieuwe evenementpagina" /></label>
       {isEvent && <fieldset className="ticketEditor wide"><legend>Tickets</legend>
         <p>Maak meerdere tickettypen, bijvoorbeeld Earlybird, Regular en Latebird. Geen ticketregels betekent: geen tickets.</p>
+        <p>Laat de verkoopperiode leeg om tickets vanaf vandaag tot het einde van het evenement te verkopen.</p>
         {(form.ticketVariations || []).map((ticket, index) => <article className="ticketVariation" key={ticket.id}>
           <div className="ticketVariationHead"><strong>Tickettype {index + 1}</strong><button type="button" className="removeTicket" onClick={() => removeTicketVariation(ticket.id)}>Verwijderen</button></div>
           <div className="ticketVariationGrid">
@@ -1456,8 +1457,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <label>Soort<select value={ticket.type} onChange={(e) => updateTicketVariation(ticket.id, "type", e.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option></select></label>
             <label>Prijs<input type="number" min="0" step="0.01" disabled={ticket.type !== "paid"} value={ticket.price} onChange={(e) => updateTicketVariation(ticket.id, "price", e.target.value)} /></label>
             <label>Capaciteit<input type="number" min="1" value={ticket.capacity} onChange={(e) => updateTicketVariation(ticket.id, "capacity", e.target.value)} placeholder="Leeg = onbeperkt" /></label>
-            <label>Verkoopstart<input type="datetime-local" value={ticket.salesStart} onChange={(e) => updateTicketVariation(ticket.id, "salesStart", e.target.value)} /></label>
-            <label>Verkoopeinde<input type="datetime-local" value={ticket.salesEnd} onChange={(e) => updateTicketVariation(ticket.id, "salesEnd", e.target.value)} /></label>
+            <label>Start verkoop (optioneel)<input type="datetime-local" value={ticket.salesStart} onChange={(e) => updateTicketVariation(ticket.id, "salesStart", e.target.value)} /><small>Leeg = vandaag</small></label>
+            <label>Einde verkoop (optioneel)<input type="datetime-local" value={ticket.salesEnd} onChange={(e) => updateTicketVariation(ticket.id, "salesEnd", e.target.value)} /><small>Leeg = einde evenement</small></label>
             <label>Minimum per bestelling<input type="number" min="1" value={ticket.minQuantity} onChange={(e) => updateTicketVariation(ticket.id, "minQuantity", e.target.value)} /></label>
             <label>Maximum per bestelling<input type="number" min="1" value={ticket.maxQuantity} onChange={(e) => updateTicketVariation(ticket.id, "maxQuantity", e.target.value)} /></label>
           </div>

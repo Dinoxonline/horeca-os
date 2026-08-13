@@ -33,6 +33,23 @@ function eventContent(body) {
   ].filter(Boolean).join("\n");
 }
 
+function currentEventinDateParts() {
+  const values = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date()).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return { date: `${values.year}-${values.month}-${values.day}`, time: `${values.hour}:${values.minute}` };
+}
+
+function datePartsTimestamp(parts) {
+  return parts ? new Date(`${parts.date}T${parts.time}:00`).getTime() : Number.NaN;
+}
+
 async function ownerContext(request, workspaceId) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token || !workspaceId) return null;
@@ -75,6 +92,8 @@ function normalizedTicketInputs(body) {
 }
 
 function ticketValidationError(body) {
+  const defaultStart = currentEventinDateParts();
+  const defaultEnd = dateParts(body.end);
   for (const ticket of normalizedTicketInputs(body)) {
     if (ticket.type === "paid" && Number(ticket.price) <= 0) return `Vul een geldige prijs in voor ${ticket.name}.`;
     if (ticket.capacity && (!Number.isInteger(Number(ticket.capacity)) || Number(ticket.capacity) < 1)) return `Vul een geldige capaciteit in voor ${ticket.name}.`;
@@ -83,7 +102,9 @@ function ticketValidationError(body) {
     if (!Number.isInteger(minimum) || !Number.isInteger(maximum) || minimum < 1 || maximum < minimum) return `Controleer de minimale en maximale afname van ${ticket.name}.`;
     if (ticket.salesStart && !dateParts(ticket.salesStart)) return `De verkoopstart van ${ticket.name} is niet geldig.`;
     if (ticket.salesEnd && !dateParts(ticket.salesEnd)) return `Het verkoopeinde van ${ticket.name} is niet geldig.`;
-    if (ticket.salesStart && ticket.salesEnd && new Date(ticket.salesEnd) <= new Date(ticket.salesStart)) return `De verkoopperiode van ${ticket.name} is niet geldig.`;
+    const effectiveStart = dateParts(ticket.salesStart) || defaultStart;
+    const effectiveEnd = dateParts(ticket.salesEnd) || defaultEnd;
+    if (datePartsTimestamp(effectiveEnd) <= datePartsTimestamp(effectiveStart)) return `De verkoopperiode van ${ticket.name} is niet geldig.`;
   }
   return "";
 }
@@ -95,11 +116,12 @@ function ticketSlug(ticket, existingTicket) {
 }
 
 function eventinTickets(body, start, end, existingTickets = []) {
+  const defaultSaleStart = currentEventinDateParts();
   return normalizedTicketInputs(body).map((ticket, index) => {
     const capacity = Math.max(0, Number.parseInt(ticket.capacity, 10) || 0);
     const price = ticket.type === "paid" ? Math.max(0, Number(ticket.price || 0)) : 0;
     const existingTicket = existingTickets.find((item) => item.etn_ticket_slug === ticket.id || item.etn_ticket_name === ticket.name) || existingTickets[index];
-    const saleStart = dateParts(ticket.salesStart) || start;
+    const saleStart = dateParts(ticket.salesStart) || defaultSaleStart;
     const saleEnd = dateParts(ticket.salesEnd) || end;
     return {
       etn_ticket_name: ticket.name,
