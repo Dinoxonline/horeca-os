@@ -63,6 +63,7 @@ function siteCredentials(body) {
   const password = process.env[site.password] || process.env.EVENTIN_APPLICATION_PASSWORD;
   if (!username || !password) {
     return {
+      site,
       error: `De beveiligde Eventin-schrijfkoppeling voor ${body.site} moet nog eenmalig onder Vercel → Environment Variables worden ingesteld (${site.username} en ${site.password}).`,
       status: 503,
       configurationRequired: true,
@@ -160,21 +161,26 @@ export async function GET(request) {
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag bestaande Eventin-evenementen importeren." }, { status: 403 });
   if (!await siteMatchesBusiness(context, body)) return NextResponse.json({ error: "De gekozen Eventin-website hoort niet bij deze vestiging." }, { status: 403 });
   const credentials = siteCredentials(body);
-  if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
+  if (credentials.error && !credentials.configurationRequired) return NextResponse.json({ error: credentials.error }, { status: credentials.status });
   const { site, authorization } = credentials;
   const endpoint = new URL("/wp-json/wp/v2/etn", site.origin);
   endpoint.searchParams.set("per_page", "100");
-  endpoint.searchParams.set("status", "publish,draft");
-  endpoint.searchParams.set("context", "edit");
+  endpoint.searchParams.set("status", authorization ? "publish,draft" : "publish");
+  endpoint.searchParams.set("context", authorization ? "edit" : "view");
   endpoint.searchParams.set("_embed", "1");
-  const response = await fetch(endpoint, { headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" }, cache: "no-store" });
+  const response = await fetch(endpoint, { headers: { ...(authorization ? { Authorization: authorization } : {}), "User-Agent": "HorecaOS-EventImporter/1.0" }, cache: "no-store" });
   const data = await response.json().catch(() => ([]));
   if (!response.ok) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `De Eventin-evenementen konden niet beveiligd worden opgehaald.${detail}` }, { status: response.status });
   }
   const events = (Array.isArray(data) ? data : []).map((row) => normalizeManagedEvent(row, site)).filter((event) => event.id && event.title);
-  return NextResponse.json({ events, website: site.origin });
+  return NextResponse.json({
+    events,
+    website: site.origin,
+    readOnly: !authorization,
+    warning: !authorization ? "Alleen gepubliceerde evenementen zijn geladen. Bewerken en annuleren vereisen later de beveiligde Eventin-koppeling." : "",
+  });
 }
 
 async function eventinProperties(origin, authorization) {
