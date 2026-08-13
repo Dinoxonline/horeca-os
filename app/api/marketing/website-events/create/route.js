@@ -51,6 +51,62 @@ async function ownerContext(request, workspaceId) {
   return member?.role === "owner" ? { client, user: data.user } : null;
 }
 
+function eventId(value) {
+  const id = String(value || "").trim();
+  return /^\d+$/.test(id) ? id : "";
+}
+
+function siteCredentials(body) {
+  const site = SITES[text(body.site, 200).toLowerCase()];
+  if (!site) return { error: "Voor deze vestiging is nog geen Eventin-website ingesteld.", status: 400 };
+  const username = process.env[site.username] || process.env.EVENTIN_USERNAME;
+  const password = process.env[site.password] || process.env.EVENTIN_APPLICATION_PASSWORD;
+  if (!username || !password) {
+    return {
+      error: `De beveiligde Eventin-schrijfkoppeling voor ${body.site} moet nog eenmalig onder Vercel → Environment Variables worden ingesteld (${site.username} en ${site.password}).`,
+      status: 503,
+      configurationRequired: true,
+    };
+  }
+  return { site, authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` };
+}
+
+function eventPayload(body, properties) {
+  return addKnownEventinFields({
+    title: text(body.title, 300),
+    content: eventContent(body),
+    excerpt: text(body.description, 500),
+    status: body.status === "publish" ? "publish" : "draft",
+  }, properties, body);
+}
+
+async function storedEventBelongsToBusiness(context, body, id) {
+  const campaignId = String(body.campaignId || "").trim();
+  const businessId = String(body.businessId || "").trim();
+  if (!campaignId || !businessId) return false;
+  const { data } = await context.client.from("social_content_items")
+    .select("id,media")
+    .eq("id", campaignId)
+    .eq("workspace_id", body.workspaceId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+  const distribution = (data?.media || []).find((entry) => entry?.kind === "campaign_distribution");
+  return String(distribution?.eventin_event_id || "") === id && distribution?.source_type === "website_event";
+}
+
+async function siteMatchesBusiness(context, body) {
+  const businessId = String(body.businessId || "").trim();
+  if (!businessId) return false;
+  const { data } = await context.client.from("businesses")
+    .select("name")
+    .eq("id", businessId)
+    .eq("workspace_id", body.workspaceId)
+    .maybeSingle();
+  const name = String(data?.name || "").toLowerCase();
+  const expectedSite = name.includes("plein") ? "grandcafehetplein.com" : name.includes("caribbean") ? "caribbeancorner.nl" : "";
+  return Boolean(expectedSite) && text(body.site, 200).toLowerCase() === expectedSite;
+}
+
 async function eventinProperties(origin, authorization) {
   try {
     const response = await fetch(`${origin}/wp-json/wp/v2/etn`, {
@@ -92,30 +148,17 @@ export async function POST(request) {
   const context = await ownerContext(request, body.workspaceId);
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag website-evenementen aanmaken." }, { status: 403 });
 
-  const site = SITES[text(body.site, 200).toLowerCase()];
-  if (!site) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-website ingesteld." }, { status: 400 });
-  const username = process.env[site.username] || process.env.EVENTIN_USERNAME;
-  const password = process.env[site.password] || process.env.EVENTIN_APPLICATION_PASSWORD;
-  if (!username || !password) {
-    return NextResponse.json({
-      error: `De beveiligde Eventin-schrijfkoppeling voor ${body.site} moet nog eenmalig onder Vercel → Environment Variables worden ingesteld (${site.username} en ${site.password}).`,
-      configurationRequired: true,
-    }, { status: 503 });
-  }
+  const credentials = siteCredentials(body);
+  if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
+  const { site, authorization } = credentials;
 
   const start = dateParts(body.start);
   const end = dateParts(body.end);
   if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
     return NextResponse.json({ error: "Controleer de titel en de begin- en eindtijd." }, { status: 400 });
   }
-  const authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
   const properties = await eventinProperties(site.origin, authorization);
-  const payload = addKnownEventinFields({
-    title: text(body.title, 300),
-    content: eventContent(body),
-    excerpt: text(body.description, 500),
-    status: body.status === "publish" ? "publish" : "draft",
-  }, properties, body);
+  const payload = eventPayload(body, properties);
 
   const response = await fetch(`${site.origin}/wp-json/wp/v2/etn`, {
     method: "POST",
@@ -140,4 +183,62 @@ export async function POST(request) {
       website: site.origin,
     },
   });
+}
+
+export async function PATCH(request) {
+  const body = await request.json().catch(() => ({}));
+  const context = await ownerContext(request, body.workspaceId);
+  if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag website-evenementen wijzigen." }, { status: 403 });
+  const id = eventId(body.eventId);
+  if (!id) return NextResponse.json({ error: "Het Eventin-evenement ontbreekt." }, { status: 400 });
+  if (!await storedEventBelongsToBusiness(context, body, id)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
+  if (!await siteMatchesBusiness(context, body)) return NextResponse.json({ error: "De gekozen Eventin-website hoort niet bij deze vestiging." }, { status: 403 });
+  const credentials = siteCredentials(body);
+  if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
+  const { site, authorization } = credentials;
+  const start = dateParts(body.start);
+  const end = dateParts(body.end);
+  if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
+    return NextResponse.json({ error: "Controleer de titel en de begin- en eindtijd." }, { status: 400 });
+  }
+  const properties = await eventinProperties(site.origin, authorization);
+  const payload = eventPayload(body, properties);
+  const response = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
+    method: "POST",
+    headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
+    return NextResponse.json({ error: `Eventin heeft de wijziging niet geaccepteerd.${detail}` }, { status: response.status });
+  }
+  return NextResponse.json({ event: { id, url: data.link || `${site.origin}/?p=${id}`, status: data.status || payload.status, website: site.origin } });
+}
+
+export async function DELETE(request) {
+  const body = await request.json().catch(() => ({}));
+  const context = await ownerContext(request, body.workspaceId);
+  if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag website-evenementen annuleren." }, { status: 403 });
+  const id = eventId(body.eventId);
+  if (!id) return NextResponse.json({ error: "Het Eventin-evenement ontbreekt." }, { status: 400 });
+  if (!await storedEventBelongsToBusiness(context, body, id)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
+  if (!await siteMatchesBusiness(context, body)) return NextResponse.json({ error: "De gekozen Eventin-website hoort niet bij deze vestiging." }, { status: 403 });
+  const mode = body.mode === "draft" ? "draft" : "trash";
+  const credentials = siteCredentials(body);
+  if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
+  const { site, authorization } = credentials;
+  const response = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
+    method: mode === "draft" ? "POST" : "DELETE",
+    headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
+    body: mode === "draft" ? JSON.stringify({ status: "draft" }) : undefined,
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
+    return NextResponse.json({ error: `Eventin heeft de actie niet geaccepteerd.${detail}` }, { status: response.status });
+  }
+  return NextResponse.json({ event: { id, url: data.link || "", status: mode === "draft" ? "draft" : "trash", website: site.origin } });
 }
