@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 
 const channelDefaults = {
   brevo: true, facebook: true, instagram: true, tiktok: false,
-  whatsapp: false, google: true, predis: true,
+  whatsapp: false, google: true, predis: false,
 };
 
 const imageSlots = [
@@ -186,6 +186,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [brevoError, setBrevoError] = useState("");
   const [editingBrevoDraftId, setEditingBrevoDraftId] = useState(null);
   const [predisBrandId, setPredisBrandId] = useState("");
+  const [predisConnected, setPredisConnected] = useState(false);
   const [pendingPredisGeneration, setPendingPredisGeneration] = useState(null);
   const [copiedChannelKey, setCopiedChannelKey] = useState("");
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
@@ -652,12 +653,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const selectedBusinessId = selectedBusiness?.id || businessId;
     if (!workspaceId || !selectedBusinessId) {
       setPredisBrandId("");
+      setPredisConnected(false);
       return;
     }
     let active = true;
     const storageKey = `horeca-os:predis:${workspaceId}:${selectedBusinessId}`;
     const localBrandId = window.localStorage.getItem(storageKey) || "";
     setPredisBrandId(localBrandId);
+    setPredisConnected(false);
     const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, config: "1" });
     fetch(`/api/integrations/predis?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       .then(async (response) => ({ response, result: await response.json().catch(() => ({})) }))
@@ -665,6 +668,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         if (!active || !response.ok) return;
         const savedBrandId = result.connected ? result.brandId || "" : "";
         setPredisBrandId(savedBrandId || localBrandId);
+        setPredisConnected(Boolean(savedBrandId));
+        if (savedBrandId) {
+          setForm((current) => formHasCampaignContent(current)
+            ? current
+            : { ...current, channels: { ...current.channels, predis: true } });
+        }
         if (savedBrandId) window.localStorage.setItem(storageKey, savedBrandId);
       })
       .catch(() => {});
@@ -1041,7 +1050,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       {form.addToCalendar && <label>Agenda-e-mailadres<input type="email" value={form.calendarMailbox} onChange={(e) => update("calendarMailbox", e.target.value)} /></label>}</>}
       <label className="check"><input type="checkbox" checked={form.preparePromotion} onChange={(e) => update("preparePromotion", e.target.checked)} /> Promotieconcept voor andere kanalen</label>
       {form.preparePromotion && <>
-        <div className="channelChecks">{Object.entries(channelLabels).map(([key, label]) => <label className="channelCheck" key={key}><span className="check"><input type="checkbox" checked={form.channels[key]} onChange={() => toggleChannel(key)} /> {label}</span><small>{channelModes[key]}</small></label>)}</div>
+        <div className="channelChecks">{Object.entries(channelLabels).map(([key, label]) => <label className="channelCheck" key={key}><span className="check"><input type="checkbox" checked={form.channels[key]} onChange={() => toggleChannel(key)} /> {label}</span><small>{key === "predis" && !predisConnected ? "Niet gekoppeld" : channelModes[key]}</small></label>)}</div>
         <p className="channelSafetyNote">Selecteren publiceert niets automatisch. Brevo slaat een concept bij Brevo op; Predis alleen wanneer je de extra keuze aanzet. De overige kanalen blijven interne concepten in Horeca OS.</p>
       </>}
     </fieldset>
