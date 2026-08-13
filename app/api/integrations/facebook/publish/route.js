@@ -14,7 +14,8 @@ export async function POST(request) {
 
   const [{ data: account }, { data: campaign }] = await Promise.all([
     admin.from("integration_accounts").select("id,external_account_id,display_name,granted_scopes")
-      .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook").maybeSingle(),
+      .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook")
+      .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     admin.from("social_content_items").select("id,business_id,media,workflow_status")
       .eq("id", campaignId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle(),
   ]);

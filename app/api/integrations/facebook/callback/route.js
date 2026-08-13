@@ -65,14 +65,14 @@ export async function GET(request) {
     const admin = createAdminSupabase();
     const [
       { data: instagramAccount, error: instagramLookupError },
-      { data: existingAccount, error: facebookLookupError },
+      { data: existingAccounts, error: facebookLookupError },
     ] = await Promise.all([
       admin.from("integration_accounts")
         .select("external_account_id").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
         .eq("provider", "meta").maybeSingle(),
       admin.from("integration_accounts")
         .select("id,external_account_id,display_name").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
-        .eq("provider", "facebook").maybeSingle(),
+        .eq("provider", "facebook").order("updated_at", { ascending: false }),
     ]);
     if (instagramLookupError) throw new Error("Het gekoppelde Instagram-profiel kon niet worden gecontroleerd.");
     if (facebookLookupError) {
@@ -85,6 +85,8 @@ export async function GET(request) {
       throw new Error("De bestaande Facebook-koppeling kon niet worden gecontroleerd.");
     }
     if (!instagramAccount) throw new Error("Koppel voor deze vestiging eerst het juiste Instagram-profiel.");
+
+    const existingAccount = existingAccounts?.[0] || null;
 
     const pagesUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`);
     pagesUrl.search = new URLSearchParams({
