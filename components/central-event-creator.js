@@ -1125,17 +1125,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                   ? "Concept bij Brevo opgeslagen"
                   : delivery.status === "generating"
                     ? "Predis maakt een concept"
-                    : plannedAt
-                      ? `Intern concept gepland: ${formatNlDateTime(plannedAt)}`
-                      : stored === "extra_gegevens_nodig"
-                        ? "Extra gegevens nodig"
-                        : approved ? "Intern concept goedgekeurd" : "Intern concept klaar voor controle";
+                    : delivery.status === "draft_ready"
+                      ? "Predis-concept gereed"
+                      : delivery.status === "generation_failed"
+                        ? "Predis-generatie mislukt"
+                        : plannedAt
+                          ? `Intern concept gepland: ${formatNlDateTime(plannedAt)}`
+                          : stored === "extra_gegevens_nodig"
+                            ? "Extra gegevens nodig"
+                            : approved ? "Intern concept goedgekeurd" : "Intern concept klaar voor controle";
 
               const copyKey = `${item.id}-${channel}`;
               const conceptText = channelConceptText(distribution, channel, item.body);
               return <div className={`status ${stored || "klaar_voor_controle"}`} key={channel}>
                 <span><b>{channelLabels[channel] || channel}</b> · {label}
                   {confirmed && delivery.permalink && <> · <a href={delivery.permalink} target="_blank" rel="noreferrer">Openen</a></>}
+                  {channel === "predis" && delivery.status === "draft_ready" && delivery.result_url && <> · <a href={delivery.result_url} target="_blank" rel="noreferrer">Resultaat openen</a></>}
                 </span>
                 {copyableChannels.has(channel) && <button type="button" disabled={!conceptText} onClick={() => copyChannelConcept(item, distribution, channel)}>
                   {copiedChannelKey === copyKey ? "Gekopieerd ✓" : "Tekst kopiëren"}
