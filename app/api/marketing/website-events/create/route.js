@@ -153,6 +153,41 @@ function eventinDateTime(row, kind) {
   return Number.isNaN(new Date(combined).getTime()) ? "" : combined;
 }
 
+function imageFromContent(row) {
+  const html = String(row?.content?.rendered || row?.description || "");
+  return html.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] || "";
+}
+
+function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
+  const row = eventinResponse?.data || eventinResponse?.event || eventinResponse || {};
+  const start = eventinDateTime(row, "start");
+  const end = eventinDateTime(row, "end");
+  const tickets = Array.isArray(row.ticket_variations) ? row.ticket_variations : [];
+  const firstTicket = tickets[0] || {};
+  const ticketPrice = Number(firstTicket.etn_ticket_price || 0);
+  const unlimited = Boolean(firstTicket.etn_unlimited_tickets) || Number(firstTicket.etn_avaiilable_tickets) < 0;
+  const banner = typeof row.event_banner === "string"
+    ? row.event_banner
+    : row.event_banner?.url || row.event_banner?.source_url || "";
+  const location = typeof row.location === "string" ? row.location : row.location?.address || row.location?.name || "";
+  return {
+    id: String(row.id || wordpressRow?.id || ""),
+    title: cleanHtml(row.title?.rendered || row.title || wordpressRow?.title?.rendered, 300),
+    description: cleanHtml(row.description?.rendered || row.description || row.content?.rendered || wordpressRow?.content?.rendered || wordpressRow?.excerpt?.rendered),
+    start,
+    end,
+    location: String(location || eventinValue(row, ["event_location", "etn_event_location"])),
+    imageUrl: String(banner || wordpressRow?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || imageFromContent(wordpressRow)),
+    url: String(wordpressRow?.link || row.link || `${site.origin}/?p=${row.id || wordpressRow?.id || ""}`),
+    status: (row.visibility_status || wordpressRow?.status) === "draft" ? "draft" : "publish",
+    tickets: {
+      type: tickets.length ? (ticketPrice > 0 ? "paid" : "free") : "none",
+      price: String(ticketPrice),
+      capacity: unlimited ? "" : String(firstTicket.etn_avaiilable_tickets || row.total_ticket || ""),
+    },
+  };
+}
+
 function normalizeManagedEvent(row, site) {
   return {
     id: String(row?.id || ""),
@@ -214,6 +249,7 @@ export async function GET(request) {
     workspaceId: url.searchParams.get("workspaceId"),
     businessId: url.searchParams.get("businessId"),
     site: url.searchParams.get("site"),
+    campaignId: url.searchParams.get("campaignId"),
   };
   const context = await ownerContext(request, body.workspaceId);
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag bestaande Eventin-evenementen importeren." }, { status: 403 });
@@ -221,6 +257,23 @@ export async function GET(request) {
   const credentials = siteCredentials(body);
   if (credentials.error && !credentials.configurationRequired) return NextResponse.json({ error: credentials.error }, { status: credentials.status });
   const { site, authorization } = credentials;
+  const requestedEventId = eventId(url.searchParams.get("eventId"));
+  if (requestedEventId) {
+    if (!authorization) return NextResponse.json({ error: "De beveiligde Eventin-koppeling is nodig om dit evenement te bewerken." }, { status: 503 });
+    if (!await storedEventBelongsToBusiness(context, body, requestedEventId)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
+    const headers = { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" };
+    const [eventinResponse, wordpressResponse] = await Promise.all([
+      fetch(`${site.origin}/wp-json/eventin/v2/events/${requestedEventId}`, { headers, cache: "no-store" }),
+      fetch(`${site.origin}/wp-json/wp/v2/etn/${requestedEventId}?context=edit&_embed=1`, { headers, cache: "no-store" }),
+    ]);
+    const eventinData = await eventinResponse.json().catch(() => ({}));
+    const wordpressData = await wordpressResponse.json().catch(() => ({}));
+    if (!eventinResponse.ok || !wordpressResponse.ok) {
+      const detail = eventinData?.message || wordpressData?.message || "";
+      return NextResponse.json({ error: `De volledige Eventin-gegevens konden niet worden geladen.${detail ? ` ${cleanHtml(detail, 500)}` : ""}` }, { status: eventinResponse.ok ? wordpressResponse.status : eventinResponse.status });
+    }
+    return NextResponse.json({ event: normalizeEventinDetail(eventinData, wordpressData, site), website: site.origin, readOnly: false });
+  }
   const endpoint = new URL("/wp-json/wp/v2/etn", site.origin);
   endpoint.searchParams.set("per_page", "100");
   endpoint.searchParams.set("status", authorization ? "publish,draft" : "publish");
