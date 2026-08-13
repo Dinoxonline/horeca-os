@@ -91,7 +91,7 @@ function defaultsForBusiness(business) {
   const isPlein = name.toLowerCase().includes("plein");
   return {
     organizer: name || emptyForm.organizer,
-    location: isPlein ? "" : emptyForm.location,
+    location: isPlein ? "Grandcafé Het Plein" : "Caribbean Corner",
     contactEmail: isPlein ? "" : emptyForm.contactEmail,
   };
 }
