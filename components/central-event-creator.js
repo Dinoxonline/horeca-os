@@ -414,7 +414,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     let query = supabase.from("social_content_items")
       .select("id,body,media,status,workflow_status,scheduled_for,published_at,permalink,created_at")
       .eq("workspace_id", workspaceId)
-      .contains("media", [{ kind: "campaign_distribution" }])
+      .filter("media", "cs", JSON.stringify([{ kind: "campaign_distribution" }]))
       .order("created_at", { ascending: conceptSort === "oldest" })
       .range(from, from + campaignPageSize - 1);
     if (selectedBusiness?.id || businessId) query = query.eq("business_id", selectedBusiness?.id || businessId);
