@@ -8,10 +8,27 @@ export async function GET(request) {
   if (context.error) return context.error;
   const workspaceId = request.nextUrl.searchParams.get("workspaceId");
   const businessId = request.nextUrl.searchParams.get("businessId");
-  const brandId = request.nextUrl.searchParams.get("brandId");
-  if (workspaceId !== context.workspaceId || !businessId || !brandId) return jsonError("Werkruimte, vestiging en Predis-merk ontbreken.", 400);
+  const brandId = request.nextUrl.searchParams.get("brandId")?.trim() || "";
+  const configOnly = request.nextUrl.searchParams.get("config") === "1";
+  if (workspaceId !== context.workspaceId || !businessId) return jsonError("Werkruimte of vestiging ontbreekt.", 400);
   const business = await requireBusiness(workspaceId, businessId);
   if (!business) return jsonError("Vestiging hoort niet bij deze werkruimte.", 400);
+  if (configOnly) {
+    const admin = createAdminSupabase();
+    const { data, error } = await admin.from("integration_accounts")
+      .select("external_account_id,display_name,connection_status,last_synced_at")
+      .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "predis")
+      .maybeSingle();
+    if (error) return jsonError("De opgeslagen Predis-koppeling kon niet worden geladen.", 500);
+    return NextResponse.json({
+      ok: true,
+      business: { id: business.id, name: business.name },
+      connected: data?.connection_status === "connected",
+      brandId: data?.external_account_id || "",
+      lastCheckedAt: data?.last_synced_at || null,
+    });
+  }
+  if (!brandId) return jsonError("Predis-merk ontbreekt.", 400);
   const apiKey = process.env.PREDIS_API_KEY?.trim();
   if (!apiKey) return jsonError("Predis is nog niet geconfigureerd op de server.", 503);
   const url = new URL(`${PREDIS_BASE_URL}/get_posts/`);
@@ -21,6 +38,8 @@ export async function GET(request) {
   const response = await fetch(url, { headers: { Authorization: apiKey, Accept: "application/json" }, cache: "no-store" });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.errors?.length) return jsonError("Predis kon dit merk niet bevestigen.", response.status === 401 ? 401 : 502);
+  const saved = await savePredisConnection({ workspaceId, business, brandId });
+  if (saved.error) return saved.error;
   return NextResponse.json({ ok: true, business: { id: business.id, name: business.name }, brandId, posts: result.posts || [], totalPages: result.total_pages || 1 });
 }
 
@@ -51,6 +70,33 @@ export async function POST(request) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.errors?.length) return jsonError(result.errors?.[0]?.detail || "Predis kon de inhoud niet genereren.", response.status || 502);
   return NextResponse.json({ ok: true, business: { id: business.id, name: business.name }, brandId, postIds: result.post_ids || [], status: result.post_status || "inProgress" });
+}
+
+async function savePredisConnection({ workspaceId, business, brandId }) {
+  const admin = createAdminSupabase();
+  const { data: existing, error: readError } = await admin.from("integration_accounts")
+    .select("id")
+    .eq("workspace_id", workspaceId).eq("business_id", business.id).eq("provider", "predis")
+    .maybeSingle();
+  if (readError) return { error: jsonError("De Predis-koppeling kon niet worden opgeslagen.", 500) };
+  const record = {
+    workspace_id: workspaceId,
+    business_id: business.id,
+    provider: "predis",
+    external_account_id: brandId,
+    display_name: `${business.name} — Predis`,
+    account_type: "predis_brand",
+    connection_status: "connected",
+    granted_scopes: ["content:read", "content:create"],
+    last_synced_at: new Date().toISOString(),
+    last_error_code: null,
+    last_error_at: null,
+  };
+  const { error } = existing?.id
+    ? await admin.from("integration_accounts").update(record).eq("id", existing.id).eq("workspace_id", workspaceId)
+    : await admin.from("integration_accounts").insert(record);
+  if (error?.code === "23505") return { error: jsonError("Dit Predis-merk is al aan een andere koppeling toegewezen.", 409) };
+  return error ? { error: jsonError("De Predis-koppeling kon niet worden opgeslagen.", 500) } : { ok: true };
 }
 
 async function requireBusiness(workspaceId, businessId) {
