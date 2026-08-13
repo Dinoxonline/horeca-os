@@ -654,8 +654,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setPredisBrandId("");
       return;
     }
-    setPredisBrandId(window.localStorage.getItem(`horeca-os:predis:${workspaceId}:${selectedBusinessId}`) || "");
-  }, [workspaceId, selectedBusiness?.id, businessId]);
+    let active = true;
+    const storageKey = `horeca-os:predis:${workspaceId}:${selectedBusinessId}`;
+    const localBrandId = window.localStorage.getItem(storageKey) || "";
+    setPredisBrandId(localBrandId);
+    const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, config: "1" });
+    fetch(`/api/integrations/predis?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+      .then(async (response) => ({ response, result: await response.json().catch(() => ({})) }))
+      .then(({ response, result }) => {
+        if (!active || !response.ok) return;
+        const savedBrandId = result.connected ? result.brandId || "" : "";
+        setPredisBrandId(savedBrandId || localBrandId);
+        if (savedBrandId) window.localStorage.setItem(storageKey, savedBrandId);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [workspaceId, selectedBusiness?.id, businessId, session.access_token]);
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
