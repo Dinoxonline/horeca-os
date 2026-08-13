@@ -716,7 +716,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
-      ticketVariations: common.tickets?.variations?.length ? common.tickets.variations : [{ ...defaultTicketVariation, type: common.tickets?.type || "free", price: common.tickets?.price || "0", capacity: common.tickets?.capacity || "" }],
+      ticketVariations: Array.isArray(common.tickets?.variations)
+        ? common.tickets.variations
+        : [{ ...defaultTicketVariation, type: common.tickets?.type || "free", price: common.tickets?.price || "0", capacity: common.tickets?.capacity || "" }],
       preparePromotion: targetChannels.length > 0, channels,
       brevoSubject: payloads.brevo?.subject || "", brevoPreview: payloads.brevo?.preview_text || "", brevoAudience: payloads.brevo?.list_names?.join(", ") || payloads.brevo?.audience || "",
       facebookText: payloads.facebook?.text || "", facebookPlacements: payloads.facebook?.placements || ["feed"], instagramFormat: payloads.instagram?.format || "post", instagramCaption: payloads.instagram?.caption || "",
