@@ -80,6 +80,48 @@ function eventPayload(body, properties) {
   }, properties, body);
 }
 
+function cleanHtml(value, limit = 10000) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, limit);
+}
+
+function eventinValue(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key] ?? row?.meta?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function eventinDateTime(row, kind) {
+  const date = eventinValue(row, kind === "start" ? ["etn_start_date", "start_date"] : ["etn_end_date", "end_date"]);
+  const time = eventinValue(row, kind === "start" ? ["etn_start_time", "start_time"] : ["etn_end_time", "end_time"]);
+  if (!date) return "";
+  const combined = `${date}T${time || (kind === "start" ? "12:00" : "13:00")}`;
+  return Number.isNaN(new Date(combined).getTime()) ? "" : combined;
+}
+
+function normalizeManagedEvent(row, site) {
+  return {
+    id: String(row?.id || ""),
+    title: cleanHtml(row?.title?.rendered, 300),
+    description: cleanHtml(row?.content?.rendered || row?.excerpt?.rendered),
+    start: eventinDateTime(row, "start"),
+    end: eventinDateTime(row, "end"),
+    location: eventinValue(row, ["event_location", "etn_event_location"]),
+    imageUrl: String(row?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || ""),
+    url: String(row?.link || `${site.origin}/?p=${row?.id || ""}`),
+    status: row?.status === "draft" ? "draft" : "publish",
+  };
+}
+
 async function storedEventBelongsToBusiness(context, body, id) {
   const campaignId = String(body.campaignId || "").trim();
   const businessId = String(body.businessId || "").trim();
@@ -105,6 +147,34 @@ async function siteMatchesBusiness(context, body) {
   const name = String(data?.name || "").toLowerCase();
   const expectedSite = name.includes("plein") ? "grandcafehetplein.com" : name.includes("caribbean") ? "caribbeancorner.nl" : "";
   return Boolean(expectedSite) && text(body.site, 200).toLowerCase() === expectedSite;
+}
+
+export async function GET(request) {
+  const url = new URL(request.url);
+  const body = {
+    workspaceId: url.searchParams.get("workspaceId"),
+    businessId: url.searchParams.get("businessId"),
+    site: url.searchParams.get("site"),
+  };
+  const context = await ownerContext(request, body.workspaceId);
+  if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag bestaande Eventin-evenementen importeren." }, { status: 403 });
+  if (!await siteMatchesBusiness(context, body)) return NextResponse.json({ error: "De gekozen Eventin-website hoort niet bij deze vestiging." }, { status: 403 });
+  const credentials = siteCredentials(body);
+  if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
+  const { site, authorization } = credentials;
+  const endpoint = new URL("/wp-json/wp/v2/etn", site.origin);
+  endpoint.searchParams.set("per_page", "100");
+  endpoint.searchParams.set("status", "publish,draft");
+  endpoint.searchParams.set("context", "edit");
+  endpoint.searchParams.set("_embed", "1");
+  const response = await fetch(endpoint, { headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" }, cache: "no-store" });
+  const data = await response.json().catch(() => ([]));
+  if (!response.ok) {
+    const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
+    return NextResponse.json({ error: `De Eventin-evenementen konden niet beveiligd worden opgehaald.${detail}` }, { status: response.status });
+  }
+  const events = (Array.isArray(data) ? data : []).map((row) => normalizeManagedEvent(row, site)).filter((event) => event.id && event.title);
+  return NextResponse.json({ events, website: site.origin });
 }
 
 async function eventinProperties(origin, authorization) {
