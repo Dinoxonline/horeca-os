@@ -851,9 +851,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (!cancel && incompleteChannels.length > 0) {
       return setResult({ ok: false, message: `Inplannen kan pas nadat deze kanalen zijn aangevuld: ${formatChannelList(incompleteChannels)}.` });
     }
-    const localValue = conceptSchedule[item.id];
-    if (!cancel && !localValue) return setResult({ ok: false, message: "Kies eerst een datum en tijd voor deze campagne." });
-    const scheduledFor = cancel ? null : new Date(localValue);
+    const localValue = conceptSchedule[item.id] || {};
+    if (!cancel && (!localValue.date || !localValue.time)) return setResult({ ok: false, message: "Kies eerst een datum en tijd voor deze campagne." });
+    const scheduledFor = cancel ? null : new Date(`${localValue.date}T${localValue.time}`);
     if (!cancel && (Number.isNaN(scheduledFor.getTime()) || scheduledFor <= new Date())) return setResult({ ok: false, message: "Kies een geldig publicatiemoment in de toekomst." });
     const nextChannelStatus = Object.fromEntries((distribution.target_channels || []).map((channel) => {
       const current = distribution.channel_status?.[channel];
@@ -886,7 +886,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const { error } = await supabase.from("social_content_items").update({ status: cancel ? "draft" : "scheduled", workflow_status: "in_progress", scheduled_for: scheduledIso, media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) throw error;
       setResult({ ok: true, message: cancel ? "De planning is ingetrokken. De campagne blijft goedgekeurd, maar wordt niet gepubliceerd." : "De campagne is intern ingepland. Per kanaal is een apart tijdstip vastgelegd; pas na een bevestiging van het kanaal tonen we Geplaatst." });
-      if (cancel) setConceptSchedule((current) => ({ ...current, [item.id]: "" }));
+      if (cancel) setConceptSchedule((current) => ({ ...current, [item.id]: { date: "", time: "" } }));
       await loadEventCampaigns();
     } catch (error) {
       setResult({ ok: false, message: error.message || "De planning kon niet worden opgeslagen." });
@@ -1838,7 +1838,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
             {approved && !providerConfirmed && <div className="conceptSchedule">
-              <label>Basis publicatiemoment<input type="datetime-local" disabled={hasIncompleteChannels} value={conceptSchedule[item.id] || ""} onChange={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: event.target.value }))} /></label>
+              <label>Publicatiedatum<input type="date" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.date || ""} onChange={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), date: event.target.value } }))} /></label>
+              <label>Publicatietijd<input type="time" disabled={hasIncompleteChannels || Boolean(item.scheduled_for)} value={conceptSchedule[item.id]?.time || ""} onChange={(event) => setConceptSchedule((current) => ({ ...current, [item.id]: { ...(current[item.id] || {}), time: event.target.value } }))} /></label>
               {item.scheduled_for ? <>
                 <span>Intern basisplan: {formatNlDateTime(item.scheduled_for)}</span>
                 <button type="button" disabled={conceptBusy} onClick={() => scheduleConcept(item, true)}>Planning intrekken</button>
