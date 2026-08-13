@@ -439,7 +439,14 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && <CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
+        {activeView === "marketing" && featureVisibility.marketing && (businessId === "all"
+          ? <section className="panel" style={{ marginBottom: 24 }}>
+              <div className="panelHead"><div><p className="eyebrow">MARKETING</p><h2>Kies eerst een vestiging</h2><p>Een campagne hoort altijd bij één zaak. Kies hieronder de juiste vestiging om verkeerde locaties, doelgroepen of afzenders te voorkomen.</p></div></div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {visibleBusinesses.map((business) => <button type="button" className="primary" key={business.id} onClick={() => setBusinessId(business.id)}>{business.name}</button>)}
+              </div>
+            </section>
+          : <CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />)}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
