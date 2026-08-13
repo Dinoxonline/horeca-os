@@ -76,6 +76,16 @@ function siteForBusiness(business) {
   return String(business?.name || "").toLowerCase().includes("plein") ? "grandcafehetplein.com" : "caribbeancorner.nl";
 }
 
+function defaultsForBusiness(business) {
+  const name = String(business?.name || "").trim();
+  const isPlein = name.toLowerCase().includes("plein");
+  return {
+    organizer: name || emptyForm.organizer,
+    location: isPlein ? "" : emptyForm.location,
+    contactEmail: isPlein ? "" : emptyForm.contactEmail,
+  };
+}
+
 function providerDeliveryConfirmed(delivery) {
   const status = String(delivery?.status || "").toLowerCase();
   return ["published", "posted", "delivered"].includes(status)
@@ -505,6 +515,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   useEffect(() => {
+    if (!selectedBusiness?.id) return;
+    const defaults = defaultsForBusiness(selectedBusiness);
+    setForm((current) => ({
+      ...current,
+      organizer: defaults.organizer,
+      location: defaults.location,
+      contactEmail: defaults.contactEmail,
+    }));
+    setEditingCampaignId(null);
+    setEditingBrevoDraftId(null);
+    setPendingPredisGeneration(null);
+    setPreview(false);
+    setResult(null);
+  }, [selectedBusiness?.id]);
+
+  useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
     if (!workspaceId || !selectedBusinessId) {
       setPredisBrandId("");
@@ -556,6 +582,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const validate = () => {
     if (!form.title.trim()) return `Vul een naam in voor ${campaignTypeLabel.toLowerCase()}.`;
     if (isEvent && (!form.start || !form.end)) return "Vul een begin- en eindmoment in.";
+    if (isEvent && !form.location.trim()) return "Vul de locatie van het evenement in.";
+    if (isEvent && !form.contactEmail.trim()) return "Vul het contact-e-mailadres van de vestiging in.";
     if (isEvent && new Date(form.end) <= new Date(form.start)) return "Het eindmoment moet na het beginmoment liggen.";
     if (isEvent && form.ticketType === "paid" && Number(form.ticketPrice) <= 0) return "Vul een geldige ticketprijs in.";
     if (form.campaignType === "offer" && (!form.campaignPrice || !form.validUntil)) return "Vul de actieprijs en einddatum in.";
@@ -728,7 +756,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     <div className="eventCreatorGrid">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
       <label>{campaignTypeLabel}naam *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
-      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onChange={(e) => update("start", e.target.value)} /></label><label>Eindigt *<input type="datetime-local" value={form.end} onChange={(e) => update("end", e.target.value)} /></label><label className="wide">Locatie<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
+      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onChange={(e) => update("start", e.target.value)} /></label><label>Eindigt *<input type="datetime-local" value={form.end} onChange={(e) => update("end", e.target.value)} /></label><label className="wide">Locatie *<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
       {(form.campaignType === "product" || form.campaignType === "offer") && <><label>Normale prijs<input type="number" min="0" step="0.01" value={form.regularPrice} onChange={(e) => update("regularPrice", e.target.value)} /></label><label>{form.campaignType === "offer" ? "Actieprijs *" : "Promotieprijs"}<input type="number" min="0" step="0.01" value={form.campaignPrice} onChange={(e) => update("campaignPrice", e.target.value)} /></label></>}
       {form.campaignType === "offer" && <><label>Actiecode<input value={form.discountCode} onChange={(e) => update("discountCode", e.target.value)} /></label><label>Geldig vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Geldig tot *<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
       {form.campaignType === "package" && <><label>Aantal personen<input type="number" min="1" value={form.groupSize} onChange={(e) => update("groupSize", e.target.value)} /></label><label>Prijs per persoon<input type="number" min="0" step="0.01" value={form.pricePerPerson} onChange={(e) => update("pricePerPerson", e.target.value)} /></label><label>Beschikbaar vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Beschikbaar tot<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
@@ -789,7 +817,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
       <label>Videolink<input type="url" value={form.videoUrl} onChange={(e) => update("videoUrl", e.target.value)} placeholder="Verplicht wanneer TikTok is gekozen" /></label>
       <label>Organisator<input value={form.organizer} onChange={(e) => update("organizer", e.target.value)} /></label>
-      <label>Contact-e-mail<input type="email" value={form.contactEmail} onChange={(e) => update("contactEmail", e.target.value)} /></label>
+      <label>Contact-e-mail *<input type="email" value={form.contactEmail} onChange={(e) => update("contactEmail", e.target.value)} /></label>
       <label>Knoptekst<input value={form.ctaLabel} onChange={(e) => update("ctaLabel", e.target.value)} /></label>
       <label>Knoplink<input type="url" value={form.ctaUrl} onChange={(e) => update("ctaUrl", e.target.value)} placeholder="Leeg = de nieuwe evenementpagina" /></label>
       {isEvent && <><label>Tickets<select value={form.ticketType} onChange={(e) => update("ticketType", e.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option><option value="none">Geen tickets</option></select></label>
