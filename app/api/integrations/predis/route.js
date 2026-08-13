@@ -50,13 +50,22 @@ export async function POST(request) {
   try { body = await request.json(); } catch { return jsonError("Ongeldig verzoek.", 400); }
   const workspaceId = String(body.workspaceId || "");
   const businessId = String(body.businessId || "");
-  const brandId = String(body.brandId || "").trim();
+  const requestedBrandId = String(body.brandId || "").trim();
   const prompt = String(body.prompt || "").trim();
   const mediaType = ["single_image", "carousel", "video"].includes(body.mediaType) ? body.mediaType : "single_image";
-  if (workspaceId !== context.workspaceId || !businessId || !brandId) return jsonError("Werkruimte, vestiging en Predis-merk ontbreken.", 400);
+  if (workspaceId !== context.workspaceId || !businessId || !requestedBrandId) return jsonError("Werkruimte, vestiging en Predis-merk ontbreken.", 400);
   if (prompt.length < 20 || prompt.split(/\s+/).length < 3) return jsonError("Beschrijf het bericht met minimaal 20 tekens en 3 woorden.", 400);
   const business = await requireBusiness(workspaceId, businessId);
   if (!business) return jsonError("Vestiging hoort niet bij deze werkruimte.", 400);
+  const admin = createAdminSupabase();
+  const { data: savedConnection, error: connectionError } = await admin.from("integration_accounts")
+    .select("external_account_id,connection_status")
+    .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "predis")
+    .maybeSingle();
+  if (connectionError) return jsonError("De opgeslagen Predis-koppeling kon niet worden gecontroleerd.", 500);
+  const brandId = savedConnection?.connection_status === "connected" ? String(savedConnection.external_account_id || "").trim() : "";
+  if (!brandId) return jsonError("Koppel voor deze vestiging eerst een Predis-merk onder Koppelingen.", 409);
+  if (requestedBrandId !== brandId) return jsonError("Het Predis-merk komt niet overeen met de opgeslagen koppeling voor deze vestiging.", 409);
   const apiKey = process.env.PREDIS_API_KEY?.trim();
   if (!apiKey) return jsonError("Predis is nog niet geconfigureerd op de server.", 503);
   const form = new FormData();
