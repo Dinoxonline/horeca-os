@@ -50,9 +50,19 @@ export async function POST(request) {
       channel_status: { ...(distribution.channel_status || {}), facebook: "geplaatst" },
     };
     const media = (campaign.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
-    const { error: updateError } = await admin.from("social_content_items").update({ media }).eq("id", campaign.id);
+    const { data: updatedCampaign, error: updateError } = await admin.from("social_content_items")
+      .update({ media })
+      .eq("id", campaign.id)
+      .eq("workspace_id", workspaceId)
+      .eq("business_id", businessId)
+      .select("media")
+      .single();
     if (updateError) throw new Error("Het bericht staat op Facebook, maar de bevestiging kon niet in Horeca OS worden opgeslagen.");
-    return NextResponse.json({ ok: true, post: { id: postId, permalink, pageName: account.display_name } });
+    const savedDistribution = (updatedCampaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
+    if (!savedDistribution || !["confirmed", "published"].includes(savedDistribution.provider_delivery?.facebook?.status)) {
+      throw new Error("Het bericht staat op Facebook, maar de bevestigde status kon niet worden gecontroleerd.");
+    }
+    return NextResponse.json({ ok: true, post: { id: postId, permalink, pageName: account.display_name }, distribution: savedDistribution });
   } catch (error) {
     return jsonError(error.message || "Facebook heeft het bericht geweigerd.", 502);
   }

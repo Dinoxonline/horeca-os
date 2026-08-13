@@ -1404,6 +1404,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Het Facebookbericht kon niet worden geplaatst.");
+      if (result.distribution) {
+        setEventCampaigns((current) => current.map((campaign) => campaign.id === item.id
+          ? { ...campaign, media: (campaign.media || []).map((entry) => entry?.kind === "campaign_distribution" ? result.distribution : entry) }
+          : campaign));
+      }
       setResult({ ok: true, message: `Het evenement is op ${result.post?.pageName || "Facebook"} geplaatst.` });
       await loadEventCampaigns();
     } catch (error) {
