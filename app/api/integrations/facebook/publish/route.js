@@ -38,12 +38,13 @@ export async function POST(request) {
     const facebook = distribution.channel_payloads?.facebook || {};
     const message = buildEventMessage(common, facebook, distribution.source_url);
     const imageUrl = facebook.image_url || common.image_url || "";
-    const result = imageUrl
+    const existingPost = await findExistingPost(account.external_account_id, accessToken, message);
+    const result = existingPost || (imageUrl
       ? await graphPost(`${account.external_account_id}/photos`, accessToken, { url: imageUrl, caption: message, published: "true" })
-      : await graphPost(`${account.external_account_id}/feed`, accessToken, { message, link: common.website_url || distribution.source_url || "" });
+      : await graphPost(`${account.external_account_id}/feed`, accessToken, { message, link: common.website_url || distribution.source_url || "" }));
     const postId = String(result.post_id || result.id || "");
     if (!postId) throw new Error("Facebook heeft geen berichtnummer teruggegeven.");
-    const permalink = `https://www.facebook.com/${postId.replace("_", "/posts/")}`;
+    const permalink = result.permalink_url || `https://www.facebook.com/${postId.replace("_", "/posts/")}`;
     const nextDistribution = {
       ...distribution,
       provider_delivery: { ...(distribution.provider_delivery || {}), facebook: { status: "confirmed", external_id: postId, permalink, published_at: new Date().toISOString() } },
@@ -66,6 +67,16 @@ export async function POST(request) {
   } catch (error) {
     return jsonError(error.message || "Facebook heeft het bericht geweigerd.", 502);
   }
+}
+
+async function findExistingPost(pageId, accessToken, message) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/feed`);
+  url.search = new URLSearchParams({ fields: "id,message,permalink_url", limit: "25", access_token: accessToken }).toString();
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) return null;
+  const result = await response.json();
+  const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  return (result.data || []).find((post) => normalize(post.message) === normalize(message)) || null;
 }
 
 function buildEventMessage(common, facebook, sourceUrl) {
