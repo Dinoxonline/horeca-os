@@ -1470,8 +1470,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       common.location ? `Locatie: ${common.location}` : "",
       common.website_url || distribution.source_url,
     ].filter(Boolean).join("\n\n");
+    try { void navigator.clipboard.writeText(eventText); } catch {}
     window.open("https://www.facebook.com/events/create/", "_blank", "noopener,noreferrer");
-    try { await navigator.clipboard.writeText(eventText); } catch {}
     setResult({ ok: true, message: "Facebook Evenement maken is geopend en de evenementgegevens zijn gekopieerd. Kies de juiste Facebookpagina, voeg de afbeelding toe en bevestig het evenement in Facebook." });
   }
 
