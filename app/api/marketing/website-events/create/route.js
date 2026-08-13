@@ -295,6 +295,21 @@ export async function PATCH(request) {
   const credentials = siteCredentials(body);
   if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
   const { site, authorization } = credentials;
+  if (body.action === "publish" || body.action === "draft") {
+    const visibilityStatus = body.action;
+    const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      body: JSON.stringify({ visibility_status: visibilityStatus }),
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
+      return NextResponse.json({ error: `Eventin heeft de statuswijziging niet geaccepteerd.${detail}` }, { status: response.status });
+    }
+    return NextResponse.json({ event: { id, url: data.link || `${site.origin}/?p=${id}`, status: data.visibility_status || visibilityStatus, website: site.origin } });
+  }
   const start = dateParts(body.start);
   const end = dateParts(body.end);
   if (!text(body.title) || !start || !end || new Date(body.end) <= new Date(body.start)) {
