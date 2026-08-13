@@ -103,9 +103,21 @@ export async function DELETE(request) {
   if (context.error) return context.error;
   if (!businessId || !draftId) return jsonError("Kies eerst een geldig Brevo-concept.", 400);
   const { data: draft } = await context.admin.from("brevo_campaign_drafts")
-    .select("id,status").eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
+    .select("id,status,brevo_campaign_id").eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
   if (!draft) return NextResponse.json({ ok: true, message: "Het Brevo-concept was al verwijderd." });
   if (["sent", "sending"].includes(draft.status)) return jsonError("Een verzonden of lopende Brevo-campagne kan niet als concept worden verwijderd.", 409);
+  if (draft.brevo_campaign_id) {
+    const apiKey = process.env.BREVO_API_KEY?.trim();
+    if (!apiKey) return jsonError("Brevo is nog niet geconfigureerd op de server.", 503);
+    try {
+      await brevo(`/emailCampaigns/${draft.brevo_campaign_id}`, apiKey, { method: "DELETE" });
+    } catch (error) {
+      if (error.status !== 404) {
+        const status = error.status === 401 || error.status === 403 ? error.status : 502;
+        return jsonError(error.message || "Het concept kon niet uit Brevo worden verwijderd.", status);
+      }
+    }
+  }
   const { error } = await context.admin.from("brevo_campaign_drafts")
     .delete().eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId);
   if (error) return jsonError("Het Brevo-concept kon niet worden verwijderd.", 500);
@@ -146,6 +158,33 @@ async function saveDraft(request, draftId, suppliedBody = null) {
     const lists = await getConfiguredLists(apiKey, listIds);
     const selectedLists = lists.filter((item) => requestedListIds.includes(Number(item.id)));
     if (selectedLists.length !== requestedListIds.length) return jsonError("Een of meer gekozen Brevo-doelgroepen bestaan niet meer.", 409);
+    const senderEmail = configuredSenderEmail(business.name);
+    if (!senderEmail) return jsonError("Stel eerst het goedgekeurde Brevo-afzenderadres voor deze vestiging in.", 503);
+    let existingDraft = null;
+    if (draftId) {
+      const { data } = await context.admin.from("brevo_campaign_drafts")
+        .select("id,status,brevo_campaign_id")
+        .eq("id", draftId).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
+      if (!data) return jsonError("Het Brevo-concept bestaat niet meer.", 404);
+      if (["sent", "sending"].includes(data.status)) return jsonError("Een verzonden of lopende Brevo-campagne kan niet worden gewijzigd.", 409);
+      existingDraft = data;
+    }
+    const brevoPayload = {
+      name: internalName,
+      subject,
+      sender: { name: senderName, email: senderEmail },
+      recipients: { listIds: requestedListIds },
+      htmlContent: textToSafeHtml(content),
+    };
+    let brevoCampaignId = existingDraft?.brevo_campaign_id || null;
+    let createdBrevoCampaign = false;
+    if (brevoCampaignId) {
+      await brevo(`/emailCampaigns/${brevoCampaignId}`, apiKey, { method: "PUT", body: brevoPayload });
+    } else {
+      const campaign = await brevo("/emailCampaigns", apiKey, { method: "POST", body: brevoPayload });
+      brevoCampaignId = campaign.id;
+      createdBrevoCampaign = true;
+    }
     const record = {
       workspace_id: workspaceId,
       business_id: businessId,
@@ -158,6 +197,7 @@ async function saveDraft(request, draftId, suppliedBody = null) {
       sender_name: senderName,
       subject,
       body: content,
+      brevo_campaign_id: brevoCampaignId,
       status: "draft",
       approval_requested_at: null,
       approval_requested_by: null,
@@ -178,7 +218,12 @@ async function saveDraft(request, draftId, suppliedBody = null) {
       }).select("id,business_id,list_id,list_name,list_ids,list_names,recipient_count,internal_name,sender_name,subject,body,status,approval_requested_at,approval_requested_by,brevo_campaign_id,sent_at,sent_by,created_at,updated_at").single();
     }
     const { data, error } = await query;
-    if (error || !data) return jsonError(draftId ? "Het concept kon niet worden bijgewerkt." : "Het concept kon niet worden opgeslagen.", 500);
+    if (error || !data) {
+      if (createdBrevoCampaign && brevoCampaignId) {
+        await brevo(`/emailCampaigns/${brevoCampaignId}`, apiKey, { method: "DELETE" }).catch(() => {});
+      }
+      return jsonError(draftId ? "Het concept kon niet worden bijgewerkt." : "Het concept kon niet worden opgeslagen.", 500);
+    }
     return NextResponse.json({ ok: true, business, draft: data });
   } catch (error) {
     const status = error.status === 401 || error.status === 403 ? error.status : 502;
@@ -298,16 +343,30 @@ async function sendCampaign(request, body) {
 
     let campaign;
     try {
-      campaign = await brevo("/emailCampaigns", apiKey, {
-        method: "POST",
-        body: {
-          name: draft.internal_name,
-          subject: draft.subject,
-          sender: { name: draft.sender_name, email: senderEmail },
-          recipients: { listIds: draftListIds },
-          htmlContent: textToSafeHtml(draft.body),
-        },
-      });
+      if (draft.brevo_campaign_id) {
+        campaign = { id: draft.brevo_campaign_id };
+        await brevo(`/emailCampaigns/${campaign.id}`, apiKey, {
+          method: "PUT",
+          body: {
+            name: draft.internal_name,
+            subject: draft.subject,
+            sender: { name: draft.sender_name, email: senderEmail },
+            recipients: { listIds: draftListIds },
+            htmlContent: textToSafeHtml(draft.body),
+          },
+        });
+      } else {
+        campaign = await brevo("/emailCampaigns", apiKey, {
+          method: "POST",
+          body: {
+            name: draft.internal_name,
+            subject: draft.subject,
+            sender: { name: draft.sender_name, email: senderEmail },
+            recipients: { listIds: draftListIds },
+            htmlContent: textToSafeHtml(draft.body),
+          },
+        });
+      }
       await brevo(`/emailCampaigns/${campaign.id}/sendNow`, apiKey, { method: "POST" });
     } catch (error) {
       await context.admin.from("brevo_campaign_drafts").update({
