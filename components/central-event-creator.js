@@ -38,7 +38,7 @@ const campaignTitleLabels = {
 const emptyForm = {
   campaignType: "event",
   title: "", shortDescription: "", description: "", start: "", end: "",
-  location: "Caribbean Corner, Dorpsstraat 114A, Zoetermeer", imageUrl: "", images: emptyImages, videoUrl: "",
+  location: "Caribbean Corner, Dorpsstraat 114A, Zoetermeer", imageUrl: "", eventinImage: null, images: emptyImages, videoUrl: "",
   organizer: "Caribbean Corner", contactEmail: "info@caribbeancorner.nl", language: "nl",
   ctaLabel: "Meer informatie", ctaUrl: "", ticketType: "free", ticketPrice: "0", capacity: "",
   status: "draft", calendarMailbox: "info@leclubbbq.nl", addToCalendar: true, preparePromotion: true,
@@ -159,13 +159,17 @@ function buildChannelSchedule(channels, baseDate, minMinutes, maxMinutes, enable
 function formHasCampaignContent(form) {
   return [
     form.title, form.shortDescription, form.description, form.start, form.end,
-    form.imageUrl, form.videoUrl, form.ctaUrl, form.brevoSubject, form.brevoPreview,
+    form.imageUrl, form.eventinImage?.url, form.videoUrl, form.ctaUrl, form.brevoSubject, form.brevoPreview,
     form.facebookText, form.instagramCaption, form.tiktokCaption,
     form.whatsappTemplate, form.whatsappMessage, form.regularPrice, form.campaignPrice,
     form.discountCode, form.validFrom, form.validUntil, form.groupSize, form.pricePerPerson,
     form.reviewerName, form.reviewSource,
     ...Object.values(form.images || {}).map((image) => image?.url || ""),
   ].some((value) => String(value || "").trim());
+}
+
+function formDraftStorageKey(workspaceId, businessId) {
+  return `horeca-os:marketing-form:${workspaceId}:${businessId}`;
 }
 
 export default function CentralEventCreator({ workspaceId, businessId, businesses, session }) {
@@ -203,6 +207,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [predisConnected, setPredisConnected] = useState(false);
   const [pendingPredisGeneration, setPendingPredisGeneration] = useState(null);
   const [copiedChannelKey, setCopiedChannelKey] = useState("");
+  const [restoredDraftKey, setRestoredDraftKey] = useState("");
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const selectedBrevoLists = useMemo(() => brevoLists.filter((item) => selectedBrevoListIds.includes(String(item.id))), [brevoLists, selectedBrevoListIds]);
   const brevoRecipientCount = selectedBrevoLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0);
@@ -420,6 +425,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const failures = [];
 
     try {
+      const eventinSafeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+      const eventinPath = `${workspaceId}/${selectedBusiness?.id || businessId || "algemeen"}/eventin-${Date.now()}-${eventinSafeName}`;
+      const { error: eventinUploadError } = await supabase.storage.from("marketing-assets").upload(eventinPath, file, { cacheControl: "31536000", contentType: file.type, upsert: false });
+      if (eventinUploadError) throw eventinUploadError;
+      const { data: eventinPublicData } = supabase.storage.from("marketing-assets").getPublicUrl(eventinPath);
+
       for (const slot of imageSlots) {
         try {
           const prepared = await prepareImageForSlot(file, slot);
@@ -439,15 +450,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
 
       const completed = Object.keys(uploadedImages).length;
-      if (completed) {
-        setForm((current) => ({ ...current, images: { ...current.images, ...uploadedImages } }));
-        setPreview(false); setResult(null);
-      }
+      setForm((current) => ({
+        ...current,
+        eventinImage: { url: eventinPublicData.publicUrl, path: eventinPath, name: file.name },
+        images: { ...current.images, ...uploadedImages },
+      }));
+      setPreview(false); setResult(null);
       setUploadMessage({
-        ok: completed > 0,
+        ok: true,
         message: failures.length
-          ? `${completed} van de ${imageSlots.length} formaten zijn gemaakt. ${failures.join(" ")}`
-          : "Alle vier kanaalformaten zijn automatisch bijgesneden, verkleind en geüpload.",
+          ? `De Eventin-afbeelding is opgeslagen. ${completed} van de ${imageSlots.length} socialmediaformaten zijn gemaakt. ${failures.join(" ")}`
+          : "De Eventin-afbeelding en alle vier socialmediaformaten zijn geüpload.",
       });
     } finally {
       setUploadingSlot("");
@@ -830,12 +843,30 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   useEffect(() => {
     if (!selectedBusiness?.id) return;
     const defaults = defaultsForBusiness(selectedBusiness);
-    setForm((current) => ({
-      ...current,
+    const draftKey = workspaceId ? formDraftStorageKey(workspaceId, selectedBusiness.id) : "";
+    let savedForm = null;
+    if (draftKey) {
+      try {
+        savedForm = JSON.parse(window.localStorage.getItem(draftKey) || "null")?.form || null;
+      } catch {
+        window.localStorage.removeItem(draftKey);
+      }
+    }
+    setRestoredDraftKey("");
+    setForm(savedForm ? {
+      ...emptyForm,
+      ...savedForm,
+      images: { ...emptyImages, ...(savedForm.images || {}) },
+      channels: { ...channelDefaults, ...(savedForm.channels || {}) },
+    } : {
+      ...emptyForm,
+      images: { ...emptyImages },
+      channels: { ...channelDefaults },
       organizer: defaults.organizer,
       location: defaults.location,
       contactEmail: defaults.contactEmail,
-    }));
+    });
+    setRestoredDraftKey(draftKey);
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
     setEditingBrevoDraftId(null);
@@ -846,7 +877,26 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setManagedEventsLoading(false);
     setPreview(false);
     setResult(null);
-  }, [selectedBusiness?.id]);
+  }, [selectedBusiness?.id, workspaceId]);
+
+  useEffect(() => {
+    const selectedBusinessId = selectedBusiness?.id || businessId;
+    if (!workspaceId || !selectedBusinessId) return;
+    const draftKey = formDraftStorageKey(workspaceId, selectedBusinessId);
+    if (restoredDraftKey !== draftKey) return;
+    const timer = window.setTimeout(() => {
+      try {
+        if (formHasCampaignContent(form)) {
+          window.localStorage.setItem(draftKey, JSON.stringify({ form, savedAt: new Date().toISOString() }));
+        } else {
+          window.localStorage.removeItem(draftKey);
+        }
+      } catch {
+        // Het formulier blijft bruikbaar als lokale opslag door de browser wordt geweigerd.
+      }
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [form, workspaceId, selectedBusiness?.id, businessId, restoredDraftKey]);
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
@@ -1132,7 +1182,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setBusy(true); setResult(null); const steps = [];
     try {
       const updatingWebsiteEvent = Boolean(editingWebsiteEvent?.eventId);
-      const response = await fetch("/api/marketing/website-events/create", { method: updatingWebsiteEvent ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, site, ...form, eventId: editingWebsiteEvent?.eventId, campaignId: editingWebsiteEvent?.campaignId, businessId: selectedBusiness?.id || businessId || null }) });
+      const response = await fetch("/api/marketing/website-events/create", { method: updatingWebsiteEvent ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, site, ...form, imageUrl: form.eventinImage?.url || form.imageUrl, eventId: editingWebsiteEvent?.eventId, campaignId: editingWebsiteEvent?.campaignId, businessId: selectedBusiness?.id || businessId || null }) });
       const website = await response.json(); if (!response.ok) throw new Error(website.error || (updatingWebsiteEvent ? "Het website-evenement kon niet worden gewijzigd." : "Het website-evenement kon niet worden aangemaakt."));
       steps.push({ label: updatingWebsiteEvent ? "Website en Eventin bijgewerkt" : "Website en Eventin", ok: true, detail: website.event.url });
       if (form.addToCalendar && !updatingWebsiteEvent) {
@@ -1143,6 +1193,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
       const promotion = await createPromotionDraft(website.event);
       if (form.preparePromotion) steps.push(promotion.ok ? { label: `Marketingconcept (${enabledChannels.length} kanalen)`, ok: true } : { label: "Marketingconcept", ok: false, detail: promotion.warning });
+      const selectedBusinessId = selectedBusiness?.id || businessId;
+      if (workspaceId && selectedBusinessId) {
+        window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusinessId));
+      }
       setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : "Het evenement is verwerkt.", steps, url: website.event.url }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
@@ -1225,6 +1279,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label className="wide">{form.campaignType === "review" ? "Reviewtekst *" : "Volledige omschrijving"}<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
       <div className="imageUploads wide">
         <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload één bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
+        <article className={`eventinImageStatus ${form.eventinImage?.url ? "ready" : "empty"}`}>
+          <div>
+            <strong>Eventin-afbeelding</strong>
+            {form.eventinImage?.url
+              ? <><span>✓ Opgeslagen en klaar voor Eventin</span><small>Deze originele foto wordt bij het aanmaken van het evenement naar Eventin gestuurd. De sociale formaten hieronder staan hiervan los.</small></>
+              : <><span>Nog geen afbeelding gekozen</span><small>Kies hieronder een bronafbeelding. De originele foto wordt apart voor Eventin bewaard, ook als geen sociaal formaat kan worden gemaakt.</small></>}
+          </div>
+          {form.eventinImage?.url && <div className="eventinImagePreview">
+            <img src={form.eventinImage.url} alt="Geselecteerde Eventin-afbeelding" />
+            <small>{form.eventinImage.name || "Bronafbeelding"}</small>
+          </div>}
+        </article>
         <label className="cropFocus">Focuspunt bij automatisch bijsnijden
           <select value={cropFocus} onChange={(event) => setCropFocus(event.target.value)}>
             <option value="top">Boven — behoud gezichten of tekst bovenin</option>
@@ -1497,7 +1563,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{color:#5c7285}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
       .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.predisGenerationChoice{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.predisGenerationChoice small{color:#5c7285}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-      .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.channelCheck{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:1px solid #d5e0e7;border-radius:9px;background:#fff}.channelCheck .check{margin:0}.channelCheck small{padding:4px 7px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:11px;white-space:nowrap}.channelSafetyNote{margin:0;padding:10px 12px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#405866}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.cropFocus{margin-top:14px;padding:12px;border-radius:10px;background:#eef7f9}.cropFocus select{margin-top:2px}.cropFocus small{color:#5c7285;font-weight:500}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff;transition:border-color .15s ease,background .15s ease,transform .15s ease}.imageSlot.imageSlotAll{margin-top:14px;border:2px dashed #25889b;background:#eef9fa}.imageSlot.exact{border-color:#57ad7d}.imageSlot.dragging{border:2px dashed #25889b;background:#e7f6f8;transform:translateY(-2px)}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.imageDropZone{min-width:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px;border:2px dashed #9cbac3;border-radius:10px;background:#f7fbfc;text-align:center}.imageDropZone>strong{color:#176d7f;font-size:13px}.imageDropZone>small,.replaceHint{color:#5c7285;font-weight:600}.uploadButton{align-self:center;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.mediaCheck{margin-top:14px;padding:12px 14px;border-radius:9px}.mediaCheck ul{margin:8px 0 0;padding-left:20px}.mediaCheckReady{background:#e9f6ee;color:#236d46}.mediaCheckWarning{background:#fff2d1;color:#815b00}.channelImagePreviewGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.channelImagePreview{background:#fff;border:1px solid #c6d5df;border-radius:10px;padding:12px}.channelImagePreviewHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.channelImagePreviewHead span{font-size:12px;padding:5px 8px;border-radius:999px}.imageReady{background:#e9f6ee;color:#236d46}.imageMissing{background:#fff2d1;color:#815b00}.channelImagePreview img{display:block;width:100%;height:180px;object-fit:contain;background:#f4f7f9;border-radius:8px}.channelImagePreview p{margin:9px 0 3px}.channelImagePreview small{display:block;color:#5c7285;line-height:1.4}.channelImagePreview .fallbackNotice{color:#815b00}.missingImageNotice{padding:16px;background:#fff8e6;border-radius:8px;color:#815b00}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.earlyDraftAction{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:14px;border:1px dashed #9cbac3;border-radius:10px;background:#f8fbfc}.earlyDraftAction p{margin:4px 0 0;color:#5c7285}.earlyDraftAction button{flex:0 0 auto;border:1px solid #25889b;border-radius:9px;padding:11px 15px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:12px;background:#e9f6ee;color:#236d46;font-size:13px}.status button{border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;color:inherit;font:inherit;font-weight:800;cursor:pointer}.status button:disabled{opacity:.5;cursor:not-allowed}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.loadMoreCampaigns{display:block;margin:14px auto 4px;border:1px solid #25889b;border-radius:9px;padding:10px 16px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.loadMoreCampaigns:disabled{opacity:.55;cursor:wait}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.earlyDraftAction{display:block}.earlyDraftAction button{width:100%;margin-top:10px}.campaignTypeGrid,.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid,.conceptFilters,.channelImagePreviewGrid,.staggerFields{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot{display:block}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
+      .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.channelCheck{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:1px solid #d5e0e7;border-radius:9px;background:#fff}.channelCheck .check{margin:0}.channelCheck small{padding:4px 7px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:11px;white-space:nowrap}.channelSafetyNote{margin:0;padding:10px 12px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#405866}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.eventinImageStatus{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:14px;padding:13px;border-radius:10px;border:1px solid #d5e0e7}.eventinImageStatus>div:first-child{display:flex;flex-direction:column;gap:4px}.eventinImageStatus span{font-weight:800}.eventinImageStatus small{color:#5c7285}.eventinImageStatus.ready{border-color:#57ad7d;background:#e9f6ee}.eventinImageStatus.ready span{color:#236d46}.eventinImageStatus.empty{background:#fff}.eventinImagePreview{display:grid;grid-template-columns:72px minmax(80px,160px);align-items:center;gap:9px}.eventinImagePreview img{display:block;width:72px;height:72px;border-radius:8px;object-fit:cover}.eventinImagePreview small{overflow-wrap:anywhere}.cropFocus{margin-top:14px;padding:12px;border-radius:10px;background:#eef7f9}.cropFocus select{margin-top:2px}.cropFocus small{color:#5c7285;font-weight:500}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff;transition:border-color .15s ease,background .15s ease,transform .15s ease}.imageSlot.imageSlotAll{margin-top:14px;border:2px dashed #25889b;background:#eef9fa}.imageSlot.exact{border-color:#57ad7d}.imageSlot.dragging{border:2px dashed #25889b;background:#e7f6f8;transform:translateY(-2px)}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.imageDropZone{min-width:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px;border:2px dashed #9cbac3;border-radius:10px;background:#f7fbfc;text-align:center}.imageDropZone>strong{color:#176d7f;font-size:13px}.imageDropZone>small,.replaceHint{color:#5c7285;font-weight:600}.uploadButton{align-self:center;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.mediaCheck{margin-top:14px;padding:12px 14px;border-radius:9px}.mediaCheck ul{margin:8px 0 0;padding-left:20px}.mediaCheckReady{background:#e9f6ee;color:#236d46}.mediaCheckWarning{background:#fff2d1;color:#815b00}.channelImagePreviewGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.channelImagePreview{background:#fff;border:1px solid #c6d5df;border-radius:10px;padding:12px}.channelImagePreviewHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.channelImagePreviewHead span{font-size:12px;padding:5px 8px;border-radius:999px}.imageReady{background:#e9f6ee;color:#236d46}.imageMissing{background:#fff2d1;color:#815b00}.channelImagePreview img{display:block;width:100%;height:180px;object-fit:contain;background:#f4f7f9;border-radius:8px}.channelImagePreview p{margin:9px 0 3px}.channelImagePreview small{display:block;color:#5c7285;line-height:1.4}.channelImagePreview .fallbackNotice{color:#815b00}.missingImageNotice{padding:16px;background:#fff8e6;border-radius:8px;color:#815b00}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.earlyDraftAction{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:14px;border:1px dashed #9cbac3;border-radius:10px;background:#f8fbfc}.earlyDraftAction p{margin:4px 0 0;color:#5c7285}.earlyDraftAction button{flex:0 0 auto;border:1px solid #25889b;border-radius:9px;padding:11px 15px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:12px;background:#e9f6ee;color:#236d46;font-size:13px}.status button{border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;color:inherit;font:inherit;font-weight:800;cursor:pointer}.status button:disabled{opacity:.5;cursor:not-allowed}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.loadMoreCampaigns{display:block;margin:14px auto 4px;border:1px solid #25889b;border-radius:9px;padding:10px 16px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.loadMoreCampaigns:disabled{opacity:.55;cursor:wait}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.earlyDraftAction{display:block}.earlyDraftAction button{width:100%;margin-top:10px}.campaignTypeGrid,.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid,.conceptFilters,.channelImagePreviewGrid,.staggerFields{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot,.eventinImageStatus{display:block}.eventinImagePreview{margin-top:12px}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
     `}</style>
   </section>;
 }
