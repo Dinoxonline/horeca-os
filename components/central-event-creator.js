@@ -731,7 +731,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
     });
     setEditingCampaignId(item.id);
-    setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url } : null);
+    setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url, calendarDelivery: distribution.calendar_delivery || null } : null);
     setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
     setPendingPredisGeneration(null);
@@ -1221,7 +1221,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
-  async function createPromotionDraft(websiteEvent) {
+  async function createPromotionDraft(websiteEvent, calendarDelivery = null) {
     const integration = await campaignAccountForBusiness(selectedBusiness?.id || businessId);
     if (!integration?.id) return { warning: "Promotieconcept kon niet worden opgeslagen: marketingkoppeling ontbreekt." };
     const imageFor = (key, fallbackKeys = []) => form.images?.[key]?.url || fallbackKeys.map((item) => form.images?.[item]?.url).find(Boolean) || form.imageUrl.trim();
@@ -1307,7 +1307,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
       eventin_event_id: websiteEvent.id, website_event_status: websiteEvent.status || "draft", common, target_channels: enabledChannels, channel_payloads, channel_status,
       schedule_settings: { stagger_enabled: form.staggerEnabled, min_minutes: Number(form.staggerMinMinutes) || 15, max_minutes: Number(form.staggerMaxMinutes) || 45 },
-      channel_schedule: {}, provider_delivery: providerDelivery };
+      channel_schedule: {}, provider_delivery: providerDelivery, calendar_delivery: calendarDelivery };
     const record = {
       account_id: integration.id, business_id: selectedBusiness?.id || businessId || null,
       content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
@@ -1327,13 +1327,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const response = await fetch("/api/marketing/website-events/create", { method: updatingWebsiteEvent ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, site, ...form, imageUrl: form.eventinImage?.url || form.imageUrl, eventId: editingWebsiteEvent?.eventId, campaignId: editingWebsiteEvent?.campaignId, businessId: selectedBusiness?.id || businessId || null }) });
       const website = await response.json(); if (!response.ok) throw new Error(website.error || (updatingWebsiteEvent ? "Het website-evenement kon niet worden gewijzigd." : "Het website-evenement kon niet worden aangemaakt."));
       steps.push({ label: updatingWebsiteEvent ? "Website en Eventin bijgewerkt" : "Website en Eventin", ok: true, detail: website.event.url });
-      if (form.addToCalendar && !updatingWebsiteEvent) {
-        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, mailbox: form.calendarMailbox.trim(), subject: form.title.trim(), description: `${form.description.trim()}\n\nWebsite: ${website.event.url}`, start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy" }) });
-        const calendar = await calendarResponse.json(); steps.push(calendarResponse.ok ? { label: `Agenda ${form.calendarMailbox}`, ok: true } : { label: `Agenda ${form.calendarMailbox}`, ok: false, detail: calendar.error || "Niet toegevoegd." });
+      let calendarDelivery = editingWebsiteEvent?.calendarDelivery || null;
+      if (form.addToCalendar && (!updatingWebsiteEvent || calendarDelivery?.event_id)) {
+        const updatingCalendar = Boolean(updatingWebsiteEvent && calendarDelivery?.event_id);
+        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", { method: updatingCalendar ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, mailbox: form.calendarMailbox.trim(), eventId: updatingCalendar ? calendarDelivery.event_id : undefined, subject: form.title.trim(), description: `${form.description.trim()}\n\nWebsite: ${website.event.url}`, start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy" }) });
+        const calendar = await calendarResponse.json();
+        if (calendarResponse.ok) {
+          calendarDelivery = { status: "confirmed", mailbox: form.calendarMailbox.trim(), event_id: calendar.event?.id || calendarDelivery?.event_id || "", web_link: calendar.event?.webLink || calendarDelivery?.web_link || "", updated_at: new Date().toISOString() };
+          steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: true, detail: updatingCalendar ? "Bestaande afspraak bijgewerkt." : "Afspraak aangemaakt." });
+        } else {
+          calendarDelivery = { ...(calendarDelivery || {}), status: "failed", mailbox: form.calendarMailbox.trim(), error: calendar.error || "Niet toegevoegd.", updated_at: new Date().toISOString() };
+          steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: calendarDelivery.error });
+        }
       } else if (form.addToCalendar && updatingWebsiteEvent) {
-        steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: "Niet automatisch gewijzigd; controleer de bestaande agenda-afspraak afzonderlijk." });
+        steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: "Deze oudere afspraak is nog niet technisch aan het dossier gekoppeld; controleer hem afzonderlijk in Agenda." });
       }
-      const promotion = await createPromotionDraft(website.event);
+      const promotion = await createPromotionDraft(website.event, calendarDelivery);
       steps.push(promotion.ok
         ? { label: form.preparePromotion ? `Horeca OS-beheerdossier en marketingconcept (${enabledChannels.length} kanalen)` : "Horeca OS-beheerdossier", ok: true }
         : { label: "Horeca OS-beheerdossier", ok: false, detail: promotion.warning });
@@ -1696,6 +1705,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url && (!isWebsiteEvent || ["publish", "cancelled"].includes(websiteEventStatus)) ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
             {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd — blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
+            {distribution.calendar_delivery && <p className={`websiteEventState ${distribution.calendar_delivery.status === "failed" ? "cancelled" : ""}`}>
+              <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
+              {distribution.calendar_delivery.status === "confirmed" && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
+            </p>}
             {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
