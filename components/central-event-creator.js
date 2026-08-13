@@ -100,8 +100,8 @@ function defaultsForBusiness(business) {
 
 function providerDeliveryConfirmed(delivery) {
   const status = String(delivery?.status || "").toLowerCase();
-  return ["published", "posted", "delivered"].includes(status)
-    && Boolean(delivery?.confirmed_at || delivery?.provider_post_id || delivery?.permalink);
+  return ["confirmed", "published", "posted", "delivered"].includes(status)
+    && Boolean(delivery?.confirmed_at || delivery?.published_at || delivery?.provider_post_id || delivery?.external_id || delivery?.permalink);
 }
 
 function distributionHasProviderConfirmation(distribution) {
