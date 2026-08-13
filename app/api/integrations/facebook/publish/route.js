@@ -26,7 +26,18 @@ export async function POST(request) {
 
   const distribution = (campaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
   if (!distribution?.target_channels?.includes("facebook")) return jsonError("Facebook is niet als bestemming geselecteerd.", 409);
-  if (["confirmed", "published"].includes(distribution.provider_delivery?.facebook?.status)) return jsonError("Dit bericht is al op Facebook geplaatst.", 409);
+  if (["confirmed", "published"].includes(distribution.provider_delivery?.facebook?.status)) {
+    return NextResponse.json({
+      ok: true,
+      alreadyPublished: true,
+      post: {
+        id: distribution.provider_delivery.facebook.external_id || "",
+        permalink: distribution.provider_delivery.facebook.permalink || "",
+        pageName: account.display_name,
+      },
+      distribution,
+    });
+  }
 
   const { data: credential } = await admin.from("integration_credentials").select("token_ciphertext,token_iv,token_tag")
     .eq("account_id", account.id).maybeSingle();
