@@ -619,13 +619,48 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
-  function openCampaignConcept(item, asCopy = false) {
+  async function openCampaignConcept(item, asCopy = false) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
     if (!distribution) return;
     const isWebsiteEvent = distribution.source_type === "website_event";
     const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
     if (!asCopy && editingBlockReason) return setResult({ ok: false, message: editingBlockReason });
-    const common = distribution.common || {};
+    let common = distribution.common || {};
+    if (isWebsiteEvent && !asCopy) {
+      setConceptBusyId(item.id);
+      setResult({ ok: true, message: "De volledige Eventin-gegevens worden geladenâ€¦" });
+      try {
+        const query = new URLSearchParams({
+          workspaceId,
+          businessId: selectedBusiness?.id || businessId || "",
+          site,
+          eventId: String(distribution.eventin_event_id || ""),
+          campaignId: String(item.id),
+        });
+        const response = await fetch(`/api/marketing/website-events/create?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "De volledige Eventin-gegevens konden niet worden geladen.");
+        const event = result.event || {};
+        common = {
+          ...common,
+          title: event.title || common.title,
+          description: event.description || common.description,
+          start: event.start || common.start,
+          end: event.end || common.end,
+          location: event.location || common.location,
+          image_url: event.imageUrl || common.image_url,
+          website_status: event.status || distribution.website_event_status || common.website_status,
+          website_url: event.url || common.website_url,
+          cta: { ...(common.cta || {}), url: event.url || common.cta?.url || distribution.source_url || "" },
+          tickets: { ...(common.tickets || {}), ...(event.tickets || {}) },
+        };
+      } catch (error) {
+        setResult({ ok: false, message: `${error.message || "Eventin kon niet worden geladen"} Het evenement is niet geopend, zodat bestaande gegevens niet per ongeluk worden overschreven.` });
+        return;
+      } finally {
+        setConceptBusyId(null);
+      }
+    }
     const commercial = common.commercial || {};
     const review = common.review || {};
     const payloads = distribution.channel_payloads || {};
@@ -635,9 +670,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setForm({
       ...emptyForm,
       campaignType: storedType,
+      status: common.website_status || distribution.website_event_status || emptyForm.status,
       title: common.title || "", shortDescription: common.short_description || "", description: common.description || item.body || "",
       start: common.start || "", end: common.end || "", location: common.location || emptyForm.location,
-      imageUrl: common.image_url || "", images: { ...emptyImages, ...(common.images || {}) }, videoUrl: common.video_url || "",
+      imageUrl: common.image_url || "", eventinImage: common.image_url ? { url: common.image_url, name: "Bestaande Eventin-afbeelding" } : null,
+      images: { ...emptyImages, ...(common.images || {}) }, videoUrl: common.video_url || "",
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
