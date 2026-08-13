@@ -26,6 +26,13 @@ export async function POST(request) {
 
   const distribution = (campaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
   if (!distribution?.target_channels?.includes("facebook")) return jsonError("Facebook is niet als bestemming geselecteerd.", 409);
+  const destination = distribution.channel_payloads?.facebook?.destination;
+  if (destination?.business_id && destination.business_id !== businessId) {
+    return jsonError("Dit Facebookconcept hoort bij een andere vestiging en kan hier niet worden geplaatst.", 409);
+  }
+  if (destination?.page_id && String(destination.page_id) !== String(account.external_account_id)) {
+    return jsonError(`Dit concept is bestemd voor ${destination.page_name || "een andere Facebookpagina"}. Controleer de vestigingskoppeling voordat je publiceert.`, 409);
+  }
   if (["confirmed", "published"].includes(distribution.provider_delivery?.facebook?.status)) {
     return NextResponse.json({
       ok: true,
