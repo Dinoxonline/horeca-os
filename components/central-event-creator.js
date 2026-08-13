@@ -1459,6 +1459,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult({ ok: true, message: `De tekst is gekopieerd en ${group.name} is geopend. Voeg daar de evenementafbeelding toe en bevestig de plaatsing in Facebook.` });
   }
 
+  async function openFacebookEventCreator(distribution) {
+    const common = distribution.common || {};
+    const facebook = distribution.channel_payloads?.facebook || {};
+    const eventText = [
+      common.title,
+      facebook.text || common.short_description || common.description,
+      common.start ? `Begint: ${formatNlDateTime(common.start)}` : "",
+      common.end ? `Eindigt: ${formatNlDateTime(common.end)}` : "",
+      common.location ? `Locatie: ${common.location}` : "",
+      common.website_url || distribution.source_url,
+    ].filter(Boolean).join("\n\n");
+    window.open("https://www.facebook.com/events/create/", "_blank", "noopener,noreferrer");
+    try { await navigator.clipboard.writeText(eventText); } catch {}
+    setResult({ ok: true, message: "Facebook Evenement maken is geopend en de evenementgegevens zijn gekopieerd. Kies de juiste Facebookpagina, voeg de afbeelding toe en bevestig het evenement in Facebook." });
+  }
+
   async function createEvent() {
     const error = validate(); if (error) return setResult({ ok: false, message: error });
     setBusy(true); setResult(null); const steps = [];
@@ -1937,6 +1953,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
+              {(distribution.target_channels || []).includes("facebook") && <button type="button" onClick={() => openFacebookEventCreator(distribution)}>Facebook-evenement maken</button>}
               {(distribution.target_channels || []).includes("facebook") && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels} title={!approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsen…" : "Op Facebook plaatsen"}</button>}
               {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
