@@ -1128,7 +1128,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       return [channel, missing ? "extra_gegevens_nodig" : "klaar_voor_controle"];
     }));
     let brevoDraft = null;
-    if (form.channels.brevo) {
+    if (form.preparePromotion && form.channels.brevo) {
       const brevoResponse = await fetch("/api/integrations/brevo", {
         method: editingBrevoDraftId ? "PATCH" : "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -1148,8 +1148,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       brevoDraft = brevoResult.draft;
       setEditingBrevoDraftId(brevoDraft.id);
     }
-    let predisGeneration = form.channels.predis && form.predisGenerate && predisConnected ? pendingPredisGeneration : null;
-    if (form.channels.predis && form.predisGenerate && predisConnected && !predisGeneration) {
+    let predisGeneration = form.preparePromotion && form.channels.predis && form.predisGenerate && predisConnected ? pendingPredisGeneration : null;
+    if (form.preparePromotion && form.channels.predis && form.predisGenerate && predisConnected && !predisGeneration) {
       const predisResponse = await fetch("/api/integrations/predis", {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
