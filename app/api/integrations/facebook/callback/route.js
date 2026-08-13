@@ -8,6 +8,7 @@ const SUPPORTED_SCOPES = [
   "pages_read_engagement",
   "pages_read_user_content",
   "pages_manage_engagement",
+  "pages_manage_posts",
   "business_management",
 ];
 
@@ -56,6 +57,9 @@ export async function GET(request) {
       .map((item) => item.permission);
     if (!grantedScopes.includes("pages_manage_engagement")) {
       throw new Error("Facebook heeft het recht om op reacties te antwoorden nog niet toegekend.");
+    }
+    if (!grantedScopes.includes("pages_manage_posts")) {
+      throw new Error("Facebook heeft het recht om berichten te publiceren nog niet toegekend.");
     }
 
     const admin = createAdminSupabase();
