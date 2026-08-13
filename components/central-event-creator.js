@@ -1358,6 +1358,38 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
 
+  async function recoverCalendarDelivery(distribution) {
+    if (distribution.calendar_delivery?.event_id && distribution.calendar_delivery?.mailbox) {
+      return distribution.calendar_delivery;
+    }
+    const common = distribution.common || {};
+    const startDate = new Date(common.start || "");
+    const endDate = new Date(common.end || "");
+    if (!common.title || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+    const rangeStart = new Date(startDate.getTime() - 86400000).toISOString();
+    const rangeEnd = new Date(endDate.getTime() + 86400000).toISOString();
+    const query = new URLSearchParams({ workspaceId, start: rangeStart, end: rangeEnd });
+    const response = await fetch(`/api/integrations/microsoft/calendar?${query}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return null;
+    const normalizedTitle = String(common.title).trim().toLocaleLowerCase("nl");
+    const candidates = (result.accounts || []).flatMap((account) => (account.events || [])
+      .filter((event) => String(event.subject || "").trim().toLocaleLowerCase("nl") === normalizedTitle)
+      .filter((event) => Math.abs(new Date(event.start?.dateTime).getTime() - startDate.getTime()) < 60000)
+      .map((event) => ({ account, event })));
+    if (candidates.length !== 1) return null;
+    const { account, event } = candidates[0];
+    return {
+      status: "confirmed",
+      mailbox: account.mailbox,
+      event_id: event.id,
+      web_link: event.webLink || "",
+      recovered_at: new Date().toISOString(),
+    };
+  }
+
   async function changeWebsiteEventStatus(item, mode) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
     const id = String(distribution.eventin_event_id || "");
@@ -1386,6 +1418,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (!response.ok) throw new Error(result.error || "Eventin heeft de actie niet geaccepteerd.");
       let calendarDelivery = distribution.calendar_delivery || null;
       let calendarSyncError = "";
+      if ((cancellingOnline || cancellingAndDeleting) && !calendarDelivery?.event_id) {
+        calendarDelivery = await recoverCalendarDelivery(distribution);
+        if (!calendarDelivery) {
+          calendarSyncError = "De bestaande agenda-afspraak kon niet eenduidig worden teruggevonden.";
+          calendarDelivery = { status: "failed", mailbox: "", error: calendarSyncError, updated_at: new Date().toISOString() };
+        }
+      }
       if ((cancellingOnline || cancellingAndDeleting) && calendarDelivery?.event_id && calendarDelivery?.mailbox) {
         const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", {
           method: cancellingAndDeleting ? "DELETE" : "PATCH",
