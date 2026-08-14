@@ -430,6 +430,24 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const selectedBrevoLists = useMemo(() => brevoLists.filter((item) => selectedBrevoListIds.includes(String(item.id))), [brevoLists, selectedBrevoListIds]);
   const brevoRecipientCount = selectedBrevoLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0);
   const site = siteForBusiness(selectedBusiness);
+  const saveCurrentFormDraft = (scrollY = window.scrollY) => {
+    const selectedBusinessId = selectedBusiness?.id || businessId;
+    if (!workspaceId || !selectedBusinessId || editingCampaignId || editingWebsiteEvent) return;
+    const draftKey = formDraftStorageKey(workspaceId, selectedBusinessId);
+    try {
+      if (formHasCampaignContent(form)) {
+        window.localStorage.setItem(draftKey, JSON.stringify({
+          form,
+          ui: { eventWorkspaceView, scrollY },
+          savedAt: new Date().toISOString(),
+        }));
+      } else {
+        window.localStorage.removeItem(draftKey);
+      }
+    } catch {
+      // Het formulier blijft bruikbaar als lokale opslag door de browser wordt geweigerd.
+    }
+  };
   const update = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
     if (key === "predisGenerate" && !value) setPendingPredisGeneration(null);
@@ -1259,10 +1277,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (!selectedBusiness?.id) return;
     const defaults = defaultsForBusiness(selectedBusiness);
     const draftKey = workspaceId ? formDraftStorageKey(workspaceId, selectedBusiness.id) : "";
+    let savedDraft = null;
     let savedForm = null;
     if (draftKey) {
       try {
-        savedForm = JSON.parse(window.localStorage.getItem(draftKey) || "null")?.form || null;
+        savedDraft = JSON.parse(window.localStorage.getItem(draftKey) || "null");
+        savedForm = savedDraft?.form || null;
       } catch {
         window.localStorage.removeItem(draftKey);
       }
@@ -1294,7 +1314,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setManagedEventsLoading(false);
     setPreview(false);
     setResult(null);
-    setEventWorkspaceView("");
+    setEventWorkspaceView(savedDraft?.ui?.eventWorkspaceView || (savedForm?.campaignType === "event" ? "new" : ""));
+    if (Number.isFinite(savedDraft?.ui?.scrollY)) {
+      window.setTimeout(() => window.scrollTo({ top: savedDraft.ui.scrollY, behavior: "auto" }), 0);
+    }
   }, [selectedBusiness?.id, workspaceId]);
 
   useEffect(() => {
@@ -1305,17 +1328,26 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (restoredDraftKey !== draftKey) return;
     const timer = window.setTimeout(() => {
       try {
-        if (formHasCampaignContent(form)) {
-          window.localStorage.setItem(draftKey, JSON.stringify({ form, savedAt: new Date().toISOString() }));
-        } else {
-          window.localStorage.removeItem(draftKey);
-        }
+        saveCurrentFormDraft();
       } catch {
         // Het formulier blijft bruikbaar als lokale opslag door de browser wordt geweigerd.
       }
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [form, workspaceId, selectedBusiness?.id, businessId, restoredDraftKey, editingCampaignId, editingWebsiteEvent]);
+  }, [form, eventWorkspaceView, workspaceId, selectedBusiness?.id, businessId, restoredDraftKey, editingCampaignId, editingWebsiteEvent]);
+
+  useEffect(() => {
+    const preserveDraft = () => saveCurrentFormDraft();
+    const preserveHiddenDraft = () => {
+      if (document.visibilityState === "hidden") preserveDraft();
+    };
+    window.addEventListener("pagehide", preserveDraft);
+    document.addEventListener("visibilitychange", preserveHiddenDraft);
+    return () => {
+      window.removeEventListener("pagehide", preserveDraft);
+      document.removeEventListener("visibilitychange", preserveHiddenDraft);
+    };
+  }, [form, eventWorkspaceView, workspaceId, selectedBusiness?.id, businessId, editingCampaignId, editingWebsiteEvent]);
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
@@ -2211,8 +2243,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <small><b>{target.routeLabel}</b></small>
           </div>
           <div className="editorialTargetLinks">
-            {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer">Aanmeldpagina openen</a>}
-            {!target.submissionUrl && (target.infoUrl || target.websiteUrl) && <a href={target.infoUrl || target.websiteUrl} target="_blank" rel="noreferrer">Instructies bekijken</a>}
+            {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer" onClick={() => saveCurrentFormDraft()}>Aanmeldpagina openen</a>}
+            {!target.submissionUrl && (target.infoUrl || target.websiteUrl) && <a href={target.infoUrl || target.websiteUrl} target="_blank" rel="noreferrer" onClick={() => saveCurrentFormDraft()}>Instructies bekijken</a>}
             {target.email && <span>{target.email}</span>}
           </div>
           {target.fallbackLabel && <small className="editorialTargetHint">{target.fallbackLabel}</small>}
