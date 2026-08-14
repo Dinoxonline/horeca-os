@@ -301,6 +301,28 @@ function isExpiredEvent(event, today) {
   return Boolean(finalDate) && finalDate < today;
 }
 
+async function fetchAllWordPressEvents(endpoint, options) {
+  const firstUrl = new URL(endpoint);
+  firstUrl.searchParams.set("page", "1");
+  const firstResponse = await fetch(firstUrl, options);
+  const firstData = await firstResponse.json().catch(() => ([]));
+  if (!firstResponse.ok) return { response: firstResponse, data: firstData };
+
+  const totalPages = Math.max(1, Math.min(100, Number(firstResponse.headers.get("x-wp-totalpages")) || 1));
+  if (totalPages === 1) return { response: firstResponse, data: Array.isArray(firstData) ? firstData : [] };
+
+  const remainingPages = await Promise.all(Array.from({ length: totalPages - 1 }, async (_, index) => {
+    const pageUrl = new URL(endpoint);
+    pageUrl.searchParams.set("page", String(index + 2));
+    const pageResponse = await fetch(pageUrl, options);
+    const pageData = await pageResponse.json().catch(() => ([]));
+    if (!pageResponse.ok) throw new Error(pageData?.message || `Eventin-pagina ${index + 2} kon niet worden geladen.`);
+    return Array.isArray(pageData) ? pageData : [];
+  }));
+
+  return { response: firstResponse, data: [firstData, ...remainingPages].flat() };
+}
+
 async function storedEventBelongsToBusiness(context, body, id) {
   const campaignId = String(body.campaignId || "").trim();
   const businessId = String(body.businessId || "").trim();
@@ -379,8 +401,7 @@ export async function GET(request) {
   endpoint.searchParams.set("status", authorization ? "publish,draft" : "publish");
   endpoint.searchParams.set("context", authorization ? "edit" : "view");
   endpoint.searchParams.set("_embed", "1");
-  const response = await fetch(endpoint, { headers: { ...(authorization ? { Authorization: authorization } : {}), "User-Agent": "HorecaOS-EventImporter/1.0" }, cache: "no-store" });
-  const data = await response.json().catch(() => ([]));
+  const { response, data } = await fetchAllWordPressEvents(endpoint, { headers: { ...(authorization ? { Authorization: authorization } : {}), "User-Agent": "HorecaOS-EventImporter/1.0" }, cache: "no-store" });
   if (!response.ok) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `De Eventin-evenementen konden niet beveiligd worden opgehaald.${detail}` }, { status: response.status });
