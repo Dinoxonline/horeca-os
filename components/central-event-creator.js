@@ -1884,8 +1884,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if ((cancellingOnline || cancellingAndDeleting) && !calendarDelivery?.event_id) {
         calendarDelivery = await recoverCalendarDelivery(distribution);
         if (!calendarDelivery) {
-          calendarSyncError = "De bestaande agenda-afspraak kon niet eenduidig worden teruggevonden.";
-          calendarDelivery = { status: "failed", mailbox: "", error: calendarSyncError, updated_at: new Date().toISOString() };
+          if (cancellingAndDeleting) {
+            calendarDelivery = { status: "deleted", mailbox: distribution.calendar_delivery?.mailbox || "", already_deleted: true, error: "", updated_at: new Date().toISOString() };
+          } else {
+            calendarSyncError = "De bestaande agenda-afspraak kon niet eenduidig worden teruggevonden.";
+            calendarDelivery = { status: "failed", mailbox: "", error: calendarSyncError, updated_at: new Date().toISOString() };
+          }
         }
       }
       if ((cancellingOnline || cancellingAndDeleting) && calendarDelivery?.event_id && calendarDelivery?.mailbox) {
