@@ -285,6 +285,22 @@ function normalizeManagedEvent(row, site) {
   };
 }
 
+function dateInTimeZone(timeZone = "Europe/Amsterdam") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function isExpiredEvent(event, today) {
+  const finalDate = event.end ? event.end.slice(0, 10) : event.eventDate;
+  return Boolean(finalDate) && finalDate < today;
+}
+
 async function storedEventBelongsToBusiness(context, body, id) {
   const campaignId = String(body.campaignId || "").trim();
   const businessId = String(body.businessId || "").trim();
@@ -369,9 +385,11 @@ export async function GET(request) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `De Eventin-evenementen konden niet beveiligd worden opgehaald.${detail}` }, { status: response.status });
   }
+  const today = dateInTimeZone();
   const events = (Array.isArray(data) ? data : [])
     .map((row) => normalizeManagedEvent(row, site))
     .filter((event) => event.id && event.title)
+    .map((event) => ({ ...event, expired: isExpiredEvent(event, today) }))
     .sort((left, right) => {
       if (left.eventDate && right.eventDate) return left.eventDate.localeCompare(right.eventDate);
       if (left.eventDate) return -1;

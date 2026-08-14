@@ -244,6 +244,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [conceptSchedule, setConceptSchedule] = useState({});
   const [channelScheduleEdits, setChannelScheduleEdits] = useState({});
   const [managedWebsiteEvents, setManagedWebsiteEvents] = useState([]);
+  const [showExpiredWebsiteEvents, setShowExpiredWebsiteEvents] = useState(false);
   const [managedEventsLoading, setManagedEventsLoading] = useState(false);
   const [importingEventId, setImportingEventId] = useState("");
   const managedEventsRequestRef = useRef(0);
@@ -869,6 +870,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   async function deleteCampaignConcept(item) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
+    const completedFacebookGroups = facebookGroupShareProgress[item.id]?.completed || [];
+    if (completedFacebookGroups.length > 0) {
+      return setResult({
+        ok: false,
+        message: "Dit dossier bevat handmatig bevestigde plaatsingen in Facebookgroepen. Verwijder die berichten eerst in Facebook en zet daarna de groepsvoortgang terug; pas dan kan het Horeca OS-dossier veilig worden verwijderd.",
+      });
+    }
     const deletionBlockReason = campaignDeletionBlockReason(item, distribution);
     if (deletionBlockReason) return setResult({ ok: false, message: deletionBlockReason });
     const title = distribution.common?.title || "dit concept";
@@ -1864,6 +1872,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     section?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  const currentManagedWebsiteEvents = managedWebsiteEvents.filter((eventItem) => !eventItem.expired);
+  const expiredManagedWebsiteEvents = managedWebsiteEvents.filter((eventItem) => eventItem.expired);
+  const visibleManagedWebsiteEvents = showExpiredWebsiteEvents ? expiredManagedWebsiteEvents : currentManagedWebsiteEvents;
+
   return <section className="panel" style={{ marginBottom: 24 }}>
     <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
     {editingCampaignId && <div className="editingNotice"><strong>{editingWebsiteEvent ? "Website-evenement bewerken" : "Concept bewerken"}</strong><span>{editingWebsiteEvent ? "Je wijzigingen worden na bevestiging in hetzelfde Eventin-evenement en marketingdossier opgeslagen." : "Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat."}</span><button type="button" onClick={startNewCampaign}>Nieuw evenement</button></div>}
@@ -2122,11 +2134,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const providerConfirmed = distributionHasProviderConfirmation(distribution);
         const incompleteChannels = channelsNeedingDetails(distribution);
         const hasIncompleteChannels = incompleteChannels.length > 0;
-        const deletionBlockReason = campaignDeletionBlockReason(item, distribution);
         const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
         const selectedGroupTargets = distribution.channel_payloads?.facebook?.group_sharing?.groups || [];
         const groupShareState = facebookGroupShareProgress[item.id] || { completed: [], waitUntil: 0, round: 1, delayMin: 5, delayMax: 15 };
         const completedGroupIds = new Set(groupShareState.completed || []);
+        const deletionBlockReason = completedGroupIds.size > 0
+          ? "Verwijder eerst de handmatig geplaatste Facebookgroepberichten en zet daarna de groepsvoortgang terug."
+          : campaignDeletionBlockReason(item, distribution);
         const pendingGroupTargets = selectedGroupTargets.filter((group) => !completedGroupIds.has(String(group.id || group.url)));
         const currentGroupRound = pendingGroupTargets.slice(0, 10);
         const remainingAfterGroupRound = Math.max(0, pendingGroupTargets.length - currentGroupRound.length);
@@ -2192,6 +2206,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {groupRoundWaiting
                 ? <p className="facebookGroupWait">Volgende ronde beschikbaar over {Math.floor(groupRoundWaitSeconds / 60)}:{String(groupRoundWaitSeconds % 60).padStart(2, "0")} minuten · willekeurige pauze van {groupShareState.lastDelayMinutes} minuten.</p>
                 : currentGroupRound.map((group) => <button type="button" key={group.id || group.url} onClick={() => openFacebookGroup(distribution, group, item.id, currentGroupRound, remainingAfterGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Open en markeer {group.name}</button>)}
+              {completedGroupIds.size > 0 && <div className="completedFacebookGroupLinks">
+                <strong>Handmatig geplaatste groepen</strong>
+                {selectedGroupTargets.filter((group) => completedGroupIds.has(String(group.id || group.url))).map((group) => <a key={group.id || group.url} href={group.url || group.group_url} target="_blank" rel="noopener noreferrer">Open {group.name}</a>)}
+                <small>Facebook geeft Horeca OS geen beheerlink naar het afzonderlijke groepsbericht. Verwijder het bericht daarom in de groep zelf.</small>
+              </div>}
               {pendingGroupTargets.length === 0 && <p className="facebookGroupComplete">Alle gekozen Facebookgroepen zijn voor deze campagne afgerond.</p>}
               <button type="button" className="facebookGroupReset" onClick={() => setFacebookGroupShareProgress((current) => ({ ...current, [item.id]: { completed: [], waitUntil: 0, round: 1, delayMin: groupShareState.delayMin ?? 5, delayMax: groupShareState.delayMax ?? 15 } }))}>Voortgang opnieuw beginnen</button>
             </div>}
@@ -2272,7 +2291,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
     {isEvent && eventWorkspaceView === "existing" && <div className="existingWebsiteEvents creatorSection" id="bestaande-evenementen">
       <div className="existingWebsiteEventsHead"><div><p className="eyebrow">BESTAANDE WEBSITE-AGENDA</p><h3>Eventin-evenementen koppelen</h3><p>Hier staan bestaande evenementen apart van nieuwe en opgeslagen campagnes. Laden en koppelen verandert niets op de website.</p></div><button type="button" className="secondaryButton" onClick={loadManagedWebsiteEvents} disabled={managedEventsLoading}>{managedEventsLoading ? "Evenementen laden…" : "Bestaande evenementen laden"}</button></div>
-      {managedWebsiteEvents.length > 0 && <div className="managedEventGrid">{managedWebsiteEvents.map((eventItem) => {
+      {managedWebsiteEvents.length > 0 && <div className="managedEventViewButtons">
+        <button type="button" className={!showExpiredWebsiteEvents ? "active" : ""} onClick={() => setShowExpiredWebsiteEvents(false)}>Actuele evenementen ({currentManagedWebsiteEvents.length})</button>
+        <button type="button" className={showExpiredWebsiteEvents ? "active expired" : ""} onClick={() => setShowExpiredWebsiteEvents(true)}>Verlopen evenementen ({expiredManagedWebsiteEvents.length})</button>
+      </div>}
+      {managedWebsiteEvents.length > 0 && visibleManagedWebsiteEvents.length === 0 && <p className="emptyManagedEvents">{showExpiredWebsiteEvents ? "Er zijn geen verlopen evenementen." : "Er zijn geen actuele evenementen."}</p>}
+      {visibleManagedWebsiteEvents.length > 0 && <div className="managedEventGrid">{visibleManagedWebsiteEvents.map((eventItem) => {
         const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
         const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
         return <article key={eventItem.id}>
@@ -2284,6 +2308,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       })}</div>}
     </div>}
     <style jsx>{`
+      .completedFacebookGroupLinks{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%;padding:10px;border:1px solid #b8cbea;border-radius:8px;background:#fff}.completedFacebookGroupLinks strong,.completedFacebookGroupLinks small{flex-basis:100%}.completedFacebookGroupLinks a{border:1px solid #1877f2;border-radius:7px;padding:7px 9px;color:#145dbf;font-weight:800;text-decoration:none}.completedFacebookGroupLinks small{color:#5c7285}
+      .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
       .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
       .campaignCardMain{display:flex;gap:14px;min-width:0;flex:1}.campaignCardImage{flex:0 0 132px}.campaignCardImage img{display:block;width:132px;height:96px;border-radius:10px;object-fit:cover;background:#eef2f5}.campaignCardContent{min-width:0;flex:1}.websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptPublishEventButton{border:1px solid #23804f;color:#17613d;background:#eefaf3}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}.conceptActions .conceptCancelDeleteEventButton{border:1px solid #8f1f1f;color:#fff;background:#a12f2f}.conceptActions .conceptFacebookPublishButton{border:1px solid #1877f2;color:#fff;background:#1877f2}
