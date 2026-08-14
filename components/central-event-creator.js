@@ -134,6 +134,11 @@ function eventLocationMatchesBusiness(location, business) {
   return acceptedNames.some((name) => normalizedLocation.includes(name) || name.includes(normalizedLocation));
 }
 
+function eventLocationIsAmbiguous(location) {
+  const normalizedLocation = normalizeVenue(location);
+  return normalizedLocation.includes("caribbean corner") && normalizedLocation.includes("plein");
+}
+
 function providerDeliveryConfirmed(delivery) {
   const status = String(delivery?.status || "").toLowerCase();
   return ["confirmed", "published", "posted", "delivered"].includes(status)
@@ -695,6 +700,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const fullEvent = { ...eventItem, ...(detailPayload.event || {}) };
       if (!fullEvent.start || !fullEvent.end || !fullEvent.location) {
         throw new Error("Eventin heeft geen volledige datum, tijd en locatie teruggestuurd. Het evenement is daarom niet gekoppeld.");
+      }
+      if (eventLocationIsAmbiguous(fullEvent.location)) {
+        throw new Error(`De Eventin-locatie “${fullEvent.location}” bevat zowel Caribbean Corner als Grand Café Het Plein. Kies in Eventin eerst één duidelijke venue.`);
       }
       if (!eventLocationMatchesBusiness(fullEvent.location, selectedBusiness)) {
         throw new Error(`Dit Eventin-evenement hoort bij “${fullEvent.location}” en kan niet onder “${selectedBusiness?.name || "de gekozen vestiging"}” worden gekoppeld. Kies eerst de juiste vestiging.`);
