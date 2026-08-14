@@ -38,16 +38,16 @@ const campaignTitleLabels = {
 };
 
 const editorialAgendaTargets = [
-  { key: "email_salsa", label: "Salsa.nl", email: "redactie@salsa.nl" },
-  { key: "email_zoetermeer_nieuws", label: "Zoetermeer.Nieuws.nl", email: "zoetermeer@nieuws.nl" },
-  { key: "email_zoetermeers_dagblad", label: "Zoetermeers Dagblad", email: "redactie@zoetermeersdagblad.nl" },
-  { key: "email_streekblad", label: "Streekblad Zoetermeer", email: "redactiestreekblad@telstarmediacentrum.nl" },
-  { key: "email_zfm", label: "ZFM Zoetermeer", email: "algemeen@zfmzoetermeer.nl" },
-  { key: "email_zoetermeer_actief", label: "Zoetermeer Actief", email: "info@zoetermeeractief.nl" },
-  { key: "email_vrijetijdkrant", label: "Vrijetijdkrant", email: "info@vrijetijdkrant.nl" },
-  { key: "email_eventtip", label: "Eventtip / Culturele Uitagenda", email: "info@eventconnectors.nl" },
-  { key: "email_wat_te_doen", label: "Wat te doen Vandaag", email: "info@wattedoenvandaag.nl" },
-  { key: "email_evenementen", label: "Evenementen.nl", email: "info@evenementen.nl" },
+  { key: "email_salsa", label: "Salsa.nl", route: "email", routeLabel: "Per e-mail aanmelden", infoUrl: "https://www.salsa.nl/b2b/gratis-vermelding.php", email: "redactie@salsa.nl" },
+  { key: "email_zoetermeer_nieuws", label: "Zoetermeer.Nieuws.nl", route: "email", routeLabel: "Persbericht per e-mail", websiteUrl: "https://zoetermeer.nieuws.nl/", email: "zoetermeer@nieuws.nl" },
+  { key: "email_zoetermeers_dagblad", label: "Zoetermeers Dagblad", route: "email", routeLabel: "Persbericht per e-mail", websiteUrl: "https://zoetermeersdagblad.nl/", email: "redactie@zoetermeersdagblad.nl" },
+  { key: "email_streekblad", label: "Streekblad Zoetermeer", route: "email", routeLabel: "Redactie per e-mail", websiteUrl: "https://www.streekbladzoetermeer.nl/agenda", email: "redactiestreekblad@telstarmediacentrum.nl" },
+  { key: "email_zfm", label: "ZFM Zoetermeer", route: "website", routeLabel: "Eerst via de ZFM-website", submissionUrl: "https://www.zfmzoetermeer.nl/", email: "algemeen@zfmzoetermeer.nl", fallbackLabel: "Lukt aanmelden niet? E-mail de redactie" },
+  { key: "email_zoetermeer_actief", label: "Zoetermeer Actief", route: "email", routeLabel: "Redactie per e-mail", websiteUrl: "https://zoetermeeractief.nl/", email: "info@zoetermeeractief.nl" },
+  { key: "email_vrijetijdkrant", label: "Vrijetijdkrant", route: "website", routeLabel: "Evenement via formulier aanmelden", submissionUrl: "https://www.vrijetijdkrant.nl/evenement-aanmelden/", email: "info@vrijetijdkrant.nl", fallbackLabel: "Werkt het formulier niet? E-mail om hulp" },
+  { key: "email_eventtip", label: "Eventtip / Culturele Uitagenda", route: "website", routeLabel: "Eerst via Eventtip aanmelden", submissionUrl: "https://eventtip.nl/", email: "info@eventconnectors.nl", fallbackLabel: "Lukt aanmelden niet? E-mail de redactie" },
+  { key: "email_wat_te_doen", label: "Wat te doen Vandaag", route: "email", routeLabel: "Evenement per e-mail aanmelden", websiteUrl: "https://www.wattedoenvandaag.nl/", email: "info@wattedoenvandaag.nl" },
+  { key: "email_evenementen", label: "Evenementen.nl", route: "website", routeLabel: "Eerst via de website aanmelden", submissionUrl: "https://www.evenementen.nl/", email: "info@evenementen.nl", fallbackLabel: "Geeft de website een fout? E-mail de redactie" },
 ];
 
 const emptyEditorialTargets = Object.fromEntries(editorialAgendaTargets.map(({ key }) => [key, false]));
@@ -187,6 +187,10 @@ function editorialEmailUrl(target, common = {}, sourceUrl = "") {
     common.organizer || "Horeca OS",
   ].filter(Boolean);
   return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${common.title || "evenement"}`)}&body=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function editorialTargetDetails(target) {
+  return { ...(editorialAgendaTargets.find(({ key }) => key === target?.key) || {}), ...(target || {}) };
 }
 
 function siteForBusiness(business) {
@@ -2178,11 +2182,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </>}
       {isEvent && <div className="editorialAgendaPicker" style={{ display: "grid", gap: "10px", marginTop: "4px", padding: "14px", border: "1px solid #c6d5df", borderRadius: "12px", background: "#f8fbfc" }}>
         <strong>Uitagenda's, media en evenementensites</strong>
-        <p>Kies zelf waar je het evenement wilt aanbieden. Na opslaan maakt Horeca OS per gekozen redactie een volledig ingevulde e-mail klaar; er wordt niets automatisch verstuurd.</p>
-        <div className="channelChecks">{editorialAgendaTargets.map((target) => <label className="channelCheck" key={target.key}>
-          <span className="check"><input type="checkbox" checked={Boolean(form.editorialTargets?.[target.key])} onChange={() => update("editorialTargets", { ...emptyEditorialTargets, ...(form.editorialTargets || {}), [target.key]: !form.editorialTargets?.[target.key] })} /> {target.label}</span>
-          <small>{target.email}</small>
-        </label>)}</div>
+        <p>Kies zelf waar je het evenement wilt aanbieden. Per kanaal zie je of je een formulier moet invullen of een e-mail moet sturen. Als een website niet werkt, staat de e-mailroute er direct naast.</p>
+        <div className="channelChecks">{editorialAgendaTargets.map((target) => <div className="channelCheck" key={target.key}>
+          <label className="check"><input type="checkbox" checked={Boolean(form.editorialTargets?.[target.key])} onChange={() => update("editorialTargets", { ...emptyEditorialTargets, ...(form.editorialTargets || {}), [target.key]: !form.editorialTargets?.[target.key] })} /> {target.label}</label>
+          <small><b>{target.routeLabel}</b></small>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginTop: "5px" }}>
+            {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer">Aanmeldpagina openen</a>}
+            {!target.submissionUrl && (target.infoUrl || target.websiteUrl) && <a href={target.infoUrl || target.websiteUrl} target="_blank" rel="noreferrer">Instructies bekijken</a>}
+            {target.email && <span>{target.email}</span>}
+          </div>
+          {target.fallbackLabel && <small>{target.fallbackLabel}</small>}
+        </div>)}</div>
       </div>}
     </fieldset>
 
@@ -2352,8 +2362,16 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             </p>}
             {(distribution.editorial_submissions || []).length > 0 && <div className="editorialSubmissionActions" style={{ display: "grid", gap: "7px", marginTop: "10px", padding: "12px", borderRadius: "10px", background: "#f4f8fa" }}>
               <strong>Uitagenda's en redacties</strong>
-              <div>{distribution.editorial_submissions.map((target) => <a key={target.key} href={editorialEmailUrl(target, distribution.common, distribution.source_url)}>{target.label}: e-mail klaarzetten</a>)}</div>
-              <small>De e-mail bevat titel, datum, tijden, locatie, omschrijving, evenementlink, afbeelding en contactgegevens. Controleer hem voordat je hem verstuurt.</small>
+              <div style={{ display: "grid", gap: "10px" }}>{distribution.editorial_submissions.map((savedTarget) => {
+                const target = editorialTargetDetails(savedTarget);
+                return <div key={target.key} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                  <b>{target.label}</b>
+                  <span>{target.routeLabel || "Per e-mail aanmelden"}</span>
+                  {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer">Aanmeldpagina openen</a>}
+                  {target.email && <a href={editorialEmailUrl(target, distribution.common, distribution.source_url)}>{target.submissionUrl ? "E-mail als website niet werkt" : "E-mail klaarzetten"}</a>}
+                </div>;
+              })}</div>
+              <small>Een klaargezette e-mail bevat titel, datum, tijden, locatie, omschrijving, evenementlink, afbeelding en contactgegevens. Controleer hem voordat je hem verstuurt.</small>
             </div>}
             {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
