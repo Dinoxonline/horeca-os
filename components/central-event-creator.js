@@ -638,7 +638,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult(null);
     try {
       const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, site });
-      const response = await fetch(`/api/marketing/website-events/create?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const response = await fetch(`/api/marketing/website-events/create?${query}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        signal: AbortSignal.timeout(25000),
+      });
       const payload = await response.json().catch(() => ({}));
       if (requestId !== managedEventsRequestRef.current) return;
       if (!response.ok) throw new Error(payload.error || "De bestaande website-evenementen konden niet worden geladen.");
@@ -647,7 +650,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     } catch (error) {
       if (requestId !== managedEventsRequestRef.current) return;
       setManagedWebsiteEvents([]);
-      setResult({ ok: false, message: error.message || "De bestaande website-evenementen konden niet worden geladen." });
+      setResult({ ok: false, message: error.name === "TimeoutError"
+        ? "Eventin reageert te langzaam. Probeer het over enkele seconden opnieuw."
+        : error.message || "De bestaande website-evenementen konden niet worden geladen." });
     } finally {
       if (requestId === managedEventsRequestRef.current) setManagedEventsLoading(false);
     }
