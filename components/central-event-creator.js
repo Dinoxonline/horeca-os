@@ -1610,10 +1610,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const result = await response.json().catch(() => ({}));
     if (!response.ok) return setFacebookGroupsError(result.error || "De bedrijfsafzender kon niet worden ingesteld.");
     setFacebookGroups((current) => current.map((item) => item.id === group.id ? result.group : item));
-    setResult({ ok: true, message: `${result.group.sender_page_name} is als verplichte afzender ingesteld voor ${group.name}.` });
+    setResult({ ok: true, message: `${result.group.sender_page_name} is als gewenste afzender gekoppeld aan ${group.name}. Facebook bepaalt vervolgens of deze pagina in de groep mag plaatsen.` });
   }
 
-  async function openFacebookGroup(distribution, group, campaignId, roundGroups, remainingAfterRound, delayMin, delayMax) {
+  async function openFacebookGroup(distribution, group) {
     const text = channelConceptText(distribution, "facebook", "");
     const common = distribution.common || {};
     const shareText = [common.title, text, common.start ? `Datum: ${formatNlDateTime(common.start)}` : "", common.location ? `Locatie: ${common.location}` : "", common.website_url || distribution.source_url].filter(Boolean).join("\n\n");
@@ -1623,6 +1623,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (facebookAccount && String(group.sender_page_id) !== String(facebookAccount.external_account_id)) return setResult({ ok: false, message: `Plaatsing geblokkeerd: ${group.name} hoort bij ${group.sender_page_name}, niet bij ${facebookAccount.display_name}.` });
     window.open(groupUrl, "_blank", "noopener,noreferrer");
     try { await navigator.clipboard.writeText(shareText); } catch {}
+    setResult({ ok: true, message: `${group.name} is geopend en de tekst is gekopieerd. Plaats alleen wanneer Facebook zichtbaar ${group.sender_page_name} als afzender toont. Bevestig de plaatsing daarna apart in Horeca OS.` });
+  }
+
+  function confirmFacebookGroupPosted(group, campaignId, roundGroups, remainingAfterRound, delayMin, delayMax) {
     setFacebookGroupShareProgress((current) => {
       const previous = current[campaignId] || { completed: [], waitUntil: 0, round: 1 };
       const completed = Array.from(new Set([...previous.completed, String(group.id || group.url)]));
@@ -1643,7 +1647,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         },
       };
     });
-    setResult({ ok: true, message: `De tekst is gekopieerd en ${group.name} is geopend. Controleer boven het bericht dat je plaatst als ${group.sender_page_name}; plaats nooit als je persoonlijke profiel.` });
+    setResult({ ok: true, message: `De plaatsing in ${group.name} is als voltooid bevestigd.` });
   }
 
   async function openFacebookEventCreator(distribution) {
@@ -2080,8 +2084,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           <div className="facebookGroupList">{visibleFacebookGroups.map((group) => {
             const senderReady = Boolean(group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id));
             return <div className={`facebookGroupChoice ${senderReady ? "senderReady" : "senderMissing"}`} key={group.id}>
-              <label className="check"><input type="checkbox" disabled={!senderReady} checked={senderReady && selectedFacebookGroupIds.includes(String(group.id))} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> <span><b>{group.name}</b><small>{senderReady ? `Plaatsen als ${group.sender_page_name}` : "Geblokkeerd: bedrijfsafzender nog niet gecontroleerd"}</small></span></label>
-              <div>{!senderReady && <button type="button" disabled={!facebookAccount} onClick={() => verifyFacebookGroupSender(group)}>Gebruik {facebookAccount?.display_name || "bedrijfspagina"}</button>}<button type="button" onClick={() => removeFacebookGroup(group)}>Verwijderen</button></div>
+              <label className="check"><input type="checkbox" disabled={!senderReady} checked={senderReady && selectedFacebookGroupIds.includes(String(group.id))} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> <span><b>{group.name}</b><small>{senderReady ? `Gewenste afzender: ${group.sender_page_name} · Facebook moet dit nog toestaan` : "Geblokkeerd: gewenste bedrijfsafzender nog niet gekoppeld"}</small></span></label>
+              <div>{!senderReady && <button type="button" disabled={!facebookAccount} onClick={() => verifyFacebookGroupSender(group)}>Koppel {facebookAccount?.display_name || "bedrijfspagina"}</button>}<button type="button" onClick={() => removeFacebookGroup(group)}>Verwijderen</button></div>
             </div>;
           })}</div>
           {!facebookGroupsLoading && facebookGroups.length === 0 && <p>Nog geen groepen opgeslagen voor deze vestiging.</p>}
@@ -2242,7 +2246,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 : currentGroupRound.map((storedGroup) => {
                   const group = facebookGroups.find((candidate) => String(candidate.id) === String(storedGroup.id) || candidate.group_url === storedGroup.url) || storedGroup;
                   const senderReady = Boolean(group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id));
-                  return <div className={`facebookGroupSenderAction ${senderReady ? "ready" : "blocked"}`} key={group.id || group.url}><span>{senderReady ? `Je moet plaatsen als ${group.sender_page_name}` : "Afzender niet veilig ingesteld"}</span><button type="button" disabled={!senderReady} onClick={() => openFacebookGroup(distribution, group, item.id, currentGroupRound, remainingAfterGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>{senderReady ? `Open ${group.name} als ${group.sender_page_name}` : `${group.name} geblokkeerd`}</button></div>;
+                  return <div className={`facebookGroupSenderAction ${senderReady ? "ready" : "blocked"}`} key={group.id || group.url}><span>{senderReady ? `Controleer in Facebook of je werkelijk plaatst als ${group.sender_page_name}` : "Gewenste bedrijfsafzender niet gekoppeld"}</span><div><button type="button" disabled={!senderReady} onClick={() => openFacebookGroup(distribution, group)}>{senderReady ? `Open ${group.name}` : `${group.name} geblokkeerd`}</button><button type="button" disabled={!senderReady} onClick={() => confirmFacebookGroupPosted(group, item.id, currentGroupRound, remainingAfterGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Plaatsing bevestigen</button></div></div>;
                 })}
               {completedGroupIds.size > 0 && <div className="completedFacebookGroupLinks">
                 <strong>Handmatig geplaatste groepen</strong>
