@@ -8,6 +8,24 @@ const ALLOWED_SITES = new Map([
   ["www.grandcafehetplein.com", "https://grandcafehetplein.com"],
 ]);
 
+async function fetchAllWordPressEvents(url, options) {
+  const firstUrl = new URL(url);
+  firstUrl.searchParams.set("page", "1");
+  const firstResponse = await fetch(firstUrl, options);
+  if (!firstResponse.ok) return { response: firstResponse, rows: [] };
+  const firstRows = await firstResponse.json();
+  const totalPages = Math.max(1, Math.min(100, Number(firstResponse.headers.get("x-wp-totalpages")) || 1));
+  const remainingPages = await Promise.all(Array.from({ length: totalPages - 1 }, async (_, index) => {
+    const pageUrl = new URL(url);
+    pageUrl.searchParams.set("page", String(index + 2));
+    const pageResponse = await fetch(pageUrl, options);
+    if (!pageResponse.ok) throw new Error(`De Eventin-agendapagina ${index + 2} kon niet worden opgehaald.`);
+    const pageRows = await pageResponse.json();
+    return Array.isArray(pageRows) ? pageRows : [];
+  }));
+  return { response: firstResponse, rows: [firstRows, ...remainingPages].flat() };
+}
+
 export async function GET(request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return NextResponse.json({ error: "Niet ingelogd." }, { status: 401 });
@@ -24,14 +42,13 @@ export async function GET(request) {
     url.searchParams.set("per_page", "100");
     url.searchParams.set("status", "publish");
     url.searchParams.set("_embed", "1");
-    const response = await fetch(url, {
+    const { response, rows } = await fetchAllWordPressEvents(url, {
       cache: "no-store",
       headers: { "User-Agent": "HorecaOS-EventCalendar/1.0" },
     });
     if (!response.ok) throw new Error(response.status === 404
       ? "Op deze website is geen openbare Eventin-agenda gevonden."
       : "De Eventin-agenda kon niet worden opgehaald.");
-    const rows = await response.json();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const events = (Array.isArray(rows) ? rows : [])
