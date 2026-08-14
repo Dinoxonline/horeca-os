@@ -374,26 +374,31 @@ async function enrichMissingEventDetails(events, site, authorization) {
     .map((event, index) => event.eventDate && event.location ? -1 : index)
     .filter((index) => index >= 0);
 
-  for (let offset = 0; offset < missingIndexes.length; offset += 8) {
-    const batch = missingIndexes.slice(offset, offset + 8);
+  for (let offset = 0; offset < missingIndexes.length; offset += 40) {
+    const batch = missingIndexes.slice(offset, offset + 40);
     await Promise.all(batch.map(async (index) => {
       const event = enriched[index];
-      const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${event.id}`, {
-        headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" },
-        cache: "no-store",
-      });
-      if (!response.ok) return;
-      const payload = await response.json().catch(() => ({}));
-      const row = payload?.data || payload?.event || payload || {};
-      const start = eventinDateTime(row, "start");
-      const end = eventinDateTime(row, "end");
-      enriched[index] = {
-        ...event,
-        start: start || event.start,
-        end: end || event.end,
-        eventDate: start ? start.slice(0, 10) : event.eventDate,
-        location: event.location || eventinLocation(row),
-      };
+      try {
+        const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${event.id}`, {
+          headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" },
+          cache: "no-store",
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => ({}));
+        const row = payload?.data || payload?.event || payload || {};
+        const start = eventinDateTime(row, "start");
+        const end = eventinDateTime(row, "end");
+        enriched[index] = {
+          ...event,
+          start: start || event.start,
+          end: end || event.end,
+          eventDate: start ? start.slice(0, 10) : event.eventDate,
+          location: event.location || eventinLocation(row),
+        };
+      } catch {
+        // Eén traag of oud Eventin-item mag het volledige overzicht niet blokkeren.
+      }
     }));
   }
 
