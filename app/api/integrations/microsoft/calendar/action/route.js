@@ -126,6 +126,9 @@ export async function DELETE(request) {
     await graph(auth.connection, auth.admin, `events/${encodeURIComponent(body.eventId)}`, { method: "DELETE" });
     return NextResponse.json({ message: "De afspraak is verwijderd." });
   } catch (error) {
+    if (/404|not found|itemnotfound|erroritemnotfound/i.test(String(error?.message || error))) {
+      return NextResponse.json({ message: "De afspraak was al verwijderd.", alreadyDeleted: true });
+    }
     return NextResponse.json({ error: error.message || "De afspraak kon niet worden verwijderd." }, { status: 400 });
   }
 }

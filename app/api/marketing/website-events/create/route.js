@@ -688,6 +688,9 @@ export async function DELETE(request) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (mode === "trash" && response.status === 404) {
+      return NextResponse.json({ event: { id, url: "", status: "trash", website: site.origin, alreadyDeleted: true } });
+    }
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `Eventin heeft de actie niet geaccepteerd.${detail}` }, { status: response.status });
   }
