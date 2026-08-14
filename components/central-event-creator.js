@@ -887,8 +887,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           // description also contains generated location and ticket paragraphs.
           // Preserve an intentionally emptied description as well.
           description: hasStoredDescription ? common.description : event.description || "",
-          start: event.start || common.start,
-          end: event.end || common.end,
+          // Horeca OS keeps the requested local date/time as the source of truth.
+          // Older Eventin records can report a malformed day after an ISO-date write.
+          start: common.start || event.start,
+          end: common.end || event.end,
           location: event.location || common.location,
           image_url: event.imageUrl || common.image_url,
           website_status: event.status || distribution.website_event_status || common.website_status,

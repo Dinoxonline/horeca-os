@@ -50,6 +50,12 @@ function datePartsTimestamp(parts) {
   return parts ? new Date(`${parts.date}T${parts.time}:00`).getTime() : Number.NaN;
 }
 
+function eventinApiDate(parts) {
+  if (!parts?.date) return "";
+  const [year, month, day] = String(parts.date).split("-");
+  return year && month && day ? `${month}/${day}/${year}` : "";
+}
+
 async function ownerContext(request, workspaceId) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token || !workspaceId) return null;
@@ -134,7 +140,9 @@ function eventinTickets(body, start, end, existingTickets = []) {
       etn_max_ticket: Math.max(1, Number.parseInt(ticket.maxQuantity, 10) || 10),
       etn_ticket_slug: ticketSlug(ticket, existingTicket),
       etn_enable_ticket: true,
-      start_date: saleStart.date, end_date: saleEnd.date, start_time: saleStart.time, end_time: saleEnd.time,
+      // Eventin v4 parses its write API using the WordPress (US) date format.
+      // Sending ISO dates preserves the month but silently resets the day to 1.
+      start_date: eventinApiDate(saleStart), end_date: eventinApiDate(saleEnd), start_time: saleStart.time, end_time: saleEnd.time,
       pending: Number(existingTicket?.pending || 0),
       optiontics_block_ids: existingTicket?.optiontics_block_ids || [],
     };
@@ -154,8 +162,8 @@ function eventinPayload(body, venue, existingEvent = null) {
     excerpt: text(body.description, 500),
     visibility_status: body.status === "publish" ? "publish" : "draft",
     timezone: "Europe/Paris",
-    start_date: start.date,
-    end_date: end.date,
+    start_date: eventinApiDate(start),
+    end_date: eventinApiDate(end),
     start_time: start.time,
     end_time: end.time,
     event_type: "offline",
