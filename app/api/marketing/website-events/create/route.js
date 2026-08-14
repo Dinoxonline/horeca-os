@@ -185,16 +185,60 @@ function cleanHtml(value, limit = 10000) {
 function eventinValue(row, keys) {
   for (const key of keys) {
     const value = row?.[key] ?? row?.meta?.[key];
-    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+    const scalar = value && typeof value === "object"
+      ? value.date ?? value.value ?? value.raw ?? value.rendered
+      : value;
+    if (scalar !== undefined && scalar !== null && String(scalar).trim()) return String(scalar).trim();
   }
   return "";
 }
 
+function eventinLocation(row) {
+  const value = row?.location ?? row?.event_location ?? row?.etn_event_location
+    ?? row?.meta?.event_location ?? row?.meta?.etn_event_location;
+  if (typeof value === "string") return value.trim();
+  return String(value?.name || value?.title || value?.address || value?.venue_name || "").trim();
+}
+
+function normalizedEventinDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const iso = raw.match(/^(20\d{2})[-/.](0?[1-9]|1[0-2])[-/.](0?[1-9]|[12]\d|3[01])/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  const legacy = raw.match(/^(0?[1-9]|[12]\d|3[01])[-/.](0?[1-9]|1[0-2])[-/.](20\d{2})/);
+  if (legacy) return `${legacy[3]}-${legacy[2].padStart(2, "0")}-${legacy[1].padStart(2, "0")}`;
+  if (/^\d{10,13}$/.test(raw)) {
+    const timestamp = Number(raw) * (raw.length === 10 ? 1000 : 1);
+    const date = new Date(timestamp);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function normalizedEventinTime(value, fallback) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const match = raw.match(/\b(\d{1,2}):(\d{2})(?:\s*([ap])\.?m\.?)?/i);
+  if (!match) return fallback;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const meridiem = String(match[3] || "").toLowerCase();
+  if (meridiem === "p" && hour < 12) hour += 12;
+  if (meridiem === "a" && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return fallback;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function eventinDateTime(row, kind) {
-  const date = eventinValue(row, kind === "start" ? ["etn_start_date", "start_date"] : ["etn_end_date", "end_date"]);
-  const time = eventinValue(row, kind === "start" ? ["etn_start_time", "start_time"] : ["etn_end_time", "end_time"]);
+  const date = normalizedEventinDate(eventinValue(row, kind === "start"
+    ? ["etn_start_date", "_etn_start_date", "event_start_date", "start_date"]
+    : ["etn_end_date", "_etn_end_date", "event_end_date", "end_date"]));
+  const time = normalizedEventinTime(eventinValue(row, kind === "start"
+    ? ["etn_start_time", "_etn_start_time", "event_start_time", "start_time"]
+    : ["etn_end_time", "_etn_end_time", "event_end_time", "end_time"]), kind === "start" ? "12:00" : "13:00");
   if (!date) return "";
-  const combined = `${date}T${time || (kind === "start" ? "12:00" : "13:00")}`;
+  const combined = `${date}T${time}`;
   return Number.isNaN(new Date(combined).getTime()) ? "" : combined;
 }
 
@@ -233,7 +277,7 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
   const banner = typeof row.event_banner === "string"
     ? row.event_banner
     : row.event_banner?.url || row.event_banner?.source_url || "";
-  const location = typeof row.location === "string" ? row.location : row.location?.address || row.location?.name || "";
+  const location = eventinLocation(row);
   const ticketVariations = tickets.map((ticket, index) => {
     const saleStart = eventinDateTime(ticket, "start");
     const saleEnd = eventinDateTime(ticket, "end");
@@ -256,7 +300,7 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
     description: cleanHtml(row.description?.rendered || row.description || row.content?.rendered || wordpressRow?.content?.rendered || wordpressRow?.excerpt?.rendered),
     start,
     end,
-    location: String(location || eventinValue(row, ["event_location", "etn_event_location"])),
+    location,
     imageUrl: String(banner || wordpressRow?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || imageFromContent(wordpressRow)),
     url: String(wordpressRow?.link || row.link || `${site.origin}/?p=${row.id || wordpressRow?.id || ""}`),
     status: (row.visibility_status || wordpressRow?.status) === "draft" ? "draft" : "publish",
@@ -278,7 +322,7 @@ function normalizeManagedEvent(row, site) {
     start,
     end: eventinDateTime(row, "end"),
     eventDate: start ? start.slice(0, 10) : inferredEventDate(row),
-    location: eventinValue(row, ["event_location", "etn_event_location"]),
+    location: eventinLocation(row),
     imageUrl: String(row?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || ""),
     url: String(row?.link || `${site.origin}/?p=${row?.id || ""}`),
     status: row?.status === "draft" ? "draft" : "publish",
@@ -323,11 +367,11 @@ async function fetchAllWordPressEvents(endpoint, options) {
   return { response: firstResponse, data: [firstData, ...remainingPages].flat() };
 }
 
-async function enrichMissingEventDates(events, site, authorization) {
+async function enrichMissingEventDetails(events, site, authorization) {
   if (!authorization) return events;
   const enriched = [...events];
   const missingIndexes = enriched
-    .map((event, index) => event.eventDate ? -1 : index)
+    .map((event, index) => event.eventDate && event.location ? -1 : index)
     .filter((index) => index >= 0);
 
   for (let offset = 0; offset < missingIndexes.length; offset += 8) {
@@ -343,18 +387,38 @@ async function enrichMissingEventDates(events, site, authorization) {
       const row = payload?.data || payload?.event || payload || {};
       const start = eventinDateTime(row, "start");
       const end = eventinDateTime(row, "end");
-      if (!start) return;
       enriched[index] = {
         ...event,
-        start,
+        start: start || event.start,
         end: end || event.end,
-        eventDate: start.slice(0, 10),
-        location: event.location || eventinValue(row, ["event_location", "etn_event_location"]),
+        eventDate: start ? start.slice(0, 10) : event.eventDate,
+        location: event.location || eventinLocation(row),
       };
     }));
   }
 
   return enriched;
+}
+
+function normalizeVenueName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function eventBelongsToVenue(event, venue) {
+  const location = normalizeVenueName(event.location);
+  const expected = normalizeVenueName(venue);
+  if (!location || !expected) return false;
+  const aliases = expected.includes("plein")
+    ? ["grandcafe het plein", "grand cafe het plein", "het plein"]
+    : expected.includes("caribbean corner")
+      ? ["caribbean corner"]
+      : [expected];
+  return aliases.some((alias) => location.includes(alias) || alias.includes(location));
 }
 
 async function storedEventBelongsToBusiness(context, body, id) {
@@ -413,6 +477,8 @@ export async function GET(request) {
   const credentials = siteCredentials(body);
   if (credentials.error && !credentials.configurationRequired) return NextResponse.json({ error: credentials.error }, { status: credentials.status });
   const { site, authorization } = credentials;
+  const businessVenue = await venueForBusiness(context, body);
+  if (!businessVenue) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-venue ingesteld." }, { status: 400 });
   const requestedEventId = eventId(url.searchParams.get("eventId"));
   if (requestedEventId) {
     if (!authorization) return NextResponse.json({ error: "De beveiligde Eventin-koppeling is nodig om dit evenement te bewerken." }, { status: 503 });
@@ -444,8 +510,9 @@ export async function GET(request) {
   const normalizedEvents = (Array.isArray(data) ? data : [])
     .map((row) => normalizeManagedEvent(row, site))
     .filter((event) => event.id && event.title);
-  const eventsWithDates = await enrichMissingEventDates(normalizedEvents, site, authorization);
-  const events = eventsWithDates
+  const eventsWithDetails = await enrichMissingEventDetails(normalizedEvents, site, authorization);
+  const events = eventsWithDetails
+    .filter((event) => eventBelongsToVenue(event, businessVenue))
     .map((event) => ({ ...event, expired: isExpiredEvent(event, today) }))
     .sort((left, right) => {
       if (left.eventDate && right.eventDate) return left.eventDate.localeCompare(right.eventDate);
