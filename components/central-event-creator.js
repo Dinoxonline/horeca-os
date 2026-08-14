@@ -37,6 +37,21 @@ const campaignTitleLabels = {
   custom: "Campagnenaam",
 };
 
+const editorialAgendaTargets = [
+  { key: "email_salsa", label: "Salsa.nl", email: "redactie@salsa.nl" },
+  { key: "email_zoetermeer_nieuws", label: "Zoetermeer.Nieuws.nl", email: "zoetermeer@nieuws.nl" },
+  { key: "email_zoetermeers_dagblad", label: "Zoetermeers Dagblad", email: "redactie@zoetermeersdagblad.nl" },
+  { key: "email_streekblad", label: "Streekblad Zoetermeer", email: "redactiestreekblad@telstarmediacentrum.nl" },
+  { key: "email_zfm", label: "ZFM Zoetermeer", email: "algemeen@zfmzoetermeer.nl" },
+  { key: "email_zoetermeer_actief", label: "Zoetermeer Actief", email: "info@zoetermeeractief.nl" },
+  { key: "email_vrijetijdkrant", label: "Vrijetijdkrant", email: "info@vrijetijdkrant.nl" },
+  { key: "email_eventtip", label: "Eventtip / Culturele Uitagenda", email: "info@eventconnectors.nl" },
+  { key: "email_wat_te_doen", label: "Wat te doen Vandaag", email: "info@wattedoenvandaag.nl" },
+  { key: "email_evenementen", label: "Evenementen.nl", email: "info@evenementen.nl" },
+];
+
+const emptyEditorialTargets = Object.fromEntries(editorialAgendaTargets.map(({ key }) => [key, false]));
+
 const emptyForm = {
   campaignType: "event",
   title: "", shortDescription: "", description: "", start: "", end: "",
@@ -51,6 +66,7 @@ const emptyForm = {
   tiktokCaption: "", tiktokPrivacy: "PUBLIC_TO_EVERYONE", tiktokComments: true,
   whatsappTemplate: "", whatsappMessage: "",
   googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek", predisGenerate: false,
+  editorialTargets: emptyEditorialTargets,
   regularPrice: "", campaignPrice: "", discountCode: "", validFrom: "", validUntil: "",
   groupSize: "", pricePerPerson: "", reviewerName: "", reviewScore: "5", reviewSource: "",
 };
@@ -148,6 +164,29 @@ function calendarEventDescription(form, websiteUrl) {
     form.contactEmail.trim() ? `Contact: ${form.contactEmail.trim()}` : "",
     websiteUrl ? `Website: ${websiteUrl}` : "",
   ].filter(Boolean).join("\n\n");
+}
+
+function editorialEmailUrl(target, common = {}, sourceUrl = "") {
+  const description = common.description || common.short_description || "";
+  const imageUrl = common.image_url || common.images?.landscape?.url || common.images?.square?.url || "";
+  const lines = [
+    `Beste redactie van ${target.label},`,
+    "",
+    `Graag melden wij het volgende evenement van ${common.organizer || "onze locatie"} aan:`,
+    "",
+    `Titel: ${common.title || ""}`,
+    common.start ? `Begint: ${formatNlDateTime(common.start)}` : "",
+    common.end ? `Eindigt: ${formatNlDateTime(common.end)}` : "",
+    common.location ? `Locatie: ${common.location}` : "",
+    description ? `Omschrijving: ${description}` : "",
+    sourceUrl ? `Evenementpagina: ${sourceUrl}` : "",
+    imageUrl ? `Openbare beeldlink: ${imageUrl}` : "",
+    common.contact_email ? `Contact: ${common.contact_email}` : "",
+    "",
+    "Met vriendelijke groet,",
+    common.organizer || "Horeca OS",
+  ].filter(Boolean);
+  return `mailto:${target.email}?subject=${encodeURIComponent(`Evenement aanmelden: ${common.title || "evenement"}`)}&body=${encodeURIComponent(lines.join("\n"))}`;
 }
 
 function siteForBusiness(business) {
@@ -387,6 +426,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       ...emptyForm,
       images: { ...emptyImages },
       channels: { ...channelDefaults },
+      editorialTargets: { ...emptyEditorialTargets },
       organizer: defaults.organizer,
       location: defaults.location,
       contactEmail: defaults.contactEmail,
@@ -926,6 +966,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         ? common.tickets.variations
         : [{ ...defaultTicketVariation, type: common.tickets?.type || "free", price: common.tickets?.price || "0", capacity: common.tickets?.capacity || "" }],
       preparePromotion: targetChannels.length > 0, channels,
+      editorialTargets: {
+        ...emptyEditorialTargets,
+        ...Object.fromEntries((distribution.editorial_submissions || []).map((target) => [target.key, true])),
+      },
       brevoSubject: payloads.brevo?.subject || "", brevoPreview: payloads.brevo?.preview_text || "", brevoAudience: payloads.brevo?.list_names?.join(", ") || payloads.brevo?.audience || "",
       facebookText: payloads.facebook?.text || "", facebookPlacements: payloads.facebook?.placements || ["feed"], instagramFormat: payloads.instagram?.format || "post", instagramCaption: payloads.instagram?.caption || "",
       tiktokCaption: payloads.tiktok?.caption || "", tiktokPrivacy: payloads.tiktok?.privacy || emptyForm.tiktokPrivacy, tiktokComments: payloads.tiktok?.comments_enabled ?? true,
@@ -1203,10 +1247,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       ...savedForm,
       images: { ...emptyImages, ...(savedForm.images || {}) },
       channels: { ...channelDefaults, ...(savedForm.channels || {}) },
+      editorialTargets: { ...emptyEditorialTargets, ...(savedForm.editorialTargets || {}) },
     } : {
       ...emptyForm,
       images: { ...emptyImages },
       channels: { ...channelDefaults },
+      editorialTargets: { ...emptyEditorialTargets },
       organizer: defaults.organizer,
       location: defaults.location,
       contactEmail: defaults.contactEmail,
@@ -1498,6 +1544,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const distribution = {
         kind: "campaign_distribution", source_type: form.campaignType, source_url: form.ctaUrl.trim(),
         eventin_event_id: null, common, target_channels: enabledChannels, channel_payloads, channel_status,
+        editorial_submissions: editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).map((target) => ({ ...target, status: "ready" })),
         schedule_settings: { stagger_enabled: form.staggerEnabled, min_minutes: Number(form.staggerMinMinutes) || 15, max_minutes: Number(form.staggerMaxMinutes) || 45 },
         channel_schedule: {}, provider_delivery, scheduling_status: "draft",
       };
@@ -1607,6 +1654,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     ]));
     const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
       eventin_event_id: websiteEvent.id, website_event_status: websiteEvent.status || "draft", common, target_channels: enabledChannels, channel_payloads, channel_status,
+      editorial_submissions: editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).map((target) => ({ ...target, status: "ready" })),
       schedule_settings: { stagger_enabled: form.staggerEnabled, min_minutes: Number(form.staggerMinMinutes) || 15, max_minutes: Number(form.staggerMaxMinutes) || 45 },
       channel_schedule: {}, provider_delivery: providerDelivery, calendar_delivery: calendarDelivery };
     const record = {
@@ -2128,6 +2176,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <div className="channelChecks">{Object.entries(channelLabels).map(([key, label]) => <label className="channelCheck" key={key}><span className="check"><input type="checkbox" checked={form.channels[key]} onChange={() => toggleChannel(key)} /> {label}</span><small>{key === "predis" && !predisConnected ? "Niet gekoppeld" : channelModes[key]}</small></label>)}</div>
         <p className="channelSafetyNote">Selecteren publiceert niets automatisch. Brevo slaat een concept bij Brevo op. Facebook krijgt na opslaan een aparte knop “Op Facebook plaatsen”. De overige kanalen blijven interne concepten in Horeca OS.</p>
       </>}
+      {isEvent && <div className="editorialAgendaPicker" style={{ display: "grid", gap: "10px", marginTop: "4px", padding: "14px", border: "1px solid #c6d5df", borderRadius: "12px", background: "#f8fbfc" }}>
+        <strong>Uitagenda's, media en evenementensites</strong>
+        <p>Kies zelf waar je het evenement wilt aanbieden. Na opslaan maakt Horeca OS per gekozen redactie een volledig ingevulde e-mail klaar; er wordt niets automatisch verstuurd.</p>
+        <div className="channelChecks">{editorialAgendaTargets.map((target) => <label className="channelCheck" key={target.key}>
+          <span className="check"><input type="checkbox" checked={Boolean(form.editorialTargets?.[target.key])} onChange={() => update("editorialTargets", { ...emptyEditorialTargets, ...(form.editorialTargets || {}), [target.key]: !form.editorialTargets?.[target.key] })} /> {target.label}</span>
+          <small>{target.email}</small>
+        </label>)}</div>
+      </div>}
     </fieldset>
 
     {form.preparePromotion && <div className="channelDetails">
@@ -2203,7 +2259,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <strong>Controle voor opslaan</strong>
       <p><b>{campaignTypeLabel}: {form.title}</b></p>
       {isEvent && <><p>{new Date(form.start).toLocaleString("nl-NL")} - {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p></>}
-      <ul>{isEvent && <li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>}{isEvent && form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}</ul>
+      <ul>{isEvent && <li>Website: {site} ({form.status === "publish" ? "direct openbaar" : "concept"})</li>}{isEvent && form.addToCalendar && <li>Agenda: {form.calendarMailbox}</li>}{form.preparePromotion && <li>Promotie: {enabledChannels.map((key) => channelLabels[key]).join(", ")}</li>}{isEvent && <li>Redacties: {editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).map(({ label }) => label).join(", ") || "geen geselecteerd"}</li>}</ul>
       {form.preparePromotion && <div className={mediaReady ? "mediaCheck mediaCheckReady" : "mediaCheck mediaCheckWarning"}>
         <strong>{mediaReady ? "Alle gekozen kanalen zijn gereed." : "Nog niet gereed voor opslaan."}</strong>
         {!mediaReady && <ul>{channelMediaIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
@@ -2294,6 +2350,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "cancelled" ? `Geannuleerd in ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "deleted" ? "Afspraak verwijderd" : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
               {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
             </p>}
+            {(distribution.editorial_submissions || []).length > 0 && <div className="editorialSubmissionActions" style={{ display: "grid", gap: "7px", marginTop: "10px", padding: "12px", borderRadius: "10px", background: "#f4f8fa" }}>
+              <strong>Uitagenda's en redacties</strong>
+              <div>{distribution.editorial_submissions.map((target) => <a key={target.key} href={editorialEmailUrl(target, distribution.common, distribution.source_url)}>{target.label}: e-mail klaarzetten</a>)}</div>
+              <small>De e-mail bevat titel, datum, tijden, locatie, omschrijving, evenementlink, afbeelding en contactgegevens. Controleer hem voordat je hem verstuurt.</small>
+            </div>}
             {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
