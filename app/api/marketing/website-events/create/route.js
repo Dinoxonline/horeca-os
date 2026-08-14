@@ -203,6 +203,25 @@ function imageFromContent(row) {
   return html.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] || "";
 }
 
+const DUTCH_MONTHS = {
+  januari: 1, februari: 2, maart: 3, april: 4, mei: 5, juni: 6,
+  juli: 7, augustus: 8, september: 9, oktober: 10, november: 11, december: 12,
+};
+
+function inferredEventDate(row) {
+  const source = [
+    row?.slug,
+    row?.title?.rendered,
+    row?.excerpt?.rendered,
+    row?.content?.rendered,
+  ].map((value) => cleanHtml(value, 20000).toLowerCase()).filter(Boolean).join(" ");
+  const isoMatch = source.match(/\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+  const dutchMatch = source.match(/\b(0?[1-9]|[12]\d|3[01])\s+(januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december)\s+(20\d{2})\b/);
+  if (!dutchMatch) return "";
+  return `${dutchMatch[3]}-${String(DUTCH_MONTHS[dutchMatch[2]]).padStart(2, "0")}-${dutchMatch[1].padStart(2, "0")}`;
+}
+
 function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
   const row = eventinResponse?.data || eventinResponse?.event || eventinResponse || {};
   const start = eventinDateTime(row, "start");
@@ -251,17 +270,35 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
 }
 
 function normalizeManagedEvent(row, site) {
+  const start = eventinDateTime(row, "start");
   return {
     id: String(row?.id || ""),
     title: cleanHtml(row?.title?.rendered, 300),
     description: cleanHtml(row?.content?.rendered || row?.excerpt?.rendered),
-    start: eventinDateTime(row, "start"),
+    start,
     end: eventinDateTime(row, "end"),
+    eventDate: start ? start.slice(0, 10) : inferredEventDate(row),
     location: eventinValue(row, ["event_location", "etn_event_location"]),
     imageUrl: String(row?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || ""),
     url: String(row?.link || `${site.origin}/?p=${row?.id || ""}`),
     status: row?.status === "draft" ? "draft" : "publish",
   };
+}
+
+function dateInTimeZone(timeZone = "Europe/Amsterdam") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function isExpiredEvent(event, today) {
+  const finalDate = event.end ? event.end.slice(0, 10) : event.eventDate;
+  return Boolean(finalDate) && finalDate < today;
 }
 
 async function storedEventBelongsToBusiness(context, body, id) {
@@ -348,7 +385,17 @@ export async function GET(request) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `De Eventin-evenementen konden niet beveiligd worden opgehaald.${detail}` }, { status: response.status });
   }
-  const events = (Array.isArray(data) ? data : []).map((row) => normalizeManagedEvent(row, site)).filter((event) => event.id && event.title);
+  const today = dateInTimeZone();
+  const events = (Array.isArray(data) ? data : [])
+    .map((row) => normalizeManagedEvent(row, site))
+    .filter((event) => event.id && event.title)
+    .map((event) => ({ ...event, expired: isExpiredEvent(event, today) }))
+    .sort((left, right) => {
+      if (left.eventDate && right.eventDate) return left.eventDate.localeCompare(right.eventDate);
+      if (left.eventDate) return -1;
+      if (right.eventDate) return 1;
+      return left.title.localeCompare(right.title, "nl-NL");
+    });
   return NextResponse.json({
     events,
     website: site.origin,
