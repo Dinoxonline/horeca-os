@@ -314,14 +314,22 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
 }
 
 function normalizeManagedEvent(row, site) {
-  const start = eventinDateTime(row, "start");
+  const rawStart = eventinDateTime(row, "start");
+  const rawEnd = eventinDateTime(row, "end");
+  const inferredDate = inferredEventDate(row);
+  const start = inferredDate
+    ? `${inferredDate}T${rawStart?.slice(11, 16) || "12:00"}`
+    : rawStart;
+  const end = inferredDate
+    ? `${inferredDate}T${rawEnd?.slice(11, 16) || "13:00"}`
+    : rawEnd;
   return {
     id: String(row?.id || ""),
     title: cleanHtml(row?.title?.rendered, 300),
     description: cleanHtml(row?.content?.rendered || row?.excerpt?.rendered),
     start,
-    end: eventinDateTime(row, "end"),
-    eventDate: start ? start.slice(0, 10) : inferredEventDate(row),
+    end,
+    eventDate: inferredDate || (start ? start.slice(0, 10) : ""),
     location: eventinLocation(row),
     imageUrl: String(row?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || ""),
     url: String(row?.link || `${site.origin}/?p=${row?.id || ""}`),
@@ -389,11 +397,17 @@ async function enrichMissingEventDetails(events, site, authorization) {
         const row = payload?.data || payload?.event || payload || {};
         const start = eventinDateTime(row, "start");
         const end = eventinDateTime(row, "end");
+        const occurrenceStart = event.start || (event.eventDate
+          ? `${event.eventDate}T${start?.slice(11, 16) || "12:00"}`
+          : start);
+        const occurrenceEnd = event.end || (event.eventDate
+          ? `${event.eventDate}T${end?.slice(11, 16) || "13:00"}`
+          : end);
         enriched[index] = {
           ...event,
-          start: start || event.start,
-          end: end || event.end,
-          eventDate: start ? start.slice(0, 10) : event.eventDate,
+          start: occurrenceStart,
+          end: occurrenceEnd,
+          eventDate: event.eventDate || start?.slice(0, 10) || "",
           location: event.location || eventinLocation(row),
         };
       } catch {
@@ -417,13 +431,14 @@ function normalizeVenueName(value) {
 function eventBelongsToVenue(event, venue) {
   const location = normalizeVenueName(event.location);
   const expected = normalizeVenueName(venue);
-  if (!location || !expected) return false;
-  const aliases = expected.includes("plein")
-    ? ["grandcafe het plein", "grand cafe het plein", "het plein"]
-    : expected.includes("caribbean corner")
-      ? ["caribbean corner"]
-      : [expected];
-  return aliases.some((alias) => location.includes(alias) || alias.includes(location));
+  if (!expected) return false;
+  if (!location) return true;
+  const isPlein = ["grandcafe het plein", "grand cafe het plein", "het plein"]
+    .some((alias) => location.includes(alias));
+  const isCaribbean = location.includes("caribbean corner");
+  if (expected.includes("plein")) return isPlein || !isCaribbean;
+  if (expected.includes("caribbean corner")) return isCaribbean || !isPlein;
+  return location.includes(expected) || expected.includes(location);
 }
 
 async function storedEventBelongsToBusiness(context, body, id) {
