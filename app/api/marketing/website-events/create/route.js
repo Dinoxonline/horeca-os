@@ -323,6 +323,40 @@ async function fetchAllWordPressEvents(endpoint, options) {
   return { response: firstResponse, data: [firstData, ...remainingPages].flat() };
 }
 
+async function enrichMissingEventDates(events, site, authorization) {
+  if (!authorization) return events;
+  const enriched = [...events];
+  const missingIndexes = enriched
+    .map((event, index) => event.eventDate ? -1 : index)
+    .filter((index) => index >= 0);
+
+  for (let offset = 0; offset < missingIndexes.length; offset += 8) {
+    const batch = missingIndexes.slice(offset, offset + 8);
+    await Promise.all(batch.map(async (index) => {
+      const event = enriched[index];
+      const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${event.id}`, {
+        headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventImporter/1.0" },
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => ({}));
+      const row = payload?.data || payload?.event || payload || {};
+      const start = eventinDateTime(row, "start");
+      const end = eventinDateTime(row, "end");
+      if (!start) return;
+      enriched[index] = {
+        ...event,
+        start,
+        end: end || event.end,
+        eventDate: start.slice(0, 10),
+        location: event.location || eventinValue(row, ["event_location", "etn_event_location"]),
+      };
+    }));
+  }
+
+  return enriched;
+}
+
 async function storedEventBelongsToBusiness(context, body, id) {
   const campaignId = String(body.campaignId || "").trim();
   const businessId = String(body.businessId || "").trim();
@@ -407,9 +441,11 @@ export async function GET(request) {
     return NextResponse.json({ error: `De Eventin-evenementen konden niet beveiligd worden opgehaald.${detail}` }, { status: response.status });
   }
   const today = dateInTimeZone();
-  const events = (Array.isArray(data) ? data : [])
+  const normalizedEvents = (Array.isArray(data) ? data : [])
     .map((row) => normalizeManagedEvent(row, site))
-    .filter((event) => event.id && event.title)
+    .filter((event) => event.id && event.title);
+  const eventsWithDates = await enrichMissingEventDates(normalizedEvents, site, authorization);
+  const events = eventsWithDates
     .map((event) => ({ ...event, expired: isExpiredEvent(event, today) }))
     .sort((left, right) => {
       if (left.eventDate && right.eventDate) return left.eventDate.localeCompare(right.eventDate);
