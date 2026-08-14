@@ -688,7 +688,7 @@ export async function DELETE(request) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (mode === "trash" && response.status === 404) {
+  if (mode === "trash" && [404, 410].includes(response.status)) {
       return NextResponse.json({ event: { id, url: "", status: "trash", website: site.origin, alreadyDeleted: true } });
     }
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
