@@ -6,7 +6,7 @@ export async function GET(request) {
   const context = await authorizedContext(request, searchParams.get("workspaceId"), searchParams.get("businessId"), false);
   if (context.error) return context.error;
   const { data, error } = await context.admin.from("facebook_group_targets")
-    .select("id,name,group_url,is_active,created_at")
+    .select("id,name,group_url,is_active,created_at,sender_page_id,sender_page_name,sender_verified_at")
     .eq("workspace_id", context.workspaceId).eq("business_id", context.businessId).eq("is_active", true)
     .order("name");
   if (error) return jsonError("De Facebookgroepen konden niet worden geladen.", 500);
@@ -22,12 +22,29 @@ export async function POST(request) {
   const groupUrl = normalizeGroupUrl(body.groupUrl);
   if (!name) return jsonError("Vul een herkenbare groepsnaam in.", 400);
   if (!groupUrl) return jsonError("Gebruik een geldige Facebook-groepslink.", 400);
+  const sender = await connectedFacebookPage(context.admin, context.workspaceId, context.businessId);
   const { data, error } = await context.admin.from("facebook_group_targets").insert({
     workspace_id: context.workspaceId, business_id: context.businessId, name, group_url: groupUrl, created_by: context.userId,
-  }).select("id,name,group_url,is_active,created_at").single();
+    sender_page_id: sender?.external_account_id || null, sender_page_name: sender?.display_name || null,
+  }).select("id,name,group_url,is_active,created_at,sender_page_id,sender_page_name,sender_verified_at").single();
   if (error?.code === "23505") return jsonError("Deze Facebookgroep staat al in de lijst.", 409);
   if (error) return jsonError("De Facebookgroep kon niet worden opgeslagen.", 500);
   return NextResponse.json({ group: data }, { status: 201 });
+}
+
+export async function PATCH(request) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError("Ongeldig verzoek.", 400); }
+  const context = await authorizedContext(request, body.workspaceId, body.businessId, true);
+  if (context.error) return context.error;
+  const sender = await connectedFacebookPage(context.admin, context.workspaceId, context.businessId);
+  if (!sender?.external_account_id) return jsonError("Koppel eerst de Facebookpagina van deze vestiging.", 409);
+  const { data, error } = await context.admin.from("facebook_group_targets").update({
+    sender_page_id: sender.external_account_id, sender_page_name: sender.display_name, sender_verified_at: new Date().toISOString(),
+  }).eq("id", body.groupId).eq("workspace_id", context.workspaceId).eq("business_id", context.businessId)
+    .select("id,name,group_url,is_active,created_at,sender_page_id,sender_page_name,sender_verified_at").single();
+  if (error) return jsonError("De afzender kon niet aan deze groep worden gekoppeld.", 500);
+  return NextResponse.json({ group: data });
 }
 
 export async function DELETE(request) {
@@ -48,6 +65,13 @@ function normalizeGroupUrl(value) {
     const slug = url.pathname.split("/").filter(Boolean)[1];
     return slug ? `https://www.facebook.com/groups/${slug}` : "";
   } catch { return ""; }
+}
+
+async function connectedFacebookPage(admin, workspaceId, businessId) {
+  const { data } = await admin.from("integration_accounts").select("external_account_id,display_name")
+    .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook")
+    .eq("connection_status", "connected").maybeSingle();
+  return data || null;
 }
 
 async function authorizedContext(request, workspaceId, businessId, manage) {
