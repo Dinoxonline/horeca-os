@@ -84,6 +84,21 @@ function channelConceptText(distribution, channel, fallbackBody = "") {
   return "";
 }
 
+function calendarEventDescription(form, websiteUrl) {
+  const tickets = (form.ticketVariations || []).map((ticket) => {
+    const price = ticket.type === "free" ? "Gratis" : `€ ${Number(ticket.price || 0).toFixed(2).replace(".", ",")}`;
+    const capacity = ticket.capacity ? `${ticket.capacity} beschikbaar` : "onbeperkt";
+    return `- ${ticket.name || "Ticket"}: ${price} (${capacity})`;
+  });
+  return [
+    form.description.trim() || form.shortDescription.trim(),
+    tickets.length ? `Tickets:\n${tickets.join("\n")}` : "",
+    form.organizer.trim() ? `Organisator: ${form.organizer.trim()}` : "",
+    form.contactEmail.trim() ? `Contact: ${form.contactEmail.trim()}` : "",
+    websiteUrl ? `Website: ${websiteUrl}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
 function siteForBusiness(business) {
   return "caribbeancorner.nl";
 }
@@ -1591,9 +1606,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const website = await response.json(); if (!response.ok) throw new Error(website.error || (updatingWebsiteEvent ? "Het website-evenement kon niet worden gewijzigd." : "Het website-evenement kon niet worden aangemaakt."));
       steps.push({ label: updatingWebsiteEvent ? "Website en Eventin bijgewerkt" : "Website en Eventin", ok: true, detail: website.event.url });
       let calendarDelivery = editingWebsiteEvent?.calendarDelivery || null;
-      if (form.addToCalendar && (!updatingWebsiteEvent || calendarDelivery?.event_id)) {
+      if (form.addToCalendar) {
         const updatingCalendar = Boolean(updatingWebsiteEvent && calendarDelivery?.event_id);
-        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", { method: updatingCalendar ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, mailbox: form.calendarMailbox.trim(), eventId: updatingCalendar ? calendarDelivery.event_id : undefined, subject: form.title.trim(), description: `${form.description.trim()}\n\nWebsite: ${website.event.url}`, start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy" }) });
+        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", { method: updatingCalendar ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, mailbox: form.calendarMailbox.trim(), eventId: updatingCalendar ? calendarDelivery.event_id : undefined, subject: form.title.trim(), description: calendarEventDescription(form, website.event.url), start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy" }) });
         const calendar = await calendarResponse.json();
         if (calendarResponse.ok) {
           calendarDelivery = { status: "confirmed", mailbox: form.calendarMailbox.trim(), event_id: calendar.event?.id || calendarDelivery?.event_id || "", web_link: calendar.event?.webLink || calendarDelivery?.web_link || "", updated_at: new Date().toISOString() };
@@ -1602,8 +1617,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           calendarDelivery = { ...(calendarDelivery || {}), status: "failed", mailbox: form.calendarMailbox.trim(), error: calendar.error || "Niet toegevoegd.", updated_at: new Date().toISOString() };
           steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: calendarDelivery.error });
         }
-      } else if (form.addToCalendar && updatingWebsiteEvent) {
-        steps.push({ label: `Agenda ${form.calendarMailbox}`, ok: false, detail: "Deze oudere afspraak is nog niet technisch aan het dossier gekoppeld; controleer hem afzonderlijk in Agenda." });
       }
       const promotion = await createPromotionDraft(website.event, calendarDelivery);
       steps.push(promotion.ok
