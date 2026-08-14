@@ -48,6 +48,28 @@ const editorialAgendaTargets = [
   { key: "email_eventtip", label: "Eventtip / Culturele Uitagenda", route: "website", routeLabel: "Eerst via Eventtip aanmelden", submissionUrl: "https://eventtip.nl/", email: "info@eventconnectors.nl", fallbackLabel: "Lukt aanmelden niet? E-mail de redactie" },
   { key: "email_wat_te_doen", label: "Wat te doen Vandaag", route: "email", routeLabel: "Evenement per e-mail aanmelden", websiteUrl: "https://www.wattedoenvandaag.nl/", email: "info@wattedoenvandaag.nl" },
   { key: "email_evenementen", label: "Evenementen.nl", route: "website", routeLabel: "Eerst via de website aanmelden", submissionUrl: "https://www.evenementen.nl/", email: "info@evenementen.nl", fallbackLabel: "Geeft de website een fout? E-mail de redactie" },
+  { key: "website_muziekladder", label: "Muziekladder", route: "website", routeLabel: "Gratis via het aanmeldformulier", submissionUrl: "https://muziekladder.nl/nl/muziekformulier", fallbackLabel: "Vooral geschikt voor muziek-, dans- en live-evenementen" },
+  { key: "website_eventbrite", label: "Eventbrite", route: "website", routeLabel: "Via het organisatoraccount", submissionUrl: "https://www.eventbrite.nl/manage/events/create", fallbackLabel: "Ook bruikbaar voor gratis tickets en reserveringen" },
+  { key: "website_denhaag", label: "DenHaag.com", route: "website", routeLabel: "Via de officiële evenementaanmelding", submissionUrl: "https://denhaag.com/nl/aanmelden-evenement", fallbackLabel: "Alleen gebruiken wanneer het evenement relevant is voor Den Haag" },
+  { key: "website_marktenmeer", label: "MarktenMeer", route: "website", routeLabel: "Via de website aanmelden", submissionUrl: "https://marktenmeer.nl/", fallbackLabel: "Geschikt voor markten, braderieën en shoppingevenementen" },
+  { key: "email_uitzinnig", label: "Uitzinnig.nl", route: "email", routeLabel: "Per e-mail aanmelden", websiteUrl: "https://www.uitzinnig.nl/", email: "redactie@uitzinnig.nl", fallbackLabel: "Deze e-mailroute is eerder succesvol gebruikt" },
+  { key: "email_evenementenloket", label: "Evenementenloket Zoetermeer", route: "email", routeLabel: "Promotieverzoek per e-mail", websiteUrl: "https://www.zoetermeer.nl/evenement-organiseren", email: "evenementenloket@zoetermeer.nl", fallbackLabel: "Voor gemeentelijke communicatie en lokaal bereik" },
+  { key: "website_uit_zoetermeer", label: "Uit Zoetermeer", route: "website", routeLabel: "Controleer eerst of het evenement al bestaat", submissionUrl: "https://www.uitzoetermeer.nl/", fallbackLabel: "Voorkom dubbele vermeldingen" },
+  { key: "website_hipsy", label: "Hipsy", route: "website", routeLabel: "Gratis evenementpagina via organisatoraccount", submissionUrl: "https://hipsy.nl/event-aanmaken", fallbackLabel: "Account en organisatorpagina nodig" },
+  { key: "website_gratisuitje", label: "Gratisuitje.nl", route: "website", routeLabel: "Via de website aanmelden", submissionUrl: "https://www.gratisuitje.nl/", fallbackLabel: "Alleen voor gratis evenementen" },
+];
+
+const editorialReferenceTargets = [
+  { label: "Guestzone", status: "Handmatige stap nodig", note: "Organisatieaccount wachtte op controle door de redactie.", url: "https://guestzone.nl/" },
+  { label: "LatinWorld", status: "Handmatige stap nodig", note: "Persoonlijk akkoord met de voorwaarden is vereist.", url: "https://www.latinworld.nl/" },
+  { label: "Partyflock", status: "Handmatige stap nodig", note: "Account en robotcontrole zijn vereist.", url: "https://partyflock.nl/agenda" },
+  { label: "AllEvents", status: "Handmatige stap nodig", note: "Een organisatoraccount en -pagina zijn vereist.", url: "https://allevents.in/" },
+  { label: "Google Bedrijfsprofiel", status: "Via koppeling", note: "Gebruik hiervoor de aparte Google-bestemming bovenaan; inloggen kan nodig zijn.", url: "https://business.google.com/" },
+  { label: "DagjeWeg.nl", status: "Geblokkeerd", note: "De beveiligingscontrole blokkeerde de aanmelding.", url: "https://www.dagjeweg.nl/" },
+  { label: "indebuurt", status: "Geblokkeerd", note: "De aanmeldpagina was niet toegankelijk.", url: "https://indebuurt.nl/zoetermeer/" },
+  { label: "DJGuide", status: "Geblokkeerd", note: "De aanmeldpagina was niet toegankelijk.", url: "https://www.djguide.nl/" },
+  { label: "Uitidee", status: "Niet gebruiken", note: "De geschikte plaatsing bleek betaald en is daarom afgevallen.", url: "https://www.uitidee.nl/" },
+  { label: "Zoetermeerse Zakenvrouwen", status: "Niet geschikt", note: "Accepteert alleen zakelijke kennis- en inspiratiebijeenkomsten.", url: "https://zoetermeersezakenvrouwen.nl/" },
 ];
 
 const emptyEditorialTargets = Object.fromEntries(editorialAgendaTargets.map(({ key }) => [key, false]));
@@ -2193,6 +2215,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           </div>
           {target.fallbackLabel && <small>{target.fallbackLabel}</small>}
         </div>)}</div>
+        <details style={{ marginTop: "4px", padding: "10px 12px", border: "1px solid #d7e1e7", borderRadius: "10px", background: "#fff" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Kanalen met een handmatige stap, blokkade of eerdere afwijzing ({editorialReferenceTargets.length})</summary>
+          <p style={{ margin: "8px 0" }}>Deze kanalen zijn bewaard uit de eerdere promotielijst, maar staan niet tussen de normale keuzes omdat ze niet direct of niet gratis bruikbaar zijn.</p>
+          <div style={{ display: "grid", gap: "8px" }}>{editorialReferenceTargets.map((target) => <div key={target.label} style={{ padding: "9px 10px", border: "1px solid #e0e7eb", borderRadius: "8px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "6px" }}><strong>{target.label}</strong><span>{target.status}</span></div>
+            <small>{target.note}</small>
+            <div><a href={target.url} target="_blank" rel="noreferrer">Website bekijken</a></div>
+          </div>)}</div>
+        </details>
       </div>}
     </fieldset>
 
