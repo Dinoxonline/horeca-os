@@ -1858,6 +1858,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         {isEvent && <button type="button" onClick={() => scrollToCreatorSection("campagne-tickets")}>3. Tickets</button>}
         <button type="button" onClick={() => scrollToCreatorSection("campagne-bestemmingen")}>{isEvent ? "4." : "3."} Bestemmingen</button>
         <button type="button" onClick={() => scrollToCreatorSection("opgeslagen-campagnes")}>Opgeslagen</button>
+        {isEvent && <button type="button" onClick={() => scrollToCreatorSection("bestaande-evenementen")}>Bestaande evenementen</button>}
       </div>
       <div className="creatorQuickActions">
         <button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig…" : "Concept opslaan"}</button>
@@ -2064,20 +2065,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
     <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : "Basisconcept opslaan"}</button></div>
     <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
-    {isEvent && <div className="existingWebsiteEvents">
-      <div className="existingWebsiteEventsHead"><div><p className="eyebrow">BESTAANDE WEBSITE-AGENDA</p><h3>Eventin-evenementen koppelen</h3><p>Laden en koppelen verandert niets op de website. Pas na koppelen verschijnt het evenement als beheerdossier in Horeca OS.</p></div><button type="button" className="secondaryButton" onClick={loadManagedWebsiteEvents} disabled={managedEventsLoading}>{managedEventsLoading ? "Evenementen laden…" : "Bestaande evenementen laden"}</button></div>
-      {managedWebsiteEvents.length > 0 && <div className="managedEventGrid">{managedWebsiteEvents.map((eventItem) => {
-        const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
-        const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
-        return <article key={eventItem.id}>
-          <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
-          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
-          {incomplete && <small>De overzichtslijst bevat niet alle Eventin-velden. Bij koppelen haalt Horeca OS eerst de volledige datum, tijd, locatie, afbeelding en tickets op.</small>}
-          <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
-        </article>;
-      })}</div>}
-    </div>}
-    <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
+    <div className="campaignStatus creatorSection" id="opgeslagen-campagnes"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
         <strong>Nog geen campagneconcepten opgeslagen</strong>
         <p>Maak hierboven je eerste campagne. Na het opslaan verschijnt die hier met controle-, planning- en kopieerknoppen per kanaal.</p>
@@ -2257,6 +2245,19 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </>}
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
+    {isEvent && <div className="existingWebsiteEvents creatorSection" id="bestaande-evenementen">
+      <div className="existingWebsiteEventsHead"><div><p className="eyebrow">BESTAANDE WEBSITE-AGENDA</p><h3>Eventin-evenementen koppelen</h3><p>Hier staan bestaande evenementen apart van nieuwe en opgeslagen campagnes. Laden en koppelen verandert niets op de website.</p></div><button type="button" className="secondaryButton" onClick={loadManagedWebsiteEvents} disabled={managedEventsLoading}>{managedEventsLoading ? "Evenementen laden…" : "Bestaande evenementen laden"}</button></div>
+      {managedWebsiteEvents.length > 0 && <div className="managedEventGrid">{managedWebsiteEvents.map((eventItem) => {
+        const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
+        const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
+        return <article key={eventItem.id}>
+          <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
+          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
+          {incomplete && <small>De overzichtslijst bevat niet alle Eventin-velden. Bij koppelen haalt Horeca OS eerst de volledige datum, tijd, locatie, afbeelding en tickets op.</small>}
+          <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
+        </article>;
+      })}</div>}
+    </div>}
     <style jsx>{`
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
       .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
