@@ -175,6 +175,15 @@ function formatNlDateTime(value) {
   }).format(date);
 }
 
+function formatNlDate(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("nl-NL", {
+    timeZone: "Europe/Amsterdam", day: "numeric", month: "long", year: "numeric",
+  }).format(date);
+}
+
 function toLocalDateTimeInput(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -2268,7 +2277,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
         return <article key={eventItem.id}>
           <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
-          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
+          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : eventItem.eventDate ? formatNlDate(eventItem.eventDate) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
           {incomplete && <small>De overzichtslijst bevat niet alle Eventin-velden. Bij koppelen haalt Horeca OS eerst de volledige datum, tijd, locatie, afbeelding en tickets op.</small>}
           <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
         </article>;
