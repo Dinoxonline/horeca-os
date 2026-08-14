@@ -86,7 +86,7 @@ function channelConceptText(distribution, channel, fallbackBody = "") {
 
 function calendarEventDescription(form, websiteUrl) {
   const tickets = (form.ticketVariations || []).map((ticket) => {
-    const price = ticket.type === "free" ? "Gratis" : `â‚¬ ${Number(ticket.price || 0).toFixed(2).replace(".", ",")}`;
+    const price = ticket.type === "free" ? "Gratis" : `€ ${Number(ticket.price || 0).toFixed(2).replace(".", ",")}`;
     const capacity = ticket.capacity ? `${ticket.capacity} beschikbaar` : "onbeperkt";
     return `- ${ticket.name || "Ticket"}: ${price} (${capacity})`;
   });
@@ -108,7 +108,7 @@ function defaultsForBusiness(business) {
   const isPlein = name.toLowerCase().includes("plein");
   return {
     organizer: name || emptyForm.organizer,
-    location: isPlein ? "GrandcafÃ© Het Plein" : "Caribbean Corner",
+    location: isPlein ? "Grandcafé Het Plein" : "Caribbean Corner",
     contactEmail: isPlein ? "" : emptyForm.contactEmail,
   };
 }
@@ -356,7 +356,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   });
   const channelMediaIssues = form.preparePromotion ? [
     ...(form.channels.facebook && !(form.facebookPlacements || []).length ? ["Facebook: kies Feed, Verhaal of Reel."] : []),
-    ...(enabledChannels.length === 0 ? ["Kies minimaal Ã©Ã©n promotiekanaal."] : []),
+    ...(enabledChannels.length === 0 ? ["Kies minimaal één promotiekanaal."] : []),
     ...channelImagePreviews.flatMap((item) => {
       const videoRequired = item.channel === "tiktok"
         || (item.channel === "instagram" && form.instagramFormat === "reel")
@@ -402,7 +402,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setDraggingSlot("");
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 1) {
-      setUploadMessage({ ok: false, message: "Sleep Ã©Ã©n afbeelding tegelijk naar een afbeeldingsvak." });
+      setUploadMessage({ ok: false, message: "Sleep één afbeelding tegelijk naar een afbeeldingsvak." });
       return;
     }
     if (files[0]) uploadImage(slot, files[0]);
@@ -414,7 +414,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setDraggingSlot("");
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 1) {
-      setUploadMessage({ ok: false, message: "Sleep Ã©Ã©n bronafbeelding tegelijk. Horeca OS maakt daar alle mogelijke formaten van." });
+      setUploadMessage({ ok: false, message: "Sleep één bronafbeelding tegelijk. Horeca OS maakt daar alle mogelijke formaten van." });
       return;
     }
     if (files[0]) uploadImageToAll(files[0]);
@@ -448,7 +448,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
 
       if (sourceWidth < slot.width || sourceHeight < slot.height) {
-        throw new Error(`${slot.label} heeft na het bijsnijden minimaal ${slot.width} Ã— ${slot.height} bruikbare pixels nodig. Deze foto is ${loaded.width} Ã— ${loaded.height} px.`);
+        throw new Error(`${slot.label} heeft na het bijsnijden minimaal ${slot.width} × ${slot.height} bruikbare pixels nodig. Deze foto is ${loaded.width} × ${loaded.height} px.`);
       }
       if (!cropped && loaded.width === slot.width && loaded.height === slot.height) {
         return { file, width: loaded.width, height: loaded.height, resized: false, cropped: false, focus: cropFocus, originalWidth: loaded.width, originalHeight: loaded.height };
@@ -492,10 +492,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setUploadMessage({
         ok: true,
         message: prepared.cropped
-          ? `${slot.label} is automatisch bijgesneden met focus op ${cropFocus === "top" ? "boven" : cropFocus === "bottom" ? "onder" : "het midden"} en aangepast van ${prepared.originalWidth} Ã— ${prepared.originalHeight} naar ${slot.width} Ã— ${slot.height} px.`
+          ? `${slot.label} is automatisch bijgesneden met focus op ${cropFocus === "top" ? "boven" : cropFocus === "bottom" ? "onder" : "het midden"} en aangepast van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px.`
           : prepared.resized
-            ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} Ã— ${prepared.originalHeight} naar ${slot.width} Ã— ${slot.height} px en geÃ¼pload.`
-            : `${slot.label} is correct geÃ¼pload.`,
+            ? `${slot.label} is automatisch verkleind van ${prepared.originalWidth} × ${prepared.originalHeight} naar ${slot.width} × ${slot.height} px en geüpload.`
+            : `${slot.label} is correct geüpload.`,
       });
       setPreview(false); setResult(null);
     } catch (error) { setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt." }); }
@@ -546,7 +546,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         ok: true,
         message: failures.length
           ? `De Eventin-afbeelding is opgeslagen. ${completed} van de ${imageSlots.length} socialmediaformaten zijn gemaakt. ${failures.join(" ")}`
-          : "De Eventin-afbeelding en alle vier socialmediaformaten zijn geÃ¼pload.",
+          : "De Eventin-afbeelding en alle vier socialmediaformaten zijn geüpload.",
       });
     } finally {
       setUploadingSlot("");
@@ -601,7 +601,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (requestId !== managedEventsRequestRef.current) return;
       if (!response.ok) throw new Error(payload.error || "De bestaande website-evenementen konden niet worden geladen.");
       setManagedWebsiteEvents((payload.events || []).map((eventItem) => ({ ...eventItem, businessId: selectedBusinessId, site, readOnly: Boolean(payload.readOnly) })));
-      setResult({ ok: true, message: `${payload.events?.length || 0} bestaande Eventin-evenementen gevonden. Er is nog niets geÃ¯mporteerd of gewijzigd.${payload.warning ? ` ${payload.warning}` : ""}` });
+      setResult({ ok: true, message: `${payload.events?.length || 0} bestaande Eventin-evenementen gevonden. Er is nog niets geïmporteerd of gewijzigd.${payload.warning ? ` ${payload.warning}` : ""}` });
     } catch (error) {
       if (requestId !== managedEventsRequestRef.current) return;
       setManagedWebsiteEvents([]);
@@ -650,7 +650,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         throw new Error("Eventin heeft geen volledige datum, tijd en locatie teruggestuurd. Het evenement is daarom niet gekoppeld.");
       }
       if (!eventLocationMatchesBusiness(fullEvent.location, selectedBusiness)) {
-        throw new Error(`Dit Eventin-evenement hoort bij â€œ${fullEvent.location}â€ en kan niet onder â€œ${selectedBusiness?.name || "de gekozen vestiging"}â€ worden gekoppeld. Kies eerst de juiste vestiging.`);
+        throw new Error(`Dit Eventin-evenement hoort bij “${fullEvent.location}” en kan niet onder “${selectedBusiness?.name || "de gekozen vestiging"}” worden gekoppeld. Kies eerst de juiste vestiging.`);
       }
       const { data: existingRows, error: existingError } = await supabase.from("social_content_items")
         .select("id,media")
@@ -735,7 +735,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     let common = distribution.common || {};
     if (isWebsiteEvent && !asCopy) {
       setConceptBusyId(item.id);
-      setResult({ ok: true, message: "De volledige Eventin-gegevens worden geladenÃ¢â‚¬Â¦" });
+      setResult({ ok: true, message: "De volledige Eventin-gegevens worden geladenâ€¦" });
       try {
         const query = new URLSearchParams({
           workspaceId,
@@ -1286,7 +1286,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.preparePromotion && form.channels.brevo && !(form.description.trim() || form.shortDescription.trim())) return "Vul voor Brevo een promotietekst of volledige omschrijving in.";
     if (form.preparePromotion && form.channels.brevo && brevoLoading) return "Wacht tot de Brevo-doelgroepen zijn geladen.";
     if (form.preparePromotion && form.channels.brevo && brevoError) return brevoError;
-    if (form.preparePromotion && form.channels.brevo && selectedBrevoListIds.length === 0) return "Kies voor Brevo minimaal Ã©Ã©n doelgroep.";
+    if (form.preparePromotion && form.channels.brevo && selectedBrevoListIds.length === 0) return "Kies voor Brevo minimaal één doelgroep.";
     if (form.preparePromotion && form.channels.facebook && !(form.facebookPlacements || []).length) return "Kies voor Facebook minimaal Feed, Verhaal of Reel.";
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
@@ -1481,7 +1481,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   async function publishFacebookCampaign(item) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
     const title = distribution.common?.title || "dit evenement";
-    if (!window.confirm(`Plaats â€œ${title}â€ nu echt op de gekoppelde Facebookpagina?`)) return;
+    if (!window.confirm(`Plaats “${title}” nu echt op de gekoppelde Facebookpagina?`)) return;
     setConceptBusyId(item.id);
     setResult(null);
     try {
@@ -1524,7 +1524,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   async function removeFacebookGroup(group) {
-    if (!window.confirm(`Verwijder â€œ${group.name}â€ uit de keuzelijst? Bestaande dossiers blijven ongewijzigd.`)) return;
+    if (!window.confirm(`Verwijder “${group.name}” uit de keuzelijst? Bestaande dossiers blijven ongewijzigd.`)) return;
     const response = await fetch("/api/integrations/facebook/groups", {
       method: "DELETE",
       headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -1564,7 +1564,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     ].filter(Boolean).join("\n\n");
     try { void navigator.clipboard.writeText(eventText); } catch {}
     window.open("https://www.facebook.com/events/create/", "_blank", "noopener,noreferrer");
-    setResult({ ok: true, message: `Facebook Evenement maken is geopend voor de vestiging ${selectedBusiness?.name || ""}. Kies daar pagina â€œ${destination.page_name}â€, voeg de afbeelding toe en bevestig het evenement.` });
+    setResult({ ok: true, message: `Facebook Evenement maken is geopend voor de vestiging ${selectedBusiness?.name || ""}. Kies daar pagina “${destination.page_name}”, voeg de afbeelding toe en bevestig het evenement.` });
   }
 
   async function saveFacebookEventLink(item) {
@@ -1715,7 +1715,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             ? { workspaceId, mailbox: calendarDelivery.mailbox, eventId: calendarDelivery.event_id }
             : {
                 workspaceId, mailbox: calendarDelivery.mailbox, eventId: calendarDelivery.event_id,
-                subject: `GEANNULEERD â€“ ${distribution.common?.title || "Evenement"}`,
+                subject: `GEANNULEERD – ${distribution.common?.title || "Evenement"}`,
                 description: `GEANNULEERD\n\n${distribution.common?.description || item.body || ""}\n\nWebsite: ${distribution.source_url || ""}`,
                 start: distribution.common?.start, end: distribution.common?.end, location: distribution.common?.location || "",
                 attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "free",
@@ -1760,7 +1760,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             ? "Het website-evenement staat nu als Eventin-concept. Andere kanalen zijn niet gewijzigd."
             : calendarSyncError
               ? `Het evenement is in Eventin geannuleerd, maar de agenda kon niet worden bijgewerkt: ${calendarSyncError}`
-              : "Het evenement blijft online staan en wordt in Eventin Ã©n Microsoft Agenda duidelijk als Geannuleerd weergegeven. Andere kanalen zijn niet automatisch gewijzigd." });
+              : "Het evenement blijft online staan en wordt in Eventin én Microsoft Agenda duidelijk als Geannuleerd weergegeven. Andere kanalen zijn niet automatisch gewijzigd." });
       }
       await loadEventCampaigns();
     } catch (error) {
@@ -1779,7 +1779,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setCopiedChannelKey(key);
       window.setTimeout(() => setCopiedChannelKey((current) => current === key ? "" : current), 2000);
     } catch {
-      setResult({ ok: false, message: "KopiÃ«ren is niet gelukt. Open het concept en selecteer de tekst handmatig." });
+      setResult({ ok: false, message: "Kopiëren is niet gelukt. Open het concept en selecteer de tekst handmatig." });
     }
   }
 
@@ -1814,9 +1814,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <button type="button" onClick={() => scrollToCreatorSection("opgeslagen-campagnes")}>Opgeslagen</button>
       </div>
       <div className="creatorQuickActions">
-        <button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezigâ€¦" : "Concept opslaan"}</button>
+        <button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig…" : "Concept opslaan"}</button>
         <button type="button" onClick={showPreview} disabled={busy}>Controleren</button>
-        {preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady}>{busy ? "Bezigâ€¦" : editingWebsiteEvent ? "Bijwerken" : isEvent ? form.status === "publish" ? "Publiceren" : "Aanmaken" : "Opslaan"}</button>}
+        {preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady}>{busy ? "Bezig…" : editingWebsiteEvent ? "Bijwerken" : isEvent ? form.status === "publish" ? "Publiceren" : "Aanmaken" : "Opslaan"}</button>}
       </div>
     </nav>
     <div className="eventCreatorGrid creatorSection" id="campagne-basis">
@@ -1830,12 +1830,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label className="wide">Korte promotietekst<textarea rows={3} value={form.shortDescription} onChange={(e) => update("shortDescription", e.target.value)} placeholder="De kernboodschap voor Google, WhatsApp en sociale media." /></label>
       <label className="wide">{form.campaignType === "review" ? "Reviewtekst *" : "Volledige omschrijving"}<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
       <div className="imageUploads wide creatorSection" id="campagne-afbeeldingen">
-        <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload Ã©Ã©n bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
+        <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload één bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
         <article className={`eventinImageStatus ${form.eventinImage?.url ? "ready" : "empty"}`}>
           <div>
             <strong>Eventin-afbeelding</strong>
             {form.eventinImage?.url
-              ? <><span>âœ“ Opgeslagen en klaar voor Eventin</span><small>Deze originele foto wordt bij het aanmaken van het evenement naar Eventin gestuurd. De sociale formaten hieronder staan hiervan los.</small></>
+              ? <><span>✓ Opgeslagen en klaar voor Eventin</span><small>Deze originele foto wordt bij het aanmaken van het evenement naar Eventin gestuurd. De sociale formaten hieronder staan hiervan los.</small></>
               : <><span>Nog geen afbeelding gekozen</span><small>Kies hieronder een bronafbeelding. De originele foto wordt apart voor Eventin bewaard, ook als geen sociaal formaat kan worden gemaakt.</small></>}
           </div>
           {form.eventinImage?.url && <div className="eventinImagePreview">
@@ -1845,9 +1845,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         </article>
         <label className="cropFocus">Focuspunt bij automatisch bijsnijden
           <select value={cropFocus} onChange={(event) => setCropFocus(event.target.value)}>
-            <option value="top">Boven â€” behoud gezichten of tekst bovenin</option>
-            <option value="center">Midden â€” standaard</option>
-            <option value="bottom">Onder â€” behoud tekst of details onderin</option>
+            <option value="top">Boven — behoud gezichten of tekst bovenin</option>
+            <option value="center">Midden — standaard</option>
+            <option value="bottom">Onder — behoud tekst of details onderin</option>
           </select>
           <small>Horeca OS houdt dit deel zoveel mogelijk in beeld wanneer een foto niet dezelfde verhouding heeft.</small>
         </label>
@@ -1858,11 +1858,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDraggingSlot(""); }}
           onDrop={handleAllImageDrop}
         >
-          <div><strong>EÃ©n bronafbeelding voor alle formaten</strong><span>Horeca OS maakt automatisch 1,91:1, 1:1, 4:5 en 9:16</span><small>Je kunt een automatisch gemaakte uitsnede hieronder altijd vervangen.</small></div>
+          <div><strong>Eén bronafbeelding voor alle formaten</strong><span>Horeca OS maakt automatisch 1,91:1, 1:1, 4:5 en 9:16</span><small>Je kunt een automatisch gemaakte uitsnede hieronder altijd vervangen.</small></div>
           <div className="imageDropZone">
-            <strong>{draggingSlot === "all" ? "Laat de bronafbeelding hier los" : "Sleep Ã©Ã©n afbeelding hierheen"}</strong>
+            <strong>{draggingSlot === "all" ? "Laat de bronafbeelding hier los" : "Sleep één afbeelding hierheen"}</strong>
             <small>of</small>
-            <label className="uploadButton">{uploadingSlot === "all" ? "Alle formaten makenâ€¦" : "Bronafbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImageToAll(e.target.files?.[0])} /></label>
+            <label className="uploadButton">{uploadingSlot === "all" ? "Alle formaten maken…" : "Bronafbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImageToAll(e.target.files?.[0])} /></label>
           </div>
         </article>
         <div className="imageSlotGrid">{imageSlots.map((slot) => {
@@ -1876,20 +1876,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDraggingSlot(""); }}
             onDrop={(event) => handleImageDrop(slot, event)}
           >
-            <div><strong>{slot.label}</strong><span>{slot.width} Ã— {slot.height} px Â· {slot.ratio}</span><small>{slot.channels}</small></div>
+            <div><strong>{slot.label}</strong><span>{slot.width} × {slot.height} px · {slot.ratio}</span><small>{slot.channels}</small></div>
             {uploaded ? <div className="uploadedImage">
               <div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} />
-              <p>{uploaded.width} Ã— {uploaded.height} px {uploaded.matches ? "Â· Perfect formaat" : "Â· Afwijkend formaat"}</p>
+              <p>{uploaded.width} × {uploaded.height} px {uploaded.matches ? "· Perfect formaat" : "· Afwijkend formaat"}</p>
               <small className="replaceHint">Sleep een nieuwe afbeelding hierheen om te vervangen.</small>
               <button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button>
             </div> : <div className="imageDropZone">
               <strong>{isDragging ? "Laat de afbeelding hier los" : "Sleep een afbeelding hierheen"}</strong>
               <small>of</small>
-              <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploadenâ€¦" : "Afbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>
+              <label className="uploadButton">{uploadingSlot === slot.key ? "Bezig met uploaden…" : "Afbeelding kiezen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={(e) => uploadImage(slot, e.target.files?.[0])} /></label>
             </div>}
           </article>;
         })}</div>
-        <p className="imageHelp">JPG, PNG of WebP Â· maximaal 10 MB per afbeelding.</p>
+        <p className="imageHelp">JPG, PNG of WebP · maximaal 10 MB per afbeelding.</p>
         {uploadMessage && <p className={`uploadMessage ${uploadMessage.ok ? "success" : "error"}`}>{uploadMessage.message}</p>}
       </div>
       <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
@@ -1922,24 +1922,24 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       {isEvent && <div className="eventinDestination">
         <label className="check"><input type="checkbox" checked readOnly /> Eventin op caribbeancorner.nl</label>
         <label>Eventin-publicatie<select value={form.status} onChange={(e) => update("status", e.target.value)}><option value="draft">Eerst als concept</option><option value="publish">Direct publiceren</option></select></label>
-        <small>De gekozen vestiging wordt als locatie gebruikt. Bij â€˜Direct publicerenâ€™ komt het evenement meteen openbaar in Eventin; bij â€˜Eerst als conceptâ€™ kun je het daar nog controleren.</small>
+        <small>De gekozen vestiging wordt als locatie gebruikt. Bij ‘Direct publiceren’ komt het evenement meteen openbaar in Eventin; bij ‘Eerst als concept’ kun je het daar nog controleren.</small>
       </div>}
       {isEvent && <><label className="check"><input type="checkbox" checked={form.addToCalendar} onChange={(e) => update("addToCalendar", e.target.checked)} /> Microsoft-agenda</label>
       {form.addToCalendar && <label>Agenda-e-mailadres<input type="email" value={form.calendarMailbox} onChange={(e) => update("calendarMailbox", e.target.value)} /></label>}</>}
       <label className="check"><input type="checkbox" checked={form.preparePromotion} onChange={(e) => update("preparePromotion", e.target.checked)} /> Promotieconcept voor andere kanalen</label>
       {form.preparePromotion && <>
         <div className="channelChecks">{Object.entries(channelLabels).map(([key, label]) => <label className="channelCheck" key={key}><span className="check"><input type="checkbox" checked={form.channels[key]} onChange={() => toggleChannel(key)} /> {label}</span><small>{key === "predis" && !predisConnected ? "Niet gekoppeld" : channelModes[key]}</small></label>)}</div>
-        <p className="channelSafetyNote">Selecteren publiceert niets automatisch. Brevo slaat een concept bij Brevo op. Facebook krijgt na opslaan een aparte knop â€œOp Facebook plaatsenâ€. De overige kanalen blijven interne concepten in Horeca OS.</p>
+        <p className="channelSafetyNote">Selecteren publiceert niets automatisch. Brevo slaat een concept bij Brevo op. Facebook krijgt na opslaan een aparte knop “Op Facebook plaatsen”. De overige kanalen blijven interne concepten in Horeca OS.</p>
       </>}
     </fieldset>
 
     {form.preparePromotion && <div className="channelDetails">
-      {form.channels.brevo && <fieldset><legend>Brevo â€” veilig als concept</legend>
+      {form.channels.brevo && <fieldset><legend>Brevo — veilig als concept</legend>
         <label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label>
         <label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label>
         <div className="brevoAudiencePicker">
           <strong>Doelgroep(en) *</strong>
-          {brevoLoading && <p>Brevo-doelgroepen ladenâ€¦</p>}
+          {brevoLoading && <p>Brevo-doelgroepen laden…</p>}
           {!brevoLoading && brevoError && <p className="brevoAudienceError">{brevoError}</p>}
           {!brevoLoading && !brevoError && brevoLists.length === 0 && <p>Geen Brevo-doelgroepen beschikbaar voor deze vestiging.</p>}
           {brevoLists.map((list) => <label className="check" key={list.id}>
@@ -1950,35 +1950,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             }} />
             {list.name} ({Number(list.totalSubscribers || list.uniqueSubscribers || 0).toLocaleString("nl-NL")} ontvangers)
           </label>)}
-          {selectedBrevoListIds.length > 0 && <p><b>{brevoRecipientCount.toLocaleString("nl-NL")} ontvangers geselecteerd</b>{brevoSenderEmail ? ` Â· afzender ${brevoSenderEmail}` : ""}</p>}
+          {selectedBrevoListIds.length > 0 && <p><b>{brevoRecipientCount.toLocaleString("nl-NL")} ontvangers geselecteerd</b>{brevoSenderEmail ? ` · afzender ${brevoSenderEmail}` : ""}</p>}
           <small>Horeca OS slaat alleen een Brevo-concept op. Vanuit deze stap wordt niets verzonden.</small>
         </div>
-      </fieldset>}
-      {form.channels.facebook && <fieldset><legend>Facebook â€” klaarzetten voor publicatie</legend>
-        <div className={`facebookDestination ${facebookAccount ? "ready" : "missing"}`}><strong>{facebookAccountLoading ? "Facebookpagina controlerenâ€¦" : facebookAccount ? `Bestemming: ${facebookAccount.display_name}` : `Geen Facebookpagina gekoppeld voor ${selectedBusiness?.name || "deze vestiging"}`}</strong><span>{facebookAccount ? `Alleen de pagina, agenda en groepen van ${selectedBusiness?.name || "deze vestiging"} worden gebruikt.` : "Koppel eerst de eigen Facebookpagina onder Koppelingen. Horeca OS gebruikt nooit automatisch de pagina van een andere vestiging."}</span></div>
-        <div className="placementChoices"><span>Plaatsing *</span><label className="check"><input type="checkbox" checked={(form.facebookPlacements || []).includes("feed")} onChange={() => toggleFacebookPlacement("feed")} /> Facebookpagina</label></div>
-        <label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label>
-        <small>Horeca OS vult afbeelding, datum, locatie, tickets en Eventin-link automatisch aan. Publiceren gebeurt pas met de aparte bevestigingsknop bij het opgeslagen evenement.</small>
-        <div className="facebookGroupPicker">
-          <div className="facebookGroupPickerHead"><strong>Groepen voor {selectedBusiness?.name || "deze vestiging"}</strong><span>{selectedFacebookGroupIds.length} geselecteerd</span></div>
-          {facebookGroups.length > 0 && <div className="facebookGroupTools">
-            <label>Groep zoeken<input type="search" value={facebookGroupSearch} onChange={(event) => setFacebookGroupSearch(event.target.value)} placeholder="Zoek op groepsnaam" /></label>
-            <div><button type="button" disabled={visibleFacebookGroups.length === 0} onClick={() => setSelectedFacebookGroupIds((current) => [...new Set([...current, ...visibleFacebookGroups.map((group) => String(group.id))])])}>Selecteer zichtbare</button><button type="button" disabled={selectedFacebookGroupIds.length === 0} onClick={() => setSelectedFacebookGroupIds([])}>Selectie wissen</button></div>
-          </div>}
-          {facebookGroupsLoading && <p>Facebookgroepen ladenâ€¦</p>}
-          <div className="facebookGroupList">{visibleFacebookGroups.map((group) => <div className="facebookGroupChoice" key={group.id}><label className="check"><input type="checkbox" checked={selectedFacebookGroupIds.includes(String(group.id))} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> {group.name}</label><button type="button" onClick={() => removeFacebookGroup(group)}>Verwijderen</button></div>)}</div>
-          {!facebookGroupsLoading && facebookGroups.length === 0 && <p>Nog geen groepen opgeslagen voor deze vestiging.</p>}
-          {!facebookGroupsLoading && facebookGroups.length > 0 && visibleFacebookGroups.length === 0 && <p>Geen groepen gevonden voor â€œ{facebookGroupSearch}â€.</p>}
-          <div className="facebookGroupAdd"><input value={newFacebookGroup.name} onChange={(event) => setNewFacebookGroup((current) => ({ ...current, name: event.target.value }))} placeholder="Naam van de groep" /><input value={newFacebookGroup.url} onChange={(event) => setNewFacebookGroup((current) => ({ ...current, url: event.target.value }))} placeholder="https://www.facebook.com/groups/â€¦" /><button type="button" onClick={saveFacebookGroup}>Groep toevoegen</button></div>
-          {facebookGroupsError && <p className="brevoAudienceError">{facebookGroupsError}</p>}
-          <small>Deze lijst hoort uitsluitend bij {selectedBusiness?.name || "de gekozen vestiging"}. Na publicatie opent Horeca OS iedere gekozen groep apart.</small>
-        </div>
-      </fieldset>}
-      {form.channels.instagram && <fieldset><legend>Instagram â€” intern concept</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
-      {form.channels.tiktok && <fieldset><legend>TikTok â€” intern concept, video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
-      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business â€” intern concept</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
-      {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel â€” intern concept</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
-      {form.channels.predis && <fieldset><legend>Predis â€” veilig als concept</legend>
+      </fieldset>}      {form.channels.facebook && <fieldset><legend>Facebook — klaarzetten voor publicatie</legend><div className={`facebookDestination ${facebookAccount ? "ready" : "missing"}`}><strong>{facebookAccountLoading ? "Facebookpagina controleren…" : facebookAccount ? `Bestemming: ${facebookAccount.display_name}` : `Geen Facebookpagina gekoppeld voor ${selectedBusiness?.name || "deze vestiging"}`}</strong><span>{facebookAccount ? `Alleen de pagina, agenda en groepen van ${selectedBusiness?.name || "deze vestiging"} worden gebruikt.` : "Koppel eerst de eigen Facebookpagina onder Koppelingen. Horeca OS gebruikt nooit automatisch de pagina van een andere vestiging."}</span></div><div className="placementChoices"><span>Plaatsing *</span><label className="check"><input type="checkbox" checked={(form.facebookPlacements || []).includes("feed")} onChange={() => toggleFacebookPlacement("feed")} /> Facebookpagina</label></div><label>Berichttekst<textarea rows={3} value={form.facebookText} onChange={(e) => update("facebookText", e.target.value)} placeholder="Leeg = korte promotietekst" /></label><small>Horeca OS vult afbeelding, datum, locatie, tickets en Eventin-link automatisch aan. Publiceren gebeurt pas met de aparte bevestigingsknop bij het opgeslagen evenement.</small><div className="facebookGroupPicker"><div className="facebookGroupPickerHead"><strong>Groepen voor {selectedBusiness?.name || "deze vestiging"}</strong><span>{selectedFacebookGroupIds.length} geselecteerd</span></div>{facebookGroupsLoading && <p>Facebookgroepen laden…</p>}{facebookGroups.length > 0 && <div className="facebookGroupTools"><label>Groep zoeken<input type="search" value={facebookGroupSearch} onChange={(event) => setFacebookGroupSearch(event.target.value)} placeholder="Zoek op groepsnaam" /></label><div><button type="button" onClick={() => setSelectedFacebookGroupIds((current) => Array.from(new Set([...current, ...visibleFacebookGroups.map((group) => String(group.id))])))}>Selecteer zichtbare</button><button type="button" onClick={() => setSelectedFacebookGroupIds([])}>Selectie wissen</button></div></div>}<div className="facebookGroupList">{visibleFacebookGroups.map((group) => <div className="facebookGroupChoice" key={group.id}><label className="check"><input type="checkbox" checked={selectedFacebookGroupIds.includes(String(group.id))} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> {group.name}</label><button type="button" onClick={() => removeFacebookGroup(group)}>Verwijderen</button></div>)}</div>{!facebookGroupsLoading && facebookGroups.length === 0 && <p>Nog geen groepen opgeslagen voor deze vestiging.</p>}{!facebookGroupsLoading && facebookGroups.length > 0 && visibleFacebookGroups.length === 0 && <p>Geen groepen gevonden met deze zoekterm.</p>}<div className="facebookGroupAdd"><input value={newFacebookGroup.name} onChange={(event) => setNewFacebookGroup((current) => ({ ...current, name: event.target.value }))} placeholder="Naam van de groep" /><input value={newFacebookGroup.url} onChange={(event) => setNewFacebookGroup((current) => ({ ...current, url: event.target.value }))} placeholder="https://www.facebook.com/groups/…" /><button type="button" onClick={saveFacebookGroup}>Groep toevoegen</button></div>{facebookGroupsError && <p className="brevoAudienceError">{facebookGroupsError}</p>}<small>Deze lijst hoort uitsluitend bij {selectedBusiness?.name || "de gekozen vestiging"}. Na publicatie opent Horeca OS iedere gekozen groep apart.</small></div></fieldset>}
+      {form.channels.instagram && <fieldset><legend>Instagram — intern concept</legend><label>Vorm<select value={form.instagramFormat} onChange={(e) => update("instagramFormat", e.target.value)}><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option><option value="carousel">Carrousel</option></select></label><label>Bijschrift<textarea rows={3} value={form.instagramCaption} onChange={(e) => update("instagramCaption", e.target.value)} /></label></fieldset>}
+      {form.channels.tiktok && <fieldset><legend>TikTok — intern concept, video verplicht</legend><label>Bijschrift<textarea rows={3} value={form.tiktokCaption} onChange={(e) => update("tiktokCaption", e.target.value)} /></label><label>Zichtbaarheid<select value={form.tiktokPrivacy} onChange={(e) => update("tiktokPrivacy", e.target.value)}><option value="PUBLIC_TO_EVERYONE">Openbaar</option><option value="MUTUAL_FOLLOW_FRIENDS">Vrienden</option><option value="SELF_ONLY">Alleen ik</option></select></label><label className="check"><input type="checkbox" checked={form.tiktokComments} onChange={(e) => update("tiktokComments", e.target.checked)} /> Reacties toestaan</label></fieldset>}
+      {form.channels.whatsapp && <fieldset><legend>WhatsApp Business — intern concept</legend><label>Goedgekeurde templatenaam *<input value={form.whatsappTemplate} onChange={(e) => update("whatsappTemplate", e.target.value)} /></label><label>Bericht<textarea rows={3} value={form.whatsappMessage} onChange={(e) => update("whatsappMessage", e.target.value)} /></label></fieldset>}
+      {form.channels.google && <fieldset><legend>Google Bedrijfsprofiel — intern concept</legend><label>Soort bericht<select value={form.googleTopic} onChange={(e) => update("googleTopic", e.target.value)}><option value="EVENT">Evenement</option><option value="STANDARD">Update</option><option value="OFFER">Aanbieding</option></select></label><p>Gebruikt titel, datum/tijd, korte tekst, afbeelding en knoplink uit de basis.</p></fieldset>}
+      {form.channels.predis && <fieldset><legend>Predis — veilig als concept</legend>
         <label>Soort concept<select value={form.predisType} onChange={(e) => update("predisType", e.target.value)}><option value="afbeelding">Afbeelding</option><option value="video">Video</option><option value="carousel">Carrousel</option></select></label>
         <label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label>
         <div className="predisGenerationChoice">
@@ -1987,7 +1967,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           <small>Standaard uit. Ook wanneer dit aanstaat, wordt het resultaat alleen als concept gemaakt en nooit automatisch gepubliceerd.</small>
         </div>
       </fieldset>}
-      <fieldset className="wide"><legend>Spreiding per kanaal</legend><label className="check"><input type="checkbox" checked={Boolean(form.staggerEnabled)} onChange={(event) => update("staggerEnabled", event.target.checked)} /> Willekeurige wachttijd tussen de kanalen</label>{form.staggerEnabled && <div className="staggerFields"><label>Minimaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMinMinutes} onChange={(event) => update("staggerMinMinutes", event.target.value)} /></label><label>Maximaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMaxMinutes} onChange={(event) => update("staggerMaxMinutes", event.target.value)} /></label></div>}<p>Horeca OS toont vooraf het interne tijdschema. Een kanaal krijgt pas de status â€˜geplaatstâ€™ nadat de aanbieder dit heeft bevestigd.</p></fieldset>
+      <fieldset className="wide"><legend>Spreiding per kanaal</legend><label className="check"><input type="checkbox" checked={Boolean(form.staggerEnabled)} onChange={(event) => update("staggerEnabled", event.target.checked)} /> Willekeurige wachttijd tussen de kanalen</label>{form.staggerEnabled && <div className="staggerFields"><label>Minimaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMinMinutes} onChange={(event) => update("staggerMinMinutes", event.target.value)} /></label><label>Maximaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMaxMinutes} onChange={(event) => update("staggerMaxMinutes", event.target.value)} /></label></div>}<p>Horeca OS toont vooraf het interne tijdschema. Een kanaal krijgt pas de status ‘geplaatst’ nadat de aanbieder dit heeft bevestigd.</p></fieldset>
     </div>}
 
     {preview && <div className="eventPreview">
@@ -2009,29 +1989,29 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <img src={item.imageUrl} alt={`Voorbeeld voor ${item.label}`} />
               <p><b>{item.isExternal ? "Externe afbeeldingslink" : selectedSlot?.label}</b>{selectedSlot ? ` - ${selectedSlot.width} x ${selectedSlot.height} px` : ""}</p>
               {item.isFallback && <small className="fallbackNotice">Alternatief gebruikt. Ideaal voor dit kanaal: {preferredSlot?.label} ({preferredSlot?.width} x {preferredSlot?.height} px).</small>}
-              {item.channel === "predis" && <small>Predis ontvangt alle geÃ¼ploade formaten; hierboven staat het primaire voorbeeld.</small>}
+              {item.channel === "predis" && <small>Predis ontvangt alle geüploade formaten; hierboven staat het primaire voorbeeld.</small>}
             </> : <p className="missingImageNotice">Upload bij voorkeur {preferredSlot?.label} ({preferredSlot?.width} x {preferredSlot?.height} px).</p>}
           </article>;
         })}
       </div>}
     </div>}
-    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "âœ“" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
-    <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaanâ€¦" : "Basisconcept opslaan"}</button></div>
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaanâ€¦" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
+    <div className="earlyDraftAction"><div><strong>Nog niet alles compleet?</strong><p>Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland.</p></div><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : "Basisconcept opslaan"}</button></div>
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
     {isEvent && <div className="existingWebsiteEvents">
-      <div className="existingWebsiteEventsHead"><div><p className="eyebrow">BESTAANDE WEBSITE-AGENDA</p><h3>Eventin-evenementen koppelen</h3><p>Laden en koppelen verandert niets op de website. Pas na koppelen verschijnt het evenement als beheerdossier in Horeca OS.</p></div><button type="button" className="secondaryButton" onClick={loadManagedWebsiteEvents} disabled={managedEventsLoading}>{managedEventsLoading ? "Evenementen ladenâ€¦" : "Bestaande evenementen laden"}</button></div>
+      <div className="existingWebsiteEventsHead"><div><p className="eyebrow">BESTAANDE WEBSITE-AGENDA</p><h3>Eventin-evenementen koppelen</h3><p>Laden en koppelen verandert niets op de website. Pas na koppelen verschijnt het evenement als beheerdossier in Horeca OS.</p></div><button type="button" className="secondaryButton" onClick={loadManagedWebsiteEvents} disabled={managedEventsLoading}>{managedEventsLoading ? "Evenementen laden…" : "Bestaande evenementen laden"}</button></div>
       {managedWebsiteEvents.length > 0 && <div className="managedEventGrid">{managedWebsiteEvents.map((eventItem) => {
         const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
         const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
         return <article key={eventItem.id}>
-          <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd Â· alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
-          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` Â· ${eventItem.location}` : ""}</p>
+          <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
+          <p>{eventItem.start ? formatNlDateTime(eventItem.start) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
           {incomplete && <small>De overzichtslijst bevat niet alle Eventin-velden. Bij koppelen haalt Horeca OS eerst de volledige datum, tijd, locatie, afbeelding en tickets op.</small>}
-          <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelenâ€¦" : "Aan Horeca OS koppelen"}</button></div>
+          <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
         </article>;
       })}</div>}
     </div>}
-    <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes ladenâ€¦" : "Status verversen"}</button></div>
+    <div className="campaignStatus"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
         <strong>Nog geen campagneconcepten opgeslagen</strong>
         <p>Maak hierboven je eerste campagne. Na het opslaan verschijnt die hier met controle-, planning- en kopieerknoppen per kanaal.</p>
@@ -2083,10 +2063,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <strong>{distribution.common?.title || typeLabel}</strong>
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url && (!isWebsiteEvent || ["publish", "cancelled"].includes(websiteEventStatus)) ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
-            {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd â€” blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
+            {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd — blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
             {distribution.calendar_delivery && <p className={`websiteEventState ${["failed", "cancelled"].includes(distribution.calendar_delivery.status) ? "cancelled" : ""}`}>
               <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "cancelled" ? `Geannuleerd in ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "deleted" ? "Afspraak verwijderd" : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
-              {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <> Â· <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
+              {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
             </p>}
             {websiteEventReadOnly && <p className="protectedCampaignNotice"><b>Alleen-lezen:</b> stel later de beveiligde Eventin-koppeling in om dit evenement vanuit Horeca OS te bewerken of annuleren.</p>}
             {hasIncompleteChannels && <p className="missingChannelNotice"><b>Nog aanvullen:</b> {formatChannelList(incompleteChannels)}. Goedkeuren en inplannen blijven geblokkeerd.</p>}
@@ -2095,23 +2075,23 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             {providerConfirmed && <p className="placedCampaignLock"><b>Geplaatste campagne vergrendeld.</b> Goedkeuring en planning blijven ongewijzigd. Gebruik Dupliceren voor een nieuwe versie.</p>}
             <div className="conceptActions">
               <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || websiteEventReadOnly || Boolean(editingBlockReason)} title={websiteEventReadOnly ? "Beveiligde Eventin-koppeling vereist" : websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled || websiteEventReadOnly ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
-              {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "draft" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Publicerenâ€¦" : websiteEventReadOnly ? "Koppeling nodig" : "Publiceren"}</button>}
+              {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "draft" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Publiceren…" : websiteEventReadOnly ? "Koppeling nodig" : "Publiceren"}</button>}
               {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventReadOnly || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventReadOnly ? "Koppeling nodig" : websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
               {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "cancelled")}>Annuleren</button>}
               {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
               {(distribution.target_channels || []).includes("facebook") && <button type="button" disabled={!facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : ""} onClick={() => openFacebookEventCreator(distribution)}>Evenement op {facebookDestination?.page_name || "Facebook"} maken</button>}
-              {(distribution.target_channels || []).includes("facebook") && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels || !facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsenâ€¦" : `Op ${facebookDestination?.page_name || "Facebook"} plaatsen`}</button>}
+              {(distribution.target_channels || []).includes("facebook") && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels || !facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsen…" : `Op ${facebookDestination?.page_name || "Facebook"} plaatsen`}</button>}
               {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
             {(distribution.target_channels || []).includes("facebook") && <div className="facebookEventLinkActions">
-              <strong>Facebook-agenda Â· {facebookDestination?.page_name || "niet gekoppeld"}</strong>
+              <strong>Facebook-agenda · {facebookDestination?.page_name || "niet gekoppeld"}</strong>
               {facebookEventDelivery.status === "confirmed" && facebookEventDelivery.permalink
-                ? <span>Evenement gekoppeld Â· <a href={facebookEventDelivery.permalink} target="_blank" rel="noreferrer">Openen</a></span>
+                ? <span>Evenement gekoppeld · <a href={facebookEventDelivery.permalink} target="_blank" rel="noreferrer">Openen</a></span>
                 : <>
-                  <input type="url" aria-label={`Facebook-evenementlink voor ${distribution.common?.title || typeLabel}`} value={facebookEventLinkEdits[item.id] || ""} onChange={(event) => setFacebookEventLinkEdits((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="https://www.facebook.com/events/â€¦" />
+                  <input type="url" aria-label={`Facebook-evenementlink voor ${distribution.common?.title || typeLabel}`} value={facebookEventLinkEdits[item.id] || ""} onChange={(event) => setFacebookEventLinkEdits((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="https://www.facebook.com/events/…" />
                   <button type="button" disabled={conceptBusy} onClick={() => saveFacebookEventLink(item)}>Evenement koppelen</button>
                 </>}
             </div>}
@@ -2132,10 +2112,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 ? websiteEventDeleted
                   ? "Verwijderd uit Eventin"
                   : websiteEventCancelled
-                    ? "Eventin Â· Geannuleerd en online"
+                    ? "Eventin · Geannuleerd en online"
                     : websiteEventStatus === "draft"
-                      ? "Eventin Â· Alleen als concept opgeslagen"
-                      : "Eventin Â· Gepubliceerd op de website"
+                      ? "Eventin · Alleen als concept opgeslagen"
+                      : "Eventin · Gepubliceerd op de website"
                 : "Alleen als concept opgeslagen"}
             </span>}
             {(distribution.target_channels || []).map((channel) => {
@@ -2164,9 +2144,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               const scheduleEditKey = `${item.id}-${channel}`;
               const conceptText = channelConceptText(distribution, channel, item.body);
               return <div className={`status ${stored || "klaar_voor_controle"}`} key={channel}>
-                <span><b>{channelLabels[channel] || channel}</b> Â· {label}
-                  {confirmed && delivery.permalink && <> Â· <a href={delivery.permalink} target="_blank" rel="noreferrer">Openen</a></>}
-                  {channel === "predis" && delivery.status === "draft_ready" && delivery.result_url && <> Â· <a href={delivery.result_url} target="_blank" rel="noreferrer">Resultaat openen</a></>}
+                <span><b>{channelLabels[channel] || channel}</b> · {label}
+                  {confirmed && delivery.permalink && <> · <a href={delivery.permalink} target="_blank" rel="noreferrer">Openen</a></>}
+                  {channel === "predis" && delivery.status === "draft_ready" && delivery.result_url && <> · <a href={delivery.result_url} target="_blank" rel="noreferrer">Resultaat openen</a></>}
                 </span>
                 <div className="channelActions">
                   {plannedAt && !confirmed && <div className="channelPlanningActions">
@@ -2179,7 +2159,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                     <button type="button" onClick={() => showChannelManagementGuidance(channel, delivery)}>Bewerken of annuleren</button>
                   </>}
                   {copyableChannels.has(channel) && <button type="button" disabled={!conceptText} onClick={() => copyChannelConcept(item, distribution, channel)}>
-                    {copiedChannelKey === copyKey ? "Gekopieerd âœ“" : "Tekst kopiÃ«ren"}
+                    {copiedChannelKey === copyKey ? "Gekopieerd ✓" : "Tekst kopiëren"}
                   </button>}
                 </div>
               </div>;
@@ -2187,7 +2167,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           </div>
         </article>;
       })}
-        {hasMoreCampaigns && <button type="button" className="loadMoreCampaigns" onClick={() => loadEventCampaigns({ append: true })} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes ladenâ€¦" : "Meer campagnes laden"}</button>}
+        {hasMoreCampaigns && <button type="button" className="loadMoreCampaigns" onClick={() => loadEventCampaigns({ append: true })} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Meer campagnes laden"}</button>}
       </>}
       <p className="statusNote">Een kanaal wordt pas als geplaatst getoond nadat Horeca OS een plaatsingsbevestiging heeft opgeslagen.</p>
     </div>
@@ -2205,5 +2185,4 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     `}</style>
   </section>;
 }
-
 
