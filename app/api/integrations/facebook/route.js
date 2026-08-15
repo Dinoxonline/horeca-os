@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../lib/server-supabase";
-import { createMetaState, getFacebookConfiguration } from "../../../../lib/meta-oauth";
+import { createMetaState, getFacebookConfiguration, getFacebookRedirectUri, getSafeReturnOrigin } from "../../../../lib/meta-oauth";
 
 const SCOPES = [
   "pages_show_list",
@@ -36,10 +36,11 @@ export async function POST(request) {
   const configuration = getFacebookConfiguration();
   if (!configuration.ready) return jsonError(`De Facebook-koppeling mist serverinstellingen: ${configuration.missing.join(", ")}.`, 409);
 
-  const redirectUri = `${new URL(request.url).origin}/api/integrations/facebook/callback`;
+  const requestOrigin = new URL(request.url).origin;
+  const redirectUri = getFacebookRedirectUri();
   let state;
   try {
-    state = createMetaState({ workspaceId: context.workspaceId, businessId: body.businessId, userId: context.user.id, connection: "facebook" });
+    state = createMetaState({ workspaceId: context.workspaceId, businessId: body.businessId, userId: context.user.id, connection: "facebook", returnOrigin: getSafeReturnOrigin(requestOrigin) });
   } catch (error) {
     return jsonError(error.message, 409);
   }

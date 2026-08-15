@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "../../../../../lib/server-supabase";
-import { encryptMetaToken, getFacebookConfiguration, readMetaState } from "../../../../../lib/meta-oauth";
+import { encryptMetaToken, getFacebookConfiguration, getFacebookRedirectUri, getSafeReturnOrigin, readMetaState } from "../../../../../lib/meta-oauth";
 
 const GRAPH_VERSION = "v25.0";
 const SUPPORTED_SCOPES = [
@@ -16,7 +16,7 @@ const SUPPORTED_SCOPES = [
 
 export async function GET(request) {
   const url = new URL(request.url);
-  const destination = new URL("/koppelingen", url.origin);
+  let destination = new URL("/koppelingen", "https://horeca-os-le-club.vercel.app");
   try {
     if (url.searchParams.get("error")) throw new Error(url.searchParams.get("error_description") || "Facebook heeft de koppeling geweigerd.");
     const configuration = getFacebookConfiguration();
@@ -24,8 +24,9 @@ export async function GET(request) {
     const code = url.searchParams.get("code");
     const state = readMetaState(url.searchParams.get("state"));
     if (!code || state.connection !== "facebook") throw new Error("Facebook heeft geen geldige autorisatiecode teruggestuurd.");
+    destination = new URL("/koppelingen", getSafeReturnOrigin(state.returnOrigin));
 
-    const redirectUri = `${url.origin}/api/integrations/facebook/callback`;
+    const redirectUri = getFacebookRedirectUri();
     const tokenUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`);
     tokenUrl.search = new URLSearchParams({
       client_id: process.env.META_APP_ID,
