@@ -942,6 +942,74 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
+  async function useManagedWebsiteEventAsNew(eventItem) {
+    const selectedBusinessId = selectedBusiness?.id || businessId;
+    if (!selectedBusinessId || !eventItem?.id) return;
+    if (eventItem.businessId !== selectedBusinessId || eventItem.site !== site) {
+      return setResult({ ok: false, message: "De vestiging is tijdens het laden gewijzigd. Laad de Eventin-evenementen opnieuw voor de gekozen vestiging." });
+    }
+    setImportingEventId(eventItem.id);
+    setResult(null);
+    try {
+      const detailQuery = new URLSearchParams({
+        workspaceId,
+        businessId: selectedBusinessId,
+        site,
+        eventId: String(eventItem.id),
+        importEvent: "1",
+      });
+      const detailResponse = await fetch(`/api/marketing/website-events/create?${detailQuery}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const detailPayload = await detailResponse.json().catch(() => ({}));
+      if (!detailResponse.ok) throw new Error(detailPayload.error || "De volledige Eventin-gegevens konden niet worden geladen.");
+      const fullEvent = { ...eventItem, ...(detailPayload.event || {}) };
+      const defaults = defaultsForBusiness(selectedBusiness);
+      const variations = Array.isArray(fullEvent.ticketVariations) && fullEvent.ticketVariations.length
+        ? fullEvent.ticketVariations.map((ticket, index) => ({ ...ticket, id: `copy-ticket-${Date.now()}-${index}` }))
+        : [];
+      setForm({
+        ...emptyForm,
+        campaignType: "event",
+        title: fullEvent.title || "",
+        description: fullEvent.description || "",
+        start: fullEvent.start || "",
+        end: fullEvent.end || "",
+        location: fullEvent.location || defaults.location,
+        imageUrl: fullEvent.imageUrl || "",
+        eventinImage: fullEvent.imageUrl ? { url: fullEvent.imageUrl, name: "Afbeelding uit het oorspronkelijke Eventin-evenement" } : null,
+        images: { ...emptyImages },
+        organizer: defaults.organizer,
+        contactEmail: defaults.contactEmail,
+        ctaUrl: "",
+        ticketType: fullEvent.tickets?.type || "none",
+        ticketPrice: fullEvent.tickets?.price || "0",
+        capacity: fullEvent.tickets?.capacity || "",
+        ticketVariations: variations,
+        status: "draft",
+        channels: { ...channelDefaults },
+        editorialTargets: { ...emptyEditorialTargets },
+      });
+      setEditingCampaignId(null);
+      setEditingWebsiteEvent(null);
+      setEditingBrevoDraftId(null);
+      setSelectedBrevoListIds([]);
+      setSelectedFacebookGroupIds([]);
+      setPendingPredisGeneration(null);
+      setEventWorkspaceView("new");
+      setPreview(false);
+      setResult({
+        ok: true,
+        message: `“${fullEvent.title || "Het evenement"}” is volledig als nieuw concept overgenomen. Wijzig nu minimaal de datum, tijden en gewenste tekst. Het oorspronkelijke evenement blijft ongewijzigd.`,
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setResult({ ok: false, message: error.message || "Het evenement kon niet als nieuw concept worden overgenomen." });
+    } finally {
+      setImportingEventId("");
+    }
+  }
+
   async function openCampaignConcept(item, asCopy = false) {
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
     if (!distribution) return;
@@ -2590,7 +2658,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           <div><strong>{eventItem.title}</strong><span>{eventItem.readOnly ? "Gepubliceerd · alleen-lezen" : eventItem.status === "draft" ? "Eventin-concept" : "Gepubliceerd"}</span></div>
           <p>{eventItem.start ? formatNlDateTime(eventItem.start) : eventItem.eventDate ? formatNlDate(eventItem.eventDate) : "Datum moet na koppelen worden gecontroleerd"}{eventItem.location ? ` · ${eventItem.location}` : ""}</p>
           {incomplete && <small>De overzichtslijst bevat niet alle Eventin-velden. Bij koppelen haalt Horeca OS eerst de volledige datum, tijd, locatie, afbeelding en tickets op.</small>}
-          <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Koppelen…" : "Aan Horeca OS koppelen"}</button></div>
+          <div className="managedEventActions">{eventItem.status !== "draft" && eventItem.url && <a href={eventItem.url} target="_blank" rel="noreferrer">Website openen</a>}{eventItem.status === "draft" && <small>Nog niet openbaar</small>}<button type="button" disabled={linked || importingEventId === eventItem.id} onClick={() => importManagedWebsiteEvent(eventItem)}>{linked ? "Al gekoppeld" : importingEventId === eventItem.id ? "Laden…" : "Aan Horeca OS koppelen"}</button><button type="button" className="copyManagedEvent" disabled={importingEventId === eventItem.id} onClick={() => useManagedWebsiteEventAsNew(eventItem)}>{importingEventId === eventItem.id ? "Laden…" : "Als nieuw evenement gebruiken"}</button></div>
         </article>;
       })}</div>}
     </div>}
@@ -2598,7 +2666,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .completedFacebookGroupLinks{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%;padding:10px;border:1px solid #b8cbea;border-radius:8px;background:#fff}.completedFacebookGroupLinks strong,.completedFacebookGroupLinks small{flex-basis:100%}.completedFacebookGroupLinks a{border:1px solid #1877f2;border-radius:7px;padding:7px 9px;color:#145dbf;font-weight:800;text-decoration:none}.completedFacebookGroupLinks small{color:#5c7285}
       .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.managedEventSearch{margin-top:12px}.managedEventSearch input{max-width:640px}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
-      .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
+      .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions .copyManagedEvent{border-color:#78909c;color:#405866}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
       .campaignCardMain{display:flex;gap:14px;min-width:0;flex:1}.campaignCardImage{flex:0 0 132px}.campaignCardImage img{display:block;width:132px;height:96px;border-radius:10px;object-fit:cover;background:#eef2f5}.campaignCardContent{min-width:0;flex:1}.websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptPublishEventButton{border:1px solid #23804f;color:#17613d;background:#eefaf3}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}.conceptActions .conceptCancelDeleteEventButton{border:1px solid #8f1f1f;color:#fff;background:#a12f2f}.conceptActions .conceptFacebookPublishButton{border:1px solid #1877f2;color:#fff;background:#1877f2}
       .facebookDestination{display:grid;gap:3px;padding:11px 12px;border-left:4px solid #1877f2;border-radius:8px;background:#eef5ff}.facebookDestination.ready strong{color:#145dbf}.facebookDestination.missing{border-left-color:#e4a91b;background:#fff2d1;color:#815b00}.facebookDestination span{font-size:13px}.channelActions,.channelPlanningActions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.channelPlanningActions input{width:190px;padding:6px 8px;font-size:11px}.channelManageLink{display:inline-flex;align-items:center;border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;text-decoration:none}.cancelChannelButton{color:#a12f2f!important}.facebookGroupPicker{display:grid;gap:9px;padding:12px;border-radius:9px;background:#f5f8fa}.facebookGroupPicker p{margin:0}.facebookGroupPickerHead{display:flex;justify-content:space-between;gap:12px;align-items:center}.facebookGroupPickerHead span{padding:5px 8px;border-radius:999px;background:#e5efff;color:#145dbf;font-size:12px;font-weight:800}.facebookGroupAdvicePanel{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:11px;border:1px solid #76b992;border-radius:9px;background:#eefaf3}.facebookGroupAdvicePanel>div,.facebookGroupAdvicePanel p{grid-column:1}.facebookGroupAdvicePanel>div{display:flex;flex-wrap:wrap;gap:7px 12px}.facebookGroupAdvicePanel>div span{color:#236d46;font-weight:800}.facebookGroupAdvicePanel p{color:#405866;font-size:13px}.facebookGroupAdvicePanel button{grid-column:2;grid-row:1/3;align-self:center;border:1px solid #23804f;border-radius:8px;padding:9px 11px;background:#fff;color:#17613d;font-weight:800;cursor:pointer}.facebookGroupTools{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:end;gap:10px}.facebookGroupTools>div{display:flex;gap:7px}.facebookGroupTools button{border:1px solid #1877f2;border-radius:8px;padding:9px 11px;background:#fff;color:#145dbf;font-weight:800;cursor:pointer}.facebookGroupList{display:grid;gap:7px;max-height:330px;overflow:auto;padding:4px 8px 4px 2px;border-block:1px solid #d5e0e7}.facebookGroupChoice{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-radius:8px}.facebookGroupChoice.senderMissing{background:#fff2d1}.facebookGroupChoice.senderReady{background:#e9f6ee}.facebookGroupChoice.recommended{box-shadow:inset 4px 0 #23804f}.facebookGroupChoice.avoid{background:#fff0f0;box-shadow:inset 4px 0 #a12f2f}.facebookGroupChoice label span{display:grid}.facebookGroupChoice label b{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.facebookGroupChoice label em{padding:2px 6px;border-radius:999px;background:#d7f0e1;color:#17613d;font-size:10px;font-style:normal}.facebookGroupChoice label em.conditional{background:#fff2d1;color:#815b00}.facebookGroupChoice label em.avoid{background:#f5dede;color:#a12f2f}.facebookGroupChoice label small{font-weight:600}.facebookGroupChoice>div{display:flex;gap:8px}.facebookGroupChoice button{border:0;background:none;color:#a12f2f;text-decoration:underline;cursor:pointer}.facebookGroupChoice button:first-child:not(:last-child){color:#145dbf}.facebookGroupAdd{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px}.facebookGroupAdd button,.facebookGroupShareActions button{border:1px solid #1877f2;border-radius:8px;padding:9px 11px;background:#fff;color:#145dbf;font-weight:800;cursor:pointer}.facebookGroupShareActions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:10px;padding:10px;border-left:4px solid #1877f2;border-radius:8px;background:#eef5ff}.facebookGroupShareActions strong,.facebookGroupShareActions>p{flex-basis:100%;margin:0}.facebookGroupShareActions p{color:#405866;font-size:13px}.facebookGroupSenderAction{display:grid;gap:3px;padding:8px;border-radius:8px;background:#fff}.facebookGroupSenderAction.blocked{border:1px solid #c94b4b;background:#fff0f0}.facebookGroupSenderAction span{font-size:12px;font-weight:800}.facebookGroupDelaySettings{display:grid;grid-template-columns:repeat(2,minmax(150px,220px));gap:8px;flex-basis:100%}.facebookGroupDelaySettings input{padding:7px 9px}.facebookGroupWait{padding:9px 11px;border-radius:8px;background:#fff2d1;color:#815b00!important}.facebookGroupComplete{padding:9px 11px;border-radius:8px;background:#e9f6ee;color:#236d46!important}.facebookGroupShareActions .facebookGroupReset{margin-left:auto;border-color:#78909c;color:#405866}
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
