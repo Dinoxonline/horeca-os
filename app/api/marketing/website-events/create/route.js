@@ -653,10 +653,24 @@ export async function PATCH(request) {
     // Alleen de WordPress-post publiceren maakt de detailpagina bereikbaar, maar
     // laat het evenement uit de Eventin-agenda verdwijnen omdat die interne status
     // nog op `draft` staat. Werk daarom beide statussen altijd samen bij.
+    const currentEventinResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      cache: "no-store",
+    });
+    const currentEventinPayload = currentEventinResponse.ok
+      ? await currentEventinResponse.json().catch(() => ({}))
+      : {};
+    const currentEventinEvent = currentEventinPayload?.data
+      || currentEventinPayload?.event
+      || currentEventinPayload
+      || {};
+
+    // Eventin v4 does not reliably persist a visibility-only partial update.
+    // Re-submit the complete event record so its agenda index is rebuilt too.
     const eventinResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
       method: "POST",
       headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
-      body: JSON.stringify({ visibility_status: visibilityStatus }),
+      body: JSON.stringify({ ...currentEventinEvent, visibility_status: visibilityStatus }),
       cache: "no-store",
     });
     const eventinData = await eventinResponse.json().catch(() => ({}));
@@ -668,10 +682,22 @@ export async function PATCH(request) {
       }, { status: eventinResponse.status });
     }
 
-    const confirmedStatus = eventinData?.visibility_status
-      || eventinData?.data?.visibility_status
-      || wordpressData.status
-      || visibilityStatus;
+    const verifyEventinResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      cache: "no-store",
+    });
+    const verifyEventinPayload = await verifyEventinResponse.json().catch(() => ({}));
+    const confirmedStatus = verifyEventinPayload?.visibility_status
+      || verifyEventinPayload?.data?.visibility_status
+      || verifyEventinPayload?.event?.visibility_status
+      || eventinData?.visibility_status
+      || eventinData?.data?.visibility_status;
+    if (!verifyEventinResponse.ok || confirmedStatus !== visibilityStatus) {
+      return NextResponse.json({
+        error: "De pagina is bijgewerkt, maar Eventin bevestigt de agenda-status nog niet. Probeer de herstelactie opnieuw.",
+        partial: true,
+      }, { status: 502 });
+    }
     return NextResponse.json({ event: { id, url: wordpressData.link || eventinData.link || `${site.origin}/?p=${id}`, status: confirmedStatus, website: site.origin } });
   }
   const start = dateParts(body.start);
