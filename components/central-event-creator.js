@@ -313,6 +313,15 @@ function toLocalDateTimeInput(value) {
   return local.toISOString().slice(0, 16);
 }
 
+function normalizeOvernightEnd(startValue, endValue) {
+  if (!startValue || !endValue || String(startValue).slice(0, 10) !== String(endValue).slice(0, 10)) return endValue;
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end > start) return endValue;
+  end.setDate(end.getDate() + 1);
+  return toLocalDateTimeInput(end);
+}
+
 function buildChannelSchedule(channels, baseDate, minMinutes, maxMinutes, enabled) {
   let cursor = baseDate.getTime();
   return Object.fromEntries(channels.map((channel, index) => {
@@ -463,6 +472,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     ticketVariations: [...(current.ticketVariations || []), { ...defaultTicketVariation, id: `ticket-${Date.now()}`, name: `Ticket ${(current.ticketVariations || []).length + 1}` }],
   }));
   const removeTicketVariation = (id) => setForm((current) => ({ ...current, ticketVariations: (current.ticketVariations || []).filter((ticket) => ticket.id !== id) }));
+  useEffect(() => {
+    const correctedEnd = normalizeOvernightEnd(form.start, form.end);
+    if (!correctedEnd || correctedEnd === form.end) return;
+    setForm((current) => current.start === form.start && current.end === form.end ? { ...current, end: correctedEnd } : current);
+    setPreview(false);
+    setResult({ ok: true, message: "De eindtijd ligt na middernacht. Horeca OS heeft de einddatum daarom op de volgende dag gezet." });
+  }, [form.start, form.end]);
   const refreshTicketSalesDates = () => {
     if (!form.start || Number.isNaN(new Date(form.start).getTime())) {
       setResult({ ok: false, message: "Vul eerst bovenaan een geldige begindatum van het evenement in." });
@@ -2235,7 +2251,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     <div className="eventCreatorGrid creatorSection" id="campagne-basis">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
       <label>{campaignTitleLabel} *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
-      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onInput={(e) => update("start", e.currentTarget.value)} onChange={(e) => update("start", e.currentTarget.value)} /></label><label>Eindigt *<input type="datetime-local" value={form.end} onInput={(e) => update("end", e.currentTarget.value)} onChange={(e) => update("end", e.currentTarget.value)} /></label><label className="wide">Locatie *<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
+      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onInput={(e) => update("start", e.currentTarget.value)} onChange={(e) => update("start", e.currentTarget.value)} /></label><label>Eindigt *<input type="datetime-local" min={form.start || undefined} value={form.end} onInput={(e) => update("end", e.currentTarget.value)} onChange={(e) => update("end", e.currentTarget.value)} /><small>Kan niet vóór de begintijd liggen. Na middernacht wordt automatisch de volgende dag.</small></label><label className="wide">Locatie *<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
       {(form.campaignType === "product" || form.campaignType === "offer") && <><label>Normale prijs<input type="number" min="0" step="0.01" value={form.regularPrice} onChange={(e) => update("regularPrice", e.target.value)} /></label><label>{form.campaignType === "offer" ? "Actieprijs *" : "Promotieprijs"}<input type="number" min="0" step="0.01" value={form.campaignPrice} onChange={(e) => update("campaignPrice", e.target.value)} /></label></>}
       {form.campaignType === "offer" && <><label>Actiecode<input value={form.discountCode} onChange={(e) => update("discountCode", e.target.value)} /></label><label>Geldig vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Geldig tot *<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
       {form.campaignType === "package" && <><label>Aantal personen<input type="number" min="1" value={form.groupSize} onChange={(e) => update("groupSize", e.target.value)} /></label><label>Prijs per persoon<input type="number" min="0" step="0.01" value={form.pricePerPerson} onChange={(e) => update("pricePerPerson", e.target.value)} /></label><label>Beschikbaar vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Beschikbaar tot<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
