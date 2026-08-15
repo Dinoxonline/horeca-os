@@ -305,6 +305,24 @@ function formatNlDate(value) {
   }).format(date);
 }
 
+function suggestedPromotionCopy({ title, start, location, description }) {
+  const eventTitle = String(title || "").trim();
+  if (!eventTitle) return "";
+  const comparableTitle = eventTitle.toLocaleLowerCase("nl-NL").replace(/[^a-z0-9]+/g, "");
+  const detail = String(description || "")
+    .split(/\n+/)
+    .map((line) => line.replace(/<[^>]+>/g, "").trim())
+    .find((line) => line.length >= 50 && line.toLocaleLowerCase("nl-NL").replace(/[^a-z0-9]+/g, "") !== comparableTitle);
+  const date = start && !Number.isNaN(new Date(start).getTime())
+    ? new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(start))
+    : "";
+  const venue = String(location || "").trim();
+  const comparableVenue = venue.toLocaleLowerCase("nl-NL").replace(/[^a-z0-9]+/g, "");
+  const venueAlreadyNamed = comparableVenue && comparableTitle.includes(comparableVenue);
+  const opening = `${eventTitle}${date ? ` op ${date}` : ""}${venue && !venueAlreadyNamed ? ` bij ${venue}` : ""}.`;
+  return `${opening}${detail ? ` ${detail}` : ""}`.slice(0, 280).trim();
+}
+
 function toLocalDateTimeInput(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -351,6 +369,8 @@ function formDraftStorageKey(workspaceId, businessId) {
 
 export default function CentralEventCreator({ workspaceId, businessId, businesses, session }) {
   const [form, setForm] = useState(emptyForm);
+  const automaticShortTextRef = useRef("");
+  const automaticFacebookTextRef = useRef("");
   const [eventWorkspaceView, setEventWorkspaceView] = useState("");
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -479,6 +499,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPreview(false);
     setResult({ ok: true, message: "De eindtijd ligt na middernacht. Horeca OS heeft de einddatum daarom op de volgende dag gezet." });
   }, [form.start, form.end]);
+  useEffect(() => {
+    const suggestion = suggestedPromotionCopy(form);
+    if (!suggestion) return;
+    setForm((current) => {
+      const shortWasAutomatic = !current.shortDescription.trim() || current.shortDescription === automaticShortTextRef.current;
+      const nextShort = shortWasAutomatic ? suggestion : current.shortDescription;
+      const facebookWasAutomatic = !current.facebookText.trim() || current.facebookText === automaticFacebookTextRef.current;
+      const nextFacebook = facebookWasAutomatic ? nextShort : current.facebookText;
+      automaticShortTextRef.current = shortWasAutomatic ? nextShort : "";
+      automaticFacebookTextRef.current = facebookWasAutomatic ? nextFacebook : "";
+      if (nextShort === current.shortDescription && nextFacebook === current.facebookText) return current;
+      return { ...current, shortDescription: nextShort, facebookText: nextFacebook };
+    });
+  }, [form.title, form.start, form.location, form.description]);
   const refreshTicketSalesDates = () => {
     if (!form.start || Number.isNaN(new Date(form.start).getTime())) {
       setResult({ ok: false, message: "Vul eerst bovenaan een geldige begindatum van het evenement in." });
