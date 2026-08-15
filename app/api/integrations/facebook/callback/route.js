@@ -10,6 +10,8 @@ const SUPPORTED_SCOPES = [
   "pages_manage_engagement",
   "pages_manage_posts",
   "business_management",
+  "ads_read",
+  "ads_management",
 ];
 
 export async function GET(request) {
@@ -169,6 +171,45 @@ export async function GET(request) {
       token_expires_at: tokenExpiresAt,
     }, { onConflict: "account_id" });
     if (credentialError) throw new Error("Het Facebook-token kon niet veilig worden opgeslagen.");
+
+    if (grantedScopes.includes("ads_management")) {
+      const adsUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me/adaccounts`);
+      adsUrl.search = new URLSearchParams({
+        fields: "id,account_id,name,account_status,currency,timezone_name,business{id,name}",
+        limit: "100",
+        access_token: userToken,
+      }).toString();
+      const adsResponse = await fetch(adsUrl, { cache: "no-store" });
+      const adsResult = await adsResponse.json();
+      if (!adsResponse.ok) throw new Error(adsResult.error?.message || "De Meta-advertentieaccounts konden niet worden gelezen.");
+      const activeAdAccounts = (adsResult.data || []).filter((item) => Number(item.account_status) === 1);
+      const existingAdAccountResult = await admin.from("integration_accounts")
+        .select("id,external_account_id").eq("workspace_id", state.workspaceId).eq("business_id", state.businessId)
+        .eq("provider", "facebook_ads").maybeSingle();
+      if (existingAdAccountResult.error) throw new Error("Het bestaande advertentieaccount kon niet worden gecontroleerd.");
+      const selectedAdAccount = activeAdAccounts.find((item) => String(item.id) === String(existingAdAccountResult.data?.external_account_id))
+        || (activeAdAccounts.length === 1 ? activeAdAccounts[0] : null);
+      if (selectedAdAccount) {
+        const adPayload = {
+          workspace_id: state.workspaceId, business_id: state.businessId, provider: "facebook_ads",
+          external_account_id: String(selectedAdAccount.id), display_name: selectedAdAccount.name || `Advertentieaccount ${selectedAdAccount.account_id}`,
+          account_type: "facebook_ad_account", connection_status: "connected", granted_scopes: grantedScopes,
+          credential_secret_name: `facebook-ads/${state.workspaceId}/${state.businessId}`, token_expires_at: tokenExpiresAt,
+          last_error_code: null, last_error_at: null,
+        };
+        const adAccountResult = existingAdAccountResult.data
+          ? await admin.from("integration_accounts").update(adPayload).eq("id", existingAdAccountResult.data.id).select("id").single()
+          : await admin.from("integration_accounts").insert(adPayload).select("id").single();
+        if (adAccountResult.error) throw new Error("Het Meta-advertentieaccount kon niet worden opgeslagen.");
+        const encryptedUserToken = encryptMetaToken(userToken);
+        const { error: adCredentialError } = await admin.from("integration_credentials").upsert({
+          account_id: adAccountResult.data.id, workspace_id: state.workspaceId, business_id: state.businessId,
+          token_ciphertext: encryptedUserToken.ciphertext, token_iv: encryptedUserToken.iv, token_tag: encryptedUserToken.tag,
+          token_expires_at: tokenExpiresAt,
+        }, { onConflict: "account_id" });
+        if (adCredentialError) throw new Error("De beveiligde toegang tot het advertentieaccount kon niet worden opgeslagen.");
+      }
+    }
 
     destination.searchParams.set("facebook", "connected");
     destination.searchParams.set("account", page.name || "Facebookpagina");
