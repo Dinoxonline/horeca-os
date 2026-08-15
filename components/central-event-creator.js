@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import NextImage from "next/image";
 import { supabase } from "../lib/supabase";
 
 const channelDefaults = {
@@ -631,7 +631,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   async function prepareImageForSlot(file, slot) {
     const loaded = await new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
-      const image = new Image();
+      const image = new window.Image();
       image.onload = () => resolve({ image, url, width: image.naturalWidth, height: image.naturalHeight });
       image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Afbeelding kon niet worden gelezen.")); };
       image.src = url;
@@ -766,6 +766,26 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (image?.path) await supabase.storage.from("marketing-assets").remove([image.path]);
     setForm((current) => ({ ...current, images: { ...current.images, [slotKey]: null } }));
     setPreview(false); setResult(null);
+  }
+
+  async function downloadUploadedImage(image, fallbackName) {
+    if (!image?.url) return;
+    try {
+      const response = await fetch(image.url);
+      if (!response.ok) throw new Error("download mislukt");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = image.name || fallbackName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(image.url, "_blank", "noopener,noreferrer");
+      setUploadMessage({ ok: false, message: "De afbeelding is in een nieuw tabblad geopend. Kies daar Afbeelding opslaan als om haar te downloaden." });
+    }
   }
 
   async function loadEventCampaigns({ append = false } = {}) {
@@ -2219,7 +2239,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           </div>
           {form.eventinImage?.url && <div className="eventinImagePreview">
             <img src={form.eventinImage.url} alt="Geselecteerde Eventin-afbeelding" />
-            <small>{form.eventinImage.name || "Bronafbeelding"}</small>
+            <div><small>{form.eventinImage.name || "Bronafbeelding"}</small><button type="button" className="downloadImage" onClick={() => downloadUploadedImage(form.eventinImage, "eventin-afbeelding")}>Downloaden</button></div>
           </div>}
         </article>
         <label className="cropFocus">Focuspunt bij automatisch bijsnijden
@@ -2258,9 +2278,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <div><strong>{slot.label}</strong><span>{slot.width} × {slot.height} px · {slot.ratio}</span><small>{slot.channels}</small></div>
             {uploaded ? <div className="uploadedImage">
               <div className="imagePreview" style={{ backgroundImage: `url(${uploaded.url})` }} aria-label={`Voorbeeld ${slot.label}`} />
+              <strong className="imageUploadSuccess">✓ Upload gelukt</strong>
               <p>{uploaded.width} × {uploaded.height} px {uploaded.matches ? "· Perfect formaat" : "· Afwijkend formaat"}</p>
               <small className="replaceHint">Sleep een nieuwe afbeelding hierheen om te vervangen.</small>
-              <button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button>
+              <div className="uploadedImageActions"><button type="button" className="downloadImage" onClick={() => downloadUploadedImage(uploaded, `${slot.key}-${slot.width}x${slot.height}`)}>Downloaden</button><button type="button" className="removeImage" onClick={() => removeImage(slot.key)}>Verwijderen</button></div>
             </div> : <div className="imageDropZone">
               <strong>{isDragging ? "Laat de afbeelding hier los" : "Sleep een afbeelding hierheen"}</strong>
               <small>of</small>
@@ -2489,7 +2510,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
         return <article key={item.id}>
           <div className="campaignCardMain">
-            {eventImageUrl && <div className="campaignCardImage"><Image src={eventImageUrl} alt={`Afbeelding van ${distribution.common?.title || typeLabel}`} width={132} height={96} sizes="132px" unoptimized loader={({ src }) => src} /></div>}
+            {eventImageUrl && <div className="campaignCardImage"><NextImage src={eventImageUrl} alt={`Afbeelding van ${distribution.common?.title || typeLabel}`} width={132} height={96} sizes="132px" unoptimized loader={({ src }) => src} /></div>}
             <div className="campaignCardContent">
             <div className="conceptHeading">
               <span className="campaignKind">{typeLabel}</span>
@@ -2663,6 +2684,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       })}</div>}
     </div>}
     <style jsx>{`
+      .imageUploadSuccess{display:block;margin-top:7px;color:#236d46;font-size:13px}.uploadedImageActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:7px}.downloadImage{border:1px solid #25889b;border-radius:7px;padding:6px 9px;background:#fff;color:#176d7f;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.eventinImagePreview>div{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:7px}.eventinImagePreview>div small{max-width:160px;overflow-wrap:anywhere}
       .completedFacebookGroupLinks{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%;padding:10px;border:1px solid #b8cbea;border-radius:8px;background:#fff}.completedFacebookGroupLinks strong,.completedFacebookGroupLinks small{flex-basis:100%}.completedFacebookGroupLinks a{border:1px solid #1877f2;border-radius:7px;padding:7px 9px;color:#145dbf;font-weight:800;text-decoration:none}.completedFacebookGroupLinks small{color:#5c7285}
       .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.managedEventSearch{margin-top:12px}.managedEventSearch input{max-width:640px}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
