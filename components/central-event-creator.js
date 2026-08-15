@@ -2099,9 +2099,22 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       common.location ? `Locatie: ${common.location}` : "",
       common.website_url || distribution.source_url,
     ].filter(Boolean).join("\n\n");
-    try { void navigator.clipboard.writeText(eventText); } catch {}
-    window.open("https://www.facebook.com/events/create/", "_blank", "noopener,noreferrer");
-    setResult({ ok: true, message: `Facebook Evenement maken is geopend voor de vestiging ${selectedBusiness?.name || ""}. Kies daar pagina “${destination.page_name}”, voeg de afbeelding toe en bevestig het evenement.` });
+    const facebookWindow = window.open("https://www.facebook.com/events/create/", "_blank", "noopener,noreferrer");
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(eventText);
+      copied = true;
+    } catch {}
+    const eventImageUrl = facebook.image_url || common.image_url || "";
+    if (eventImageUrl) {
+      await downloadUploadedImage({ url: eventImageUrl, name: `${common.title || "facebook-evenement"}.jpg` }, "facebook-evenement.jpg");
+    }
+    setResult({
+      ok: Boolean(facebookWindow),
+      message: facebookWindow
+        ? `Facebook Evenement maken is geopend voor ${destination.page_name}. ${copied ? "Alle evenementgegevens staan op het klembord." : "Kopieer de evenementgegevens uit Horeca OS."} ${eventImageUrl ? "De evenementafbeelding is gedownload." : "Voeg in Facebook nog een afbeelding toe."} Kies de pagina ${destination.page_name}, plak de gegevens en bevestig het evenement.`
+        : "De browser heeft het Facebook-tabblad geblokkeerd. Sta pop-ups voor Horeca OS toe en probeer het opnieuw.",
+    });
   }
 
   async function saveFacebookEventLink(item) {
@@ -2731,7 +2744,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
-              {(distribution.target_channels || []).includes("facebook") && <button type="button" disabled={!facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : ""} onClick={() => openFacebookEventCreator(distribution)}>Evenement op {facebookDestination?.page_name || "Facebook"} maken</button>}
+              {isWebsiteEvent && (distribution.target_channels || []).includes("facebook") && <button type="button" disabled={!facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : "Kopieert alle evenementgegevens, downloadt de afbeelding en opent Facebook Evenement maken"} onClick={() => openFacebookEventCreator(distribution)}>Facebook-evenement voorbereiden</button>}
               {(distribution.target_channels || []).includes("facebook") && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels || !facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsen…" : `Op ${facebookDestination?.page_name || "Facebook"} plaatsen`}</button>}
               {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
