@@ -2107,6 +2107,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   async function openFacebookEventCreator(distribution) {
     const common = distribution.common || {};
+    const websiteEventStatus = distribution.website_event_status || common.website_status || "draft";
+    const eventinTicketUrl = common.website_url || distribution.source_url || "";
+    if (distribution.source_type === "website_event" && websiteEventStatus !== "publish") {
+      return setResult({ ok: false, message: "Publiceer het evenement eerst in Eventin. Daarna haalt Horeca OS de openbare ticketlink op en kan het Facebook-evenement worden voorbereid." });
+    }
+    if (distribution.source_type === "website_event" && !eventinTicketUrl) {
+      return setResult({ ok: false, message: "Eventin is gepubliceerd, maar de openbare ticketlink ontbreekt nog. Ververs de status en probeer het daarna opnieuw." });
+    }
     const facebook = distribution.channel_payloads?.facebook || {};
     const destination = facebook.destination || (facebookAccount ? { page_id: facebookAccount.external_account_id, page_name: facebookAccount.display_name } : null);
     if (!destination?.page_id) {
@@ -2118,7 +2126,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       common.start ? `Begint: ${formatNlDateTime(common.start)}` : "",
       common.end ? `Eindigt: ${formatNlDateTime(common.end)}` : "",
       common.location ? `Locatie: ${common.location}` : "",
-      common.website_url || distribution.source_url,
+      eventinTicketUrl ? `Tickets: ${eventinTicketUrl}` : "",
     ].filter(Boolean).join("\n\n");
     const facebookWindow = window.open("https://www.facebook.com/events/create/", "_blank", "noopener,noreferrer");
     let copied = false;
@@ -2327,14 +2335,31 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         await loadEventCampaigns();
         return;
       }
-      const nextDistribution = { ...distribution, website_event_status: result.event?.status || (movingToPublish ? "publish" : movingToDraft ? "draft" : "cancelled"), calendar_delivery: calendarDelivery };
+      const publicEventUrl = movingToPublish ? String(result.event?.url || distribution.source_url || "") : distribution.source_url;
+      const nextWebsiteStatus = result.event?.status || (movingToPublish ? "publish" : movingToDraft ? "draft" : "cancelled");
+      const nextCommon = {
+        ...(distribution.common || {}),
+        website_status: nextWebsiteStatus,
+        website_url: movingToPublish ? publicEventUrl : (distribution.common?.website_url || distribution.source_url || ""),
+        cta: {
+          ...(distribution.common?.cta || {}),
+          url: movingToPublish ? publicEventUrl : (distribution.common?.cta?.url || distribution.source_url || ""),
+        },
+      };
+      const nextDistribution = {
+        ...distribution,
+        source_url: movingToPublish ? publicEventUrl : distribution.source_url,
+        website_event_status: nextWebsiteStatus,
+        common: nextCommon,
+        calendar_delivery: calendarDelivery,
+      };
       const nextMedia = (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
       const { error } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", item.id).eq("workspace_id", workspaceId);
       if (error) {
         setResult({ ok: false, message: `Eventin is ${movingToPublish ? "gepubliceerd" : movingToDraft ? "naar concept gezet" : "geannuleerd"}, maar de lokale status kon niet worden bijgewerkt. Ververs de status en controleer het evenement.` });
       } else {
         setResult({ ok: true, message: movingToPublish
-          ? "Het Eventin-evenement is gepubliceerd en staat nu openbaar op de website. Andere kanalen zijn niet gewijzigd."
+          ? "Het Eventin-evenement is gepubliceerd en de openbare ticketlink is opgeslagen. Je kunt nu het Facebook-evenement voorbereiden."
           : movingToDraft
             ? "Het website-evenement staat nu als Eventin-concept. Andere kanalen zijn niet gewijzigd."
             : calendarSyncError
@@ -2852,8 +2877,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
-              {isWebsiteEvent && (distribution.target_channels || []).includes("facebook") && <button type="button" disabled={!facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : "Kopieert de evenementgegevens, downloadt de afbeelding en opent Facebook voor de vereiste bevestiging"} onClick={() => openFacebookEventCreator(distribution)}>Open Facebook en bevestig evenement</button>}
-              {(distribution.target_channels || []).includes("facebook") && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels || !facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsen…" : `Op ${facebookDestination?.page_name || "Facebook"} plaatsen`}</button>}
+              {isWebsiteEvent && (distribution.target_channels || []).includes("facebook") && <button type="button" disabled={!facebookDestination?.page_id || websiteEventStatus !== "publish" || !distribution.source_url} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : websiteEventStatus !== "publish" ? "Publiceer eerst het evenement in Eventin" : !distribution.source_url ? "De openbare Eventin-ticketlink ontbreekt nog" : "Kopieert de evenementgegevens inclusief ticketlink, downloadt de afbeelding en opent Facebook voor de vereiste bevestiging"} onClick={() => openFacebookEventCreator(distribution)}>{websiteEventStatus !== "publish" ? "Eerst publiceren in Eventin" : !distribution.source_url ? "Ticketlink ophalen" : "Facebook-evenement voorbereiden"}</button>}
+              {(distribution.target_channels || []).includes("facebook") && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels || !facebookDestination?.page_id || (isWebsiteEvent && (websiteEventStatus !== "publish" || !distribution.source_url))} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : isWebsiteEvent && websiteEventStatus !== "publish" ? "Publiceer eerst het evenement in Eventin" : isWebsiteEvent && !distribution.source_url ? "De openbare Eventin-ticketlink ontbreekt nog" : !approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsen…" : isWebsiteEvent && websiteEventStatus !== "publish" ? "Facebook wacht op Eventin" : `Op ${facebookDestination?.page_name || "Facebook"} plaatsen`}</button>}
               {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
