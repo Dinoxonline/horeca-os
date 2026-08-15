@@ -2900,7 +2900,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 : campaignWorkflowStep === 2
                   ? "Eventin is gepubliceerd en de ticketlink is beschikbaar. Maak en controleer nu het Facebook-evenement."
                   : campaignWorkflowStep === 3
-                    ? "Het Facebook-evenement is gekoppeld. Rond nu de gekozen Facebookgroepen af."
+                    ? "Het Facebook-evenement is geplaatst. Rond nu de gekozen Facebookgroepen af."
                     : "Eventin, het Facebook-evenement en de Facebookgroepen zijn afgerond. Ga nu verder met e-mail, uitagenda’s en overige kanalen."}</p>
             </div>}
             <section className="savedManagementPanel">
@@ -2981,12 +2981,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
             {editingBlockReason && <p className="protectedCampaignNotice"><b>Bewerken geblokkeerd:</b> {editingBlockReason}</p>}
             {providerConfirmed && <p className="placedCampaignLock"><b>Geplaatste campagne vergrendeld.</b> Goedkeuring en planning blijven ongewijzigd. Gebruik Dupliceren voor een nieuwe versie.</p>}
-            {isWebsiteEvent && campaignWorkflowStep === 2 && (distribution.target_channels || []).includes("facebook") && <div className="facebookEventLinkActions">
-              <div className="savedChannelPanelHead"><div><h4>Facebook-evenement</h4><p>Evenement op de Facebookpagina van deze vestiging</p></div><span>{facebookEventDelivery.status === "confirmed" ? "Gekoppeld" : "Nog niet gekoppeld"}</span></div>
-              <div className="savedFacebookPrimaryAction"><button type="button" disabled={!facebookDestination?.page_id || !distribution.source_url} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !distribution.source_url ? "De openbare Eventin-ticketlink ontbreekt nog" : "Kopieert de evenementgegevens inclusief ticketlink, downloadt de afbeelding en opent Facebook voor de vereiste bevestiging"} onClick={() => openFacebookEventCreator(distribution)}>{!distribution.source_url ? "Ticketlink ophalen" : "Facebook-evenement voorbereiden"}</button></div>
+            {isWebsiteEvent && campaignWorkflowStep >= 2 && (distribution.target_channels || []).includes("facebook") && <div className={`facebookEventLinkActions ${facebookEventReady ? "confirmed" : ""}`}>
+              <div className="savedChannelPanelHead"><div><h4>Facebook-evenement</h4><p>Evenement op de Facebookpagina van deze vestiging</p></div><span>{facebookEventDelivery.status === "confirmed" ? "Geplaatst" : "Nog niet geplaatst"}</span></div>
+              {!facebookEventReady && <div className="savedFacebookPrimaryAction"><button type="button" disabled={!facebookDestination?.page_id || !distribution.source_url} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !distribution.source_url ? "De openbare Eventin-ticketlink ontbreekt nog" : "Kopieert de evenementgegevens inclusief ticketlink, downloadt de afbeelding en opent Facebook voor de vereiste bevestiging"} onClick={() => openFacebookEventCreator(distribution)}>{!distribution.source_url ? "Ticketlink ophalen" : "Facebook-evenement voorbereiden"}</button></div>}
               <strong>Facebookpagina: {facebookDestination?.page_name || "niet gekoppeld"}</strong>
               {facebookEventDelivery.status === "confirmed" && facebookEventDelivery.permalink
-                ? <span>Evenement gekoppeld · <a href={facebookEventDelivery.permalink} target="_blank" rel="noreferrer">Openen</a></span>
+                ? <div className="savedFacebookPlaced"><p><b>Facebook-evenement geplaatst.</b> De koppeling is bevestigd en opgeslagen in Horeca OS.</p><a className="savedChannelLink" href={facebookEventDelivery.permalink} target="_blank" rel="noopener noreferrer" onClick={() => saveCurrentUiState()}>Facebook-evenement bekijken</a></div>
                 : <div className="facebookEventManualWorkflow">
                   <p><b>Nog niet gekoppeld.</b> Meta ondersteunt geen automatische aanmaak van pagina-evenementen. Klik hierboven op <b>Open Facebook en bevestig evenement</b>. Horeca OS kopieert de tekst, downloadt de afbeelding en opent Facebook. Koppel daarna de nieuwe Facebook-link terug aan dit dossier.</p>
                   <button type="button" className="facebookEventManualToggle" onClick={() => setFacebookEventManualLinkIds((current) => current.includes(String(item.id)) ? current.filter((id) => id !== String(item.id)) : [...current, String(item.id)])}>
