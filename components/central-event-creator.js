@@ -2583,6 +2583,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           })}</div>
           {!facebookGroupsLoading && facebookGroups.length === 0 && <p>Nog geen groepen opgeslagen voor deze vestiging.</p>}
           {!facebookGroupsLoading && facebookGroups.length > 0 && visibleFacebookGroups.length === 0 && <p>Geen groepen gevonden voor “{facebookGroupSearch}”.</p>}
+          {!facebookGroupsLoading && visibleFacebookGroups.length > 0 && <div className="facebookGroupSavedLists facebookGroupListSaveBottom">
+            <div><strong>Selectie klaar?</strong><p>Sla de {selectedFacebookGroupIds.length} aangevinkte groepen direct op als een herbruikbare lijst.</p></div>
+            <div className="facebookGroupListCreate"><input value={facebookGroupListName} onChange={(event) => setFacebookGroupListName(event.target.value)} placeholder="Naam van de nieuwe lijst" maxLength={80} /><button type="button" disabled={facebookGroupListsBusy || !selectedFacebookGroupIds.length} onClick={saveFacebookGroupList}>Huidige selectie opslaan</button></div>
+          </div>}
           <div className="facebookGroupAdd"><input value={newFacebookGroup.name} onChange={(event) => setNewFacebookGroup((current) => ({ ...current, name: event.target.value }))} placeholder="Naam van de groep" /><input value={newFacebookGroup.url} onChange={(event) => setNewFacebookGroup((current) => ({ ...current, url: event.target.value }))} placeholder="https://www.facebook.com/groups/…" /><button type="button" onClick={saveFacebookGroup}>Groep toevoegen</button></div>
           {facebookGroupsError && <p className="brevoAudienceError">{facebookGroupsError}</p>}
           <small>Deze lijst hoort uitsluitend bij {selectedBusiness?.name || "de gekozen vestiging"}. Advies is nooit toestemming tot plaatsing: jij controleert de vinkjes en bevestigt later iedere groepsplaatsing zelf.</small>
