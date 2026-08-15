@@ -381,6 +381,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [preview, setPreview] = useState(false);
   const [previewChannel, setPreviewChannel] = useState("");
   const [expandedEditorialCampaignIds, setExpandedEditorialCampaignIds] = useState([]);
+  const [editorialEmailSelections, setEditorialEmailSelections] = useState({});
   const [internalEditorialEmail, setInternalEditorialEmail] = useState(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -2360,10 +2361,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
-  async function sendAllEditorialEmails(item, distribution) {
-    const targets = (distribution.editorial_submissions || []).map(editorialTargetDetails).filter((target) => target.email);
+  async function sendAllEditorialEmails(item, distribution, selectedKeys) {
+    const targets = (distribution.editorial_submissions || [])
+      .map(editorialTargetDetails)
+      .filter((target) => target.email && selectedKeys.includes(target.key));
     const mailbox = distribution.calendar_delivery?.mailbox || form.calendarMailbox.trim();
-    if (!targets.length) return setResult({ ok: false, message: "Voor deze selectie zijn geen e-mailkanalen gevonden." });
+    if (!targets.length) return setResult({ ok: false, message: "Vink eerst minimaal één e-mailkanaal aan." });
     if (!mailbox) return setResult({ ok: false, message: "Koppel eerst de Microsoft-mailbox van deze vestiging." });
     setConceptBusyId(item.id);
     setResult(null);
@@ -2779,6 +2782,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const facebookEventDelivery = distribution.facebook_event_delivery || {};
         const facebookDestination = distribution.channel_payloads?.facebook?.destination || (facebookAccount ? { page_id: facebookAccount.external_account_id, page_name: facebookAccount.display_name } : null);
         const editorialTargets = distribution.editorial_submissions || [];
+        const editorialEmailTargets = editorialTargets.map(editorialTargetDetails).filter((target) => target.email);
+        const defaultEditorialEmailKeys = editorialEmailTargets.filter((target) => !target.submissionUrl).map((target) => target.key);
+        const selectedEditorialEmailKeys = editorialEmailSelections[String(item.id)] ?? defaultEditorialEmailKeys;
         const editorialExpanded = expandedEditorialCampaignIds.includes(String(item.id));
 
         return <article key={item.id}>
@@ -2805,13 +2811,24 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 <b>{editorialExpanded ? "Inklappen" : "Bekijken"}</b>
               </button>
               {editorialExpanded && <>
-              <div className="editorialBulkActions"><span>Horeca OS heeft alle e-mails al ingevuld. Alleen websites met een eigen formulier blijven handmatige controlepunten.</span><div><button type="button" onClick={() => {
-                const firstEmailTarget = editorialTargets.map(editorialTargetDetails).find((target) => target.email);
+              <div className="editorialBulkActions"><span><b>{selectedEditorialEmailKeys.length} van {editorialEmailTargets.length} e-mails geselecteerd.</b> Websites met een eigen formulier staan standaard uit en blijven handmatige controlepunten.</span><div><button type="button" disabled={!selectedEditorialEmailKeys.length} onClick={() => {
+                const firstEmailTarget = editorialEmailTargets.find((target) => selectedEditorialEmailKeys.includes(target.key));
                 if (firstEmailTarget) setInternalEditorialEmail(editorialEmailDraft(firstEmailTarget, distribution.common, distribution.source_url));
-              }}>E-mailvoorbeeld bekijken</button><button type="button" disabled={conceptBusy || !editorialTargets.some((target) => editorialTargetDetails(target).email)} onClick={() => sendAllEditorialEmails(item, distribution)}>{conceptBusy ? "E-mails versturen…" : "Alle e-mails versturen"}</button></div></div>
+              }}>E-mailvoorbeeld bekijken</button><button type="button" disabled={conceptBusy || !selectedEditorialEmailKeys.length} onClick={() => sendAllEditorialEmails(item, distribution, selectedEditorialEmailKeys)}>{conceptBusy ? "E-mails versturen…" : `Geselecteerde e-mails versturen (${selectedEditorialEmailKeys.length})`}</button></div></div>
               <div className="editorialSubmissionList">{editorialTargets.map((savedTarget) => {
                 const target = editorialTargetDetails(savedTarget);
                 return <div key={target.key} className="editorialSubmissionRow">
+                  {target.email && <label className="editorialEmailChoice">
+                    <input type="checkbox" checked={selectedEditorialEmailKeys.includes(target.key)} onChange={(event) => setEditorialEmailSelections((current) => {
+                      const campaignKey = String(item.id);
+                      const currentKeys = current[campaignKey] ?? defaultEditorialEmailKeys;
+                      const nextKeys = event.target.checked
+                        ? [...new Set([...currentKeys, target.key])]
+                        : currentKeys.filter((key) => key !== target.key);
+                      return { ...current, [campaignKey]: nextKeys };
+                    })} />
+                    <span>{selectedEditorialEmailKeys.includes(target.key) ? "Meenemen in verzending" : "Niet versturen"}</span>
+                  </label>}
                   <b>{target.label}</b>
                   <span>{target.routeLabel || "Per e-mail aanmelden"}</span>
                   {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer">Aanmeldpagina openen</a>}
@@ -2977,7 +2994,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
     <style jsx>{`
       .imageUploadSuccess{display:block;margin-top:7px;color:#236d46;font-size:13px}.uploadedImageActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:7px}.downloadImage{border:1px solid #25889b;border-radius:7px;padding:6px 9px;background:#fff;color:#176d7f;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.eventinImagePreview>div{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:7px}.eventinImagePreview>div small{max-width:160px;overflow-wrap:anywhere}
-      .editorialSubmissionActions{display:grid;gap:8px;margin-top:10px;border:1px solid #d5e0e7;border-radius:10px;background:#f4f8fa;overflow:hidden}.editorialSubmissionToggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 14px;border:0;background:#f4f8fa;color:#173552;font:inherit;cursor:pointer;text-align:left}.editorialSubmissionToggle span{display:flex;align-items:center;gap:9px;min-width:0}.editorialSubmissionToggle small{padding:4px 7px;border-radius:999px;background:#fff;color:#5c7285;font-size:11px;white-space:nowrap}.editorialSubmissionToggle>b{color:#176d7f}.editorialBulkActions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 12px;padding:11px;border-radius:9px;background:#e9f6ee;color:#236d46}.editorialBulkActions>div{display:flex;flex-wrap:wrap;gap:7px}.editorialBulkActions button,.editorialSubmissionRow button{border:1px solid #25889b;border-radius:8px;padding:8px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.editorialBulkActions button:last-child{background:#25889b;color:#fff}.editorialSubmissionList{display:grid;gap:8px;padding:0 12px}.editorialSubmissionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px;border-radius:8px;background:#fff}.editorialSubmissionActions>small{padding:0 12px 12px;color:#5c7285}.internalEmailOverlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(13,34,52,.62)}.internalEmailComposer{display:grid;gap:12px;width:min(760px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.28)}.internalEmailHead,.internalEmailFooter{display:flex;align-items:center;justify-content:space-between;gap:12px}.internalEmailHead h3,.internalEmailHead p{margin:0}.internalEmailHead button,.internalEmailFooter button{border:1px solid #25889b;border-radius:8px;padding:9px 12px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.internalEmailFooter span{color:#5c7285}.internalEmailFooter button{background:#25889b;color:#fff}
+      .editorialSubmissionActions{display:grid;gap:8px;margin-top:10px;border:1px solid #d5e0e7;border-radius:10px;background:#f4f8fa;overflow:hidden}.editorialSubmissionToggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 14px;border:0;background:#f4f8fa;color:#173552;font:inherit;cursor:pointer;text-align:left}.editorialSubmissionToggle span{display:flex;align-items:center;gap:9px;min-width:0}.editorialSubmissionToggle small{padding:4px 7px;border-radius:999px;background:#fff;color:#5c7285;font-size:11px;white-space:nowrap}.editorialSubmissionToggle>b{color:#176d7f}.editorialBulkActions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 12px;padding:11px;border-radius:9px;background:#e9f6ee;color:#236d46}.editorialBulkActions>span{display:grid;gap:3px}.editorialBulkActions>div{display:flex;flex-wrap:wrap;gap:7px}.editorialBulkActions button,.editorialSubmissionRow button{border:1px solid #25889b;border-radius:8px;padding:8px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.editorialBulkActions button:last-child{background:#25889b;color:#fff}.editorialSubmissionList{display:grid;gap:8px;padding:0 12px}.editorialSubmissionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px;border-radius:8px;background:#fff}.editorialEmailChoice{display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid #9cbac3;border-radius:8px;background:#f7fbfc;color:#173552;font-weight:800}.editorialEmailChoice input{width:auto}.editorialEmailChoice span{font-size:13px}.editorialSubmissionActions>small{padding:0 12px 12px;color:#5c7285}.internalEmailOverlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(13,34,52,.62)}.internalEmailComposer{display:grid;gap:12px;width:min(760px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.28)}.internalEmailHead,.internalEmailFooter{display:flex;align-items:center;justify-content:space-between;gap:12px}.internalEmailHead h3,.internalEmailHead p{margin:0}.internalEmailHead button,.internalEmailFooter button{border:1px solid #25889b;border-radius:8px;padding:9px 12px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.internalEmailFooter span{color:#5c7285}.internalEmailFooter button{background:#25889b;color:#fff}
       .completedFacebookGroupLinks{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%;padding:10px;border:1px solid #b8cbea;border-radius:8px;background:#fff}.completedFacebookGroupLinks strong,.completedFacebookGroupLinks small{flex-basis:100%}.completedFacebookGroupLinks a{border:1px solid #1877f2;border-radius:7px;padding:7px 9px;color:#145dbf;font-weight:800;text-decoration:none}.completedFacebookGroupLinks small{color:#5c7285}
       .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.managedEventSearch{margin-top:12px}.managedEventSearch input{max-width:640px}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketDateRefresh{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0;padding:12px;border:1px solid #9cbac3;border-radius:10px;background:#eef7f9}.ticketDateRefresh>div{display:flex;flex-direction:column;gap:3px}.ticketDateRefresh span{color:#5c7285;font-size:13px}.ticketDateRefresh button{flex:0 0 auto;border:0;border-radius:8px;padding:10px 13px;background:#25889b;color:#fff;font:inherit;font-weight:800;cursor:pointer}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
