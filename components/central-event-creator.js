@@ -425,9 +425,16 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
   const visibleFacebookGroups = useMemo(() => {
     const query = facebookGroupSearch.trim().toLocaleLowerCase("nl-NL");
-    if (!query) return facebookGroups;
-    return facebookGroups.filter((group) => group.name.toLocaleLowerCase("nl-NL").includes(query));
-  }, [facebookGroupSearch, facebookGroups]);
+    const groups = query
+      ? facebookGroups.filter((group) => group.name.toLocaleLowerCase("nl-NL").includes(query))
+      : facebookGroups;
+    return [...groups].sort((left, right) => {
+      const leftSelected = selectedFacebookGroupIds.includes(String(left.id));
+      const rightSelected = selectedFacebookGroupIds.includes(String(right.id));
+      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+      return left.name.localeCompare(right.name, "nl");
+    });
+  }, [facebookGroupSearch, facebookGroups, selectedFacebookGroupIds]);
   const facebookGroupAdviceById = useMemo(() => new Map(facebookGroups.map((group) => [String(group.id), facebookGroupAdvice(group, form, selectedBusiness)])), [facebookGroups, form.title, form.shortDescription, form.description, form.location, form.campaignType, selectedBusiness]);
   const recommendedFacebookGroups = useMemo(() => facebookGroups
     .map((group) => ({ group, advice: facebookGroupAdviceById.get(String(group.id)) }))
@@ -584,19 +591,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   };
   const applyFacebookGroupAdvice = () => {
     const advisedIds = recommendedFacebookGroups
-      .filter(({ group }) => group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id))
       .map(({ group }) => String(group.id));
     setSelectedFacebookGroupIds(advisedIds);
     setResult({
       ok: true,
       message: advisedIds.length
         ? `${advisedIds.length} aanbevolen Facebookgroepen zijn aangevinkt. Controleer de selectie zelf; er wordt nog niets geplaatst.`
-        : "Er zijn voor deze inhoud nog geen plaatsbare Facebookgroepen met een gekoppelde bedrijfsafzender aanbevolen.",
+        : "Er zijn voor deze inhoud nog geen Facebookgroepen aanbevolen.",
     });
   };
   const selectVisibleFacebookGroups = () => {
     const selectableIds = visibleFacebookGroups
-      .filter((group) => group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id))
       .filter((group) => facebookGroupAdviceById.get(String(group.id))?.level !== "avoid")
       .map((group) => String(group.id));
     setSelectedFacebookGroupIds((current) => [...new Set([...current, ...selectableIds])]);
@@ -2468,8 +2473,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           <div className="facebookGroupList">{visibleFacebookGroups.map((group) => {
             const senderReady = Boolean(group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id));
             const advice = facebookGroupAdviceById.get(String(group.id));
-            return <div className={`facebookGroupChoice ${senderReady ? "senderReady" : "senderMissing"} ${advice?.recommended ? "recommended" : ""} ${advice?.level === "avoid" ? "avoid" : ""}`} key={group.id}>
-              <label className="check"><input type="checkbox" disabled={!senderReady || advice?.level === "avoid"} checked={senderReady && selectedFacebookGroupIds.includes(String(group.id))} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> <span><b>{group.name}{advice?.recommended && <em>Aanbevolen</em>}{advice?.level === "conditional" && <em className="conditional">Voorwaarden</em>}{advice?.level === "avoid" && <em className="avoid">Niet gebruiken</em>}</b><small>{advice?.reason}</small><small>{senderReady ? `Gewenste afzender: ${group.sender_page_name} · jij bevestigt iedere plaatsing zelf` : "Geblokkeerd: gewenste bedrijfsafzender nog niet gekoppeld"}</small></span></label>
+            const isSelected = selectedFacebookGroupIds.includes(String(group.id));
+            return <div className={`facebookGroupChoice ${senderReady ? "senderReady" : "senderMissing"} ${isSelected ? "selected" : ""} ${advice?.recommended ? "recommended" : ""} ${advice?.level === "avoid" ? "avoid" : ""}`} key={group.id}>
+              <label className="check"><input type="checkbox" disabled={advice?.level === "avoid"} checked={isSelected} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> <span><b>{group.name}{isSelected && <em>Aangevinkt</em>}{advice?.level === "conditional" && <em className="conditional">Voorwaarden</em>}{advice?.level === "avoid" && <em className="avoid">Niet gebruiken</em>}</b><small>{advice?.reason}</small><small>{senderReady ? `Gewenste afzender: ${group.sender_page_name} · jij bevestigt iedere plaatsing zelf` : "Wel geselecteerd, maar plaatsing geblokkeerd totdat de bedrijfsafzender is gekoppeld"}</small></span></label>
               <div>{!senderReady && <button type="button" disabled={!facebookAccount} onClick={() => verifyFacebookGroupSender(group)}>Koppel {facebookAccount?.display_name || "bedrijfspagina"}</button>}<button type="button" onClick={() => removeFacebookGroup(group)}>Verwijderen</button></div>
             </div>;
           })}</div>
