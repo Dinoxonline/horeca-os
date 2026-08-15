@@ -439,8 +439,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const recommendedFacebookGroups = useMemo(() => facebookGroups
     .map((group) => ({ group, advice: facebookGroupAdviceById.get(String(group.id)) }))
     .filter(({ advice }) => advice?.recommended)
-    .sort((left, right) => right.advice.score - left.advice.score || left.group.name.localeCompare(right.group.name, "nl"))
-    .slice(0, 10), [facebookGroups, facebookGroupAdviceById]);
+    .sort((left, right) => right.advice.score - left.advice.score || left.group.name.localeCompare(right.group.name, "nl")), [facebookGroups, facebookGroupAdviceById]);
   useEffect(() => {
     if (!workspaceId) return;
     try {
