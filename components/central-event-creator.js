@@ -2871,6 +2871,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                     ? "Het Facebook-evenement is gekoppeld. Rond nu de gekozen Facebookgroepen af."
                     : "Eventin, het Facebook-evenement en de Facebookgroepen zijn afgerond. Ga nu verder met e-mail, uitagenda’s en overige kanalen."}</p>
             </div>}
+            {isWebsiteEvent && <section className="savedChannelPanel savedEventinPanel">
+              <div className="savedChannelPanelHead"><div><h4>Eventin</h4><p>Website-evenement, evenementpagina en tickets</p></div><span>{websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd" : websiteEventStatus === "draft" ? "Concept" : "Gepubliceerd"}</span></div>
+              <button type="button" className="conceptEventinPreviewButton" aria-expanded={savedEventPreviewId === String(item.id)} onClick={() => setSavedEventPreviewId((current) => current === String(item.id) ? null : String(item.id))}>{savedEventPreviewId === String(item.id) ? "Eventin-voorbeeld sluiten" : "Eventin-voorbeeld bekijken"}</button>
+            </section>}
             {isWebsiteEvent && savedEventPreviewId === String(item.id) && <div className="savedEventinPreview" role="region" aria-label="Eventin-voorbeeld">
               <div className="savedEventinPreviewHead"><strong>Eventin-voorbeeld</strong><button type="button" onClick={() => setSavedEventPreviewId(null)}>Sluiten</button></div>
               <div className="savedEventinPreviewBody">
@@ -2885,10 +2889,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 </div>
               </div>
             </div>}
-            {distribution.calendar_delivery && <p className={`websiteEventState ${["failed", "cancelled"].includes(distribution.calendar_delivery.status) ? "cancelled" : ""}`}>
-              <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "cancelled" ? `Geannuleerd in ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "deleted" ? "Afspraak verwijderd" : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
-              {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
-            </p>}
+            {distribution.calendar_delivery && <section className={`savedChannelPanel savedCalendarPanel ${["failed", "cancelled"].includes(distribution.calendar_delivery.status) ? "cancelled" : ""}`}>
+              <div className="savedChannelPanelHead"><div><h4>Microsoft-agenda</h4><p>{distribution.calendar_delivery.status === "confirmed" ? `Afspraak gekoppeld aan ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "cancelled" ? `Afspraak geannuleerd in ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "deleted" ? "Afspraak verwijderd" : `Nog niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}</p></div><span>{distribution.calendar_delivery.status === "confirmed" ? "Gekoppeld" : distribution.calendar_delivery.status === "cancelled" ? "Geannuleerd" : distribution.calendar_delivery.status === "deleted" ? "Verwijderd" : "Niet gekoppeld"}</span></div>
+              {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <a className="savedChannelLink" href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Agenda-afspraak bekijken</a>}
+            </section>}
             {editorialTargets.length > 0 && (!isWebsiteEvent || campaignWorkflowStep === 4) && <div className="editorialSubmissionActions">
               <button type="button" className="editorialSubmissionToggle" aria-expanded={editorialExpanded} onClick={() => setExpandedEditorialCampaignIds((current) => current.includes(String(item.id)) ? current.filter((id) => id !== String(item.id)) : [...current, String(item.id)])}>
                 <span><strong>Uitagenda's en redacties</strong><small>{editorialTargets.length} gekozen</small></span>
@@ -2929,8 +2933,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             {deletionBlockReason && <p className="protectedCampaignNotice"><b>Verwijderen geblokkeerd:</b> {deletionBlockReason}</p>}
             {editingBlockReason && <p className="protectedCampaignNotice"><b>Bewerken geblokkeerd:</b> {editingBlockReason}</p>}
             {providerConfirmed && <p className="placedCampaignLock"><b>Geplaatste campagne vergrendeld.</b> Goedkeuring en planning blijven ongewijzigd. Gebruik Dupliceren voor een nieuwe versie.</p>}
+            <section className="savedManagementPanel">
+            <h4>Evenement beheren</h4>
             <div className="conceptActions">
-              {isWebsiteEvent && <button type="button" className="conceptEventinPreviewButton" aria-expanded={savedEventPreviewId === String(item.id)} onClick={() => setSavedEventPreviewId((current) => current === String(item.id) ? null : String(item.id))}>{savedEventPreviewId === String(item.id) ? "Eventin-voorbeeld sluiten" : "Eventin-voorbeeld bekijken"}</button>}
               <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || websiteEventReadOnly || Boolean(editingBlockReason)} title={websiteEventReadOnly ? "Beveiligde Eventin-koppeling vereist" : websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled || websiteEventReadOnly ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
               {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "draft" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Publiceren…" : websiteEventReadOnly ? "Koppeling nodig" : "Publiceren"}</button>}
               {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventReadOnly || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventReadOnly ? "Koppeling nodig" : websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
@@ -2938,13 +2943,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}
               <button type="button" className="conceptApproveButton" disabled={conceptBusy || providerConfirmed || (!approved && hasIncompleteChannels)} title={providerConfirmed ? "Geplaatste campagne vergrendeld" : !approved && hasIncompleteChannels ? `Vul eerst aan: ${formatChannelList(incompleteChannels)}` : ""} onClick={() => setConceptApproval(item, !approved)}>{providerConfirmed ? "Status vergrendeld" : approved ? "Terug naar concept" : "Goedkeuren"}</button>
               <button type="button" className="conceptDuplicateButton" disabled={conceptBusy} onClick={() => duplicateCampaignConcept(item)}>Dupliceren</button>
-              {isWebsiteEvent && campaignWorkflowStep === 2 && (distribution.target_channels || []).includes("facebook") && <button type="button" disabled={!facebookDestination?.page_id || !distribution.source_url} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !distribution.source_url ? "De openbare Eventin-ticketlink ontbreekt nog" : "Kopieert de evenementgegevens inclusief ticketlink, downloadt de afbeelding en opent Facebook voor de vereiste bevestiging"} onClick={() => openFacebookEventCreator(distribution)}>{!distribution.source_url ? "Ticketlink ophalen" : "Facebook-evenement voorbereiden"}</button>}
               {(distribution.target_channels || []).includes("facebook") && (!isWebsiteEvent || campaignWorkflowStep === 4) && !providerDeliveryConfirmed(distribution.provider_delivery?.facebook || {}) && <button type="button" className="conceptFacebookPublishButton" disabled={conceptBusy || !approved || websiteEventCancelled || hasIncompleteChannels || !facebookDestination?.page_id} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !approved ? "Keur het concept eerst goed" : ""} onClick={() => publishFacebookCampaign(item)}>{conceptBusy ? "Plaatsen…" : `Op ${facebookDestination?.page_name || "Facebook"} plaatsen`}</button>}
               {isWebsiteEvent && websiteEventDeleted && <button type="button" className="conceptDeleteButton" disabled={conceptBusy} onClick={() => cleanupDeletedWebsiteEvent(item)}>{conceptBusy ? "Opruimen..." : "Dossier en agenda opruimen"}</button>}
               {!isWebsiteEvent && <button type="button" className="conceptDeleteButton" disabled={conceptBusy || Boolean(deletionBlockReason)} title={deletionBlockReason} onClick={() => deleteCampaignConcept(item)}>{conceptBusy ? "Bezig..." : deletionBlockReason ? "Verwijderen geblokkeerd" : "Verwijderen"}</button>}
             </div>
+            </section>
             {isWebsiteEvent && campaignWorkflowStep === 2 && (distribution.target_channels || []).includes("facebook") && <div className="facebookEventLinkActions">
-              <strong>Facebook-agenda · {facebookDestination?.page_name || "niet gekoppeld"}</strong>
+              <div className="savedChannelPanelHead"><div><h4>Facebook-evenement</h4><p>Evenement op de Facebookpagina van deze vestiging</p></div><span>{facebookEventDelivery.status === "confirmed" ? "Gekoppeld" : "Nog niet gekoppeld"}</span></div>
+              <div className="savedFacebookPrimaryAction"><button type="button" disabled={!facebookDestination?.page_id || !distribution.source_url} title={!facebookDestination?.page_id ? "Koppel eerst de Facebookpagina van deze vestiging" : !distribution.source_url ? "De openbare Eventin-ticketlink ontbreekt nog" : "Kopieert de evenementgegevens inclusief ticketlink, downloadt de afbeelding en opent Facebook voor de vereiste bevestiging"} onClick={() => openFacebookEventCreator(distribution)}>{!distribution.source_url ? "Ticketlink ophalen" : "Facebook-evenement voorbereiden"}</button></div>
+              <strong>Facebookpagina: {facebookDestination?.page_name || "niet gekoppeld"}</strong>
               {facebookEventDelivery.status === "confirmed" && facebookEventDelivery.permalink
                 ? <span>Evenement gekoppeld · <a href={facebookEventDelivery.permalink} target="_blank" rel="noreferrer">Openen</a></span>
                 : <div className="facebookEventManualWorkflow">
@@ -3109,6 +3116,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .campaignStatus article>.statusPills{width:100%;justify-content:flex-start}
       .campaignStatus article>.statusPills .status{max-width:100%;flex-wrap:wrap;overflow-wrap:anywhere}
       .conceptEventinPreviewButton{border:1px solid #25889b;color:#176d7f}
+      .savedChannelPanel{margin-top:12px;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}
+      .savedChannelPanelHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:10px}
+      .savedChannelPanelHead h4,.savedChannelPanelHead p{margin:0}.savedChannelPanelHead p{margin-top:3px;color:#5c7285;font-size:13px}
+      .savedChannelPanelHead>span{flex:0 0 auto;padding:5px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:12px;font-weight:800}
+      .savedEventinPanel{border-left:4px solid #9b51e0}.savedCalendarPanel{border-left:4px solid #25889b}.savedCalendarPanel.cancelled{border-left-color:#b34949;background:#fff8f8}
+      .savedChannelLink{display:inline-flex;border:1px solid #25889b;border-radius:8px;padding:8px 11px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none}
+      .savedManagementPanel{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:12px;background:#fff}.savedManagementPanel h4{margin:0 0 10px}.savedManagementPanel .conceptActions{margin-top:0}
+      .facebookEventLinkActions{margin-top:12px!important;padding:14px!important;border:1px solid #b8cbea!important;border-left:4px solid #1877f2!important;border-radius:12px!important;background:#eef5ff!important}
+      .savedFacebookPrimaryAction{margin-bottom:10px}.savedFacebookPrimaryAction button{border:1px solid #1877f2;border-radius:8px;padding:9px 12px;background:#1877f2;color:#fff;font:inherit;font-weight:800;cursor:pointer}
       .savedEventinPreview{margin:10px 0 4px;padding:14px;border:2px solid #25889b;border-radius:12px;background:#eef7f9}
       .savedEventinPreviewHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
       .savedEventinPreviewHead button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}
@@ -3116,7 +3132,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .savedEventinPreviewBody img{width:100%;height:220px;border-radius:9px;object-fit:contain;background:#f1f4f6}
       .savedEventinPreviewBody h3{margin:4px 0 10px}
       .savedEventinPreviewBody small{display:block;margin-top:10px;color:#5c7285}
-      @media(max-width:760px){.savedEventinPreviewBody{grid-template-columns:1fr}}
+      @media(max-width:760px){.savedEventinPreviewBody{grid-template-columns:1fr}.savedChannelPanelHead{display:block}.savedChannelPanelHead>span{display:inline-block;margin-top:8px}}
     `}</style>
   </section>;
 }
