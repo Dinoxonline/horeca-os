@@ -178,8 +178,15 @@ function eventinPayload(body, venue, existingEvent = null) {
   };
 }
 
-function cleanHtml(value, limit = 10000) {
-  let cleaned = String(value || "")
+function cleanHtml(value, limit = 10000, preserveLines = false) {
+  let cleaned = String(value || "");
+  if (preserveLines) {
+    cleaned = cleaned
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "• ")
+      .replace(/<\/(p|div|li|h[1-6]|blockquote|section|article)>/gi, "\n");
+  }
+  cleaned = cleaned
     .replace(/<[^>]*>/g, " ")
     .replace(/&amp;/gi, "&");
   // Eventin/WordPress can return emoji as HTML entities, sometimes encoded
@@ -196,10 +203,14 @@ function cleanHtml(value, limit = 10000) {
     .replace(/&#039;|&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">");
-  return cleaned
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, limit);
+  const normalized = preserveLines
+    ? cleaned
+      .replace(/\r\n?/g, "\n")
+      .replace(/[\t ]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+    : cleaned.replace(/\s+/g, " ");
+  return normalized.trim().slice(0, limit);
 }
 
 function eventinValue(row, keys) {
@@ -317,7 +328,7 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
   return {
     id: String(row.id || wordpressRow?.id || ""),
     title: cleanHtml(row.title?.rendered || row.title || wordpressRow?.title?.rendered, 300),
-    description: cleanHtml(row.description?.rendered || row.description || row.content?.rendered || wordpressRow?.content?.rendered || wordpressRow?.excerpt?.rendered),
+    description: cleanHtml(row.description?.rendered || row.description || row.content?.rendered || wordpressRow?.content?.rendered || wordpressRow?.excerpt?.rendered, 10000, true),
     start,
     end,
     location,
@@ -346,7 +357,7 @@ function normalizeManagedEvent(row, site) {
   return {
     id: String(row?.id || ""),
     title: cleanHtml(row?.title?.rendered, 300),
-    description: cleanHtml(row?.content?.rendered || row?.excerpt?.rendered),
+    description: cleanHtml(row?.content?.rendered || row?.excerpt?.rendered, 10000, true),
     start,
     end,
     eventDate: inferredDate || (start ? start.slice(0, 10) : ""),
