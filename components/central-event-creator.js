@@ -366,6 +366,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [channelScheduleEdits, setChannelScheduleEdits] = useState({});
   const [managedWebsiteEvents, setManagedWebsiteEvents] = useState([]);
   const [showExpiredWebsiteEvents, setShowExpiredWebsiteEvents] = useState(false);
+  const [managedEventSearch, setManagedEventSearch] = useState("");
   const [managedEventsLoading, setManagedEventsLoading] = useState(false);
   const [importingEventId, setImportingEventId] = useState("");
   const managedEventsRequestRef = useRef(0);
@@ -1309,6 +1310,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingBrevoDraftId(null);
     setPendingPredisGeneration(null);
     setManagedWebsiteEvents([]);
+    setManagedEventSearch("");
     setImportingEventId("");
     managedEventsRequestRef.current += 1;
     setManagedEventsLoading(false);
@@ -2094,7 +2096,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   const currentManagedWebsiteEvents = managedWebsiteEvents.filter((eventItem) => !eventItem.expired);
   const expiredManagedWebsiteEvents = managedWebsiteEvents.filter((eventItem) => eventItem.expired);
-  const visibleManagedWebsiteEvents = showExpiredWebsiteEvents ? expiredManagedWebsiteEvents : currentManagedWebsiteEvents;
+  const managedEventSearchQuery = managedEventSearch.trim().toLocaleLowerCase("nl-NL");
+  const visibleManagedWebsiteEvents = (showExpiredWebsiteEvents ? expiredManagedWebsiteEvents : currentManagedWebsiteEvents).filter((eventItem) => {
+    if (!managedEventSearchQuery) return true;
+    const dateText = eventItem.start ? formatNlDateTime(eventItem.start) : eventItem.eventDate ? formatNlDate(eventItem.eventDate) : "";
+    return [eventItem.title, eventItem.location, eventItem.start, eventItem.end, eventItem.eventDate, dateText]
+      .some((value) => String(value || "").toLocaleLowerCase("nl-NL").includes(managedEventSearchQuery));
+  });
 
   return <section className="panel" style={{ marginBottom: 24 }}>
     <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
@@ -2573,7 +2581,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <button type="button" className={!showExpiredWebsiteEvents ? "active" : ""} onClick={() => setShowExpiredWebsiteEvents(false)}>Actuele evenementen ({currentManagedWebsiteEvents.length})</button>
         <button type="button" className={showExpiredWebsiteEvents ? "active expired" : ""} onClick={() => setShowExpiredWebsiteEvents(true)}>Verlopen evenementen ({expiredManagedWebsiteEvents.length})</button>
       </div>}
-      {managedWebsiteEvents.length > 0 && visibleManagedWebsiteEvents.length === 0 && <p className="emptyManagedEvents">{showExpiredWebsiteEvents ? "Er zijn geen verlopen evenementen." : "Er zijn geen actuele evenementen."}</p>}
+      {managedWebsiteEvents.length > 0 && <label className="managedEventSearch">Zoeken in {showExpiredWebsiteEvents ? "verlopen" : "actuele"} evenementen<input type="search" value={managedEventSearch} onChange={(event) => setManagedEventSearch(event.target.value)} placeholder="Zoek op naam, locatie, datum of jaar" /></label>}
+      {managedWebsiteEvents.length > 0 && visibleManagedWebsiteEvents.length === 0 && <p className="emptyManagedEvents">{managedEventSearchQuery ? `Geen evenementen gevonden voor “${managedEventSearch.trim()}”.` : showExpiredWebsiteEvents ? "Er zijn geen verlopen evenementen." : "Er zijn geen actuele evenementen."}</p>}
       {visibleManagedWebsiteEvents.length > 0 && <div className="managedEventGrid">{visibleManagedWebsiteEvents.map((eventItem) => {
         const linked = eventCampaigns.some((campaign) => (campaign.media || []).some((entry) => entry?.kind === "campaign_distribution" && String(entry.eventin_event_id || "") === String(eventItem.id)));
         const incomplete = !eventItem.start || !eventItem.end || !eventItem.location;
@@ -2587,7 +2596,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
     <style jsx>{`
       .completedFacebookGroupLinks{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%;padding:10px;border:1px solid #b8cbea;border-radius:8px;background:#fff}.completedFacebookGroupLinks strong,.completedFacebookGroupLinks small{flex-basis:100%}.completedFacebookGroupLinks a{border:1px solid #1877f2;border-radius:7px;padding:7px 9px;color:#145dbf;font-weight:800;text-decoration:none}.completedFacebookGroupLinks small{color:#5c7285}
-      .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
+      .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.managedEventSearch{margin-top:12px}.managedEventSearch input{max-width:640px}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
       .existingWebsiteEvents{margin-top:22px;padding:18px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.existingWebsiteEventsHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.existingWebsiteEventsHead h3,.existingWebsiteEventsHead p{margin:0}.existingWebsiteEventsHead>button{flex:0 0 auto}.managedEventGrid{display:grid;gap:10px;margin-top:14px}.managedEventGrid article{display:grid;gap:7px;padding:12px;border:1px solid #d5e0e7;border-radius:10px;background:#fff}.managedEventGrid article>div:first-child{display:flex;justify-content:space-between;gap:10px}.managedEventGrid article span{padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.managedEventGrid p{margin:0;color:#405866}.managedEventGrid small{color:#815b00}.managedEventActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.managedEventActions a,.managedEventActions button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font-weight:800;text-decoration:none;cursor:pointer}.managedEventActions button:disabled{opacity:.55;cursor:not-allowed}
       .campaignCardMain{display:flex;gap:14px;min-width:0;flex:1}.campaignCardImage{flex:0 0 132px}.campaignCardImage img{display:block;width:132px;height:96px;border-radius:10px;object-fit:cover;background:#eef2f5}.campaignCardContent{min-width:0;flex:1}.websiteEventState{margin:8px 0 0!important;padding:8px 10px;border-radius:8px;background:#eef7f9;color:#176d7f}.websiteEventState.cancelled{background:#f8eaea;color:#a12f2f}.conceptPublishEventButton{border:1px solid #23804f;color:#17613d;background:#eefaf3}.conceptWebsiteDraftButton{border:1px solid #c88a18;color:#815b00}.conceptCancelEventButton{border:1px solid #c95d5d;color:#a12f2f}.conceptActions .conceptCancelDeleteEventButton{border:1px solid #8f1f1f;color:#fff;background:#a12f2f}.conceptActions .conceptFacebookPublishButton{border:1px solid #1877f2;color:#fff;background:#1877f2}
