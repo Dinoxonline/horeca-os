@@ -9,16 +9,19 @@ const SCOPES = [
   "pages_manage_engagement",
   "pages_manage_posts",
   "business_management",
+  "ads_read",
+  "ads_management",
 ];
 
 export async function GET(request) {
   const context = await authorizedContext(request, new URL(request.url).searchParams.get("workspaceId"));
   if (context.error) return context.error;
   const { data, error } = await context.admin.from("integration_accounts")
-    .select("id,business_id,external_account_id,display_name,connection_status,granted_scopes,token_expires_at,last_synced_at,last_error_code")
-    .eq("workspace_id", context.workspaceId).eq("provider", "facebook").order("display_name");
+    .select("id,business_id,provider,external_account_id,display_name,connection_status,granted_scopes,token_expires_at,last_synced_at,last_error_code")
+    .eq("workspace_id", context.workspaceId).in("provider", ["facebook", "facebook_ads"]).order("display_name");
   return NextResponse.json({
-    accounts: error ? [] : data || [],
+    accounts: error ? [] : (data || []).filter((account) => account.provider === "facebook"),
+    adAccounts: error ? [] : (data || []).filter((account) => account.provider === "facebook_ads"),
     configuration: getFacebookConfiguration(),
     accountsWarning: error ? "Bestaande Facebook-koppelingen konden niet worden geladen." : null,
   });
