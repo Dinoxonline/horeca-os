@@ -179,12 +179,24 @@ function eventinPayload(body, venue, existingEvent = null) {
 }
 
 function cleanHtml(value, limit = 10000) {
-  return String(value || "")
+  let cleaned = String(value || "")
     .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/gi, "&");
+  // Eventin/WordPress can return emoji as HTML entities, sometimes encoded
+  // twice. Decode both hexadecimal and decimal entities after &amp; is restored.
+  cleaned = cleaned
+    .replace(/&#x([0-9a-f]+);/gi, (match, code) => {
+      try { return String.fromCodePoint(Number.parseInt(code, 16)); } catch { return match; }
+    })
+    .replace(/&#(\d+);/g, (match, code) => {
+      try { return String.fromCodePoint(Number.parseInt(code, 10)); } catch { return match; }
+    })
     .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+  return cleaned
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, limit);
