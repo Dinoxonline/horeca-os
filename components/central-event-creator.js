@@ -400,6 +400,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [eventWorkspaceView, setEventWorkspaceView] = useState("");
   const [preview, setPreview] = useState(false);
   const [previewChannel, setPreviewChannel] = useState("");
+  const [savedEventPreviewId, setSavedEventPreviewId] = useState(null);
   const [expandedEditorialCampaignIds, setExpandedEditorialCampaignIds] = useState([]);
   const [editorialEmailSelections, setEditorialEmailSelections] = useState({});
   const [internalEditorialEmail, setInternalEditorialEmail] = useState(null);
@@ -2870,6 +2871,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                     ? "Het Facebook-evenement is gekoppeld. Rond nu de gekozen Facebookgroepen af."
                     : "Eventin, het Facebook-evenement en de Facebookgroepen zijn afgerond. Ga nu verder met e-mail, uitagenda’s en overige kanalen."}</p>
             </div>}
+            {isWebsiteEvent && savedEventPreviewId === String(item.id) && <div className="savedEventinPreview" role="region" aria-label="Eventin-voorbeeld">
+              <div className="savedEventinPreviewHead"><strong>Eventin-voorbeeld</strong><button type="button" onClick={() => setSavedEventPreviewId(null)}>Sluiten</button></div>
+              <div className="savedEventinPreviewBody">
+                {eventImageUrl ? <NextImage src={eventImageUrl} alt="Eventin-afbeelding" width={280} height={220} sizes="280px" unoptimized loader={({ src }) => src} /> : <div className="providerPreviewPlaceholder">Nog geen afbeelding</div>}
+                <div>
+                  <h3>{distribution.common?.title || "Naamloos evenement"}</h3>
+                  <p><b>Datum en tijd:</b> {distribution.common?.start ? new Date(distribution.common.start).toLocaleString("nl-NL") : "niet ingevuld"} – {distribution.common?.end ? new Date(distribution.common.end).toLocaleString("nl-NL") : "niet ingevuld"}</p>
+                  <p><b>Locatie:</b> {distribution.common?.location || "niet ingevuld"}</p>
+                  <p className="providerPreviewText">{distribution.common?.description || distribution.common?.short_description || "Nog geen omschrijving"}</p>
+                  <p><b>Tickets:</b> {distribution.common?.tickets?.variations?.length ? distribution.common.tickets.variations.map((ticket) => `${ticket.name || "Ticket"} (${ticket.type === "paid" ? `€ ${Number(ticket.price || 0).toFixed(2)}` : "gratis"})`).join(" · ") : "geen tickets"}</p>
+                  <small>Dit is alleen een controleweergave. Er wordt niets gepubliceerd of gewijzigd.</small>
+                </div>
+              </div>
+            </div>}
             {distribution.calendar_delivery && <p className={`websiteEventState ${["failed", "cancelled"].includes(distribution.calendar_delivery.status) ? "cancelled" : ""}`}>
               <b>Microsoft-agenda:</b> {distribution.calendar_delivery.status === "confirmed" ? `Gekoppeld aan ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "cancelled" ? `Geannuleerd in ${distribution.calendar_delivery.mailbox}` : distribution.calendar_delivery.status === "deleted" ? "Afspraak verwijderd" : `Niet gekoppeld aan ${distribution.calendar_delivery.mailbox || "de gekozen agenda"}`}
               {["confirmed", "cancelled"].includes(distribution.calendar_delivery.status) && distribution.calendar_delivery.web_link && <> · <a href={distribution.calendar_delivery.web_link} target="_blank" rel="noreferrer">Openen</a></>}
@@ -2915,6 +2930,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             {editingBlockReason && <p className="protectedCampaignNotice"><b>Bewerken geblokkeerd:</b> {editingBlockReason}</p>}
             {providerConfirmed && <p className="placedCampaignLock"><b>Geplaatste campagne vergrendeld.</b> Goedkeuring en planning blijven ongewijzigd. Gebruik Dupliceren voor een nieuwe versie.</p>}
             <div className="conceptActions">
+              {isWebsiteEvent && <button type="button" className="conceptEventinPreviewButton" aria-expanded={savedEventPreviewId === String(item.id)} onClick={() => setSavedEventPreviewId((current) => current === String(item.id) ? null : String(item.id))}>{savedEventPreviewId === String(item.id) ? "Eventin-voorbeeld sluiten" : "Eventin-voorbeeld bekijken"}</button>}
               <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || websiteEventReadOnly || Boolean(editingBlockReason)} title={websiteEventReadOnly ? "Beveiligde Eventin-koppeling vereist" : websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled || websiteEventReadOnly ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
               {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "draft" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Publiceren…" : websiteEventReadOnly ? "Koppeling nodig" : "Publiceren"}</button>}
               {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventReadOnly || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventReadOnly ? "Koppeling nodig" : websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
@@ -3092,6 +3108,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .campaignStatus article>.campaignCardMain{width:100%;max-width:100%}
       .campaignStatus article>.statusPills{width:100%;justify-content:flex-start}
       .campaignStatus article>.statusPills .status{max-width:100%;flex-wrap:wrap;overflow-wrap:anywhere}
+      .conceptEventinPreviewButton{border:1px solid #25889b;color:#176d7f}
+      .savedEventinPreview{margin:10px 0 4px;padding:14px;border:2px solid #25889b;border-radius:12px;background:#eef7f9}
+      .savedEventinPreviewHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+      .savedEventinPreviewHead button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}
+      .savedEventinPreviewBody{display:grid;grid-template-columns:minmax(180px,280px) 1fr;gap:18px;padding:14px;border-radius:10px;background:#fff}
+      .savedEventinPreviewBody img{width:100%;height:220px;border-radius:9px;object-fit:contain;background:#f1f4f6}
+      .savedEventinPreviewBody h3{margin:4px 0 10px}
+      .savedEventinPreviewBody small{display:block;margin-top:10px;color:#5c7285}
+      @media(max-width:760px){.savedEventinPreviewBody{grid-template-columns:1fr}}
     `}</style>
   </section>;
 }
