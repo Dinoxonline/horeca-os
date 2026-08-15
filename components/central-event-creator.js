@@ -371,6 +371,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [form, setForm] = useState(emptyForm);
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
+  const facebookGroupListRef = useRef(null);
   const [eventWorkspaceView, setEventWorkspaceView] = useState("");
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -605,6 +606,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .filter((group) => facebookGroupAdviceById.get(String(group.id))?.level !== "avoid")
       .map((group) => String(group.id));
     setSelectedFacebookGroupIds((current) => [...new Set([...current, ...selectableIds])]);
+  };
+  const toggleFacebookGroupSelection = (groupId) => {
+    const listScrollTop = facebookGroupListRef.current?.scrollTop || 0;
+    const pageScrollTop = window.scrollY;
+    const id = String(groupId);
+    setSelectedFacebookGroupIds((current) => current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id]);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (facebookGroupListRef.current) facebookGroupListRef.current.scrollTop = listScrollTop;
+        window.scrollTo({ top: pageScrollTop, behavior: "instant" });
+      });
+    });
   };
   const enabledChannels = form.preparePromotion ? Object.keys(form.channels).filter((channel) => form.channels[channel]) : [];
   const preferredImageKeys = (channel) => {
@@ -2470,12 +2483,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <div><button type="button" disabled={visibleFacebookGroups.length === 0} onClick={selectVisibleFacebookGroups}>Alles zichtbaar aanvinken</button><button type="button" disabled={selectedFacebookGroupIds.length === 0} onClick={() => setSelectedFacebookGroupIds([])}>Alles uitvinken</button><button type="button" disabled={visibleFacebookGroups.length === 0} onClick={() => setShowAllFacebookGroups((current) => !current)}>{showAllFacebookGroups ? "Lijst inklappen" : `Volledige lijst tonen (${visibleFacebookGroups.length})`}</button></div>
           </div>}
           {facebookGroupsLoading && <p>Facebookgroepen laden…</p>}
-          <div className={`facebookGroupList ${showAllFacebookGroups ? "expanded" : "compact"}`}>{visibleFacebookGroups.map((group) => {
+          <div ref={facebookGroupListRef} className={`facebookGroupList ${showAllFacebookGroups ? "expanded" : "compact"}`}>{visibleFacebookGroups.map((group) => {
             const senderReady = Boolean(group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id));
             const advice = facebookGroupAdviceById.get(String(group.id));
             const isSelected = selectedFacebookGroupIds.includes(String(group.id));
             return <div className={`facebookGroupChoice ${senderReady ? "senderReady" : "senderMissing"} ${isSelected ? "selected" : ""} ${advice?.recommended ? "recommended" : ""} ${advice?.level === "avoid" ? "avoid" : ""}`} key={group.id}>
-              <label className="check"><input type="checkbox" disabled={advice?.level === "avoid"} checked={isSelected} onChange={() => setSelectedFacebookGroupIds((current) => current.includes(String(group.id)) ? current.filter((id) => id !== String(group.id)) : [...current, String(group.id)])} /> <span><b>{group.name}{isSelected && <em>Aangevinkt</em>}{advice?.level === "conditional" && <em className="conditional">Voorwaarden</em>}{advice?.level === "avoid" && <em className="avoid">Niet gebruiken</em>}</b><small>{advice?.reason}</small><small>{senderReady ? `Gewenste afzender: ${group.sender_page_name} · jij bevestigt iedere plaatsing zelf` : "Wel geselecteerd, maar plaatsing geblokkeerd totdat de bedrijfsafzender is gekoppeld"}</small></span></label>
+              <label className="check"><input type="checkbox" disabled={advice?.level === "avoid"} checked={isSelected} onChange={() => toggleFacebookGroupSelection(group.id)} /> <span><b>{group.name}{isSelected && <em>Aangevinkt</em>}{advice?.level === "conditional" && <em className="conditional">Voorwaarden</em>}{advice?.level === "avoid" && <em className="avoid">Niet gebruiken</em>}</b><small>{advice?.reason}</small><small>{senderReady ? `Gewenste afzender: ${group.sender_page_name} · jij bevestigt iedere plaatsing zelf` : "Wel geselecteerd, maar plaatsing geblokkeerd totdat de bedrijfsafzender is gekoppeld"}</small></span></label>
               <div>{!senderReady && <button type="button" disabled={!facebookAccount} onClick={() => verifyFacebookGroupSender(group)}>Koppel {facebookAccount?.display_name || "bedrijfspagina"}</button>}<button type="button" onClick={() => removeFacebookGroup(group)}>Verwijderen</button></div>
             </div>;
           })}</div>
