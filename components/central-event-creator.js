@@ -42,7 +42,7 @@ const editorialAgendaTargets = [
   { key: "email_zoetermeer_nieuws", label: "Zoetermeer.Nieuws.nl", route: "email", routeLabel: "Persbericht per e-mail", websiteUrl: "https://zoetermeer.nieuws.nl/", email: "zoetermeer@nieuws.nl" },
   { key: "email_zoetermeers_dagblad", label: "Zoetermeers Dagblad", route: "email", routeLabel: "Persbericht per e-mail", websiteUrl: "https://zoetermeersdagblad.nl/", email: "redactie@zoetermeersdagblad.nl" },
   { key: "email_streekblad", label: "Streekblad Zoetermeer", route: "email", routeLabel: "Redactie per e-mail", websiteUrl: "https://www.streekbladzoetermeer.nl/agenda", email: "redactiestreekblad@telstarmediacentrum.nl" },
-  { key: "email_zfm", label: "ZFM Zoetermeer", route: "website", routeLabel: "Eerst via de ZFM-website", submissionUrl: "https://www.zfmzoetermeer.nl/", email: "algemeen@zfmzoetermeer.nl", fallbackLabel: "Lukt aanmelden niet? E-mail de redactie" },
+  { key: "email_zfm", label: "ZFM Zoetermeer", route: "email", routeLabel: "Automatisch per e-mail", websiteUrl: "https://www.zfmzoetermeer.nl/", email: "algemeen@zfmzoetermeer.nl", fallbackLabel: "ZFM vraagt activiteiten en persberichten per e-mail aan te leveren" },
   { key: "email_zoetermeer_actief", label: "Zoetermeer Actief", route: "email", routeLabel: "Redactie per e-mail", websiteUrl: "https://zoetermeeractief.nl/", email: "info@zoetermeeractief.nl" },
   { key: "email_vrijetijdkrant", label: "Vrijetijdkrant", route: "website", routeLabel: "Evenement via formulier aanmelden", submissionUrl: "https://www.vrijetijdkrant.nl/evenement-aanmelden/", email: "info@vrijetijdkrant.nl", fallbackLabel: "Werkt het formulier niet? E-mail om hulp" },
   { key: "email_eventtip", label: "Eventtip / Culturele Uitagenda", route: "website", routeLabel: "Eerst via Eventtip aanmelden", submissionUrl: "https://eventtip.nl/", email: "info@eventconnectors.nl", fallbackLabel: "Lukt aanmelden niet? E-mail de redactie" },
@@ -217,7 +217,27 @@ function editorialEmailDraft(target, common = {}, sourceUrl = "") {
 }
 
 function editorialTargetDetails(target) {
-  return { ...(editorialAgendaTargets.find(({ key }) => key === target?.key) || {}), ...(target || {}) };
+  const currentTarget = editorialAgendaTargets.find(({ key }) => key === target?.key) || {};
+  return { ...(target || {}), ...currentTarget, status: target?.status || currentTarget.status };
+}
+
+function editorialRoutePresentation(target) {
+  if (target.route === "email" && target.email) {
+    return {
+      badge: "Automatisch per e-mail",
+      explanation: "Horeca OS vult de e-mail volledig in. Na jouw controle kan deze samen met de andere geselecteerde e-mails worden verzonden.",
+    };
+  }
+  if (target.submissionUrl) {
+    return {
+      badge: "Aanmeldpagina — handmatige controle",
+      explanation: "Deze website biedt geen betrouwbare automatische koppeling. Horeca OS bewaart je invoer voordat de aanmeldpagina opent.",
+    };
+  }
+  return {
+    badge: "Instructies controleren",
+    explanation: "Controleer eerst de werkwijze van dit kanaal.",
+  };
 }
 
 function siteForBusiness(business) {
@@ -2587,23 +2607,26 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </>}
       {isEvent && <div className="editorialAgendaPicker" style={{ display: "grid", gap: "10px", marginTop: "4px", padding: "14px", border: "1px solid #c6d5df", borderRadius: "12px", background: "#f8fbfc" }}>
         <strong>Uitagenda's, media en evenementensites</strong>
-        <p>Kies zelf waar je het evenement wilt aanbieden. Per kanaal zie je of je een formulier moet invullen of een e-mail moet sturen. Als een website niet werkt, staat de e-mailroute er direct naast.</p>
+        <p>Kies zelf waar je het evenement wilt aanbieden. Groen betekent dat Horeca OS de e-mail kan voorbereiden en verzenden. Oranje betekent dat de externe website nog handmatig gecontroleerd moet worden.</p>
         <div className="editorialTargetBulkActions">
           <button type="button" onClick={() => update("editorialTargets", Object.fromEntries(editorialAgendaTargets.map((target) => [target.key, true])))}>Alles selecteren</button>
           <button type="button" onClick={() => update("editorialTargets", { ...emptyEditorialTargets })}>Alles deselecteren</button>
         </div>
-        <div className="channelChecks editorialTargetGrid">{editorialAgendaTargets.map((target) => <div className="channelCheck editorialTargetCard" key={target.key}>
+        <div className="channelChecks editorialTargetGrid">{editorialAgendaTargets.map((target) => {
+          const routePresentation = editorialRoutePresentation(target);
+          return <div className={`channelCheck editorialTargetCard editorialRoute-${target.route}`} key={target.key}>
           <div className="editorialTargetHead">
             <label className="check"><input type="checkbox" checked={Boolean(form.editorialTargets?.[target.key])} onChange={() => update("editorialTargets", { ...emptyEditorialTargets, ...(form.editorialTargets || {}), [target.key]: !form.editorialTargets?.[target.key] })} /> {target.label}</label>
-            <small><b>{target.routeLabel}</b></small>
+            <small className="editorialRouteBadge"><b>{routePresentation.badge}</b></small>
           </div>
+          <small className="editorialRouteExplanation">{routePresentation.explanation}</small>
           <div className="editorialTargetLinks">
-            {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer" onClick={() => saveCurrentFormDraft()}>Aanmeldpagina openen</a>}
-            {!target.submissionUrl && (target.infoUrl || target.websiteUrl) && <a href={target.infoUrl || target.websiteUrl} target="_blank" rel="noreferrer" onClick={() => saveCurrentFormDraft()}>Instructies bekijken</a>}
-            {target.email && <span>{target.email}</span>}
+            {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer" onClick={() => saveCurrentFormDraft()}>Handmatige aanmeldpagina openen</a>}
+            {!target.submissionUrl && (target.infoUrl || target.websiteUrl) && <a href={target.infoUrl || target.websiteUrl} target="_blank" rel="noreferrer" onClick={() => saveCurrentFormDraft()}>Website ter controle bekijken</a>}
+            {target.email && <span>E-mail: {target.email}</span>}
           </div>
           {target.fallbackLabel && <small className="editorialTargetHint">{target.fallbackLabel}</small>}
-        </div>)}</div>
+        </div>})}</div>
         <details style={{ marginTop: "4px", padding: "10px 12px", border: "1px solid #d7e1e7", borderRadius: "10px", background: "#fff" }}>
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>Kanalen met een handmatige stap, blokkade of eerdere afwijzing ({editorialReferenceTargets.length})</summary>
           <p style={{ margin: "8px 0" }}>Deze kanalen zijn bewaard uit de eerdere promotielijst, maar staan niet tussen de normale keuzes omdat ze niet direct of niet gratis bruikbaar zijn.</p>
@@ -2809,7 +2832,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const facebookDestination = distribution.channel_payloads?.facebook?.destination || (facebookAccount ? { page_id: facebookAccount.external_account_id, page_name: facebookAccount.display_name } : null);
         const editorialTargets = distribution.editorial_submissions || [];
         const editorialEmailTargets = editorialTargets.map(editorialTargetDetails).filter((target) => target.email);
-        const defaultEditorialEmailKeys = editorialEmailTargets.filter((target) => !target.submissionUrl).map((target) => target.key);
+        const defaultEditorialEmailKeys = editorialEmailTargets.filter((target) => target.route === "email").map((target) => target.key);
         const selectedEditorialEmailKeys = editorialEmailSelections[String(item.id)] ?? defaultEditorialEmailKeys;
         const editorialExpanded = expandedEditorialCampaignIds.includes(String(item.id));
 
@@ -2843,7 +2866,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               }}>E-mailvoorbeeld bekijken</button><button type="button" disabled={conceptBusy || !selectedEditorialEmailKeys.length} onClick={() => sendAllEditorialEmails(item, distribution, selectedEditorialEmailKeys)}>{conceptBusy ? "E-mails versturen…" : `Geselecteerde e-mails versturen (${selectedEditorialEmailKeys.length})`}</button></div></div>
               <div className="editorialSubmissionList">{editorialTargets.map((savedTarget) => {
                 const target = editorialTargetDetails(savedTarget);
-                return <div key={target.key} className="editorialSubmissionRow">
+                const routePresentation = editorialRoutePresentation(target);
+                return <div key={target.key} className={`editorialSubmissionRow editorialRoute-${target.route}`}>
                   {target.email && <label className="editorialEmailChoice">
                     <input type="checkbox" checked={selectedEditorialEmailKeys.includes(target.key)} onChange={(event) => setEditorialEmailSelections((current) => {
                       const campaignKey = String(item.id);
@@ -2856,9 +2880,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                     <span>{selectedEditorialEmailKeys.includes(target.key) ? "Meenemen in verzending" : "Niet versturen"}</span>
                   </label>}
                   <b>{target.label}</b>
-                  <span>{target.routeLabel || "Per e-mail aanmelden"}</span>
-                  {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer">Aanmeldpagina openen</a>}
-                  {target.email && <button type="button" onClick={() => setInternalEditorialEmail(editorialEmailDraft(target, distribution.common, distribution.source_url))}>{target.submissionUrl ? "Interne e-mail als website niet werkt" : "E-mail intern controleren"}</button>}
+                  <span className="editorialRouteBadge">{routePresentation.badge}</span>
+                  <small>{routePresentation.explanation}</small>
+                  {target.submissionUrl && <a href={target.submissionUrl} target="_blank" rel="noreferrer">Handmatige aanmeldpagina openen</a>}
+                  {target.email && <button type="button" onClick={() => setInternalEditorialEmail(editorialEmailDraft(target, distribution.common, distribution.source_url))}>{target.route === "email" ? "E-mail intern controleren" : "E-mail gebruiken als website niet werkt"}</button>}
                 </div>;
               })}</div>
               <small>Een klaargezette e-mail bevat titel, datum, tijden, locatie, omschrijving, evenementlink, afbeelding en contactgegevens. Controleer hem voordat je hem verstuurt.</small>
@@ -3026,7 +3051,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
     <style jsx>{`
       .imageUploadSuccess{display:block;margin-top:7px;color:#236d46;font-size:13px}.uploadedImageActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:7px}.downloadImage{border:1px solid #25889b;border-radius:7px;padding:6px 9px;background:#fff;color:#176d7f;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.eventinImagePreview>div{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:7px}.eventinImagePreview>div small{max-width:160px;overflow-wrap:anywhere}
-      .editorialSubmissionActions{display:grid;gap:8px;margin-top:10px;border:1px solid #d5e0e7;border-radius:10px;background:#f4f8fa;overflow:hidden}.editorialSubmissionToggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 14px;border:0;background:#f4f8fa;color:#173552;font:inherit;cursor:pointer;text-align:left}.editorialSubmissionToggle span{display:flex;align-items:center;gap:9px;min-width:0}.editorialSubmissionToggle small{padding:4px 7px;border-radius:999px;background:#fff;color:#5c7285;font-size:11px;white-space:nowrap}.editorialSubmissionToggle>b{color:#176d7f}.editorialBulkActions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 12px;padding:11px;border-radius:9px;background:#e9f6ee;color:#236d46}.editorialBulkActions>span{display:grid;gap:3px}.editorialBulkActions>div{display:flex;flex-wrap:wrap;gap:7px}.editorialBulkActions button,.editorialSubmissionRow button{border:1px solid #25889b;border-radius:8px;padding:8px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.editorialBulkActions button:last-child{background:#25889b;color:#fff}.editorialSubmissionList{display:grid;gap:8px;padding:0 12px}.editorialSubmissionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px;border-radius:8px;background:#fff}.editorialEmailChoice{display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid #9cbac3;border-radius:8px;background:#f7fbfc;color:#173552;font-weight:800}.editorialEmailChoice input{width:auto}.editorialEmailChoice span{font-size:13px}.editorialSubmissionActions>small{padding:0 12px 12px;color:#5c7285}.internalEmailOverlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(13,34,52,.62)}.internalEmailComposer{display:grid;gap:12px;width:min(760px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.28)}.internalEmailHead,.internalEmailFooter{display:flex;align-items:center;justify-content:space-between;gap:12px}.internalEmailHead h3,.internalEmailHead p{margin:0}.internalEmailHead button,.internalEmailFooter button{border:1px solid #25889b;border-radius:8px;padding:9px 12px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.internalEmailFooter span{color:#5c7285}.internalEmailFooter button{background:#25889b;color:#fff}
+      .editorialSubmissionActions{display:grid;gap:8px;margin-top:10px;border:1px solid #d5e0e7;border-radius:10px;background:#f4f8fa;overflow:hidden}.editorialSubmissionToggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 14px;border:0;background:#f4f8fa;color:#173552;font:inherit;cursor:pointer;text-align:left}.editorialSubmissionToggle span{display:flex;align-items:center;gap:9px;min-width:0}.editorialSubmissionToggle small{padding:4px 7px;border-radius:999px;background:#fff;color:#5c7285;font-size:11px;white-space:nowrap}.editorialSubmissionToggle>b{color:#176d7f}.editorialBulkActions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 12px;padding:11px;border-radius:9px;background:#e9f6ee;color:#236d46}.editorialBulkActions>span{display:grid;gap:3px}.editorialBulkActions>div{display:flex;flex-wrap:wrap;gap:7px}.editorialBulkActions button,.editorialSubmissionRow button{border:1px solid #25889b;border-radius:8px;padding:8px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.editorialBulkActions button:last-child{background:#25889b;color:#fff}.editorialSubmissionList{display:grid;gap:8px;padding:0 12px}.editorialSubmissionRow{display:grid;grid-template-columns:auto minmax(140px,1fr) auto;align-items:center;gap:8px;padding:10px;border-radius:8px;background:#fff}.editorialSubmissionRow>small{grid-column:2/-1;color:#5c7285}.editorialRouteBadge{display:inline-flex;padding:5px 8px;border-radius:999px;background:#fff2d1;color:#815b00;font-size:12px;font-weight:800}.editorialRoute-email .editorialRouteBadge{background:#e9f6ee;color:#236d46}.editorialRouteExplanation{display:block;margin-top:7px;color:#5c7285}.editorialEmailChoice{display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid #9cbac3;border-radius:8px;background:#f7fbfc;color:#173552;font-weight:800}.editorialEmailChoice input{width:auto}.editorialEmailChoice span{font-size:13px}.editorialSubmissionActions>small{padding:0 12px 12px;color:#5c7285}.internalEmailOverlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(13,34,52,.62)}.internalEmailComposer{display:grid;gap:12px;width:min(760px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.28)}.internalEmailHead,.internalEmailFooter{display:flex;align-items:center;justify-content:space-between;gap:12px}.internalEmailHead h3,.internalEmailHead p{margin:0}.internalEmailHead button,.internalEmailFooter button{border:1px solid #25889b;border-radius:8px;padding:9px 12px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.internalEmailFooter span{color:#5c7285}.internalEmailFooter button{background:#25889b;color:#fff}
       .completedFacebookGroupLinks{display:flex;flex-wrap:wrap;align-items:center;gap:7px;flex-basis:100%;padding:10px;border:1px solid #b8cbea;border-radius:8px;background:#fff}.completedFacebookGroupLinks strong,.completedFacebookGroupLinks small{flex-basis:100%}.completedFacebookGroupLinks a{border:1px solid #1877f2;border-radius:7px;padding:7px 9px;color:#145dbf;font-weight:800;text-decoration:none}.completedFacebookGroupLinks small{color:#5c7285}
       .managedEventViewButtons{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.managedEventViewButtons button{border:1px solid #9cbac3;border-radius:9px;padding:9px 12px;background:#fff;color:#405866;font-weight:800;cursor:pointer}.managedEventViewButtons button.active{border-color:#25889b;background:#25889b;color:#fff}.managedEventViewButtons button.active.expired{border-color:#8a5b00;background:#8a5b00}.managedEventSearch{margin-top:12px}.managedEventSearch input{max-width:640px}.emptyManagedEvents{margin:14px 0 0;padding:14px;border-radius:9px;background:#eef2f5;color:#5c7285}
       .ticketEditor{margin:0;padding:16px;border:1px solid #c6d5df;border-radius:12px}.ticketEditor>p{margin:2px 0 12px;color:#5c7285}.ticketDateRefresh{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0;padding:12px;border:1px solid #9cbac3;border-radius:10px;background:#eef7f9}.ticketDateRefresh>div{display:flex;flex-direction:column;gap:3px}.ticketDateRefresh span{color:#5c7285;font-size:13px}.ticketDateRefresh button{flex:0 0 auto;border:0;border-radius:8px;padding:10px 13px;background:#25889b;color:#fff;font:inherit;font-weight:800;cursor:pointer}.ticketVariation{margin-top:12px;padding:14px;border:1px solid #d5e0e7;border-radius:10px;background:#f8fbfc}.ticketVariationHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ticketVariationGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.removeTicket{border:0;background:none;color:#a12f2f;font-weight:800;text-decoration:underline;cursor:pointer}.addTicket{margin-top:12px;border:1px solid #25889b;border-radius:9px;padding:10px 14px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}
