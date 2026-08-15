@@ -1725,7 +1725,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.preparePromotion && form.channels.facebook && !(form.facebookPlacements || []).length) return "Kies voor Facebook minimaal Feed, Verhaal of Reel.";
     if (form.preparePromotion && form.channels.tiktok && !form.videoUrl.trim()) return "TikTok heeft een videolink nodig.";
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
-    if (form.preparePromotion && form.channels.google && (!form.ctaUrl.trim() || !form.shortDescription.trim())) return "Google heeft een korte tekst en knoplink nodig.";
+    if (form.preparePromotion && form.channels.google && !form.shortDescription.trim()) return "Google heeft een korte promotietekst nodig.";
+    if (form.preparePromotion && form.channels.google && !isEvent && !form.ctaUrl.trim()) return "Google heeft een knoplink nodig.";
     if (form.preparePromotion && form.channels.predis && form.predisGenerate && (!predisConnected || !predisBrandId)) return "Koppel voor deze vestiging eerst een Predis-merk onder Koppelingen.";
     if (form.preparePromotion && form.channels.predis && form.predisGenerate && (form.description.trim().length < 20 || form.description.trim().split(/\s+/).length < 3)) return "Beschrijf voor Predis de campagne met minimaal 20 tekens en 3 woorden.";
     if (form.preparePromotion && form.staggerEnabled && (Number(form.staggerMinMinutes) < 1 || Number(form.staggerMaxMinutes) < 1)) return "Vul voor de spreiding minimaal 1 minuut in.";
