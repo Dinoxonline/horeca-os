@@ -430,13 +430,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const groups = query
       ? facebookGroups.filter((group) => group.name.toLocaleLowerCase("nl-NL").includes(query))
       : facebookGroups;
-    return [...groups].sort((left, right) => {
-      const leftSelected = selectedFacebookGroupIds.includes(String(left.id));
-      const rightSelected = selectedFacebookGroupIds.includes(String(right.id));
-      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-      return left.name.localeCompare(right.name, "nl");
-    });
-  }, [facebookGroupSearch, facebookGroups, selectedFacebookGroupIds]);
+    return [...groups].sort((left, right) => left.name.localeCompare(right.name, "nl"));
+  }, [facebookGroupSearch, facebookGroups]);
   const facebookGroupAdviceById = useMemo(() => new Map(facebookGroups.map((group) => [String(group.id), facebookGroupAdvice(group, form, selectedBusiness)])), [facebookGroups, form.title, form.shortDescription, form.description, form.location, form.campaignType, selectedBusiness]);
   const recommendedFacebookGroups = useMemo(() => facebookGroups
     .map((group) => ({ group, advice: facebookGroupAdviceById.get(String(group.id)) }))
