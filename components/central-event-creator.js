@@ -2310,11 +2310,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const id = String(distribution.eventin_event_id || "");
     if (!id) return setResult({ ok: false, message: "Het Eventin-ID ontbreekt. Open het evenement via de bronlink en beheer het daar handmatig." });
     const movingToPublish = mode === "publish";
+    const repairingPublishedEvent = movingToPublish && distribution.website_event_status === "publish";
     const movingToDraft = mode === "draft";
     const cancellingOnline = mode === "cancelled";
     const cancellingAndDeleting = mode === "trash";
     const confirmed = window.confirm(movingToPublish
-      ? "Dit Eventin-concept nu openbaar publiceren op de website? De promotie op andere kanalen verandert niet automatisch."
+      ? repairingPublishedEvent
+        ? "De WordPress- en Eventin-agendastatus opnieuw synchroniseren? Hiermee wordt het evenement niet dubbel aangemaakt."
+        : "Dit Eventin-concept nu openbaar publiceren op de website? De promotie op andere kanalen verandert niet automatisch."
       : movingToDraft
         ? "Dit evenement van de website halen en als Eventin-concept bewaren? De promotie op andere kanalen verandert niet automatisch."
         : cancellingOnline
@@ -2905,6 +2908,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <div className="conceptActions">
                 <button type="button" className="conceptOpenButton" disabled={conceptBusy || websiteEventCancelled || websiteEventReadOnly || Boolean(editingBlockReason)} title={websiteEventReadOnly ? "Beveiligde Eventin-koppeling vereist" : websiteEventCancelled ? "Een geannuleerd website-evenement kan niet meer worden bijgewerkt; dupliceer het voor een nieuwe versie." : editingBlockReason} onClick={() => openCampaignConcept(item)}>{isWebsiteEvent ? websiteEventCancelled || websiteEventReadOnly ? "Bewerken geblokkeerd" : "Evenement bewerken" : editingBlockReason ? "Bewerken geblokkeerd" : "Concept bewerken"}</button>
                 {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "draft" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Publiceren…" : websiteEventReadOnly ? "Koppeling nodig" : "Publiceren"}</button>}
+                {isWebsiteEvent && !websiteEventCancelled && websiteEventStatus === "publish" && <button type="button" className="conceptPublishEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "publish")}>{conceptBusy ? "Controleren…" : websiteEventReadOnly ? "Koppeling nodig" : "Eventin-agenda herstellen"}</button>}
                 {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptWebsiteDraftButton" disabled={conceptBusy || websiteEventReadOnly || websiteEventStatus === "draft"} onClick={() => changeWebsiteEventStatus(item, "draft")}>{websiteEventReadOnly ? "Koppeling nodig" : websiteEventStatus === "draft" ? "Staat als concept" : "Naar concept"}</button>}
                 {isWebsiteEvent && !websiteEventCancelled && <button type="button" className="conceptCancelEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "cancelled")}>Annuleren</button>}
                 {isWebsiteEvent && !websiteEventDeleted && <button type="button" className="conceptCancelDeleteEventButton" disabled={conceptBusy || websiteEventReadOnly} onClick={() => changeWebsiteEventStatus(item, "trash")}>Annuleren en verwijderen</button>}

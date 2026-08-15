@@ -637,18 +637,42 @@ export async function PATCH(request) {
   const { site, authorization } = credentials;
   if (body.action === "publish" || body.action === "draft") {
     const visibilityStatus = body.action;
-    const response = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
+    const wordpressResponse = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
       method: "POST",
       headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
       body: JSON.stringify({ status: visibilityStatus }),
       cache: "no-store",
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
-      return NextResponse.json({ error: `Eventin heeft de statuswijziging niet geaccepteerd.${detail}` }, { status: response.status });
+    const wordpressData = await wordpressResponse.json().catch(() => ({}));
+    if (!wordpressResponse.ok) {
+      const detail = wordpressData?.message ? ` ${String(wordpressData.message).replace(/<[^>]*>/g, "")}` : "";
+      return NextResponse.json({ error: `Eventin heeft de WordPress-status niet geaccepteerd.${detail}` }, { status: wordpressResponse.status });
     }
-    return NextResponse.json({ event: { id, url: data.link || `${site.origin}/?p=${id}`, status: data.status || visibilityStatus, website: site.origin } });
+
+    // Eventin houdt naast de WordPress-poststatus een eigen zichtbaarheid bij.
+    // Alleen de WordPress-post publiceren maakt de detailpagina bereikbaar, maar
+    // laat het evenement uit de Eventin-agenda verdwijnen omdat die interne status
+    // nog op `draft` staat. Werk daarom beide statussen altijd samen bij.
+    const eventinResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      body: JSON.stringify({ visibility_status: visibilityStatus }),
+      cache: "no-store",
+    });
+    const eventinData = await eventinResponse.json().catch(() => ({}));
+    if (!eventinResponse.ok) {
+      const detail = eventinData?.message ? ` ${String(eventinData.message).replace(/<[^>]*>/g, "")}` : "";
+      return NextResponse.json({
+        error: `De pagina is bijgewerkt, maar Eventin heeft de agenda-status niet geaccepteerd.${detail} Probeer de actie opnieuw.`,
+        partial: true,
+      }, { status: eventinResponse.status });
+    }
+
+    const confirmedStatus = eventinData?.visibility_status
+      || eventinData?.data?.visibility_status
+      || wordpressData.status
+      || visibilityStatus;
+    return NextResponse.json({ event: { id, url: wordpressData.link || eventinData.link || `${site.origin}/?p=${id}`, status: confirmedStatus, website: site.origin } });
   }
   const start = dateParts(body.start);
   const end = dateParts(body.end);
