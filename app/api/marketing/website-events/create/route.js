@@ -56,6 +56,19 @@ function eventinApiDate(parts) {
   return year && month && day ? `${month}/${day}/${year}` : "";
 }
 
+function eventinAgendaDate(parts) {
+  return parts?.date || "";
+}
+
+function normalizeEventinAgendaDate(value) {
+  const raw = String(value || "").trim();
+  const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (us) return `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`;
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  return raw;
+}
+
 async function ownerContext(request, workspaceId) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token || !workspaceId) return null;
@@ -162,8 +175,11 @@ function eventinPayload(body, venue, existingEvent = null) {
     excerpt: text(body.description, 500),
     visibility_status: body.status === "publish" ? "publish" : "draft",
     timezone: "Europe/Paris",
-    start_date: eventinApiDate(start),
-    end_date: eventinApiDate(end),
+    // Eventin's public widgets compare these post-meta values as MySQL DATE.
+    // They therefore need ISO storage even though ticket sale dates use the
+    // WordPress display format accepted by Eventin's ticket editor.
+    start_date: eventinAgendaDate(start),
+    end_date: eventinAgendaDate(end),
     start_time: start.time,
     end_time: end.time,
     event_type: "offline",
@@ -670,7 +686,12 @@ export async function PATCH(request) {
     const eventinResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
       method: "POST",
       headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
-      body: JSON.stringify({ ...currentEventinEvent, visibility_status: visibilityStatus }),
+      body: JSON.stringify({
+        ...currentEventinEvent,
+        start_date: normalizeEventinAgendaDate(currentEventinEvent.start_date),
+        end_date: normalizeEventinAgendaDate(currentEventinEvent.end_date),
+        visibility_status: visibilityStatus,
+      }),
       cache: "no-store",
     });
     const eventinData = await eventinResponse.json().catch(() => ({}));
