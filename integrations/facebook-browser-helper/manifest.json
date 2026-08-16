@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Horeca OS Facebookgroepen-helper",
+  "version": "1.0.0",
+  "description": "Plaatst een gecontroleerde Horeca OS-ronde op Facebookgroepen vanuit de gekozen bedrijfspagina.",
+  "permissions": ["alarms", "storage", "tabs"],
+  "host_permissions": ["https://www.facebook.com/*", "https://facebook.com/*", "https://horeca-os-iota.vercel.app/*", "https://horeca-os-le-club.vercel.app/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://horeca-os-iota.vercel.app/*", "https://horeca-os-le-club.vercel.app/*"],
+      "js": ["horeca-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.facebook.com/groups/*", "https://facebook.com/groups/*"],
+      "js": ["facebook-group.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "Horeca OS Facebookgroepen-helper" }
+}

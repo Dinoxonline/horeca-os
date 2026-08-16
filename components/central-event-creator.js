@@ -450,6 +450,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [facebookGroupListsBusy, setFacebookGroupListsBusy] = useState(false);
   const [showAllFacebookGroups, setShowAllFacebookGroups] = useState(false);
   const [facebookGroupShareProgress, setFacebookGroupShareProgress] = useState({});
+  const [facebookBrowserHelperReady, setFacebookBrowserHelperReady] = useState(false);
+  const [facebookGroupAutomationStatus, setFacebookGroupAutomationStatus] = useState({});
   const [facebookGroupShareClock, setFacebookGroupShareClock] = useState(() => Date.now());
   const [facebookGroupShareProgressLoaded, setFacebookGroupShareProgressLoaded] = useState(false);
   const [newFacebookGroup, setNewFacebookGroup] = useState({ name: "", url: "" });
@@ -501,6 +503,31 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const timer = window.setInterval(() => setFacebookGroupShareClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [facebookGroupShareProgress]);
+  useEffect(() => {
+    function handleFacebookHelperMessage(event) {
+      if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== "horeca-os-facebook-helper") return;
+      if (event.data.type === "READY") return setFacebookBrowserHelperReady(true);
+      if (event.data.type === "START_RESULT" && !event.data.payload?.ok) return setResult({ ok: false, message: event.data.payload?.error || "De Facebookgroepen-helper kon de ronde niet starten." });
+      if (event.data.type !== "GROUP_ROUND_PROGRESS") return;
+      const payload = event.data.payload || {};
+      const campaignId = String(payload.campaignId || "");
+      if (!campaignId) return;
+      setFacebookGroupAutomationStatus((current) => ({ ...current, [campaignId]: payload }));
+      if (Array.isArray(payload.completed)) {
+        setFacebookGroupShareProgress((current) => ({
+          ...current,
+          [campaignId]: {
+            ...(current[campaignId] || {}),
+            completed: Array.from(new Set([...(current[campaignId]?.completed || []), ...payload.completed.map(String)])),
+            waitUntil: payload.nextAt || 0,
+          },
+        }));
+      }
+    }
+    window.addEventListener("message", handleFacebookHelperMessage);
+    window.postMessage({ source: "horeca-os", type: "HELPER_PING" }, window.location.origin);
+    return () => window.removeEventListener("message", handleFacebookHelperMessage);
+  }, []);
   const selectedBrevoLists = useMemo(() => brevoLists.filter((item) => selectedBrevoListIds.includes(String(item.id))), [brevoLists, selectedBrevoListIds]);
   const brevoRecipientCount = selectedBrevoLists.reduce((total, item) => total + Number(item.totalSubscribers || item.uniqueSubscribers || 0), 0);
   const site = siteForBusiness(selectedBusiness);
@@ -2184,41 +2211,25 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult({ ok: true, message: `${result.group.sender_page_name} is als gewenste afzender gekoppeld aan ${group.name}. Facebook bepaalt vervolgens of deze pagina in de groep mag plaatsen.` });
   }
 
-  async function openFacebookGroup(distribution, group) {
-    const text = channelConceptText(distribution, "facebook", "");
+  function startFacebookGroupRound(distribution, campaignId, roundGroups, delayMin, delayMax) {
+    if (!facebookBrowserHelperReady) return setResult({ ok: false, message: "Installeer of activeer eerst de Horeca OS Facebookgroepen-helper." });
+    const facebook = distribution.channel_payloads?.facebook || {};
+    const destination = facebook.destination || (facebookAccount ? { page_id: facebookAccount.external_account_id, page_name: facebookAccount.display_name } : null);
+    if (!destination?.page_id || !destination?.page_name) return setResult({ ok: false, message: "De Facebookpagina van deze vestiging is niet gekoppeld." });
+    const invalidGroup = roundGroups.find((group) => !group.sender_page_id || String(group.sender_page_id) !== String(destination.page_id));
+    if (invalidGroup) return setResult({ ok: false, message: `${invalidGroup.name} is niet aan ${destination.page_name} gekoppeld. De ronde is niet gestart.` });
     const common = distribution.common || {};
-    const shareText = [common.title, text, common.start ? `Datum: ${formatNlDateTime(common.start)}` : "", common.location ? `Locatie: ${common.location}` : "", common.website_url || distribution.source_url].filter(Boolean).join("\n\n");
-    const groupUrl = group.url || group.group_url;
-    if (!groupUrl) return setResult({ ok: false, message: `Voor ${group.name} ontbreekt de Facebook-groepslink.` });
-    if (!group.sender_page_id || !group.sender_verified_at) return setResult({ ok: false, message: `Plaatsing geblokkeerd: stel voor ${group.name} eerst de bedrijfspagina als afzender in.` });
-    if (facebookAccount && String(group.sender_page_id) !== String(facebookAccount.external_account_id)) return setResult({ ok: false, message: `Plaatsing geblokkeerd: ${group.name} hoort bij ${group.sender_page_name}, niet bij ${facebookAccount.display_name}.` });
-    window.open(groupUrl, "_blank", "noopener,noreferrer");
-    try { await navigator.clipboard.writeText(shareText); } catch {}
-    setResult({ ok: true, message: `${group.name} is geopend en de tekst is gekopieerd. Plaats alleen wanneer Facebook zichtbaar ${group.sender_page_name} als afzender toont. Bevestig de plaatsing daarna apart in Horeca OS.` });
-  }
-
-  function confirmFacebookGroupPosted(group, campaignId, roundGroups, remainingAfterRound, delayMin, delayMax) {
-    setFacebookGroupShareProgress((current) => {
-      const previous = current[campaignId] || { completed: [], waitUntil: 0, round: 1 };
-      const completed = Array.from(new Set([...previous.completed, String(group.id || group.url)]));
-      const roundDone = roundGroups.every((roundGroup) => completed.includes(String(roundGroup.id || roundGroup.url)));
-      const minimum = Math.max(0, Number(delayMin) || 0);
-      const maximum = Math.max(minimum, Number(delayMax) || minimum);
-      const delayMinutes = roundDone && remainingAfterRound > 0
-        ? Math.floor(Math.random() * (maximum - minimum + 1)) + minimum
-        : 0;
-      return {
-        ...current,
-        [campaignId]: {
-          ...previous,
-          completed,
-          round: roundDone && remainingAfterRound > 0 ? previous.round + 1 : previous.round,
-          waitUntil: delayMinutes ? Date.now() + delayMinutes * 60 * 1000 : 0,
-          lastDelayMinutes: delayMinutes,
-        },
-      };
-    });
-    setResult({ ok: true, message: `De plaatsing in ${group.name} is als voltooid bevestigd.` });
+    const text = channelConceptText(distribution, "facebook", "");
+    const message = [common.title, text, common.start ? `Datum: ${formatNlDateTime(common.start)}` : "", common.location ? `Locatie: ${common.location}` : "", common.website_url || distribution.source_url].filter(Boolean).join("\n\n");
+    const groups = roundGroups.map((group) => ({ id: String(group.id || group.url), name: group.name, url: group.url || group.group_url }));
+    if (groups.some((group) => !group.url)) return setResult({ ok: false, message: "Voor minimaal één gekozen Facebookgroep ontbreekt de groepslink." });
+    setFacebookGroupAutomationStatus((current) => ({ ...current, [String(campaignId)]: { status: "starting", total: groups.length, completed: [], failed: [] } }));
+    window.postMessage({
+      source: "horeca-os",
+      type: "START_GROUP_ROUND",
+      payload: { campaignId: String(campaignId), actorName: destination.page_name, actorPageId: String(destination.page_id), groups, message, imageUrl: facebook.image_url || common.image_url || "", delayMin, delayMax },
+    }, window.location.origin);
+    setResult({ ok: true, message: `De ronde met ${groups.length} groepen wordt voorbereid. Controleer elk Facebookvoorbeeld en druk op Enter om te plaatsen.` });
   }
 
   async function openFacebookEventCreator(distribution) {
@@ -2917,13 +2928,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
         const selectedGroupTargets = distribution.channel_payloads?.facebook?.group_sharing?.groups || [];
         const groupShareState = facebookGroupShareProgress[item.id] || { completed: [], waitUntil: 0, round: 1, delayMin: 5, delayMax: 15 };
+        const groupAutomationState = facebookGroupAutomationStatus[String(item.id)] || {};
         const completedGroupIds = new Set(groupShareState.completed || []);
         const deletionBlockReason = completedGroupIds.size > 0
           ? "Verwijder eerst de handmatig geplaatste Facebookgroepberichten en zet daarna de groepsvoortgang terug."
           : campaignDeletionBlockReason(item, distribution);
         const pendingGroupTargets = selectedGroupTargets.filter((group) => !completedGroupIds.has(String(group.id || group.url)));
         const currentGroupRound = pendingGroupTargets.slice(0, 10);
-        const remainingAfterGroupRound = Math.max(0, pendingGroupTargets.length - currentGroupRound.length);
         const groupRoundWaiting = Number(groupShareState.waitUntil || 0) > facebookGroupShareClock;
         const groupRoundWaitSeconds = groupRoundWaiting ? Math.ceil((groupShareState.waitUntil - facebookGroupShareClock) / 1000) : 0;
         const facebookGroupImage = distribution.channel_payloads?.facebook?.image_url || distribution.common?.image_url || "";
@@ -3106,6 +3117,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             {selectedGroupTargets.length > 0 && (!isWebsiteEvent || campaignWorkflowStep >= 3) && <div className="facebookGroupShareActions">
               <strong>Facebookgroepen · ronde {groupShareState.round || 1}</strong>
               <p>{completedGroupIds.size} van {selectedGroupTargets.length} groepen afgerond. Per ronde worden maximaal 10 groepen aangeboden; iedere plaatsing bevestig je zelf in Facebook.</p>
+              <div className={`facebookGroupActorGate ${facebookBrowserHelperReady ? "confirmed" : "blocked"}`}>
+                <div><b>{facebookBrowserHelperReady ? "Facebookgroepen-helper is verbonden" : "Facebookgroepen-helper is nog niet actief"}</b><span>De helper opent de groep, vult tekst en afbeelding in en wacht op jouw Enter-toets.</span></div>
+                {!facebookBrowserHelperReady && <a href="/downloads/horeca-os-facebook-helper.zip" download>Helper downloaden</a>}
+                {facebookBrowserHelperReady && <button type="button" disabled={groupRoundWaiting || ["starting", "opening", "waiting"].includes(groupAutomationState.status) || currentGroupRound.length === 0} onClick={() => startFacebookGroupRound(distribution, item.id, currentGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Ronde voorbereiden ({currentGroupRound.length} groepen)</button>}
+                <p>{facebookBrowserHelperReady ? "Na jouw Enter-toets registreert Horeca OS de plaatsing en gaat de helper volgens de ingestelde wachttijd door." : "Eenmalig installeren via Chrome/Edge → Extensies → Ontwikkelaarsmodus → Uitgepakte extensie laden."}</p>
+              </div>
               <div className="facebookGroupDelaySettings">
                 <label>Wachttijd vanaf (minuten)<input type="number" min="0" max="240" value={groupShareState.delayMin ?? 5} onChange={(event) => setFacebookGroupShareProgress((current) => ({ ...current, [item.id]: { ...groupShareState, delayMin: event.target.value } }))} /></label>
                 <label>Wachttijd tot (minuten)<input type="number" min="0" max="240" value={groupShareState.delayMax ?? 15} onChange={(event) => setFacebookGroupShareProgress((current) => ({ ...current, [item.id]: { ...groupShareState, delayMax: event.target.value } }))} /></label>
@@ -3122,10 +3139,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                       <span><b>Lidstatus:</b> controleren in Facebook</span>
                       <span><b>Beheerderscontrole:</b> Facebook toont dit na het plaatsen</span>
                       <span><b>Plaatsingsstatus:</b> nog niet geplaatst</span>
-                      <span><b>Afzender:</b> {senderReady ? group.sender_page_name : "niet gekoppeld"}</span>
+                      <span><b>Gewenste afzender:</b> {senderReady ? group.sender_page_name : "niet gekoppeld"}</span>
                     </div>
                     <small>{senderReady ? "Open de groep. Facebook laat daar zien of je lid bent en of het bericht direct verschijnt of eerst moet worden goedgekeurd." : "Koppel eerst de gewenste bedrijfsafzender."}</small>
-                    <div><button type="button" disabled={!senderReady} onClick={() => openFacebookGroup(distribution, group)}>{senderReady ? "Groep openen en plaatsen" : "Plaatsing geblokkeerd"}</button><button type="button" disabled={!senderReady} onClick={() => confirmFacebookGroupPosted(group, item.id, currentGroupRound, remainingAfterGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Geplaatst bevestigen</button></div>
+                    <div>{facebookBrowserHelperReady
+                      ? <button type="button" disabled={!senderReady || ["starting", "opening", "waiting"].includes(groupAutomationState.status)} onClick={() => startFacebookGroupRound(distribution, item.id, [group], 0, 0)}>Alleen deze groep voorbereiden</button>
+                      : <a className="facebookGroupManualLink" href={group.url || group.group_url} target="_blank" rel="noopener noreferrer">Deze groep handmatig openen</a>}
+                    </div>
                   </div>;
                 })}
               {completedGroupIds.size > 0 && <div className="completedFacebookGroupLinks">
@@ -3282,6 +3302,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .savedEventinPreviewBody small{display:block;margin-top:10px;color:#5c7285}
       @media(max-width:760px){.savedEventinPreviewBody,.facebookAdsForm{grid-template-columns:1fr}.savedChannelPanelHead{display:block}.savedChannelPanelHead>span{display:inline-block;margin-top:8px}}
       .facebookGroupSenderAction>strong{font-size:14px}.facebookGroupSenderAction>small{color:#405866}.facebookGroupStatusGrid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:5px 14px;padding:8px;border-radius:7px;background:#f5f8fa}.facebookGroupStatusGrid span{font-weight:500}.completedFacebookGroupRow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:7px 0}
+      .facebookGroupActorGate{display:grid;grid-template-columns:minmax(240px,1fr) auto;align-items:center;gap:9px 14px;flex-basis:100%;padding:11px;border:2px solid #c94b4b;border-radius:9px;background:#fff0f0}.facebookGroupActorGate.confirmed{border-color:#23804f;background:#e9f6ee}.facebookGroupActorGate>div{display:grid}.facebookGroupActorGate span{color:#405866;font-size:12px}.facebookGroupActorGate>a,.facebookGroupActorGate>button,.facebookGroupManualLink{display:inline-flex;justify-content:center;border:1px solid #1877f2;border-radius:8px;padding:9px 11px;background:#fff;color:#145dbf;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.facebookGroupActorGate>button{background:#1877f2;color:#fff}.facebookGroupActorGate>button:disabled{opacity:.55;cursor:not-allowed}.facebookGroupActorGate>p{grid-column:1/-1;margin:0;color:#405866;font-size:13px}
     `}</style>
   </section>;
 }
