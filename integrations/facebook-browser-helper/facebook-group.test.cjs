@@ -11,7 +11,9 @@ const path = require("path");
     await route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><body>
-        <button id="share" role="button">Delen</button>
+        <button id="share" role="button" title="Acties voor dit evenement">
+          <svg aria-label="Deel dit evenement"></svg>
+        </button>
         <script>
           window.chrome = { runtime: { sendMessage(message, callback) {
             if (message.type === "FACEBOOK_GROUP_READY") callback({ ok: true, task: {
@@ -63,3 +65,4 @@ const path = require("path");
   console.error(error);
   process.exit(1);
 });
+
