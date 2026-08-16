@@ -24,9 +24,9 @@ async function openNext() {
     await notify(round, { status: "complete" });
     return;
   }
-  // Open de doelgroepspagina zelf. Zo kan Facebook niet stilletjes de
-  // bestemming van de vorige deelactie hergebruiken.
-  const tab = await chrome.tabs.create({ url: next.url, active: true });
+  // Open het bestaande evenement en kies daarna in Facebook de doelgroep.
+  // Zo blijft de echte evenementkaart behouden.
+  const tab = await chrome.tabs.create({ url: round.eventUrl, active: true });
   round.activeTabId = tab.id;
   round.activeGroupId = String(next.id);
   round.status = "opening";

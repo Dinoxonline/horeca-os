@@ -9,4 +9,4 @@ Deze Chrome/Edge-extensie verwerkt vanuit Horeca OS één ronde van maximaal tie
 3. Kies **Uitgepakte extensie laden**.
 4. Selecteer deze map `integrations/facebook-browser-helper`.
 
-De helper controleert vóór iedere plaatsing of de gewenste bedrijfspagina zichtbaar actief is. Bij twijfel stopt de betreffende plaatsing; er wordt dan nooit stilzwijgend als persoonlijk profiel geplaatst.
+De helper opent het bestaande Facebook-evenement, gebruikt Facebooks eigen deelvenster, selecteert de gekozen groep en wacht op Enter. Daardoor blijft de echte evenementkaart met afbeelding, datum en link in het groepsbericht staan.
