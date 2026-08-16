@@ -5,6 +5,26 @@ function findClickable(pattern) {
   return [...document.querySelectorAll('div[role="button"],button,[role="button"]')].find((element) => pattern.test(clean(element.textContent)) && element.offsetParent !== null);
 }
 
+function isVisible(element) {
+  if (!element || element.getClientRects().length === 0) return false;
+  const style = window.getComputedStyle(element);
+  return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity || 1) > 0;
+}
+
+function visibleDialog() {
+  return [...document.querySelectorAll('div[role="dialog"]')].filter(isVisible).at(-1) || null;
+}
+
+function visibleEditor(dialog) {
+  const selectors = [
+    '[data-lexical-editor="true"][contenteditable="true"]',
+    '[contenteditable="true"][role="textbox"]',
+    '[contenteditable="true"][aria-label]',
+    'div[contenteditable="true"]',
+  ];
+  return selectors.flatMap((selector) => [...dialog.querySelectorAll(selector)]).find(isVisible) || null;
+}
+
 function actorIsVisible(actorName) {
   const expected = clean(actorName);
   return [...document.querySelectorAll("img[alt],[aria-label]")].some((element) => clean(element.getAttribute("alt") || element.getAttribute("aria-label")).includes(expected));
@@ -120,14 +140,17 @@ async function run(task) {
   const composer = await waitFor(() => findClickable(/^(schrijf iets|write something|maak een openbaar bericht|create a public post)/i));
   if (!composer) throw new Error("Het Facebook-berichtvenster kon niet worden geopend. Controleer het lidmaatschap en de groepsregels.");
   composer.click();
-  const dialog = await waitFor(() => document.querySelector('div[role="dialog"]'));
+  showNotice("Facebook-bericht geopend. Horeca OS vult nu de tekst in.");
+  const dialog = await waitFor(visibleDialog);
   if (!dialog) throw new Error("Facebook opende geen berichtvenster.");
-  const editor = await waitFor(() => dialog.querySelector('[data-lexical-editor="true"][contenteditable="true"],[contenteditable="true"][role="textbox"],div[contenteditable="true"]'));
+  const editor = await waitFor(() => visibleEditor(dialog));
   if (!editor) throw new Error("Het tekstveld van Facebook kon niet worden gevonden.");
   await fillEditor(editor, task.message || "");
+  showNotice("Tekst ingevuld. Horeca OS voegt nu de afbeelding toe.");
   await attachImage(task.imageUrl, dialog);
   const postButton = await waitFor(() => [...dialog.querySelectorAll('div[role="button"],button')].find((element) => /^(plaatsen|post)$/i.test(clean(element.textContent)) && element.getAttribute("aria-disabled") !== "true" && !element.disabled));
   if (!postButton) throw new Error("De Facebook-knop Plaatsen is niet beschikbaar. Controleer verplichte velden of groepsregels.");
+  showNotice("Bericht is ingevuld. Controleer het en druk op Enter om te plaatsen.");
   await waitForApproval();
   postButton.click();
   await sleep(2200);
