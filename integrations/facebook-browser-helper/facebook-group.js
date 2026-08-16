@@ -78,6 +78,20 @@ function enabledButton(root, pattern) {
   ));
 }
 
+function destinationMatches(root, groupName) {
+  const expected = clean(groupName);
+  if (!root || !expected) return false;
+  const labels = [
+    root.innerText,
+    root.textContent,
+    ...[...root.querySelectorAll("[aria-label],[title]")].flatMap((element) => [
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+    ]),
+  ];
+  return labels.some((label) => clean(label).includes(expected));
+}
+
 function showNotice(message, error = false) {
   document.getElementById("horeca-os-facebook-notice")?.remove();
   const notice = document.createElement("div");
@@ -139,8 +153,51 @@ async function fillEditor(editor, message) {
   if (!editorContains(editor, message)) throw new Error("Facebook weigerde de berichttekst automatisch in te vullen.");
 }
 
+function eventIdentifier(url) {
+  return String(url || "").match(/\/events\/(\d+)/i)?.[1] || "";
+}
+
+async function prepareFromGroupPage(task) {
+  if (!/facebook\.com\/groups\//i.test(location.href)) return false;
+  if (!destinationMatches(document, task.group?.name)) {
+    throw new Error(`De geopende Facebookgroep is niet ${task.group?.name || "de verwachte groep"}. Er is niets geplaatst.`);
+  }
+
+  const composerButton = await waitFor(() => findClickable(/^(schrijf iets|write something|maak een openbaar bericht|create a public post)[.…]*$/i), 20000);
+  if (!composerButton) throw new Error("De knop om in deze Facebookgroep een bericht te maken kon niet worden gevonden.");
+  composerButton.click();
+
+  const composer = await waitFor(() => activeDialog(), 15000);
+  if (!composer) throw new Error("Het berichtvenster van deze Facebookgroep kon niet worden geopend.");
+  if (!destinationMatches(document, task.group?.name)) {
+    throw new Error(`Facebook toont niet de bedoelde groep ${task.group?.name || ""}. Er is niets geplaatst.`);
+  }
+  if (task.actorName && !destinationMatches(composer, task.actorName)) {
+    throw new Error(`Facebook staat niet op de bedrijfsafzender ${task.actorName}. Er is niets geplaatst.`);
+  }
+
+  const editor = await waitFor(() => [...composer.querySelectorAll('[contenteditable="true"],[role="textbox"],textarea')].find(isVisible), 15000);
+  if (!editor) throw new Error("Het tekstveld van Facebook kon niet worden gevonden.");
+  await fillEditor(editor, task.eventUrl);
+
+  const expectedEventId = eventIdentifier(task.eventUrl);
+  if (expectedEventId) {
+    const preview = await waitFor(() => [...composer.querySelectorAll('a[href*="/events/"]')].find((link) => String(link.href).includes(expectedEventId)), 15000);
+    if (!preview) throw new Error("Facebook heeft van de evenementlink geen evenementkaart gemaakt. Er is niets geplaatst.");
+  }
+
+  const postButton = await waitFor(() => enabledButton(composer, /^(plaatsen|post)$/i), 15000);
+  if (!postButton) throw new Error("De knop Plaatsen is niet beschikbaar.");
+  showNotice(`Facebook-evenement staat klaar voor ${task.group?.name}. Controleer de kaart en druk op Enter om te plaatsen.`);
+  await waitForApproval();
+  postButton.click();
+  await sleep(2200);
+  return true;
+}
+
 async function run(task) {
   await sleep(1200);
+  if (await prepareFromGroupPage(task)) return;
   const shareButton = await waitFor(() => findClickable(/^(delen|share)$/i), 20000);
   if (!shareButton) throw new Error("De knop Delen van het Facebook-evenement kon niet worden gevonden.");
   shareButton.click();
@@ -153,12 +210,17 @@ async function run(task) {
   // met role="dialog". Zoek daarom in het hele zichtbare document, maar accepteer
   // uitsluitend de exacte, ingeschakelde Plaatsen/Post-knop.
   const directPostButton = await waitFor(() => enabledButton(document, /^(plaatsen|post)$/i), 10000);
-  if (directPostButton) {
+  const directDialog = activeDialog();
+  if (directPostButton && destinationMatches(directDialog || document, task.group?.name)) {
     showNotice(`Facebook-evenement staat klaar voor ${task.group?.name}. Controleer de kaart en druk op Enter om te plaatsen.`);
     await waitForApproval();
     directPostButton.click();
     await sleep(2200);
     return;
+  }
+
+  if (directPostButton) {
+    throw new Error(`Facebook toont nog de vorige groep. Er is niets geplaatst; verwacht werd ${task.group?.name || "de volgende groep"}.`);
   }
 
   const shareToGroup = await waitFor(() => findClickable(/^(delen in een groep|share to a group)$/i), 15000);
