@@ -451,6 +451,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [showAllFacebookGroups, setShowAllFacebookGroups] = useState(false);
   const [facebookGroupShareProgress, setFacebookGroupShareProgress] = useState({});
   const [facebookBrowserHelperReady, setFacebookBrowserHelperReady] = useState(false);
+  const [facebookBrowserHelperVersion, setFacebookBrowserHelperVersion] = useState("");
   const [facebookGroupAutomationStatus, setFacebookGroupAutomationStatus] = useState({});
   const [facebookGroupShareClock, setFacebookGroupShareClock] = useState(() => Date.now());
   const [facebookGroupShareProgressLoaded, setFacebookGroupShareProgressLoaded] = useState(false);
@@ -506,7 +507,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   useEffect(() => {
     function handleFacebookHelperMessage(event) {
       if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== "horeca-os-facebook-helper") return;
-      if (event.data.type === "READY") return setFacebookBrowserHelperReady(true);
+      if (event.data.type === "READY") {
+        const version = String(event.data.version || "0.0.0");
+        const [major = 0, minor = 0] = version.split(".").map(Number);
+        const compatible = major > 1 || (major === 1 && minor >= 1);
+        setFacebookBrowserHelperVersion(version);
+        return setFacebookBrowserHelperReady(compatible);
+      }
       if (event.data.type === "START_RESULT" && !event.data.payload?.ok) return setResult({ ok: false, message: event.data.payload?.error || "De Facebookgroepen-helper kon de ronde niet starten." });
       if (event.data.type !== "GROUP_ROUND_PROGRESS") return;
       const payload = event.data.payload || {};
@@ -2219,6 +2226,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const invalidGroup = roundGroups.find((group) => !group.sender_page_id || String(group.sender_page_id) !== String(destination.page_id));
     if (invalidGroup) return setResult({ ok: false, message: `${invalidGroup.name} is niet aan ${destination.page_name} gekoppeld. De ronde is niet gestart.` });
     const common = distribution.common || {};
+    const eventUrl = String(distribution.facebook_event_delivery?.permalink || "").trim();
+    if (!eventUrl) return setResult({ ok: false, message: "Koppel eerst het geplaatste Facebook-evenement. Daarna kan Horeca OS dat evenement in de groepen delen." });
     const text = channelConceptText(distribution, "facebook", "");
     const message = [common.title, text, common.start ? `Datum: ${formatNlDateTime(common.start)}` : "", common.location ? `Locatie: ${common.location}` : "", common.website_url || distribution.source_url].filter(Boolean).join("\n\n");
     const groups = roundGroups.map((group) => ({ id: String(group.id || group.url), name: group.name, url: group.url || group.group_url }));
@@ -2227,9 +2236,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     window.postMessage({
       source: "horeca-os",
       type: "START_GROUP_ROUND",
-      payload: { campaignId: String(campaignId), actorName: destination.page_name, actorPageId: String(destination.page_id), groups, message, imageUrl: facebook.image_url || common.image_url || "", delayMin, delayMax },
+      payload: { campaignId: String(campaignId), actorName: destination.page_name, actorPageId: String(destination.page_id), eventUrl, groups, message, imageUrl: facebook.image_url || common.image_url || "", delayMin, delayMax },
     }, window.location.origin);
-    setResult({ ok: true, message: `De ronde met ${groups.length} groepen wordt voorbereid. Controleer elk Facebookvoorbeeld en druk op Enter om te plaatsen.` });
+    setResult({ ok: true, message: `De ronde met ${groups.length} groepen wordt voorbereid. Horeca OS deelt het bestaande Facebook-evenement; controleer de gekozen groep en druk op Enter om te plaatsen.` });
   }
 
   async function openFacebookEventCreator(distribution) {
@@ -3118,7 +3127,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <strong>Facebookgroepen · ronde {groupShareState.round || 1}</strong>
               <p>{completedGroupIds.size} van {selectedGroupTargets.length} groepen afgerond. Per ronde worden maximaal 10 groepen aangeboden; iedere plaatsing bevestig je zelf in Facebook.</p>
               <div className={`facebookGroupActorGate ${facebookBrowserHelperReady ? "confirmed" : "blocked"}`}>
-                <div><b>{facebookBrowserHelperReady ? "Facebookgroepen-helper is verbonden" : "Facebookgroepen-helper is nog niet actief"}</b><span>De helper opent de groep, vult tekst en afbeelding in en wacht op jouw Enter-toets.</span></div>
+                <div><b>{facebookBrowserHelperReady ? `Facebookgroepen-helper ${facebookBrowserHelperVersion} is verbonden` : facebookBrowserHelperVersion ? `Facebookgroepen-helper ${facebookBrowserHelperVersion} is verouderd` : "Facebookgroepen-helper is nog niet actief"}</b><span>Versie 1.1.0 deelt het bestaande Facebook-evenement in de gekozen groep en wacht op jouw Enter-toets.</span></div>
                 {!facebookBrowserHelperReady && <a href="/downloads/horeca-os-facebook-helper.zip" download>Helper downloaden</a>}
                 {facebookBrowserHelperReady && <button type="button" disabled={groupRoundWaiting || ["starting", "opening", "waiting"].includes(groupAutomationState.status) || currentGroupRound.length === 0} onClick={() => startFacebookGroupRound(distribution, item.id, currentGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Ronde voorbereiden ({currentGroupRound.length} groepen)</button>}
                 <p>{facebookBrowserHelperReady ? "Na jouw Enter-toets registreert Horeca OS de plaatsing en gaat de helper volgens de ingestelde wachttijd door." : "Eenmalig installeren via Chrome/Edge → Extensies → Ontwikkelaarsmodus → Uitgepakte extensie laden."}</p>

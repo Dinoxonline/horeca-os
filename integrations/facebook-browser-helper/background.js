@@ -24,7 +24,7 @@ async function openNext() {
     await notify(round, { status: "complete" });
     return;
   }
-  const tab = await chrome.tabs.create({ url: next.url, active: true });
+  const tab = await chrome.tabs.create({ url: round.eventUrl, active: true });
   round.activeTabId = tab.id;
   round.activeGroupId = String(next.id);
   round.status = "opening";
@@ -46,7 +46,7 @@ async function scheduleNext(round) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "START_GROUP_ROUND") {
     const payload = message.payload || {};
-    if (!payload.campaignId || !payload.actorName || !Array.isArray(payload.groups) || payload.groups.length === 0) {
+    if (!payload.campaignId || !payload.actorName || !payload.eventUrl || !Array.isArray(payload.groups) || payload.groups.length === 0) {
       sendResponse({ ok: false, error: "De ronde bevat geen geldige groepen of afzender." });
       return;
     }
@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     readRound().then((round) => {
       if (!round || sender.tab?.id !== round.activeTabId) return sendResponse({ ok: false });
       const group = round.groups.find((item) => String(item.id) === String(round.activeGroupId));
-      sendResponse({ ok: true, task: { group, actorName: round.actorName, message: round.message, imageUrl: round.imageUrl } });
+      sendResponse({ ok: true, task: { group, actorName: round.actorName, eventUrl: round.eventUrl } });
     });
     return true;
   }

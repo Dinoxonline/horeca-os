@@ -1,12 +1,14 @@
 const PAGE_SOURCE = "horeca-os";
 const HELPER_SOURCE = "horeca-os-facebook-helper";
 
-window.postMessage({ source: HELPER_SOURCE, type: "READY" }, window.location.origin);
+const HELPER_VERSION = chrome.runtime.getManifest().version;
+
+window.postMessage({ source: HELPER_SOURCE, type: "READY", version: HELPER_VERSION }, window.location.origin);
 
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.origin !== window.location.origin) return;
   if (event.data?.source === PAGE_SOURCE && event.data?.type === "HELPER_PING") {
-    window.postMessage({ source: HELPER_SOURCE, type: "READY" }, window.location.origin);
+    window.postMessage({ source: HELPER_SOURCE, type: "READY", version: HELPER_VERSION }, window.location.origin);
     return;
   }
   if (event.data?.source !== PAGE_SOURCE || event.data?.type !== "START_GROUP_ROUND") return;

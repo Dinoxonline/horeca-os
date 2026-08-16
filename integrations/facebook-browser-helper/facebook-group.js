@@ -11,26 +11,9 @@ function isVisible(element) {
   return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity || 1) > 0;
 }
 
-function visibleDialog() {
+function activeDialog() {
   const dialogs = [...document.querySelectorAll('div[role="dialog"]')].filter(isVisible);
-  return dialogs.find((dialog) => visibleEditor(dialog))
-    || dialogs.find((dialog) => /bericht maken|create post/i.test(clean(dialog.textContent)))
-    || null;
-}
-
-function visibleEditor(dialog) {
-  const selectors = [
-    '[data-lexical-editor="true"][contenteditable="true"]',
-    '[contenteditable="true"][role="textbox"]',
-    '[contenteditable="true"][aria-label]',
-    'div[contenteditable="true"]',
-  ];
-  return selectors.flatMap((selector) => [...dialog.querySelectorAll(selector)]).find(isVisible) || null;
-}
-
-function actorIsVisible(actorName) {
-  const expected = clean(actorName);
-  return [...document.querySelectorAll("img[alt],[aria-label]")].some((element) => clean(element.getAttribute("alt") || element.getAttribute("aria-label")).includes(expected));
+  return dialogs[dialogs.length - 1] || null;
 }
 
 async function waitFor(getter, timeout = 15000) {
@@ -47,7 +30,7 @@ function waitForApproval() {
   return new Promise((resolve) => {
     const notice = document.createElement("div");
     notice.id = "horeca-os-facebook-approval";
-    notice.textContent = "Horeca OS heeft het bericht voorbereid. Controleer het en druk op Enter om te plaatsen.";
+    notice.textContent = "Horeca OS heeft het Facebook-evenement voor deze groep klaargezet. Controleer de groep en druk op Enter om te delen.";
     Object.assign(notice.style, { position: "fixed", zIndex: "2147483647", left: "50%", bottom: "24px", transform: "translateX(-50%)", maxWidth: "680px", padding: "14px 18px", border: "3px solid #16869a", borderRadius: "12px", background: "#fff", color: "#073657", font: "700 16px Arial, sans-serif", boxShadow: "0 8px 30px rgba(0,0,0,.28)", textAlign: "center" });
     document.body.appendChild(notice);
     const approve = (event) => {
@@ -60,6 +43,39 @@ function waitForApproval() {
     };
     window.addEventListener("keydown", approve, true);
   });
+}
+
+function controlLabel(element) {
+  return clean(`${element.getAttribute("aria-label") || ""} ${element.getAttribute("placeholder") || ""} ${element.textContent || ""}`);
+}
+
+async function fillControl(control, value) {
+  const text = String(value || "").trim();
+  if (!text) throw new Error("De Facebookgroep heeft geen naam.");
+  control.scrollIntoView({ block: "center" });
+  control.click();
+  control.focus();
+
+  if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+    const prototype = control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+    if (setter) setter.call(control, text);
+    else control.value = text;
+    control.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertText", data: text }));
+    control.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  } else {
+    await fillEditor(control, text);
+  }
+  await sleep(700);
+}
+
+function enabledButton(root, pattern) {
+  return [...root.querySelectorAll('div[role="button"],button,[role="button"]')].find((element) => (
+    pattern.test(clean(element.textContent))
+    && element.getAttribute("aria-disabled") !== "true"
+    && !element.disabled
+    && isVisible(element)
+  ));
 }
 
 function showNotice(message, error = false) {
@@ -123,37 +139,36 @@ async function fillEditor(editor, message) {
   if (!editorContains(editor, message)) throw new Error("Facebook weigerde de berichttekst automatisch in te vullen.");
 }
 
-async function attachImage(imageUrl, dialog) {
-  if (!imageUrl) return;
-  const input = dialog.querySelector('input[type="file"]');
-  if (!input) return;
-  const response = await fetch(imageUrl);
-  const blob = await response.blob();
-  const file = new File([blob], "horeca-os-campagne.jpg", { type: blob.type || "image/jpeg" });
-  const transfer = new DataTransfer();
-  transfer.items.add(file);
-  input.files = transfer.files;
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-  await sleep(1200);
-}
-
 async function run(task) {
   await sleep(1200);
-  if (!actorIsVisible(task.actorName)) throw new Error(`Facebook toont ${task.actorName} niet als actieve afzender. De ronde is voor deze groep gestopt.`);
-  const composer = await waitFor(() => findClickable(/^(schrijf iets|write something|maak een openbaar bericht|create a public post)/i));
-  if (!composer) throw new Error("Het Facebook-berichtvenster kon niet worden geopend. Controleer het lidmaatschap en de groepsregels.");
-  composer.click();
-  showNotice("Facebook-bericht geopend. Horeca OS vult nu de tekst in.");
-  const dialog = await waitFor(visibleDialog);
-  if (!dialog) throw new Error("Facebook opende geen berichtvenster.");
-  const editor = await waitFor(() => visibleEditor(dialog));
-  if (!editor) throw new Error("Het tekstveld van Facebook kon niet worden gevonden.");
-  await fillEditor(editor, task.message || "");
-  showNotice("Tekst ingevuld. Horeca OS voegt nu de afbeelding toe.");
-  await attachImage(task.imageUrl, dialog);
-  const postButton = await waitFor(() => [...dialog.querySelectorAll('div[role="button"],button')].find((element) => /^(plaatsen|post)$/i.test(clean(element.textContent)) && element.getAttribute("aria-disabled") !== "true" && !element.disabled));
-  if (!postButton) throw new Error("De Facebook-knop Plaatsen is niet beschikbaar. Controleer verplichte velden of groepsregels.");
-  showNotice("Bericht is ingevuld. Controleer het en druk op Enter om te plaatsen.");
+  const shareButton = await waitFor(() => findClickable(/^(delen|share)$/i), 20000);
+  if (!shareButton) throw new Error("De knop Delen van het Facebook-evenement kon niet worden gevonden.");
+  shareButton.click();
+  showNotice("Facebook-evenement geopend. Horeca OS kiest nu Delen in een groep.");
+
+  const shareToGroup = await waitFor(() => findClickable(/^(delen in een groep|share to a group)$/i), 15000);
+  if (!shareToGroup) throw new Error("De optie Delen in een groep kon niet worden gevonden.");
+  shareToGroup.click();
+
+  const chooser = await waitFor(() => activeDialog(), 15000);
+  if (!chooser) throw new Error("Het Facebookvenster voor delen in een groep kon niet worden gevonden.");
+  const groupSearch = await waitFor(() => [...chooser.querySelectorAll('input,textarea,[contenteditable],[role="textbox"]')].find((element) => (
+    isVisible(element) && /(groep|group|zoeken|search)/.test(controlLabel(element))
+  )), 15000);
+  if (!groupSearch) throw new Error("Het zoekveld voor Facebookgroepen kon niet worden gevonden.");
+  await fillControl(groupSearch, task.group?.name || "");
+
+  const groupChoice = await waitFor(() => [...chooser.querySelectorAll('div[role="button"],button,[role="option"]')].find((element) => {
+    const name = clean(task.group?.name);
+    return name && clean(element.textContent).includes(name) && isVisible(element);
+  }), 15000);
+  if (!groupChoice) throw new Error(`De groep ${task.group?.name || ""} kon niet in de keuzelijst worden gevonden.`);
+  groupChoice.click();
+
+  const confirmationDialog = await waitFor(() => activeDialog(), 15000);
+  const postButton = await waitFor(() => confirmationDialog && enabledButton(confirmationDialog, /^(plaatsen|post|delen|share)$/i), 15000);
+  if (!postButton) throw new Error("De knop om het Facebook-evenement in deze groep te delen is niet beschikbaar.");
+  showNotice(`Facebook-evenement staat klaar voor ${task.group?.name}. Controleer dit en druk op Enter om te plaatsen.`);
   await waitForApproval();
   postButton.click();
   await sleep(2200);
@@ -169,4 +184,3 @@ chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_READY" }, async (response) =>
     chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_RESULT", payload: { ok: false, error: error.message } });
   }
 });
-
