@@ -165,7 +165,9 @@ async function openEventShare(task) {
   }, 12000);
 
   if (!composer) {
-    const shareToGroup = await waitFor(() => findClickable(/^(delen in een groep|share to a group)$/i), 8000);
+    const shareToGroup = await waitFor(() => findClickable(
+      /^(delen (in|met) een groep|share (to|with) a group)$/i,
+    ), 8000);
     if (!shareToGroup) throw new Error("Facebook opende het venster om het evenement te delen niet.");
     shareToGroup.click();
     composer = await waitFor(() => activeDialog(), 12000);
@@ -192,4 +194,3 @@ chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_READY" }, async (response) =>
     chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_RESULT", payload: { ok: false, error: error.message } });
   }
 });
-
