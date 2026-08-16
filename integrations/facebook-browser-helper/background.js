@@ -70,7 +70,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (result.ok) round.completed = Array.from(new Set([...round.completed, String(round.activeGroupId)]));
       else round.failed.push({ id: String(round.activeGroupId), error: result.error || "Plaatsing niet bevestigd" });
       await notify(round, { status: result.ok ? "submitted" : "failed", groupId: round.activeGroupId, error: result.error });
-      if (sender.tab?.id) await chrome.tabs.remove(sender.tab.id).catch(() => {});
+      if (result.ok && sender.tab?.id) await chrome.tabs.remove(sender.tab.id).catch(() => {});
       round.activeTabId = null;
       round.activeGroupId = null;
       const remaining = round.groups.length - round.completed.length - round.failed.length;
