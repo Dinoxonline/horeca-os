@@ -1,5 +1,11 @@
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const clean = (value) => String(value || "").toLocaleLowerCase("nl-NL").replace(/\s+/g, " ").trim();
+const cleanGroupName = (value) => clean(value)
+  .normalize("NFKD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^\p{L}\p{N}]+/gu, " ")
+  .replace(/\s+/g, " ")
+  .trim();
 
 function findClickable(pattern) {
   return [...document.querySelectorAll('div[role="button"],button,[role="button"]')].find((element) => pattern.test(clean(element.textContent)) && element.offsetParent !== null);
@@ -79,7 +85,7 @@ function enabledButton(root, pattern) {
 }
 
 function destinationMatches(root, groupName) {
-  const expected = clean(groupName);
+  const expected = cleanGroupName(groupName);
   if (!root || !expected) return false;
   const labels = [
     root.innerText,
@@ -89,7 +95,7 @@ function destinationMatches(root, groupName) {
       element.getAttribute("title"),
     ]),
   ];
-  return labels.some((label) => clean(label).includes(expected));
+  return labels.some((label) => cleanGroupName(label).includes(expected));
 }
 
 function showNotice(message, error = false) {
