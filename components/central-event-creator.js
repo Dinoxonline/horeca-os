@@ -509,8 +509,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== "horeca-os-facebook-helper") return;
       if (event.data.type === "READY") {
         const version = String(event.data.version || "0.0.0");
-        const [major = 0, minor = 0] = version.split(".").map(Number);
-        const compatible = major > 1 || (major === 1 && minor >= 1);
+        const [major = 0, minor = 0, patch = 0] = version.split(".").map(Number);
+        const compatible = major > 1 || (major === 1 && (minor > 1 || (minor === 1 && patch >= 3)));
         setFacebookBrowserHelperVersion(version);
         return setFacebookBrowserHelperReady(compatible);
       }
@@ -3127,7 +3127,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
               <strong>Facebookgroepen · ronde {groupShareState.round || 1}</strong>
               <p>{completedGroupIds.size} van {selectedGroupTargets.length} groepen afgerond. Per ronde worden maximaal 10 groepen aangeboden; iedere plaatsing bevestig je zelf in Facebook.</p>
               <div className={`facebookGroupActorGate ${facebookBrowserHelperReady ? "confirmed" : "blocked"}`}>
-                <div><b>{facebookBrowserHelperReady ? `Facebookgroepen-helper ${facebookBrowserHelperVersion} is verbonden` : facebookBrowserHelperVersion ? `Facebookgroepen-helper ${facebookBrowserHelperVersion} is verouderd` : "Facebookgroepen-helper is nog niet actief"}</b><span>Versie 1.1.2 herkent de actieve Plaatsen-knop in het volledige Facebook-deelvenster en wacht op jouw Enter-toets.</span></div>
+                <div><b>{facebookBrowserHelperReady ? `Facebookgroepen-helper ${facebookBrowserHelperVersion} is verbonden` : facebookBrowserHelperVersion ? `Facebookgroepen-helper ${facebookBrowserHelperVersion} is verouderd` : "Facebookgroepen-helper is nog niet actief"}</b><span>Versie 1.1.3 opent iedere doelgroep afzonderlijk, controleert de groep en afzender, en wacht daarna op jouw Enter-toets.</span></div>
                 {!facebookBrowserHelperReady && <a href="/downloads/horeca-os-facebook-helper.zip" download>Helper downloaden</a>}
                 {facebookBrowserHelperReady && <button type="button" disabled={groupRoundWaiting || ["starting", "opening", "waiting"].includes(groupAutomationState.status) || currentGroupRound.length === 0} onClick={() => startFacebookGroupRound(distribution, item.id, currentGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Ronde voorbereiden ({currentGroupRound.length} groepen)</button>}
                 <p>{facebookBrowserHelperReady ? "Na jouw Enter-toets registreert Horeca OS de plaatsing en gaat de helper volgens de ingestelde wachttijd door." : "Eenmalig installeren via Chrome/Edge → Extensies → Ontwikkelaarsmodus → Uitgepakte extensie laden."}</p>
