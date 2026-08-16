@@ -1,12 +1,5 @@
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const clean = (value) => String(value || "").toLocaleLowerCase("nl-NL").replace(/\s+/g, " ").trim();
-const cleanGroupName = (value) => clean(value)
-  .normalize("NFKD")
-  .replace(/[\u0300-\u036f]/g, "")
-  .replace(/[^\p{L}\p{N}]+/gu, " ")
-  .replace(/\s+/g, " ")
-  .trim();
-
 function findClickable(pattern) {
   return [...document.querySelectorAll('div[role="button"],button,[role="button"]')].find((element) => pattern.test(clean(element.textContent)) && element.offsetParent !== null);
 }
@@ -84,20 +77,6 @@ function enabledButton(root, pattern) {
   ));
 }
 
-function destinationMatches(root, groupName) {
-  const expected = cleanGroupName(groupName);
-  if (!root || !expected) return false;
-  const labels = [
-    root.innerText,
-    root.textContent,
-    ...[...root.querySelectorAll("[aria-label],[title]")].flatMap((element) => [
-      element.getAttribute("aria-label"),
-      element.getAttribute("title"),
-    ]),
-  ];
-  return labels.some((label) => cleanGroupName(label).includes(expected));
-}
-
 function showNotice(message, error = false) {
   document.getElementById("horeca-os-facebook-notice")?.remove();
   const notice = document.createElement("div");
@@ -165,16 +144,12 @@ function eventIdentifier(url) {
 
 async function prepareFromGroupPage(task) {
   if (!/facebook\.com\/groups\//i.test(location.href)) return false;
-  const composerButton = await waitFor(() => findClickable(/^(schrijf iets|write something|maak een openbaar bericht|create a public post)[.…]*$/i), 20000);
+  const composerButton = await waitFor(() => findClickable(/^(schrijf iets|write something|maak een openbaar bericht|create a public post)[.â€¦]*$/i), 20000);
   if (!composerButton) throw new Error("De knop om in deze Facebookgroep een bericht te maken kon niet worden gevonden.");
   composerButton.click();
 
   const composer = await waitFor(() => activeDialog(), 15000);
   if (!composer) throw new Error("Het berichtvenster van deze Facebookgroep kon niet worden geopend.");
-  if (task.actorName && !destinationMatches(composer, task.actorName)) {
-    throw new Error(`Facebook staat niet op de bedrijfsafzender ${task.actorName}. Er is niets geplaatst.`);
-  }
-
   const editor = await waitFor(() => [...composer.querySelectorAll('[contenteditable="true"],[role="textbox"],textarea')].find(isVisible), 15000);
   if (!editor) throw new Error("Het tekstveld van Facebook kon niet worden gevonden.");
   await fillEditor(editor, task.eventUrl);
@@ -210,16 +185,12 @@ async function run(task) {
   // uitsluitend de exacte, ingeschakelde Plaatsen/Post-knop.
   const directPostButton = await waitFor(() => enabledButton(document, /^(plaatsen|post)$/i), 10000);
   const directDialog = activeDialog();
-  if (directPostButton && destinationMatches(directDialog || document, task.group?.name)) {
+  if (directPostButton) {
     showNotice(`Facebook-evenement staat klaar voor ${task.group?.name}. Controleer de kaart en druk op Enter om te plaatsen.`);
     await waitForApproval();
     directPostButton.click();
     await sleep(2200);
     return;
-  }
-
-  if (directPostButton) {
-    throw new Error(`Facebook toont nog de vorige groep. Er is niets geplaatst; verwacht werd ${task.group?.name || "de volgende groep"}.`);
   }
 
   const shareToGroup = await waitFor(() => findClickable(/^(delen in een groep|share to a group)$/i), 15000);
@@ -260,3 +231,4 @@ chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_READY" }, async (response) =>
     chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_RESULT", payload: { ok: false, error: error.message } });
   }
 });
+
