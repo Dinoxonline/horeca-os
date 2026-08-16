@@ -27,10 +27,20 @@ async function waitFor(getter, timeout = 15000) {
 }
 
 function label(element) {
+  const nestedLabels = element?.querySelectorAll
+    ? [...element.querySelectorAll('[aria-label],[title],[alt]')]
+      .flatMap((node) => [
+        node.getAttribute("aria-label"),
+        node.getAttribute("title"),
+        node.getAttribute("alt"),
+      ])
+    : [];
   return clean([
     element?.getAttribute?.("aria-label"),
     element?.getAttribute?.("placeholder"),
     element?.getAttribute?.("title"),
+    element?.getAttribute?.("data-tooltip-content"),
+    ...nestedLabels,
     element?.textContent,
   ].filter(Boolean).join(" "));
 }
@@ -142,7 +152,7 @@ async function openEventShare(task) {
     throw new Error("Het gekoppelde Facebook-evenement kon niet worden geopend.");
   }
 
-  const share = await waitFor(() => findClickable(/^(delen|share)$/i), 20000);
+  const share = await waitFor(() => findClickable(/(^|\s)(delen|deel|share)(\s|$)/i), 20000);
   if (!share) throw new Error("Facebook toont de knop Delen niet bij dit evenement.");
   share.click();
 
@@ -155,7 +165,9 @@ async function openEventShare(task) {
   }, 12000);
 
   if (!composer) {
-    const shareToGroup = await waitFor(() => findClickable(/^(delen in een groep|share to a group)$/i), 8000);
+    const shareToGroup = await waitFor(() => findClickable(
+      /^(delen (in|met) een groep|share (to|with) a group)$/i,
+    ), 8000);
     if (!shareToGroup) throw new Error("Facebook opende het venster om het evenement te delen niet.");
     shareToGroup.click();
     composer = await waitFor(() => activeDialog(), 12000);
