@@ -149,8 +149,10 @@ async function run(task) {
   // Facebook opent voor sommige groepen meteen de volledige evenementkaart met
   // een actieve Plaatsen-knop. In die weergave bestaat de extra menu-optie
   // 'Delen in een groep' niet en is de gekozen groep al de bestemming.
-  const directDialog = await waitFor(() => activeDialog(), 10000);
-  const directPostButton = directDialog && enabledButton(directDialog, /^(plaatsen|post)$/i);
+  // Facebook rendert de onderste Plaatsen-knop niet altijd binnen het element
+  // met role="dialog". Zoek daarom in het hele zichtbare document, maar accepteer
+  // uitsluitend de exacte, ingeschakelde Plaatsen/Post-knop.
+  const directPostButton = await waitFor(() => enabledButton(document, /^(plaatsen|post)$/i), 10000);
   if (directPostButton) {
     showNotice(`Facebook-evenement staat klaar voor ${task.group?.name}. Controleer de kaart en druk op Enter om te plaatsen.`);
     await waitForApproval();
