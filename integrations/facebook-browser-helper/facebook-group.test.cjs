@@ -23,12 +23,13 @@ const path = require("path");
             if (message.type === "FACEBOOK_GROUP_RESULT") window.helperResult = message.payload;
           }}};
           document.getElementById("share").onclick = () => {
-            const composer = document.createElement("div");
-            composer.id = "composer";
-            composer.setAttribute("role", "dialog");
-            composer.innerHTML = '<div id="event-card">Karaoke avond bij Caribbean Corner</div><button id="add-groups" role="button">+ Groepen toevoegen</button>';
-            document.body.appendChild(composer);
-            document.getElementById("add-groups").onclick = () => {
+            const menu = document.createElement("div");
+            menu.id = "share-menu";
+            menu.setAttribute("role", "menu");
+            menu.innerHTML = '<button id="share-group" role="menuitem">Delen met een groep</button>';
+            document.body.appendChild(menu);
+            document.getElementById("share-group").onclick = () => {
+              menu.remove();
               const chooser = document.createElement("div");
               chooser.id = "chooser";
               chooser.setAttribute("role", "dialog");
@@ -36,7 +37,11 @@ const path = require("path");
               document.body.appendChild(chooser);
               document.getElementById("target").onclick = () => {
                 chooser.remove();
-                composer.insertAdjacentHTML("beforeend", '<span id="selected">KARAOKE EVENTS</span><button id="post" role="button">Plaatsen</button>');
+                const composer = document.createElement("div");
+                composer.id = "composer";
+                composer.setAttribute("role", "dialog");
+                composer.innerHTML = '<div id="event-card">Karaoke avond bij Caribbean Corner</div><span id="selected">KARAOKE EVENTS</span><button id="post" role="button">Plaatsen</button>';
+                document.body.appendChild(composer);
                 document.getElementById("post").onclick = () => { window.posted = true; };
               };
             };
@@ -65,4 +70,3 @@ const path = require("path");
   console.error(error);
   process.exit(1);
 });
-
