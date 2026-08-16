@@ -144,7 +144,20 @@ async function run(task) {
   const shareButton = await waitFor(() => findClickable(/^(delen|share)$/i), 20000);
   if (!shareButton) throw new Error("De knop Delen van het Facebook-evenement kon niet worden gevonden.");
   shareButton.click();
-  showNotice("Facebook-evenement geopend. Horeca OS kiest nu Delen in een groep.");
+  showNotice("Facebook-evenement geopend. Horeca OS controleert het deelvenster.");
+
+  // Facebook opent voor sommige groepen meteen de volledige evenementkaart met
+  // een actieve Plaatsen-knop. In die weergave bestaat de extra menu-optie
+  // 'Delen in een groep' niet en is de gekozen groep al de bestemming.
+  const directDialog = await waitFor(() => activeDialog(), 10000);
+  const directPostButton = directDialog && enabledButton(directDialog, /^(plaatsen|post)$/i);
+  if (directPostButton) {
+    showNotice(`Facebook-evenement staat klaar voor ${task.group?.name}. Controleer de kaart en druk op Enter om te plaatsen.`);
+    await waitForApproval();
+    directPostButton.click();
+    await sleep(2200);
+    return;
+  }
 
   const shareToGroup = await waitFor(() => findClickable(/^(delen in een groep|share to a group)$/i), 15000);
   if (!shareToGroup) throw new Error("De optie Delen in een groep kon niet worden gevonden.");
