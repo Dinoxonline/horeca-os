@@ -165,19 +165,12 @@ function eventIdentifier(url) {
 
 async function prepareFromGroupPage(task) {
   if (!/facebook\.com\/groups\//i.test(location.href)) return false;
-  if (!destinationMatches(document, task.group?.name)) {
-    throw new Error(`De geopende Facebookgroep is niet ${task.group?.name || "de verwachte groep"}. Er is niets geplaatst.`);
-  }
-
   const composerButton = await waitFor(() => findClickable(/^(schrijf iets|write something|maak een openbaar bericht|create a public post)[.…]*$/i), 20000);
   if (!composerButton) throw new Error("De knop om in deze Facebookgroep een bericht te maken kon niet worden gevonden.");
   composerButton.click();
 
   const composer = await waitFor(() => activeDialog(), 15000);
   if (!composer) throw new Error("Het berichtvenster van deze Facebookgroep kon niet worden geopend.");
-  if (!destinationMatches(document, task.group?.name)) {
-    throw new Error(`Facebook toont niet de bedoelde groep ${task.group?.name || ""}. Er is niets geplaatst.`);
-  }
   if (task.actorName && !destinationMatches(composer, task.actorName)) {
     throw new Error(`Facebook staat niet op de bedrijfsafzender ${task.actorName}. Er is niets geplaatst.`);
   }
