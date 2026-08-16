@@ -3116,11 +3116,21 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 : currentGroupRound.map((storedGroup) => {
                   const group = facebookGroups.find((candidate) => String(candidate.id) === String(storedGroup.id) || candidate.group_url === storedGroup.url) || storedGroup;
                   const senderReady = Boolean(group.sender_page_id && group.sender_verified_at && facebookAccount && String(group.sender_page_id) === String(facebookAccount.external_account_id));
-                  return <div className={`facebookGroupSenderAction ${senderReady ? "ready" : "blocked"}`} key={group.id || group.url}><span>{senderReady ? `Controleer in Facebook of je werkelijk plaatst als ${group.sender_page_name}` : "Gewenste bedrijfsafzender niet gekoppeld"}</span><div><button type="button" disabled={!senderReady} onClick={() => openFacebookGroup(distribution, group)}>{senderReady ? `Open ${group.name}` : `${group.name} geblokkeerd`}</button><button type="button" disabled={!senderReady} onClick={() => confirmFacebookGroupPosted(group, item.id, currentGroupRound, remainingAfterGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Plaatsing bevestigen</button></div></div>;
+                  return <div className={`facebookGroupSenderAction ${senderReady ? "ready" : "blocked"}`} key={group.id || group.url}>
+                    <strong>{group.name}</strong>
+                    <div className="facebookGroupStatusGrid">
+                      <span><b>Lidstatus:</b> controleren in Facebook</span>
+                      <span><b>Beheerderscontrole:</b> Facebook toont dit na het plaatsen</span>
+                      <span><b>Plaatsingsstatus:</b> nog niet geplaatst</span>
+                      <span><b>Afzender:</b> {senderReady ? group.sender_page_name : "niet gekoppeld"}</span>
+                    </div>
+                    <small>{senderReady ? "Open de groep. Facebook laat daar zien of je lid bent en of het bericht direct verschijnt of eerst moet worden goedgekeurd." : "Koppel eerst de gewenste bedrijfsafzender."}</small>
+                    <div><button type="button" disabled={!senderReady} onClick={() => openFacebookGroup(distribution, group)}>{senderReady ? "Groep openen en plaatsen" : "Plaatsing geblokkeerd"}</button><button type="button" disabled={!senderReady} onClick={() => confirmFacebookGroupPosted(group, item.id, currentGroupRound, remainingAfterGroupRound, groupShareState.delayMin ?? 5, groupShareState.delayMax ?? 15)}>Geplaatst bevestigen</button></div>
+                  </div>;
                 })}
               {completedGroupIds.size > 0 && <div className="completedFacebookGroupLinks">
                 <strong>Handmatig geplaatste groepen</strong>
-                {selectedGroupTargets.filter((group) => completedGroupIds.has(String(group.id || group.url))).map((group) => <a key={group.id || group.url} href={group.url || group.group_url} target="_blank" rel="noopener noreferrer">Open {group.name}</a>)}
+                {selectedGroupTargets.filter((group) => completedGroupIds.has(String(group.id || group.url))).map((group) => <div className="completedFacebookGroupRow" key={group.id || group.url}><span><b>{group.name}</b> · Plaatsingsstatus: geplaatst bevestigd</span><a href={group.url || group.group_url} target="_blank" rel="noopener noreferrer">Groep openen</a></div>)}
                 <small>Facebook geeft Horeca OS geen beheerlink naar het afzonderlijke groepsbericht. Verwijder het bericht daarom in de groep zelf.</small>
               </div>}
               {pendingGroupTargets.length === 0 && <p className="facebookGroupComplete">Alle gekozen Facebookgroepen zijn voor deze campagne afgerond.</p>}
@@ -3271,6 +3281,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .savedEventinPreviewBody h3{margin:4px 0 10px}
       .savedEventinPreviewBody small{display:block;margin-top:10px;color:#5c7285}
       @media(max-width:760px){.savedEventinPreviewBody,.facebookAdsForm{grid-template-columns:1fr}.savedChannelPanelHead{display:block}.savedChannelPanelHead>span{display:inline-block;margin-top:8px}}
+      .facebookGroupSenderAction>strong{font-size:14px}.facebookGroupSenderAction>small{color:#405866}.facebookGroupStatusGrid{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:5px 14px;padding:8px;border-radius:7px;background:#f5f8fa}.facebookGroupStatusGrid span{font-weight:500}.completedFacebookGroupRow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:7px 0}
     `}</style>
   </section>;
 }
