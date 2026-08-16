@@ -39,6 +39,67 @@ function waitForApproval() {
   });
 }
 
+function showNotice(message, error = false) {
+  document.getElementById("horeca-os-facebook-notice")?.remove();
+  const notice = document.createElement("div");
+  notice.id = "horeca-os-facebook-notice";
+  notice.textContent = message;
+  Object.assign(notice.style, {
+    position: "fixed",
+    zIndex: "2147483647",
+    left: "50%",
+    bottom: "24px",
+    transform: "translateX(-50%)",
+    maxWidth: "760px",
+    padding: "14px 18px",
+    border: `3px solid ${error ? "#b42318" : "#16869a"}`,
+    borderRadius: "12px",
+    background: "#fff",
+    color: error ? "#7a271a" : "#073657",
+    font: "700 16px Arial, sans-serif",
+    boxShadow: "0 8px 30px rgba(0,0,0,.28)",
+    textAlign: "center",
+  });
+  document.body.appendChild(notice);
+}
+
+function editorContains(editor, message) {
+  const expected = clean(message).slice(0, 40);
+  return Boolean(expected && clean(editor.innerText || editor.textContent).includes(expected));
+}
+
+async function fillEditor(editor, message) {
+  if (!String(message || "").trim()) throw new Error("Horeca OS heeft geen berichttekst meegestuurd.");
+  editor.scrollIntoView({ block: "center" });
+  editor.click();
+  editor.focus();
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  document.execCommand("insertText", false, message);
+  editor.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertText", data: message }));
+  await sleep(500);
+  if (editorContains(editor, message)) return;
+
+  const clipboardData = new DataTransfer();
+  clipboardData.setData("text/plain", message);
+  editor.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, composed: true, clipboardData }));
+  await sleep(500);
+  if (editorContains(editor, message)) return;
+
+  editor.replaceChildren(document.createTextNode(message));
+  editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, composed: true, inputType: "insertText", data: message }));
+  editor.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertText", data: message }));
+  editor.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  await sleep(700);
+  if (!editorContains(editor, message)) throw new Error("Facebook weigerde de berichttekst automatisch in te vullen.");
+}
+
 async function attachImage(imageUrl, dialog) {
   if (!imageUrl) return;
   const input = dialog.querySelector('input[type="file"]');
@@ -61,11 +122,9 @@ async function run(task) {
   composer.click();
   const dialog = await waitFor(() => document.querySelector('div[role="dialog"]'));
   if (!dialog) throw new Error("Facebook opende geen berichtvenster.");
-  const editor = await waitFor(() => dialog.querySelector('[contenteditable="true"][role="textbox"],div[contenteditable="true"]'));
+  const editor = await waitFor(() => dialog.querySelector('[data-lexical-editor="true"][contenteditable="true"],[contenteditable="true"][role="textbox"],div[contenteditable="true"]'));
   if (!editor) throw new Error("Het tekstveld van Facebook kon niet worden gevonden.");
-  editor.focus();
-  document.execCommand("insertText", false, task.message || "");
-  editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: task.message || "" }));
+  await fillEditor(editor, task.message || "");
   await attachImage(task.imageUrl, dialog);
   const postButton = await waitFor(() => [...dialog.querySelectorAll('div[role="button"],button')].find((element) => /^(plaatsen|post)$/i.test(clean(element.textContent)) && element.getAttribute("aria-disabled") !== "true" && !element.disabled));
   if (!postButton) throw new Error("De Facebook-knop Plaatsen is niet beschikbaar. Controleer verplichte velden of groepsregels.");
@@ -80,6 +139,7 @@ chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_READY" }, async (response) =>
     await run(response.task);
     chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_RESULT", payload: { ok: true } });
   } catch (error) {
+    showNotice(`Niet ingevuld: ${error.message}`, true);
     chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_RESULT", payload: { ok: false, error: error.message } });
   }
 });
