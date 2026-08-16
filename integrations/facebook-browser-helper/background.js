@@ -24,6 +24,8 @@ async function openNext() {
     await notify(round, { status: "complete" });
     return;
   }
+  // Open het bestaande evenement en kies daarna in Facebook de doelgroep.
+  // Zo blijft de echte evenementkaart behouden.
   const tab = await chrome.tabs.create({ url: round.eventUrl, active: true });
   round.activeTabId = tab.id;
   round.activeGroupId = String(next.id);
@@ -67,12 +69,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     readRound().then(async (round) => {
       if (!round || sender.tab?.id !== round.activeTabId) return;
       const result = message.payload || {};
-      if (result.ok) round.completed = Array.from(new Set([...round.completed, String(round.activeGroupId)]));
-      else round.failed.push({ id: String(round.activeGroupId), error: result.error || "Plaatsing niet bevestigd" });
-      await notify(round, { status: result.ok ? "submitted" : "failed", groupId: round.activeGroupId, error: result.error });
+      const finishedGroupId = String(round.activeGroupId);
+      if (result.ok) round.completed = Array.from(new Set([...round.completed, finishedGroupId]));
+      else round.failed = [...round.failed.filter((item) => String(item.id) !== finishedGroupId), { id: finishedGroupId, error: result.error || "Plaatsing niet bevestigd" }];
       if (result.ok && sender.tab?.id) await chrome.tabs.remove(sender.tab.id).catch(() => {});
       round.activeTabId = null;
       round.activeGroupId = null;
+      await writeRound(round);
+      await notify(round, { status: result.ok ? "submitted" : "failed", groupId: finishedGroupId, error: result.error });
       const remaining = round.groups.length - round.completed.length - round.failed.length;
       if (remaining > 0) await scheduleNext(round);
       else {

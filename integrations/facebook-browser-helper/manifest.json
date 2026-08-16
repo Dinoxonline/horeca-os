@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Horeca OS Facebookgroepen-helper",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Deelt een gekoppeld Horeca OS Facebook-evenement gecontroleerd in de gekozen Facebookgroepen.",
   "permissions": ["alarms", "storage", "tabs"],
   "host_permissions": ["https://www.facebook.com/*", "https://facebook.com/*", "https://horeca-os-iota.vercel.app/*", "https://horeca-os-le-club.vercel.app/*"],
