@@ -12,7 +12,10 @@ function isVisible(element) {
 }
 
 function visibleDialog() {
-  return [...document.querySelectorAll('div[role="dialog"]')].filter(isVisible).at(-1) || null;
+  const dialogs = [...document.querySelectorAll('div[role="dialog"]')].filter(isVisible);
+  return dialogs.find((dialog) => visibleEditor(dialog))
+    || dialogs.find((dialog) => /bericht maken|create post/i.test(clean(dialog.textContent)))
+    || null;
 }
 
 function visibleEditor(dialog) {
@@ -166,3 +169,4 @@ chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_READY" }, async (response) =>
     chrome.runtime.sendMessage({ type: "FACEBOOK_GROUP_RESULT", payload: { ok: false, error: error.message } });
   }
 });
+
