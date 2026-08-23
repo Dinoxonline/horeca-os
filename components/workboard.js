@@ -22,7 +22,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
   const [members, setMembers] = useState([]);
-  const [mineOnly, setMineOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(!canManage);
   const [customTemplate, setCustomTemplate] = useState({ name: "", category: "operations", description: "", steps: "" });
   const [dueFilter, setDueFilter] = useState("all");
   const [runFilter, setRunFilter] = useState("active");
@@ -57,6 +57,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   }
 
   useEffect(() => { load(); }, [workspaceId]);
+  useEffect(() => { setMineOnly(!canManage); }, [canManage]);
 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
