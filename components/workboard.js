@@ -16,13 +16,13 @@ const TEMPLATE_HINTS = {
   grill_your_own: "Nieuw concept",
 };
 
-export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, onRefresh }) {
+export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, canMonitor = false, onRefresh }) {
   const [templates, setTemplates] = useState([]);
   const [steps, setSteps] = useState([]);
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
   const [members, setMembers] = useState([]);
-  const [mineOnly, setMineOnly] = useState(!canManage);
+  const [mineOnly, setMineOnly] = useState(!canMonitor);
   const [customTemplate, setCustomTemplate] = useState({ name: "", category: "operations", description: "", steps: "" });
   const [dueFilter, setDueFilter] = useState("all");
   const [runFilter, setRunFilter] = useState("active");
@@ -57,13 +57,13 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   }
 
   useEffect(() => { load(); }, [workspaceId]);
-  useEffect(() => { setMineOnly(!canManage); }, [canManage]);
+  useEffect(() => { setMineOnly(!canMonitor); }, [canMonitor]);
 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const myRunIds = new Set(processTasks.filter((task) => task.assigned_to === userId).map((task) => task.run_id));
-  const visibleRuns = runs.filter((run) => (runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed")) && (canManage || !mineOnly || myRunIds.has(run.id)));
+  const visibleRuns = runs.filter((run) => (runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed")) && (canMonitor || !mineOnly || myRunIds.has(run.id)));
   const processProgress = useMemo(() => processTasks.reduce((map, task) => {
     const current = map[task.run_id] || { total: 0, done: 0 };
     current.total += 1;
