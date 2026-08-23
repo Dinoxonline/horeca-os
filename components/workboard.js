@@ -18,6 +18,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
   const [members, setMembers] = useState([]);
+  const [mineOnly, setMineOnly] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [name, setName] = useState("");
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
@@ -51,7 +52,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
-  const openProcessTasks = processTasks.filter((task) => task.status !== "done");
+  const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
+  const openProcessTasks = visibleProcessTasks.filter((task) => task.status !== "done");
   const today = new Date().toISOString().slice(0, 10);
   const todayTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date?.slice(0, 10) === today);
   const overdueTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date && task.due_date.slice(0, 10) < today);
@@ -147,8 +149,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </section>
 
       <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>Afvinken en opvolgen</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {processTasks.length === 0 ? <p>Start een proces om de bijbehorende taken hier te zien.</p> : <div className="tableLike">{processTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage} onUpdate={async (patch) => {
+        <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{mineOnly ? "Mijn taken" : "Afvinken en opvolgen"}</h3></div><div><button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
+        {visibleProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Start een proces om de bijbehorende taken hier te zien."}</p> : <div className="tableLike">{visibleProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
         }} />)}</div>}
