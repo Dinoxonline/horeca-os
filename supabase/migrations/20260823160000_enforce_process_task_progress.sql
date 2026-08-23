@@ -30,7 +30,7 @@ begin
 
   return new;
 end;
-$$;
+$function$;
 
 drop trigger if exists enforce_process_task_status_progress on public.process_run_tasks;
 create trigger enforce_process_task_status_progress
