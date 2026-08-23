@@ -435,7 +435,7 @@ export default function HorecaOsApp() {
         </> : <StaffDashboard priorities={priorities} events={data.events} />}
         </>}
 
-        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
+        {activeView === "workboard" && featureVisibility.workboard && <Workboard workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} tasks={data.tasks} canManage={isOwner || canUseFeature("processes:manage")} onRefresh={loadData} />}\n        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
         {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} ingredients={data.ingredients} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview recipes={data.recipes} recipeItems={data.recipeItems} ingredients={data.ingredients} products={data.foodProducts} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
