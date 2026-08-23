@@ -140,6 +140,14 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </section>
 
       <section className="panel">
+        <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>Afvinken en opvolgen</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
+        {processTasks.length === 0 ? <p>Start een proces om de bijbehorende taken hier te zien.</p> : <div className="tableLike">{processTasks.map((task) => <ProcessTaskRow key={task.id} task={task} canManage={canManage} onChange={async (status) => {
+          const { error } = await supabase.from("process_run_tasks").update({ status, completed_at: status === "done" ? new Date().toISOString() : null }).eq("id", task.id);
+          if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
+        }} />)}</div>}
+      </section>
+
+      <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">VASTE PROCESBIBLIOTHEEK</p><h3>Beschikbare sjablonen</h3></div></div>
         <div className="templateGrid">{templates.map((template) => <button type="button" className={"templateCard " + (selectedTemplateId === template.id ? "selected" : "")} key={template.id} onClick={() => setSelectedTemplateId(template.id)}><strong>{TEMPLATE_HINTS[template.template_key] || template.name}</strong><span>{template.description}</span></button>)}</div>
       </section>
