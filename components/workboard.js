@@ -55,6 +55,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
+  const processProgress = useMemo(() => processTasks.reduce((map, task) => {\n    const current = map[task.run_id] || { total: 0, done: 0 };\n    current.total += 1;\n    if (task.status === "done") current.done += 1;\n    map[task.run_id] = current;\n    return map;\n  }, {}), [processTasks]);
   const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
   const filteredProcessTasks = visibleProcessTasks.filter((task) => {
     const due = task.due_date?.slice(0, 10);
@@ -155,7 +156,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Recent gestarte processen</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {runs.length === 0 ? <p>Er zijn nog geen processen gestart.</p> : <div className="tableLike">{runs.map((run) => <div className="task" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date}</span></div><span className="pill">{run.status}</span></div>)}</div>}
+        {runs.length === 0 ? <p>Er zijn nog geen processen gestart.</p> : <div className="tableLike">{runs.map((run) => <div className="task" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date}</span></div><span className="pill">{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {run.status}</span></div>)}</div>}
       </section>
 
       <section className="panel">
