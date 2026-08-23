@@ -218,6 +218,7 @@ function ProcessTaskRow({ task, members, canManage, onUpdate }) {
     <select value={task.status} disabled={!canManage} onChange={(event) => onUpdate({ status: event.target.value, completed_at: event.target.value === "done" ? new Date().toISOString() : null })}>
       <option value="not_started">Niet gestart</option><option value="in_progress">Bezig</option><option value="blocked">Geblokkeerd</option><option value="done">Gereed</option>
     </select>
+    {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canManage} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
 }
 
