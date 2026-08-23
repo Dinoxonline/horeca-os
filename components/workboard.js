@@ -172,7 +172,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <section className="kpis secondary">
         <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" />
         <Metric label="Te laat" value={overdueTasks.length} sub="directe opvolging nodig" />
-        <Metric label="Geblokkeerd" value={blockedTasks.length} sub="hulp of besluit nodig" />
+        <Metric label="Geblokkeerd" value={blockedTasks.length} sub="hulp of besluit nodig" onClick={() => { setDueFilter("blocked"); if (blockedTasks[0]) setExpandedRunId(blockedTasks[0].run_id); }} />
         <Metric label="Openstaand" value={openTasks.length + openProcessTasks.length} sub="taken in Horeca OS" />
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
       </section>
@@ -239,4 +239,4 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
   </div>;
 }
 
-function Metric({ label, value, sub }) { return <div className="card"><span>{label}</span><strong>{value}</strong><small>{sub}</small></div>; }
+function Metric({ label, value, sub, onClick }) { const content = <><span>{label}</span><strong>{value}</strong><small>{sub}</small></>; return onClick ? <button type="button" className="card" onClick={onClick}>{content}</button> : <div className="card">{content}</div>; }
