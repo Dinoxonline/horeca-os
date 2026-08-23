@@ -34,6 +34,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [saving, setSaving] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(true);
   const [expandedRunId, setExpandedRunId] = useState(null);
+  const [showAddTaskForm, setShowAddTaskForm] = useState(false);
+  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "medium", assignedTo: "" });
 
   async function load() {
     if (!workspaceId) return;
@@ -164,6 +166,37 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     }
   }
 
+  function resetNewTask() {
+    setNewTask({ title: "", description: "", dueDate: "", priority: "medium", assignedTo: "" });
+  }
+
+  async function createCustomTask(event) {
+    event.preventDefault();
+    if (!canManage || !expandedRunId || expandedRunId === "__all__" || !newTask.title.trim()) return;
+    const currentRun = runs.find((run) => run.id === expandedRunId);
+    const { error } = await supabase.from("process_run_tasks").insert({
+      workspace_id: workspaceId,
+      business_id: currentRun?.business_id || null,
+      run_id: expandedRunId,
+      template_step_id: null,
+      title: newTask.title.trim(),
+      description: newTask.description.trim() || null,
+      due_date: newTask.dueDate || null,
+      priority: newTask.priority,
+      assigned_to: newTask.assignedTo || null,
+      status: "not_started",
+    });
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setMessage("Extra taak toegevoegd aan dit proces.");
+    setShowAddTaskForm(false);
+    resetNewTask();
+    await load();
+    onRefresh?.();
+  }
+
   return (
     <>
       <section className="pageIntro">
@@ -206,7 +239,18 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </section>
 
       <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{expandedRunId === "__all__" ? "Alle procestaken" : expandedRunId ? (runs.find((run) => run.id === expandedRunId)?.name || "Geselecteerd proces") : "Taken bekijken"}</h3></div><div>{!expandedRunId && <button type="button" className="secondary" onClick={() => { setDueFilter("all"); setAssignedFilter(""); setExpandedRunId("__all__"); }}>Alle procestaken</button>} {expandedRunId && <button type="button" className="secondary" onClick={() => setExpandedRunId(null)}>Sluiten</button>} <button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
+        <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{expandedRunId === "__all__" ? "Alle procestaken" : expandedRunId ? (runs.find((run) => run.id === expandedRunId)?.name || "Geselecteerd proces") : "Taken bekijken"}</h3></div><div>{!expandedRunId && <button type="button" className="secondary" onClick={() => { setDueFilter("all"); setAssignedFilter(""); setExpandedRunId("__all__"); }}>Alle procestaken</button>} {expandedRunId && expandedRunId !== "__all__" && canManage && <button type="button" className="secondary" onClick={() => setShowAddTaskForm((value) => !value)}>{showAddTaskForm ? "Sluiten" : "Extra taak"}</button>} {expandedRunId && <button type="button" className="secondary" onClick={() => { setExpandedRunId(null); setShowAddTaskForm(false); resetNewTask(); }}>Sluiten</button>} <button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
+        {showAddTaskForm && expandedRunId && expandedRunId !== "__all__" && canManage && <form onSubmit={createCustomTask} className="panel stack" style={{ marginTop: 12 }}>
+          <div><strong>Extra stap aan dit proces toevoegen</strong><p className="muted">Deze taak komt alleen in dit gestarte proces en verandert de basistaken niet.</p></div>
+          <label>Taak<input required value={newTask.title} onChange={(event) => setNewTask((current) => ({ ...current, title: event.target.value }))} placeholder="Bijvoorbeeld: QR-codes uitrollen in Grand Café en Caribbean Corner" /></label>
+          <label>Omschrijving<textarea value={newTask.description} onChange={(event) => setNewTask((current) => ({ ...current, description: event.target.value }))} placeholder="Beschrijf de tussenstap of het gewenste resultaat." /></label>
+          <div className="formGrid">
+            <label>Deadline<input type="date" value={newTask.dueDate} onChange={(event) => setNewTask((current) => ({ ...current, dueDate: event.target.value }))} /></label>
+            <label>Prioriteit<select value={newTask.priority} onChange={(event) => setNewTask((current) => ({ ...current, priority: event.target.value }))}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
+            <label>Toewijzen aan<select value={newTask.assignedTo} onChange={(event) => setNewTask((current) => ({ ...current, assignedTo: event.target.value }))}><option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>
+          </div>
+          <div className="toolbar"><button className="primary" type="submit">Extra taak toevoegen</button><button type="button" className="secondary" onClick={() => { setShowAddTaskForm(false); resetNewTask(); }}>Annuleren</button></div>
+        </form>}
         {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)}><option value="">Alle medewerkers</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
         {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} currentUserId={userId} canManage={canManage} canAct={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("workspace_id", workspaceId).eq("id", task.id);
