@@ -1,7 +1,8 @@
 create or replace function public.enforce_process_task_status_progress()
 returns trigger
 language plpgsql
-as $$
+set search_path = public, private
+as $
 declare
   can_manage boolean;
 begin
