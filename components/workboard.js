@@ -211,7 +211,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
 function ProcessTaskRow({ task, members, canManage, onUpdate }) {
   return <div className={"task " + (task.priority || "medium")}>
-    <div><strong>{task.title}</strong><span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.priority || "medium"}</span></div>
+    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.priority || "medium"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
