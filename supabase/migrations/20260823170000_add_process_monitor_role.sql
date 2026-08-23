@@ -9,7 +9,7 @@ begin
     on conflict (workspace_id, role_key) do update set name = 'Leidinggevende'
     returning id into new_role_id;
 
-    if role_id is null then
+    if new_role_id is null then
       select id into new_role_id from public.roles where workspace_id = w.workspace_id and role_key = 'shift_lead';
     end if;
 
