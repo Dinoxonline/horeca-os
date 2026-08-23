@@ -9,18 +9,25 @@ const categoryLabels = { recipe: "Recepten", work_instruction: "Werkinstructies"
 export default function Documents({ workspaceId, businessId, userId, canManage = false }) {
   const [documents, setDocuments] = useState([]);
   const [processRuns, setProcessRuns] = useState([]);
-  const [form, setForm] = useState({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "" });
+  const [members, setMembers] = useState([]);
+  const [form, setForm] = useState({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "", allowed_user_ids: [] });
   const [message, setMessage] = useState("");
 
   async function load() {
     if (!workspaceId) return;
-    const [{ data, error }, { data: runs }] = await Promise.all([
+    const [{ data, error }, { data: runs }, { data: memberRows }] = await Promise.all([
       supabase.from("documents").select("*, businesses(name), process_runs(name)").eq("workspace_id", workspaceId).order("updated_at", { ascending: false }),
       supabase.from("process_runs").select("id, name, status, anchor_date").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(50),
+      supabase.from("workspace_members").select("user_id").eq("workspace_id", workspaceId),
     ]);
     if (error) setMessage(error.message);
     setDocuments(data || []);
     setProcessRuns(runs || []);
+    const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
+    if (memberIds.length) {
+      const { data: profileRows } = await supabase.from("profiles").select("id, full_name").in("id", memberIds).order("full_name");
+      setMembers(profileRows || []);
+    } else setMembers([]);
   }
 
   useEffect(() => { load(); }, [workspaceId]);
@@ -35,10 +42,11 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
       business_id: businessId === "all" ? null : businessId,
       created_by: userId,
       process_run_id: form.process_run_id || null,
+      allowed_user_ids: form.allowed_user_ids,
     });
     setMessage(error ? error.message : "Document toegevoegd aan de HorecaOS-bibliotheek.");
     if (!error) {
-      setForm({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "" });
+      setForm({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "", allowed_user_ids: [] });
       load();
     }
   }
@@ -61,6 +69,7 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
             <label>Dropbox-pad<input value={form.dropbox_path} onChange={(e) => setForm({ ...form, dropbox_path: e.target.value })} placeholder="/HorecaOS/Recepten/..." disabled={!canManage} /></label>
             <label>Dropbox-link<input value={form.dropbox_shared_link} onChange={(e) => setForm({ ...form, dropbox_shared_link: e.target.value })} placeholder="Optionele gedeelde link" disabled={!canManage} /></label>
             <label>Toegang<select value={form.access_mode} onChange={(e) => setForm({ ...form, access_mode: e.target.value })} disabled={!canManage}><option value="workspace">Iedereen met documententoegang</option><option value="managers">Alleen managers</option><option value="specific">Specifieke medewerkers</option><option value="private">Alleen ik</option></select></label>\n            <label>Koppel aan proces<select value={form.process_run_id} onChange={(e) => setForm({ ...form, process_run_id: e.target.value })} disabled={!canManage}><option value="">Geen proces</option>{processRuns.map((run) => <option key={run.id} value={run.id}>{run.name} · {run.status}</option>)}</select></label>
+            {form.access_mode === "specific" && <fieldset><legend>Wie mag dit document zien?</legend>{members.map((member) => <label key={member.id} className="checkRow"><input type="checkbox" checked={form.allowed_user_ids.includes(member.id)} onChange={(event) => setForm({ ...form, allowed_user_ids: event.target.checked ? [...form.allowed_user_ids, member.id] : form.allowed_user_ids.filter((id) => id !== member.id) })} disabled={!canManage} />{member.full_name || member.id}</label>)}</fieldset>}
             <label>Toelichting<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} disabled={!canManage} /></label>
             <button className="primary" type="submit" disabled={!canManage || !form.title.trim() || !form.dropbox_path.trim()}>Document koppelen</button>
           </form>
