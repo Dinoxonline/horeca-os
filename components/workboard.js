@@ -196,7 +196,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{expandedRunId ? (runs.find((run) => run.id === expandedRunId)?.name || "Geselecteerd proces") : "Taken bekijken"}</h3></div><div>{expandedRunId && <button type="button" className="secondary" onClick={() => setExpandedRunId(null)}>Sluiten</button>} <button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
         {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)}><option value="">Alle medewerkers</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
-        {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage} canAct={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
+        {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} currentUserId={userId} canManage={canManage} canAct={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
         }} />)}</div>}</>}
@@ -209,7 +209,9 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   );
 }
 
-function ProcessTaskRow({ task, members, canManage, canAct, onUpdate }) {
+function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpdate }) {
+  const assignedMember = members.find((member) => member.id === task.assigned_to);
+  const belongsToOther = Boolean(task.assigned_to && task.assigned_to !== currentUserId);
   const statuses = [
     { value: "not_started", label: task.assigned_to ? "Toegewezen" : "Niet toegewezen" },
     { value: "in_progress", label: "Bezig" },
@@ -217,8 +219,8 @@ function ProcessTaskRow({ task, members, canManage, canAct, onUpdate }) {
     { value: "done", label: "Gereed" },
   ];
   const statusIndex = statuses.findIndex((item) => item.value === task.status);
-  return <div className={"task " + (task.priority || "medium")}>
-    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.assigned_to ? "toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}</span></div>
+  return <div className={"task " + (task.priority || "medium") + (belongsToOther ? " taskAssignedElsewhere" : "")} style={belongsToOther ? { background: "#fff7ed", borderLeft: "4px solid #f59e0b" } : undefined}>
+    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
