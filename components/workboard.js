@@ -70,6 +70,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
   const filteredProcessTasks = visibleProcessTasks.filter((task) => {
     const due = task.due_date?.slice(0, 10);
+    if (dueFilter === "blocked") return task.status === "blocked";
     if (dueFilter === "today") return due === today;
     if (dueFilter === "overdue") return due && due < today;
     if (dueFilter === "upcoming") return due && due > today;
@@ -172,7 +173,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{mineOnly ? "Mijn taken" : "Afvinken en opvolgen"}</h3></div><div><button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
-        <div className="filterRow"><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
+        <div className="filterRow"><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
         {filteredProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{filteredProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
