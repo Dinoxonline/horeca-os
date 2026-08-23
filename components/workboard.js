@@ -170,8 +170,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <div className="taskLegend"><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#fff7ed", borderLeft: "4px solid #f59e0b", marginRight: 6 }} />Oranje: taak van iemand anders</span><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#f8fafc", marginRight: 6 }} />Normaal: jouw taak of niet toegewezen</span></div>
 
       <section className="kpis secondary">
-        <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" />
-        <Metric label="Te laat" value={overdueTasks.length} sub="directe opvolging nodig" />
+        <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" onClick={() => { setDueFilter("today"); const task = openProcessTasks.find((item) => item.due_date?.slice(0, 10) === today); if (task) setExpandedRunId(task.run_id); }} />
+        <Metric label="Te laat" value={overdueTasks.length} sub="directe opvolging nodig" onClick={() => { setDueFilter("overdue"); const task = openProcessTasks.find((item) => item.due_date && item.due_date.slice(0, 10) < today); if (task) setExpandedRunId(task.run_id); }} />
         <Metric label="Geblokkeerd" value={blockedTasks.length} sub="hulp of besluit nodig" onClick={() => { setDueFilter("blocked"); if (blockedTasks[0]) setExpandedRunId(blockedTasks[0].run_id); }} />
         <Metric label="Openstaand" value={openTasks.length + openProcessTasks.length} sub="taken in Horeca OS" />
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
