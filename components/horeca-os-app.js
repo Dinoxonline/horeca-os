@@ -14,7 +14,7 @@ const statusLabel = { not_started: "Niet gestart", in_progress: "Bezig", blocked
 const integrationStatusLabel = { not_started: "Niet gestart", in_progress: "Bezig", blocked: "Geblokkeerd", connected: "Verbonden", error: "Fout" };
 
 const emptyData = {
-  tasks: [], businesses: [], decisions: [], events: [], sales: [], products: [], security: [], integrations: [],
+  tasks: [], processTasks: [], businesses: [], decisions: [], events: [], sales: [], products: [], security: [], integrations: [],
   suppliers: [], foodProducts: [], ingredients: [], recipes: [], recipeItems: [], menuItems: [], aiConversations: [],
 };
 
@@ -210,6 +210,7 @@ export default function HorecaOsApp() {
 
     const results = await Promise.all([
       scope(supabase.from("tasks").select("*, assignee:profiles!tasks_assigned_to_fkey(full_name)")).order("created_at", { ascending: true }),
+      scope(supabase.from("process_run_tasks").select("*, assignee:profiles!process_run_tasks_assigned_to_fkey(full_name), process_runs(name)")).order("due_date", { ascending: true }).limit(200),
       supabase.from("businesses").select("id, workspace_id, name, active").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       scope(supabase.from("decisions").select("*")).order("decided_on", { ascending: false }).limit(50),
       scope(supabase.from("events").select("*")).gte("starts_at", new Date().toISOString()).order("starts_at").limit(8),
@@ -291,7 +292,7 @@ export default function HorecaOsApp() {
   const viewAllowed = featureVisibility[activeView] !== false;
   const mfaRequired = isOwner || canUseFeature("users:manage") || canUseFeature("integrations:manage");
   const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
-  const openTasks = data.tasks.filter((task) => task.status !== "done");
+  const openTasks = [...data.tasks, ...data.processTasks].filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
   const priorities = [...openTasks].sort((a, b) => (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9)).slice(0, 6);
   const securityOk = data.security.filter((item) => ["ok", "pass", "passed", "connected"].includes(String(item.status).toLowerCase())).length;
