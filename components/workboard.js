@@ -205,14 +205,25 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 }
 
 function ProcessTaskRow({ task, members, canManage, onUpdate }) {
+  const statuses = [
+    { value: "not_started", label: task.assigned_to ? "Toegewezen" : "Niet toegewezen" },
+    { value: "in_progress", label: "Bezig" },
+    { value: "blocked", label: "Geblokkeerd" },
+    { value: "done", label: "Gereed" },
+  ];
+  const statusIndex = statuses.findIndex((item) => item.value === task.status);
   return <div className={"task " + (task.priority || "medium")}>
     <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.assigned_to ? "toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
-    <select value={task.status} disabled={!canManage} onChange={(event) => onUpdate({ status: event.target.value, completed_at: event.target.value === "done" ? new Date().toISOString() : null })}>
-      <option value="not_started">{task.assigned_to ? "Toegewezen" : "Niet gestart"}</option><option value="in_progress">Bezig</option><option value="blocked">Geblokkeerd</option><option value="done">Gereed</option>
-    </select>
+    <div className="statusBar" aria-label="Voortgang taak">
+      {statuses.map((status, index) => {
+        const isCurrent = task.status === status.value;
+        const canSelect = canManage || (index > statusIndex && task.status !== "blocked" && task.status !== "done");
+        return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} disabled={!canSelect && !isCurrent} onClick={() => canSelect && onUpdate({ status: status.value, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
+      })}
+    </div>
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canManage} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
 }
