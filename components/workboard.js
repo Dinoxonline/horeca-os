@@ -80,6 +80,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     return map;
   }, {}), [processTasks]);
   const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
+  const today = new Date().toISOString().slice(0, 10);
   const filteredProcessTasks = visibleProcessTasks.filter((task) => {
     const due = task.due_date?.slice(0, 10);
     if (assignedFilter && task.assigned_to !== assignedFilter) return false;
@@ -91,7 +92,6 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   });
   const selectedProcessTasks = expandedRunId ? filteredProcessTasks.filter((task) => task.run_id === expandedRunId) : [];
   const openProcessTasks = visibleProcessTasks.filter((task) => task.status !== "done");
-  const today = new Date().toISOString().slice(0, 10);
   const todayTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date?.slice(0, 10) === today);
   const overdueTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date && task.due_date.slice(0, 10) < today);
   const blockedTasks = openProcessTasks.filter((task) => task.status === "blocked");
