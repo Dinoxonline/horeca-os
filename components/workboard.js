@@ -16,6 +16,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [templates, setTemplates] = useState([]);
   const [steps, setSteps] = useState([]);
   const [runs, setRuns] = useState([]);
+  const [processTasks, setProcessTasks] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [name, setName] = useState("");
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
@@ -24,15 +25,17 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   async function load() {
     if (!workspaceId) return;
-    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }] = await Promise.all([
+    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }] = await Promise.all([
       supabase.from("process_templates").select("*").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       supabase.from("process_template_steps").select("*").eq("workspace_id", workspaceId).order("sort_order"),
       supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(12),
+      supabase.from("process_run_tasks").select("*, process_runs(name)").eq("workspace_id", workspaceId).order("due_date", { ascending: true }).limit(200),
     ]);
-    if (templateError) setMessage(templateError.message);
+    if (templateError || processTaskError) setMessage(templateError?.message || processTaskError?.message || "Procesgegevens konden niet worden geladen.");
     setTemplates(templateRows || []);
     setSteps(stepRows || []);
     setRuns(runRows || []);
+    setProcessTasks(processTaskRows || []);
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
   }
 
@@ -41,9 +44,10 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
+  const openProcessTasks = processTasks.filter((task) => task.status !== "done");
   const today = new Date().toISOString().slice(0, 10);
-  const todayTasks = openTasks.filter((task) => task.due_date?.slice(0, 10) === today);
-  const overdueTasks = openTasks.filter((task) => task.due_date && task.due_date.slice(0, 10) < today);
+  const todayTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date?.slice(0, 10) === today);
+  const overdueTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date && task.due_date.slice(0, 10) < today);
 
   async function createProcess(event) {
     event.preventDefault();
@@ -106,7 +110,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <section className="kpis secondary">
         <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" />
         <Metric label="Te laat" value={overdueTasks.length} sub="directe opvolging nodig" />
-        <Metric label="Openstaand" value={openTasks.length} sub="taken in Horeca OS" />
+        <Metric label="Openstaand" value={openTasks.length + openProcessTasks.length} sub="taken in Horeca OS" />
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
       </section>
 
@@ -141,6 +145,15 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </section>
     </>
   );
+}
+
+function ProcessTaskRow({ task, canManage, onChange }) {
+  return <div className={"task " + (task.priority || "medium")}>
+    <div><strong>{task.title}</strong><span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.priority || "medium"}</span></div>
+    <select value={task.status} disabled={!canManage} onChange={(event) => onChange(event.target.value)}>
+      <option value="not_started">Niet gestart</option><option value="in_progress">Bezig</option><option value="blocked">Geblokkeerd</option><option value="done">Gereed</option>
+    </select>
+  </div>;
 }
 
 function Metric({ label, value, sub }) { return <div className="card"><span>{label}</span><strong>{value}</strong><small>{sub}</small></div>; }
