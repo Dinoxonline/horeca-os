@@ -161,6 +161,27 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <div className="panelHead"><div><p className="eyebrow">VASTE PROCESBIBLIOTHEEK</p><h3>Beschikbare sjablonen</h3></div></div>
         <div className="templateGrid">{templates.map((template) => <button type="button" className={"templateCard " + (selectedTemplateId === template.id ? "selected" : "")} key={template.id} onClick={() => setSelectedTemplateId(template.id)}><strong>{TEMPLATE_HINTS[template.template_key] || template.name}</strong><span>{template.description}</span></button>)}</div>
       </section>
+      {canManage && <section className="panel">
+        <div className="panelHead"><div><p className="eyebrow">EIGEN SJABLOON</p><h3>Nieuw proces toevoegen</h3></div></div>
+        <p>Maak zelf een vaste werkwijze. Zet iedere stap op een nieuwe regel.</p>
+        <form className="stack" onSubmit={async (event) => {
+          event.preventDefault();
+          if (!customTemplate.name.trim() || !customTemplate.steps.trim()) return;
+          const key = customTemplate.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") + "_" + Date.now();
+          const { data: template, error } = await supabase.from("process_templates").insert({ workspace_id: workspaceId, template_key: key, name: customTemplate.name.trim(), description: customTemplate.description.trim(), category: customTemplate.category }).select("*").single();
+          if (error) { setMessage(error.message); return; }
+          const rows = customTemplate.steps.split("\n").map((title, index) => ({ workspace_id: workspaceId, template_id: template.id, title: title.trim(), relative_days: 0, priority: "medium", role_key: "team", sort_order: index })).filter((item) => item.title);
+          const { error: stepError } = await supabase.from("process_template_steps").insert(rows);
+          if (stepError) setMessage(stepError.message); else { setMessage("Nieuw processjabloon toegevoegd."); setCustomTemplate({ name: "", category: "operations", description: "", steps: "" }); load(); }
+        }}>
+          <label>Naam<input value={customTemplate.name} onChange={(event) => setCustomTemplate({ ...customTemplate, name: event.target.value })} placeholder="Bijvoorbeeld: Nieuwe leverancier" /></label>
+          <label>Categorie<select value={customTemplate.category} onChange={(event) => setCustomTemplate({ ...customTemplate, category: event.target.value })}><option value="operations">Operatie</option><option value="marketing">Marketing</option><option value="product">Product</option><option value="people">Personeel</option><option value="safety">Veiligheid</option></select></label>
+          <label>Beschrijving<textarea value={customTemplate.description} onChange={(event) => setCustomTemplate({ ...customTemplate, description: event.target.value })} placeholder="Wanneer gebruik je dit proces?" /></label>
+          <label>Stappen<textarea value={customTemplate.steps} onChange={(event) => setCustomTemplate({ ...customTemplate, steps: event.target.value })} placeholder={"Leverancier kiezen\nPrijsafspraken vastleggen\nTeam informeren"} /></label>
+          <button className="primary" type="submit" disabled={!customTemplate.name.trim() || !customTemplate.steps.trim()}>Sjabloon opslaan</button>
+        </form>
+      </section>}
+
     </>
   );
 }
