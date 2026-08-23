@@ -94,6 +94,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const today = new Date().toISOString().slice(0, 10);
   const todayTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date?.slice(0, 10) === today);
   const overdueTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date && task.due_date.slice(0, 10) < today);
+  const blockedTasks = openProcessTasks.filter((task) => task.status === "blocked");
 
   async function createProcess(event) {
     event.preventDefault();
@@ -171,6 +172,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <section className="kpis secondary">
         <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" />
         <Metric label="Te laat" value={overdueTasks.length} sub="directe opvolging nodig" />
+        <Metric label="Geblokkeerd" value={blockedTasks.length} sub="hulp of besluit nodig" />
         <Metric label="Openstaand" value={openTasks.length + openProcessTasks.length} sub="taken in Horeca OS" />
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
       </section>
