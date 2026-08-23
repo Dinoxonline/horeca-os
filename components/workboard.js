@@ -162,6 +162,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </section>
 
       {message && <div className="notice">{message}</div>}
+      {canMonitor && !canManage && <div className="notice">Je kijkt mee in dit Werkbord. Je kunt voortgang bekijken, maar geen taken toewijzen of wijzigen.</div>}
 
       <section className="kpis secondary">
         <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" />
