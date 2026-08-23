@@ -192,7 +192,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{expandedRunId ? (runs.find((run) => run.id === expandedRunId)?.name || "Geselecteerd proces") : "Taken bekijken"}</h3></div><div>{expandedRunId && <button type="button" className="secondary" onClick={() => setExpandedRunId(null)}>Sluiten</button>} <button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
         {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
-        {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
+        {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage} canAct={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
         }} />)}</div>}</>}
@@ -205,7 +205,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   );
 }
 
-function ProcessTaskRow({ task, members, canManage, onUpdate }) {
+function ProcessTaskRow({ task, members, canManage, canAct, onUpdate }) {
   const statuses = [
     { value: "not_started", label: task.assigned_to ? "Toegewezen" : "Niet toegewezen" },
     { value: "in_progress", label: "Bezig" },
@@ -221,11 +221,11 @@ function ProcessTaskRow({ task, members, canManage, onUpdate }) {
     <div className="statusBar" aria-label="Voortgang taak">
       {statuses.map((status, index) => {
         const isCurrent = task.status === status.value;
-        const canSelect = canManage || (index > statusIndex && task.status !== "blocked" && task.status !== "done");
+        const canSelect = canManage || (canAct && index > statusIndex && task.status !== "blocked" && task.status !== "done");
         return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} disabled={!canSelect && !isCurrent} onClick={() => canSelect && onUpdate({ status: status.value, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
       })}
     </div>
-    {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canManage} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
+    {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
 }
 
