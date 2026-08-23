@@ -23,6 +23,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [processTasks, setProcessTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [mineOnly, setMineOnly] = useState(!canMonitor);
+  const [assignedFilter, setAssignedFilter] = useState("");
   const [customTemplate, setCustomTemplate] = useState({ name: "", category: "operations", description: "", steps: "" });
   const [dueFilter, setDueFilter] = useState("all");
   const [runFilter, setRunFilter] = useState("active");
@@ -81,6 +82,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
   const filteredProcessTasks = visibleProcessTasks.filter((task) => {
     const due = task.due_date?.slice(0, 10);
+    if (assignedFilter && task.assigned_to !== assignedFilter) return false;
     if (dueFilter === "blocked") return task.status === "blocked";
     if (dueFilter === "today") return due === today;
     if (dueFilter === "overdue") return due && due < today;
@@ -193,7 +195,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>{expandedRunId ? (runs.find((run) => run.id === expandedRunId)?.name || "Geselecteerd proces") : "Taken bekijken"}</h3></div><div>{expandedRunId && <button type="button" className="secondary" onClick={() => setExpandedRunId(null)}>Sluiten</button>} <button type="button" className="secondary" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "Alle taken" : "Mijn taken"}</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
-        {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
+        {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)}><option value="">Alle medewerkers</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
         {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage} canAct={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
