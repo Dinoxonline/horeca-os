@@ -4200,6 +4200,9 @@ function UsersAdmin({ workspaceId, session }) {
 const PERMISSION_OPTIONS = [
   ["workspace:manage", "Volledige werkruimte beheren", false],
   ["operations:read", "Eigen werk, planning en inklokken"], ["operations:manage", "Operationele gegevens beheren"],
+  ["processes:read", "Procestaken bekijken"],
+  ["processes:monitor", "Procesvoortgang van anderen volgen"],
+  ["processes:manage", "Processen starten, toewijzen en beheren"],
   ["revenue:read", "Omzet en verkoopcijfers bekijken"],
   ["time:read", "Uren van medewerkers bekijken"],
   ["time:manage", "Uren van medewerkers corrigeren"],
