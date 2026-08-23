@@ -31,6 +31,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(true);
 
   async function load() {
     if (!workspaceId) return;
@@ -124,6 +125,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     const createdName = name.trim();
     setName("");
     setMessage("Proces gestart: " + createdName + " (" + taskRows.length + " taken)");
+    setShowCreateForm(false);
     setSaving(false);
     await load();
     onRefresh?.();
@@ -148,22 +150,17 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <div className="dashboardGrid">
         <section className="panel">
-          <div className="panelHead"><div><p className="eyebrow">NIEUW PROCES</p><h3>Wat wil je opstarten?</h3></div></div>
-          {!canManage && <p>Je kunt processen bekijken. Een manager of eigenaar kan nieuwe processen starten.</p>}
-          <form onSubmit={createProcess} className="stack">
+          <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
+          {showCreateForm && <form onSubmit={createProcess} className="stack">
             <label>Proces<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={!canManage}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
             <label>Naam van dit initiatief<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Bijvoorbeeld: Nieuw concept september" disabled={!canManage} /></label>
             <label>Start- of uitvoeringsdatum<input type="date" value={anchorDate} onChange={(event) => setAnchorDate(event.target.value)} disabled={!canManage} /></label>
             {businessId === "all" && <p className="muted">Er wordt standaard een vestiging gekozen. Kies bovenaan een vestiging als dit proces locatiegebonden is.</p>}
             <button className="primary" type="submit" disabled={!canManage || saving || !selectedTemplateId || !name.trim()}>{saving ? "Proces starten…" : "Proces starten"}</button>
-          </form>
+          </form>}
         </section>
 
-        <section className="panel">
-          <div className="panelHead"><div><p className="eyebrow">CHECKLIST</p><h3>{selectedTemplate?.name || "Kies een proces"}</h3></div></div>
-          <p>{selectedTemplate?.description || "Selecteer een proces om de vaste stappen te bekijken."}</p>
-          <ol className="processSteps">{selectedSteps.map((step) => <li key={step.id}><strong>{step.title}</strong><span>{(step.relative_days >= 0 ? "+" : "") + step.relative_days} dagen · {step.role_key || "team"} · {step.priority || "medium"}</span></li>)}</ol>
-        </section>
+
       </div>
 
       <section className="panel">
@@ -180,30 +177,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         }} />)}</div>}
       </section>
 
-      <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">VASTE PROCESBIBLIOTHEEK</p><h3>Beschikbare sjablonen</h3></div></div>
-        <div className="templateGrid">{templates.map((template) => <button type="button" className={"templateCard " + (selectedTemplateId === template.id ? "selected" : "")} key={template.id} onClick={() => setSelectedTemplateId(template.id)}><strong>{TEMPLATE_HINTS[template.template_key] || template.name}</strong><span>{template.description}</span></button>)}</div>
-      </section>
-      {canManage && <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">EIGEN SJABLOON</p><h3>Nieuw proces toevoegen</h3></div></div>
-        <p>Maak zelf een vaste werkwijze. Zet iedere stap op een nieuwe regel.</p>
-        <form className="stack" onSubmit={async (event) => {
-          event.preventDefault();
-          if (!customTemplate.name.trim() || !customTemplate.steps.trim()) return;
-          const key = customTemplate.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") + "_" + Date.now();
-          const { data: template, error } = await supabase.from("process_templates").insert({ workspace_id: workspaceId, template_key: key, name: customTemplate.name.trim(), description: customTemplate.description.trim(), category: customTemplate.category }).select("*").single();
-          if (error) { setMessage(error.message); return; }
-          const rows = customTemplate.steps.split("\n").map((title, index) => ({ workspace_id: workspaceId, template_id: template.id, title: title.trim(), relative_days: 0, priority: "medium", role_key: "team", sort_order: index })).filter((item) => item.title);
-          const { error: stepError } = await supabase.from("process_template_steps").insert(rows);
-          if (stepError) setMessage(stepError.message); else { setMessage("Nieuw processjabloon toegevoegd."); setCustomTemplate({ name: "", category: "operations", description: "", steps: "" }); load(); }
-        }}>
-          <label>Naam<input value={customTemplate.name} onChange={(event) => setCustomTemplate({ ...customTemplate, name: event.target.value })} placeholder="Bijvoorbeeld: Nieuwe leverancier" /></label>
-          <label>Categorie<select value={customTemplate.category} onChange={(event) => setCustomTemplate({ ...customTemplate, category: event.target.value })}><option value="operations">Operatie</option><option value="marketing">Marketing</option><option value="product">Product</option><option value="people">Personeel</option><option value="safety">Veiligheid</option></select></label>
-          <label>Beschrijving<textarea value={customTemplate.description} onChange={(event) => setCustomTemplate({ ...customTemplate, description: event.target.value })} placeholder="Wanneer gebruik je dit proces?" /></label>
-          <label>Stappen<textarea value={customTemplate.steps} onChange={(event) => setCustomTemplate({ ...customTemplate, steps: event.target.value })} placeholder={"Leverancier kiezen\nPrijsafspraken vastleggen\nTeam informeren"} /></label>
-          <button className="primary" type="submit" disabled={!customTemplate.name.trim() || !customTemplate.steps.trim()}>Sjabloon opslaan</button>
-        </form>
-      </section>}
+
+
 
     </>
   );
