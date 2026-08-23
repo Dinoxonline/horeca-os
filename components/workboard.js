@@ -169,7 +169,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
       </section>
 
-      <div className="dashboardGrid">
+      {canManage && <div className="dashboardGrid">
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
           {showCreateForm && <form onSubmit={createProcess} className="stack">
@@ -182,7 +182,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         </section>
 
 
-      </div>
+      </div>}
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
