@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import CentralEventCreator from "./central-event-creator";
 import Workboard from "./workboard";
+import Documents from "./documents";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
 const priorityLabel = { critical: "Kritiek", high: "Hoog", medium: "Midden", low: "Laag" };
@@ -20,6 +21,7 @@ const emptyData = {
 const routeViews = {
   "/dashboard": "dashboard",
   "/werkbord": "workboard",
+  "/documenten": "documents",
   "/foodcost": "foodcost",
   "/producten": "products",
   "/recepten": "recipes",
@@ -266,6 +268,7 @@ export default function HorecaOsApp() {
   const featureVisibility = useMemo(() => ({
     dashboard: canUseFeature("operations:read") || canUseFeature("operations:manage") || canUseFeature("revenue:read") || canUseFeature("finance:read"),
     workboard: canUseFeature("processes:read") || canUseFeature("processes:manage"),
+    documents: canUseFeature("documents:read") || canUseFeature("documents:manage"),
     foodcost: canUseFeature("foodcost:read"),
     products: canUseFeature("foodcost:read"),
     recipes: canUseFeature("foodcost:read"),
@@ -367,6 +370,7 @@ export default function HorecaOsApp() {
         <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
           {featureVisibility.workboard && <NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink>}
+          {featureVisibility.documents && <NavLink href="/documenten" active={activeView === "documents"}>Documenten</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
           {featureVisibility.recipes && <NavLink href="/recepten" active={activeView === "recipes"}>Recepturen</NavLink>}
@@ -435,7 +439,7 @@ export default function HorecaOsApp() {
         </> : <StaffDashboard priorities={priorities} events={data.events} />}
         </>}
 
-        {activeView === "workboard" && featureVisibility.workboard && <Workboard workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} tasks={data.tasks} canManage={isOwner || canUseFeature("processes:manage")} onRefresh={loadData} />}\n        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
+        {activeView === "workboard" && featureVisibility.workboard && <Workboard workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} tasks={data.tasks} canManage={isOwner || canUseFeature("processes:manage")} onRefresh={loadData} />}\n        {activeView === "documents" && featureVisibility.documents && <Documents workspaceId={workspaceId} businessId={businessId} userId={session.user.id} canManage={isOwner || canUseFeature("documents:manage")} />}\n        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
         {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} ingredients={data.ingredients} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview recipes={data.recipes} recipeItems={data.recipeItems} ingredients={data.ingredients} products={data.foodProducts} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
