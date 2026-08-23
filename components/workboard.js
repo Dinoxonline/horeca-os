@@ -68,6 +68,13 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     map[task.run_id] = current;
     return map;
   }, {}), [processTasks]);
+  const runAssignees = useMemo(() => processTasks.reduce((map, task) => {
+    const current = map[task.run_id] || { assignedTo: task.assigned_to || "", mixed: false };
+    if (current.assignedTo && task.assigned_to && current.assignedTo !== task.assigned_to) current.mixed = true;
+    if (!current.assignedTo && task.assigned_to) current.assignedTo = task.assigned_to;
+    map[task.run_id] = current;
+    return map;
+  }, {}), [processTasks]);
   const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
   const filteredProcessTasks = visibleProcessTasks.filter((task) => {
     const due = task.due_date?.slice(0, 10);
@@ -131,6 +138,17 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     onRefresh?.();
   }
 
+  async function assignRun(runId, memberId) {
+    if (!canManage) return;
+    const { error } = await supabase.from("process_run_tasks").update({ assigned_to: memberId || null }).eq("run_id", runId);
+    if (error) setMessage(error.message);
+    else {
+      setMessage(memberId ? "Alle taken van dit proces zijn toegewezen." : "Toewijzing van dit proces verwijderd.");
+      await load();
+      onRefresh?.();
+    }
+  }
+
   return (
     <>
       <section className="pageIntro">
@@ -165,7 +183,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
-        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className="task" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date}</span></div><span className="pill">{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {run.status}</span></div>)}</div>}
+        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className="task" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date}</span></div><span className="pill">{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {run.status}</span><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></div>)}</div>}
       </section>
 
       <section className="panel">
