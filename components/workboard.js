@@ -22,6 +22,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [mineOnly, setMineOnly] = useState(false);
   const [customTemplate, setCustomTemplate] = useState({ name: "", category: "operations", description: "", steps: "" });
   const [dueFilter, setDueFilter] = useState("all");
+  const [runFilter, setRunFilter] = useState("active");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [name, setName] = useState("");
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
@@ -55,6 +56,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
+  const visibleRuns = runs.filter((run) => runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed"));
   const processProgress = useMemo(() => processTasks.reduce((map, task) => {
     const current = map[task.run_id] || { total: 0, done: 0 };
     current.total += 1;
@@ -161,8 +163,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </div>
 
       <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Recent gestarte processen</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {runs.length === 0 ? <p>Er zijn nog geen processen gestart.</p> : <div className="tableLike">{runs.map((run) => <div className="task" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date}</span></div><span className="pill">{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {run.status}</span></div>)}</div>}
+        <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
+        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className="task" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date}</span></div><span className="pill">{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {run.status}</span></div>)}</div>}
       </section>
 
       <section className="panel">
