@@ -62,7 +62,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
-  const visibleRuns = runs.filter((run) => runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed"));
+  const myRunIds = new Set(processTasks.filter((task) => task.assigned_to === userId).map((task) => task.run_id));
+  const visibleRuns = runs.filter((run) => (runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed")) && (canManage || !mineOnly || myRunIds.has(run.id)));
   const processProgress = useMemo(() => processTasks.reduce((map, task) => {
     const current = map[task.run_id] || { total: 0, done: 0 };
     current.total += 1;
