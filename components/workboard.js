@@ -8,6 +8,7 @@ const TEMPLATE_HINTS = {
   dish: "Nieuw gerecht of drankje",
   menu: "Nieuwe menukaart",
   newsletter: "Nieuwsbrief",
+  marketing_campaign: "Promotiecampagne",
   vacancy: "Vacature",
   grill_your_own: "Nieuw concept",
 };
