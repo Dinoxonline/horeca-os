@@ -9,6 +9,9 @@ const TEMPLATE_HINTS = {
   menu: "Nieuwe menukaart",
   newsletter: "Nieuwsbrief",
   marketing_campaign: "Promotiecampagne",
+  daily_opening: "Dagelijkse opening",
+  weekly_review: "Wekelijkse managementcheck",
+  monthly_menu_review: "Maandelijkse menureview",
   vacancy: "Vacature",
   grill_your_own: "Nieuw concept",
 };
