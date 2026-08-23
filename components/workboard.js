@@ -55,7 +55,13 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
   const openTasks = tasks.filter((task) => task.status !== "done");
-  const processProgress = useMemo(() => processTasks.reduce((map, task) => {\n    const current = map[task.run_id] || { total: 0, done: 0 };\n    current.total += 1;\n    if (task.status === "done") current.done += 1;\n    map[task.run_id] = current;\n    return map;\n  }, {}), [processTasks]);
+  const processProgress = useMemo(() => processTasks.reduce((map, task) => {
+    const current = map[task.run_id] || { total: 0, done: 0 };
+    current.total += 1;
+    if (task.status === "done") current.done += 1;
+    map[task.run_id] = current;
+    return map;
+  }, {}), [processTasks]);
   const visibleProcessTasks = mineOnly ? processTasks.filter((task) => task.assigned_to === userId) : processTasks;
   const filteredProcessTasks = visibleProcessTasks.filter((task) => {
     const due = task.due_date?.slice(0, 10);
