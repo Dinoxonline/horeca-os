@@ -8,14 +8,19 @@ const categoryLabels = { recipe: "Recepten", work_instruction: "Werkinstructies"
 
 export default function Documents({ workspaceId, businessId, userId, canManage = false }) {
   const [documents, setDocuments] = useState([]);
-  const [form, setForm] = useState({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "" });
+  const [processRuns, setProcessRuns] = useState([]);
+  const [form, setForm] = useState({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "" });
   const [message, setMessage] = useState("");
 
   async function load() {
     if (!workspaceId) return;
-    const { data, error } = await supabase.from("documents").select("*, businesses(name)").eq("workspace_id", workspaceId).order("updated_at", { ascending: false });
+    const [{ data, error }, { data: runs }] = await Promise.all([
+      supabase.from("documents").select("*, businesses(name), process_runs(name)").eq("workspace_id", workspaceId).order("updated_at", { ascending: false }),
+      supabase.from("process_runs").select("id, name, status, anchor_date").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(50),
+    ]);
     if (error) setMessage(error.message);
     setDocuments(data || []);
+    setProcessRuns(runs || []);
   }
 
   useEffect(() => { load(); }, [workspaceId]);
@@ -29,10 +34,11 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
       workspace_id: workspaceId,
       business_id: businessId === "all" ? null : businessId,
       created_by: userId,
+      process_run_id: form.process_run_id || null,
     });
     setMessage(error ? error.message : "Document toegevoegd aan de HorecaOS-bibliotheek.");
     if (!error) {
-      setForm({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "" });
+      setForm({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "" });
       load();
     }
   }
@@ -54,14 +60,14 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
             <label>Categorie<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} disabled={!canManage}>{categories.map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}</select></label>
             <label>Dropbox-pad<input value={form.dropbox_path} onChange={(e) => setForm({ ...form, dropbox_path: e.target.value })} placeholder="/HorecaOS/Recepten/..." disabled={!canManage} /></label>
             <label>Dropbox-link<input value={form.dropbox_shared_link} onChange={(e) => setForm({ ...form, dropbox_shared_link: e.target.value })} placeholder="Optionele gedeelde link" disabled={!canManage} /></label>
-            <label>Toegang<select value={form.access_mode} onChange={(e) => setForm({ ...form, access_mode: e.target.value })} disabled={!canManage}><option value="workspace">Iedereen met documententoegang</option><option value="managers">Alleen managers</option><option value="specific">Specifieke medewerkers</option><option value="private">Alleen ik</option></select></label>
+            <label>Toegang<select value={form.access_mode} onChange={(e) => setForm({ ...form, access_mode: e.target.value })} disabled={!canManage}><option value="workspace">Iedereen met documententoegang</option><option value="managers">Alleen managers</option><option value="specific">Specifieke medewerkers</option><option value="private">Alleen ik</option></select></label>\n            <label>Koppel aan proces<select value={form.process_run_id} onChange={(e) => setForm({ ...form, process_run_id: e.target.value })} disabled={!canManage}><option value="">Geen proces</option>{processRuns.map((run) => <option key={run.id} value={run.id}>{run.name} · {run.status}</option>)}</select></label>
             <label>Toelichting<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} disabled={!canManage} /></label>
             <button className="primary" type="submit" disabled={!canManage || !form.title.trim() || !form.dropbox_path.trim()}>Document koppelen</button>
           </form>
         </section>
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">BIBLIOTHEEK</p><h3>Gekoppelde documenten</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-          {documents.length === 0 ? <p>Nog geen documenten gekoppeld.</p> : <div className="tableLike">{documents.map((document) => <div className="task" key={document.id}><div><strong>{document.title}</strong><span>{categoryLabels[document.category] || "Overig"} · {document.businesses?.name || "Alle vestigingen"} · {document.access_mode}</span><small>{document.dropbox_path}</small></div>{document.dropbox_shared_link ? <a className="pill" href={document.dropbox_shared_link} target="_blank" rel="noreferrer">Openen</a> : <span className="pill">Dropbox-pad</span>}</div>)}</div>}
+          {documents.length === 0 ? <p>Nog geen documenten gekoppeld.</p> : <div className="tableLike">{documents.map((document) => <div className="task" key={document.id}><div><strong>{document.title}</strong><span>{categoryLabels[document.category] || "Overig"} · {document.businesses?.name || "Alle vestigingen"} · {document.process_runs?.name || "Los document"} · {document.access_mode}</span><small>{document.dropbox_path}</small></div>{document.dropbox_shared_link ? <a className="pill" href={document.dropbox_shared_link} target="_blank" rel="noreferrer">Openen</a> : <span className="pill">Dropbox-pad</span>}</div>)}</div>}
         </section>
       </div>
     </>
