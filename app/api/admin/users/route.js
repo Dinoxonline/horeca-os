@@ -445,7 +445,7 @@ const CUSTOM_PERMISSIONS = [
   "operations:read", "operations:manage", "revenue:read", "finance:read", "time:read", "time:manage", "schedule:read", "schedule:manage", "foodcost:read", "foodcost:manage", "kitchen:manage",
   "reviews:read", "reviews:respond", "reviews:manage", "marketing:read", "marketing:manage", "social:read",
   "social:manage", "social:publish", "ai:read", "ai:use", "integrations:read", "integrations:manage",
-  "users:read", "users:manage", "audit:read", "ai:audit",
+  "users:read", "users:manage", "processes:read", "processes:monitor", "processes:manage", "audit:read", "ai:audit",
 ];
 
 function cleanText(value, maxLength) { return String(value || "").trim().slice(0, maxLength); }
