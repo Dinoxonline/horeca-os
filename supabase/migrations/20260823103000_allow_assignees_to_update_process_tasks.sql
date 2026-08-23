@@ -1,0 +1,2 @@
+drop policy if exists process_run_tasks_assignee_update on public.process_run_tasks;
+create policy process_run_tasks_assignee_update on public.process_run_tasks for update to authenticated using (assigned_to = (select auth.uid()) and private.has_permission(workspace_id, 'processes:read', business_id, null)) with check (assigned_to = (select auth.uid()) and private.has_permission(workspace_id, 'processes:read', business_id, null));
