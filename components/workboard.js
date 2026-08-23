@@ -17,6 +17,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [steps, setSteps] = useState([]);
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
+  const [members, setMembers] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [name, setName] = useState("");
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
@@ -25,17 +26,23 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   async function load() {
     if (!workspaceId) return;
-    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }] = await Promise.all([
+    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }] = await Promise.all([
       supabase.from("process_templates").select("*").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       supabase.from("process_template_steps").select("*").eq("workspace_id", workspaceId).order("sort_order"),
       supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(12),
       supabase.from("process_run_tasks").select("*, process_runs(name)").eq("workspace_id", workspaceId).order("due_date", { ascending: true }).limit(200),
+      supabase.from("workspace_members").select("user_id").eq("workspace_id", workspaceId),
     ]);
     if (templateError || processTaskError) setMessage(templateError?.message || processTaskError?.message || "Procesgegevens konden niet worden geladen.");
     setTemplates(templateRows || []);
     setSteps(stepRows || []);
     setRuns(runRows || []);
     setProcessTasks(processTaskRows || []);
+    const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
+    if (memberIds.length) {
+      const { data: profileRows } = await supabase.from("profiles").select("id, full_name").in("id", memberIds).order("full_name");
+      setMembers(profileRows || []);
+    } else setMembers([]);
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
   }
 
@@ -141,8 +148,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">PROCES-TAKEN</p><h3>Afvinken en opvolgen</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {processTasks.length === 0 ? <p>Start een proces om de bijbehorende taken hier te zien.</p> : <div className="tableLike">{processTasks.map((task) => <ProcessTaskRow key={task.id} task={task} canManage={canManage} onChange={async (status) => {
-          const { error } = await supabase.from("process_run_tasks").update({ status, completed_at: status === "done" ? new Date().toISOString() : null }).eq("id", task.id);
+        {processTasks.length === 0 ? <p>Start een proces om de bijbehorende taken hier te zien.</p> : <div className="tableLike">{processTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} canManage={canManage} onUpdate={async (patch) => {
+          const { error } = await supabase.from("process_run_tasks").update(patch).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
         }} />)}</div>}
       </section>
@@ -155,10 +162,13 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   );
 }
 
-function ProcessTaskRow({ task, canManage, onChange }) {
+function ProcessTaskRow({ task, members, canManage, onUpdate }) {
   return <div className={"task " + (task.priority || "medium")}>
     <div><strong>{task.title}</strong><span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.priority || "medium"}</span></div>
-    <select value={task.status} disabled={!canManage} onChange={(event) => onChange(event.target.value)}>
+    <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
+      <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
+    </select>
+    <select value={task.status} disabled={!canManage} onChange={(event) => onUpdate({ status: event.target.value, completed_at: event.target.value === "done" ? new Date().toISOString() : null })}>
       <option value="not_started">Niet gestart</option><option value="in_progress">Bezig</option><option value="blocked">Geblokkeerd</option><option value="done">Gereed</option>
     </select>
   </div>;
