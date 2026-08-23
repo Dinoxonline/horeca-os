@@ -10,6 +10,8 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
   const [documents, setDocuments] = useState([]);
   const [processRuns, setProcessRuns] = useState([]);
   const [members, setMembers] = useState([]);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [form, setForm] = useState({ title: "", category: "recipe", dropbox_path: "", dropbox_shared_link: "", access_mode: "workspace", description: "", process_run_id: "", allowed_user_ids: [] });
   const [message, setMessage] = useState("");
 
@@ -31,6 +33,12 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
   }
 
   useEffect(() => { load(); }, [workspaceId]);
+
+  const visibleDocuments = documents.filter((document) => {
+    const matchesSearch = !search.trim() || [document.title, document.description, document.dropbox_path].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = categoryFilter === "all" || document.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   async function save(event) {
     event.preventDefault();
@@ -76,7 +84,8 @@ export default function Documents({ workspaceId, businessId, userId, canManage =
         </section>
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">BIBLIOTHEEK</p><h3>Gekoppelde documenten</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-          {documents.length === 0 ? <p>Nog geen documenten gekoppeld.</p> : <div className="tableLike">{documents.map((document) => <div className="task" key={document.id}><div><strong>{document.title}</strong><span>{categoryLabels[document.category] || "Overig"} · {document.businesses?.name || "Alle vestigingen"} · {document.process_runs?.name || "Los document"} · {document.access_mode}</span><small>{document.dropbox_path}</small></div>{document.dropbox_shared_link ? <a className="pill" href={document.dropbox_shared_link} target="_blank" rel="noreferrer">Openen</a> : <span className="pill">Dropbox-pad</span>}</div>)}</div>}
+          <div className="filterRow"><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Zoek document, proces of Dropbox-pad" /><select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}><option value="all">Alle categorieën</option>{categories.map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}</select></div>
+          {documents.length === 0 ? <p>Nog geen documenten gekoppeld.</p> : visibleDocuments.length === 0 ? <p>Geen documenten gevonden met deze filters.</p> : <div className="tableLike">{visibleDocuments.map((document) => <div className="task" key={document.id}><div><strong>{document.title}</strong><span>{categoryLabels[document.category] || "Overig"} · {document.businesses?.name || "Alle vestigingen"} · {document.process_runs?.name || "Los document"} · {document.access_mode}</span><small>{document.dropbox_path}</small></div>{document.dropbox_shared_link ? <a className="pill" href={document.dropbox_shared_link} target="_blank" rel="noreferrer">Openen</a> : <span className="pill">Dropbox-pad</span>}</div>)}</div>}
         </section>
       </div>
     </>
