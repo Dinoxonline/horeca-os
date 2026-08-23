@@ -227,7 +227,7 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
   const statuses = [
     { value: "not_started", label: task.assigned_to ? "Toegewezen" : "Niet toegewezen" },
     { value: "in_progress", label: "Bezig" },
-    { value: "blocked", label: "Geblokkeerd" },
+    { value: "blocked", label: "Geblokkeerd", title: "Kan niet verder door ontbrekende informatie, materiaal of een besluit." },
     { value: "done", label: "Gereed" },
   ];
   const statusIndex = statuses.findIndex((item) => item.value === task.status);
@@ -240,7 +240,7 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
       {statuses.map((status, index) => {
         const isCurrent = task.status === status.value;
         const canSelect = canManage || (canAct && index > statusIndex && task.status !== "blocked" && task.status !== "done");
-        return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} disabled={!canSelect && !isCurrent} onClick={() => canSelect && onUpdate({ status: status.value, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
+        return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} title={status.title} aria-current={isCurrent ? "step" : undefined} disabled={!canSelect && !isCurrent} onClick={() => canSelect && onUpdate({ status: status.value, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
       })}
     </div>
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
