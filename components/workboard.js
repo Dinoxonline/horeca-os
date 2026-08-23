@@ -204,12 +204,12 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
 function ProcessTaskRow({ task, members, canManage, onUpdate }) {
   return <div className={"task " + (task.priority || "medium")}>
-    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.priority || "medium"}</span></div>
+    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {task.assigned_to ? "toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
     <select value={task.status} disabled={!canManage} onChange={(event) => onUpdate({ status: event.target.value, completed_at: event.target.value === "done" ? new Date().toISOString() : null })}>
-      <option value="not_started">Niet gestart</option><option value="in_progress">Bezig</option><option value="blocked">Geblokkeerd</option><option value="done">Gereed</option>
+      <option value="not_started">{task.assigned_to ? "Toegewezen" : "Niet gestart"}</option><option value="in_progress">Bezig</option><option value="blocked">Geblokkeerd</option><option value="done">Gereed</option>
     </select>
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canManage} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
