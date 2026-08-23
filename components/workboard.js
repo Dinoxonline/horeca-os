@@ -166,6 +166,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       {message && <div className="notice">{message}</div>}
       {canMonitor && !canManage && <div className="notice">Je kijkt mee in dit Werkbord. Je kunt voortgang bekijken, maar geen taken toewijzen of wijzigen.</div>}
 
+      <div className="taskLegend"><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#fff7ed", borderLeft: "4px solid #f59e0b", marginRight: 6 }} />Oranje: taak van iemand anders</span><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#f8fafc", marginRight: 6 }} />Normaal: jouw taak of niet toegewezen</span></div>
+
       <section className="kpis secondary">
         <Metric label="Vandaag" value={todayTasks.length} sub="openstaande taken" />
         <Metric label="Te laat" value={overdueTasks.length} sub="directe opvolging nodig" />
