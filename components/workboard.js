@@ -9,7 +9,7 @@ const TEMPLATE_HINTS = {
   menu: "Nieuwe menukaart",
   newsletter: "Nieuwsbrief",
   vacancy: "Vacature",
-  grill_your_own: "Grill Your Own",
+  grill_your_own: "Nieuw concept",
 };
 
 export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, onRefresh }) {
@@ -116,7 +116,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
           {!canManage && <p>Je kunt processen bekijken. Een manager of eigenaar kan nieuwe processen starten.</p>}
           <form onSubmit={createProcess} className="stack">
             <label>Proces<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={!canManage}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
-            <label>Naam van dit initiatief<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Bijvoorbeeld: Grill Your Own september" disabled={!canManage} /></label>
+            <label>Naam van dit initiatief<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Bijvoorbeeld: Nieuw concept september" disabled={!canManage} /></label>
             <label>Start- of uitvoeringsdatum<input type="date" value={anchorDate} onChange={(event) => setAnchorDate(event.target.value)} disabled={!canManage} /></label>
             {businessId === "all" && <p className="muted">Er wordt standaard een vestiging gekozen. Kies bovenaan een vestiging als dit proces locatiegebonden is.</p>}
             <button className="primary" type="submit" disabled={!canManage || saving || !selectedTemplateId || !name.trim()}>{saving ? "Proces starten…" : "Proces starten"}</button>
