@@ -19,6 +19,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [processTasks, setProcessTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [mineOnly, setMineOnly] = useState(false);
+  const [customTemplate, setCustomTemplate] = useState({ name: "", category: "operations", description: "", steps: "" });
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [name, setName] = useState("");
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
