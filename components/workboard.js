@@ -21,6 +21,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [steps, setSteps] = useState([]);
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
+  const [auditEntries, setAuditEntries] = useState([]);
   const [members, setMembers] = useState([]);
   const [mineOnly, setMineOnly] = useState(!canMonitor);
   const [assignedFilter, setAssignedFilter] = useState("");
@@ -39,18 +40,20 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   async function load() {
     if (!workspaceId) return;
-    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }] = await Promise.all([
+    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }, { data: auditRows, error: auditError }] = await Promise.all([
       supabase.from("process_templates").select("*").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       supabase.from("process_template_steps").select("*").eq("workspace_id", workspaceId).order("sort_order"),
       supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(12),
       supabase.from("process_run_tasks").select("*, process_runs(name)").eq("workspace_id", workspaceId).order("due_date", { ascending: true }).limit(200),
       supabase.from("workspace_members").select("user_id").eq("workspace_id", workspaceId),
+      supabase.from("audit_log").select("id, actor_id, table_name, action, record_id, old_data, new_data, created_at").eq("workspace_id", workspaceId).in("table_name", ["process_templates", "process_template_steps", "process_runs", "process_run_tasks"]).order("created_at", { ascending: false }).limit(30),
     ]);
-    if (templateError || processTaskError) setMessage(templateError?.message || processTaskError?.message || "Procesgegevens konden niet worden geladen.");
+    if (templateError || processTaskError || auditError) setMessage(templateError?.message || processTaskError?.message || auditError?.message || "Procesgegevens konden niet worden geladen.");
     setTemplates(templateRows || []);
     setSteps(stepRows || []);
     setRuns(runRows || []);
     setProcessTasks(processTaskRows || []);
+    setAuditEntries(auditRows || []);
     const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
     if (memberIds.length) {
       const { data: profileRows } = await supabase.from("profiles").select("id, full_name").in("id", memberIds).order("full_name");
@@ -218,6 +221,11 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
       </section>
 
+      <section className="panel">
+        <div className="panelHead"><div><p className="eyebrow">WIJZIGINGSLOGBOEK</p><h3>Wie heeft wat gewijzigd?</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
+        {auditEntries.length === 0 ? <p>Nog geen wijzigingen in de processen geregistreerd.</p> : <div className="tableLike">{auditEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{auditActionLabel(entry.action)} · {auditTableLabel(entry.table_name)}</strong><span>{new Date(entry.created_at).toLocaleString("nl-NL")} · record {String(entry.record_id || "").slice(0, 8)} · {entry.actor_id ? "door " + String(entry.actor_id).slice(0, 8) : "systeem"}</span></div></div>)}</div>}
+      </section>
+
       {canManage && <div className="dashboardGrid">
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
@@ -289,6 +297,14 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
     </div>
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
+}
+
+function auditActionLabel(action) {
+  return { INSERT: "Aangemaakt", UPDATE: "Gewijzigd", DELETE: "Verwijderd" }[action] || action;
+}
+
+function auditTableLabel(tableName) {
+  return { process_templates: "proces", process_template_steps: "processtap", process_runs: "gestart proces", process_run_tasks: "procestaak" }[tableName] || tableName;
 }
 
 function Metric({ label, value, sub, onClick }) { const content = <><span>{label}</span><strong>{value}</strong><small>{sub}</small></>; return onClick ? <button type="button" className="card" onClick={onClick}>{content}</button> : <div className="card">{content}</div>; }
