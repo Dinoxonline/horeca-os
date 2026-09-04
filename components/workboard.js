@@ -66,6 +66,16 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
   }
 
+  async function resolveLogEntry(entry) {
+    if (!canManage) return;
+    const { error } = await supabase.from("manager_log_entries").update({ resolved_at: entry.resolved_at ? null : new Date().toISOString() }).eq("workspace_id", workspaceId).eq("id", entry.id);
+    if (error) setMessage("Logboeknotitie bijwerken mislukt: " + error.message);
+    else {
+      setMessage(entry.resolved_at ? "Notitie opnieuw geopend." : "Notitie gemarkeerd als opgelost.");
+      await load();
+    }
+  }
+
   async function createLogEntry(event) {
     event.preventDefault();
     if (!canManage || !newLog.title.trim() || !newLog.body.trim()) return;
@@ -273,7 +283,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
           <label>Notitie<textarea required value={newLog.body} onChange={(event) => setNewLog((current) => ({ ...current, body: event.target.value }))} placeholder="Wat moet de volgende dienst of manager weten?" /></label>
           <button className="primary" type="submit">Notitie opslaan</button>
         </form>}
-        {logEntries.length === 0 ? <p>Nog geen managernotities.</p> : <div className="tableLike">{logEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.body}</small><span>{entry.entry_date} · {entry.category} · urgentie {entry.severity}</span></div></div>)}</div>}
+        {logEntries.length === 0 ? <p>Nog geen managernotities.</p> : <div className="tableLike">{logEntries.map((entry) => <div className={"task " + (entry.resolved_at ? "resolved" : "")} key={entry.id}><div><strong>{entry.title}</strong><small>{entry.body}</small><span>{entry.entry_date} · {entry.category} · urgentie {entry.severity} · {entry.resolved_at ? "Opgelost" : "Openstaand"}</span></div>{canManage && <button type="button" className="secondary" onClick={() => resolveLogEntry(entry)}>{entry.resolved_at ? "Opnieuw openen" : "Markeer als opgelost"}</button>}</div>)}</div>}
       </section>
 
       <section className="panel">
