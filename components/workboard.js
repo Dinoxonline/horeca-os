@@ -56,7 +56,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setSteps(stepRows || []);
     setRuns(runRows || []);
     setProcessTasks(processTaskRows || []);
-    setAuditEntries((auditRows || []).filter(isMeaningfulAuditEntry));
+    setAuditEntries(filterAuditEntries(auditRows || []));
     setLogEntries(logRows || []);
     const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
     if (memberIds.length) {
@@ -377,13 +377,21 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
   </div>;
 }
 
-function isMeaningfulAuditEntry(entry) {
-  if (entry.action !== "UPDATE" || !entry.old_data || !entry.new_data || entry.table_name !== "process_runs") return true;
-  const oldData = { ...entry.old_data };
-  const newData = { ...entry.new_data };
-  delete oldData.updated_at;
-  delete newData.updated_at;
-  return JSON.stringify(oldData) !== JSON.stringify(newData);
+function filterAuditEntries(entries) {
+  const processCreations = entries.filter((entry) => entry.table_name === "process_runs" && entry.action === "INSERT");
+  return entries.filter((entry) => {
+    if (entry.action === "UPDATE" && entry.old_data && entry.new_data && entry.table_name === "process_runs") {
+      const oldData = { ...entry.old_data };
+      const newData = { ...entry.new_data };
+      delete oldData.updated_at;
+      delete newData.updated_at;
+      if (JSON.stringify(oldData) === JSON.stringify(newData)) return false;
+    }
+    if (entry.table_name === "process_run_tasks" && entry.action === "INSERT" && entry.new_data?.run_id) {
+      return !processCreations.some((processEntry) => processEntry.new_data?.id === entry.new_data.run_id && Math.abs(new Date(processEntry.created_at).getTime() - new Date(entry.created_at).getTime()) <= 10000);
+    }
+    return true;
+  });
 }
 
 function auditActionLabel(action) {
