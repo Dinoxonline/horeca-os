@@ -372,7 +372,7 @@ export default function HorecaOsApp() {
         </div>
         <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
-          {featureVisibility.workboard && <NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink>{featureVisibility.workboard && <NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>↳ Prullenbak</NavLink>}}
+          {featureVisibility.workboard && <><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>↳ Prullenbak</NavLink></>}
           {featureVisibility.documents && <NavLink href="/documenten" active={activeView === "documents"}>Documenten</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
