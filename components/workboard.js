@@ -22,6 +22,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
   const [auditEntries, setAuditEntries] = useState([]);
+  const [trashRuns, setTrashRuns] = useState([]);
+  const [showTrash, setShowTrash] = useState(false);
   const [logEntries, setLogEntries] = useState([]);
   const [newLog, setNewLog] = useState({ title: "", body: "", category: "overdracht", severity: "normaal" });
   const [members, setMembers] = useState([]);
@@ -45,7 +47,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }, { data: auditRows, error: auditError }, { data: logRows, error: logError }] = await Promise.all([
       supabase.from("process_templates").select("*").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       supabase.from("process_template_steps").select("*").eq("workspace_id", workspaceId).order("sort_order"),
-      supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(12),
+      supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).is("deleted_at", null).order("created_at", { ascending: false }).limit(12),
       supabase.from("process_run_tasks").select("*, process_runs(name)").eq("workspace_id", workspaceId).order("due_date", { ascending: true }).limit(200),
       supabase.from("workspace_members").select("user_id").eq("workspace_id", workspaceId),
       supabase.from("audit_log").select("id, actor_id, table_name, action, record_id, old_data, new_data, created_at").eq("workspace_id", workspaceId).in("table_name", ["process_templates", "process_template_steps", "process_runs", "process_run_tasks"]).order("created_at", { ascending: false }).limit(30),
@@ -55,6 +57,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setTemplates(templateRows || []);
     setSteps(stepRows || []);
     setRuns(runRows || []);
+    const { data: trashRows } = await supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(50);
+    setTrashRuns(trashRows || []);
     setProcessTasks(processTaskRows || []);
     setAuditEntries(filterAuditEntries(auditRows || []));
     setLogEntries(logRows || []);
@@ -68,6 +72,45 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       setMembers((profileRows || []).map((profile) => ({ ...profile, ...(employeeByUserId.get(profile.id) || {}) })));
     } else setMembers([]);
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
+  }
+
+  async function moveProcessToTrash(run) {
+    if (!canManage) return;
+    if (!window.confirm("Proces naar de prullenbak verplaatsen? De taken blijven bewaard en kunnen worden hersteld.")) return;
+    if (!window.confirm("Weet u het zeker? Het proces verdwijnt uit het Werkbord totdat u het herstelt.")) return;
+    const { error } = await supabase.from("process_runs").update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq("workspace_id", workspaceId).eq("id", run.id);
+    if (error) setMessage("Verwijderen mislukt: " + error.message);
+    else {
+      setMessage("Proces naar de prullenbak verplaatst.");
+      setExpandedRunId(null);
+      await load();
+      onRefresh?.();
+    }
+  }
+
+  async function restoreProcess(run) {
+    if (!canManage) return;
+    if (!window.confirm("Dit proces terugzetten naar het Werkbord?")) return;
+    const { error } = await supabase.from("process_runs").update({ deleted_at: null, deleted_by: null }).eq("workspace_id", workspaceId).eq("id", run.id);
+    if (error) setMessage("Herstellen mislukt: " + error.message);
+    else {
+      setMessage("Proces hersteld.");
+      await load();
+      onRefresh?.();
+    }
+  }
+
+  async function permanentlyDeleteProcess(run) {
+    if (!canManage) return;
+    if (!window.confirm("Definitief verwijderen? Alle bijbehorende procestaken worden ook verwijderd.")) return;
+    if (!window.confirm("Weet u het zeker? Dit kan niet meer ongedaan worden gemaakt.")) return;
+    const { error } = await supabase.from("process_runs").delete().eq("workspace_id", workspaceId).eq("id", run.id);
+    if (error) setMessage("Definitief verwijderen mislukt: " + error.message);
+    else {
+      setMessage("Proces definitief verwijderd.");
+      await load();
+      onRefresh?.();
+    }
   }
 
   async function resolveLogEntry(entry) {
@@ -296,6 +339,11 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         {auditEntries.length === 0 ? <p>Nog geen wijzigingen in de processen geregistreerd.</p> : <div className="tableLike">{auditEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{auditActionLabel(entry.action)} · {auditTableLabel(entry.table_name)}</strong><span>{new Date(entry.created_at).toLocaleString("nl-NL")} · record {String(entry.record_id || "").slice(0, 8)} · {entry.actor_id ? "door " + String(entry.actor_id).slice(0, 8) : "systeem"}</span></div>{canManage && entry.old_data && <button type="button" className="secondary" onClick={() => restoreAuditEntry(entry)}>Herstellen</button>}</div>)}</div>}
       </section>
 
+      <section className="panel">
+        <div className="panelHead"><div><p className="eyebrow">PRULLENBAK</p><h3>Verwijderde processen</h3></div><button type="button" className="secondary" onClick={() => setShowTrash((value) => !value)}>{showTrash ? "Sluiten" : "Openen"} ({trashRuns.length})</button></div>
+        {showTrash && (trashRuns.length === 0 ? <p>De prullenbak is leeg.</p> : <div className="tableLike">{trashRuns.map((run) => <div className="task resolved" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · verwijderd op {new Date(run.deleted_at).toLocaleString("nl-NL")} · {run.businesses?.name || "Alle vestigingen"}</span></div><div className="toolbar"><button type="button" className="secondary" onClick={() => restoreProcess(run)}>Herstellen</button><button type="button" className="secondary" onClick={() => permanentlyDeleteProcess(run)}>Definitief verwijderen</button></div></div>)}</div>)}
+      </section>
+
       {canManage && <div className="dashboardGrid">
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
@@ -313,7 +361,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
-        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className={"task " + (expandedRunId === run.id ? "selected" : "")} key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date} · {run.status === "completed" ? "Afgerond" : "Actief"} · {runAssignmentLabel(run.id)}</span><progress style={{ accentColor: run.status === "completed" ? "#16a34a" : processTasks.some((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today) ? "#dc2626" : "#f59e0b" }} value={processProgress[run.id]?.done || 0} max={processProgress[run.id]?.total || 1} /><button type="button" className="secondary" onClick={() => setExpandedRunId((current) => current === run.id ? null : run.id)}>{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done").length} openstaand · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today).length} te laat · {expandedRunId === run.id ? "Verberg taken" : "Bekijk taken"}</button></div><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{runAssignees[run.id]?.mixed && <option value="__mixed__" disabled>Meerdere medewerkers</option>}{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></div>)}</div>}
+        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className={"task " + (expandedRunId === run.id ? "selected" : "")} key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date} · {run.status === "completed" ? "Afgerond" : "Actief"} · {runAssignmentLabel(run.id)}</span><progress style={{ accentColor: run.status === "completed" ? "#16a34a" : processTasks.some((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today) ? "#dc2626" : "#f59e0b" }} value={processProgress[run.id]?.done || 0} max={processProgress[run.id]?.total || 1} /><button type="button" className="secondary" onClick={() => setExpandedRunId((current) => current === run.id ? null : run.id)}>{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done").length} openstaand · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today).length} te laat · {expandedRunId === run.id ? "Verberg taken" : "Bekijk taken"}</button></div><div className="toolbar"><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{runAssignees[run.id]?.mixed && <option value="__mixed__" disabled>Meerdere medewerkers</option>}{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select>{canManage && <button type="button" className="secondary" onClick={() => moveProcessToTrash(run)} title="Naar prullenbak">🗑️</button>}</div></div>)}</div>}
       </section>
 
       <section className="panel">
