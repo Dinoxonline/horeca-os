@@ -365,11 +365,6 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         {auditEntries.length === 0 ? <p>Nog geen wijzigingen in de processen geregistreerd.</p> : <div className="tableLike">{auditEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{auditActionLabel(entry.action)} · {auditTableLabel(entry.table_name)}</strong><span>{new Date(entry.created_at).toLocaleString("nl-NL")} · record {String(entry.record_id || "").slice(0, 8)} · {entry.actor_id ? "door " + String(entry.actor_id).slice(0, 8) : "systeem"}</span></div>{canManage && entry.old_data && <button type="button" className="secondary" onClick={() => restoreAuditEntry(entry)}>Herstellen</button>}</div>)}</div>}
       </section>
 
-      <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">PRULLENBAK</p><h3>Verwijderde processen</h3></div><button type="button" className="secondary" onClick={() => setShowTrash((value) => !value)}>{showTrash ? "Sluiten" : "Openen"} ({trashRuns.length})</button></div>
-        {showTrash && (trashRuns.length === 0 ? <p>De prullenbak is leeg.</p> : <div className="tableLike">{trashRuns.map((run) => <div className="task resolved" key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · verwijderd op {new Date(run.deleted_at).toLocaleString("nl-NL")} · {run.businesses?.name || "Alle vestigingen"}</span></div><div className="toolbar"><button type="button" className="secondary" onClick={() => restoreProcess(run)}>Herstellen</button><button type="button" className="secondary" onClick={() => permanentlyDeleteProcess(run)}>Definitief verwijderen</button></div></div>)}</div>)}
-      </section>
-
       {canManage && <div className="dashboardGrid">
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
