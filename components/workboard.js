@@ -259,6 +259,29 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     return "Toegewezen aan " + (member?.full_name || "medewerker");
   }
 
+  async function createSubtask(parentTask, title) {
+    if (!canManage || !title.trim()) return;
+    const { error } = await supabase.from("process_run_tasks").insert({
+      workspace_id: workspaceId,
+      business_id: parentTask.business_id,
+      run_id: parentTask.run_id,
+      template_step_id: null,
+      parent_task_id: parentTask.id,
+      title: title.trim(),
+      description: null,
+      due_date: parentTask.due_date,
+      priority: parentTask.priority || "medium",
+      assigned_to: parentTask.assigned_to || null,
+      status: "not_started",
+    });
+    if (error) setMessage("Subtaak toevoegen mislukt: " + error.message);
+    else {
+      setMessage("Subtaak toegevoegd.");
+      await load();
+      onRefresh?.();
+    }
+  }
+
   async function assignRun(runId, memberId) {
     if (!canManage) return;
     const { error } = await supabase.from("process_run_tasks").update({ assigned_to: memberId || null }).eq("workspace_id", workspaceId).eq("run_id", runId);
@@ -383,7 +406,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
           <div className="toolbar"><button className="primary" type="submit">Extra taak toevoegen</button><button type="button" className="secondary" onClick={() => { setShowAddTaskForm(false); resetNewTask(); }}>Annuleren</button></div>
         </form>}
         {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)}><option value="">Alle medewerkers</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
-        {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} currentUserId={userId} canManage={canManage} canAct={canManage || task.assigned_to === userId} onUpdate={async (patch) => {
+        {selectedProcessTasks.length === 0 ? <p>{mineOnly ? "Er zijn geen taken aan jou toegewezen." : "Geen taken voor deze filter."}</p> : <div className="tableLike">{selectedProcessTasks.map((task) => <ProcessTaskRow key={task.id} task={task} members={members} currentUserId={userId} canManage={canManage} canAct={canManage || task.assigned_to === userId} onCreateSubtask={createSubtask} onUpdate={async (patch) => {
           const { error } = await supabase.from("process_run_tasks").update(patch).eq("workspace_id", workspaceId).eq("id", task.id);
           if (error) setMessage(error.message); else { setMessage("Taak bijgewerkt."); await load(); onRefresh?.(); }
         }} />)}</div>}</>}
@@ -396,9 +419,11 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   );
 }
 
-function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpdate }) {
+function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCreateSubtask, onUpdate }) {
   const [completionNote, setCompletionNote] = useState(task.completion_note || "");
   const [evidenceUrl, setEvidenceUrl] = useState(task.evidence_url || "");
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
   const assignedMember = members.find((member) => member.id === task.assigned_to);
   const belongsToOther = Boolean(task.assigned_to && task.assigned_to !== currentUserId);
   const statuses = [
@@ -409,7 +434,7 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
   ];
   const statusIndex = statuses.findIndex((item) => item.value === task.status);
   return <div className={"task " + (task.priority || "medium") + (belongsToOther ? " taskAssignedElsewhere" : "")} style={belongsToOther ? { background: "#fff7ed", borderLeft: "4px solid #f59e0b" } : undefined}>
-    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}{task.requires_evidence && " · Bewijs verplicht"}{task.parent_task_id && " · Opvolging"}{!task.template_step_id && " · Aangepaste taak"}</span></div>
+    <div style={task.parent_task_id ? { paddingLeft: 18, borderLeft: "3px solid #cbd5e1" } : undefined}><strong>{task.parent_task_id ? "↳ " : ""}{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}{task.requires_evidence && " · Bewijs verplicht"}{task.parent_task_id && " · Opvolging"}{!task.template_step_id && " · Aangepaste taak"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
@@ -425,6 +450,8 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
         return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} title={needsEvidence ? "Vul eerst een oplevernotitie of bewijslink in." : status.title} aria-current={isCurrent ? "step" : undefined} disabled={(!canSelect && !isCurrent) || needsEvidence} onClick={() => canSelect && !needsEvidence && onUpdate({ status: status.value, completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
       })}
     </div>
+    {canManage && <div className="toolbar" style={{ marginTop: 8 }}><button type="button" className="secondary" onClick={() => setShowSubtaskForm((value) => !value)}>{showSubtaskForm ? "Sluiten" : "Subtaak toevoegen"}</button></div>}
+    {showSubtaskForm && canManage && <form className="toolbar" onSubmit={(event) => { event.preventDefault(); onCreateSubtask(task, subtaskTitle); setSubtaskTitle(""); setShowSubtaskForm(false); }}><input required value={subtaskTitle} onChange={(event) => setSubtaskTitle(event.target.value)} placeholder="Naam van de kleine stap" /><button type="submit" className="primary">Toevoegen</button></form>}
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
 }
