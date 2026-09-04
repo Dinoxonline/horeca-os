@@ -165,7 +165,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
-  const moduleTemplates = useMemo(() => templates.filter((item) => item.id !== selectedTemplateId), [templates, selectedTemplateId]);
+  const moduleTemplates = useMemo(() => templates.filter((item) => item.id !== selectedTemplateId && ["menu", "dish"].includes(item.template_key)), [templates, selectedTemplateId]);
   const selectedModuleSteps = useMemo(() => steps.filter((item) => selectedModuleIds.includes(item.template_id)), [steps, selectedModuleIds]);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const myRunIds = new Set(processTasks.filter((task) => task.assigned_to === userId).map((task) => task.run_id));
