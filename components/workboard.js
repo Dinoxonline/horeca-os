@@ -36,7 +36,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [showCreateForm, setShowCreateForm] = useState(true);
   const [expandedRunId, setExpandedRunId] = useState(null);
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "medium", assignedTo: "" });
+  const [newTask, setNewTask] = useState({ title: "", description: "", dueDate: "", priority: "medium", assignedTo: "", requiresEvidence: false });
 
   async function load() {
     if (!workspaceId) return;
@@ -184,7 +184,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   }
 
   function resetNewTask() {
-    setNewTask({ title: "", description: "", dueDate: "", priority: "medium", assignedTo: "" });
+    setNewTask({ title: "", description: "", dueDate: "", priority: "medium", assignedTo: "", requiresEvidence: false });
   }
 
   async function createCustomTask(event) {
@@ -201,6 +201,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       due_date: newTask.dueDate || null,
       priority: newTask.priority,
       assigned_to: newTask.assignedTo || null,
+      requires_evidence: newTask.requiresEvidence,
       status: "not_started",
     });
     if (error) {
@@ -271,6 +272,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
             <label>Prioriteit<select value={newTask.priority} onChange={(event) => setNewTask((current) => ({ ...current, priority: event.target.value }))}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
             <label>Toewijzen aan<select value={newTask.assignedTo} onChange={(event) => setNewTask((current) => ({ ...current, assignedTo: event.target.value }))}><option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>
           </div>
+          <label><input type="checkbox" checked={newTask.requiresEvidence} onChange={(event) => setNewTask((current) => ({ ...current, requiresEvidence: event.target.checked }))} /> Bewijs of oplevernotitie verplicht</label>
           <div className="toolbar"><button className="primary" type="submit">Extra taak toevoegen</button><button type="button" className="secondary" onClick={() => { setShowAddTaskForm(false); resetNewTask(); }}>Annuleren</button></div>
         </form>}
         {!expandedRunId ? <p>Klik bij een proces op de voortgang om de onderliggende taken te bekijken.</p> : <><div className="filterRow"><select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)}><option value="">Alle medewerkers</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select><button type="button" className={dueFilter === "all" ? "primary" : "secondary"} onClick={() => setDueFilter("all")}>Alle</button><button type="button" className={dueFilter === "today" ? "primary" : "secondary"} onClick={() => setDueFilter("today")}>Vandaag</button><button type="button" className={dueFilter === "overdue" ? "primary" : "secondary"} onClick={() => setDueFilter("overdue")}>Te laat</button><button type="button" className={dueFilter === "blocked" ? "primary" : "secondary"} onClick={() => setDueFilter("blocked")}>Geblokkeerd</button><button type="button" className={dueFilter === "upcoming" ? "primary" : "secondary"} onClick={() => setDueFilter("upcoming")}>Komend</button></div>
@@ -288,6 +290,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 }
 
 function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpdate }) {
+  const [completionNote, setCompletionNote] = useState(task.completion_note || "");
+  const [evidenceUrl, setEvidenceUrl] = useState(task.evidence_url || "");
   const assignedMember = members.find((member) => member.id === task.assigned_to);
   const belongsToOther = Boolean(task.assigned_to && task.assigned_to !== currentUserId);
   const statuses = [
@@ -298,15 +302,20 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
   ];
   const statusIndex = statuses.findIndex((item) => item.value === task.status);
   return <div className={"task " + (task.priority || "medium") + (belongsToOther ? " taskAssignedElsewhere" : "")} style={belongsToOther ? { background: "#fff7ed", borderLeft: "4px solid #f59e0b" } : undefined}>
-    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}{!task.template_step_id && " · Aangepaste taak"}</span></div>
+    <div><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}{task.requires_evidence && " · Bewijs verplicht"}{task.parent_task_id && " · Opvolging"}{!task.template_step_id && " · Aangepaste taak"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
+    {(task.requires_evidence || task.status === "done") && <div className="stack" style={{ marginTop: 8 }}>
+      <label>Oplevernotitie<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Wat is precies uitgevoerd of gecontroleerd?" disabled={!canAct || task.status === "done"} /></label>
+      <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto of document" disabled={!canAct || task.status === "done"} /></label>
+    </div>}
     <div className="statusBar" aria-label="Voortgang taak">
       {statuses.map((status, index) => {
         const isCurrent = task.status === status.value;
         const canSelect = canManage || (canAct && index > statusIndex && task.status !== "blocked" && task.status !== "done");
-        return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} title={status.title} aria-current={isCurrent ? "step" : undefined} disabled={!canSelect && !isCurrent} onClick={() => canSelect && onUpdate({ status: status.value, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
+        const needsEvidence = status.value === "done" && task.requires_evidence && !completionNote.trim() && !evidenceUrl.trim();
+        return <button type="button" key={status.value} className={isCurrent ? "primary" : "secondary"} title={needsEvidence ? "Vul eerst een oplevernotitie of bewijslink in." : status.title} aria-current={isCurrent ? "step" : undefined} disabled={(!canSelect && !isCurrent) || needsEvidence} onClick={() => canSelect && !needsEvidence && onUpdate({ status: status.value, completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, completed_at: status.value === "done" ? new Date().toISOString() : null })}>{status.label}</button>;
       })}
     </div>
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
