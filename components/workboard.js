@@ -56,7 +56,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setSteps(stepRows || []);
     setRuns(runRows || []);
     setProcessTasks(processTaskRows || []);
-    setAuditEntries(auditRows || []);
+    setAuditEntries((auditRows || []).filter(isMeaningfulAuditEntry));
     setLogEntries(logRows || []);
     const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
     if (memberIds.length) {
@@ -375,6 +375,15 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
     </div>
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
+}
+
+function isMeaningfulAuditEntry(entry) {
+  if (entry.action !== "UPDATE" || !entry.old_data || !entry.new_data || entry.table_name !== "process_runs") return true;
+  const oldData = { ...entry.old_data };
+  const newData = { ...entry.new_data };
+  delete oldData.updated_at;
+  delete newData.updated_at;
+  return JSON.stringify(oldData) !== JSON.stringify(newData);
 }
 
 function auditActionLabel(action) {
