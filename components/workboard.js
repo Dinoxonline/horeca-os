@@ -22,6 +22,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [runs, setRuns] = useState([]);
   const [processTasks, setProcessTasks] = useState([]);
   const [auditEntries, setAuditEntries] = useState([]);
+  const [logEntries, setLogEntries] = useState([]);
+  const [newLog, setNewLog] = useState({ title: "", body: "", category: "overdracht", severity: "normaal" });
   const [members, setMembers] = useState([]);
   const [mineOnly, setMineOnly] = useState(!canMonitor);
   const [assignedFilter, setAssignedFilter] = useState("");
@@ -40,26 +42,50 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   async function load() {
     if (!workspaceId) return;
-    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }, { data: auditRows, error: auditError }] = await Promise.all([
+    const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }, { data: auditRows, error: auditError }, { data: logRows, error: logError }] = await Promise.all([
       supabase.from("process_templates").select("*").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       supabase.from("process_template_steps").select("*").eq("workspace_id", workspaceId).order("sort_order"),
       supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(12),
       supabase.from("process_run_tasks").select("*, process_runs(name)").eq("workspace_id", workspaceId).order("due_date", { ascending: true }).limit(200),
       supabase.from("workspace_members").select("user_id").eq("workspace_id", workspaceId),
       supabase.from("audit_log").select("id, actor_id, table_name, action, record_id, old_data, new_data, created_at").eq("workspace_id", workspaceId).in("table_name", ["process_templates", "process_template_steps", "process_runs", "process_run_tasks"]).order("created_at", { ascending: false }).limit(30),
+      supabase.from("manager_log_entries").select("id, entry_date, category, title, body, severity, resolved_at, created_at").eq("workspace_id", workspaceId).order("entry_date", { ascending: false }).order("created_at", { ascending: false }).limit(30),
     ]);
-    if (templateError || processTaskError || auditError) setMessage(templateError?.message || processTaskError?.message || auditError?.message || "Procesgegevens konden niet worden geladen.");
+    if (templateError || processTaskError || auditError || logError) setMessage(templateError?.message || processTaskError?.message || auditError?.message || logError?.message || "Procesgegevens konden niet worden geladen.");
     setTemplates(templateRows || []);
     setSteps(stepRows || []);
     setRuns(runRows || []);
     setProcessTasks(processTaskRows || []);
     setAuditEntries(auditRows || []);
+    setLogEntries(logRows || []);
     const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
     if (memberIds.length) {
       const { data: profileRows } = await supabase.from("profiles").select("id, full_name").in("id", memberIds).order("full_name");
       setMembers(profileRows || []);
     } else setMembers([]);
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
+  }
+
+  async function createLogEntry(event) {
+    event.preventDefault();
+    if (!canManage || !newLog.title.trim() || !newLog.body.trim()) return;
+    const { error } = await supabase.from("manager_log_entries").insert({
+      workspace_id: workspaceId,
+      business_id: businessId === "all" ? businesses[0]?.id || null : businessId,
+      entry_date: new Date().toISOString().slice(0, 10),
+      category: newLog.category,
+      title: newLog.title.trim(),
+      body: newLog.body.trim(),
+      severity: newLog.severity,
+      created_by: userId,
+    });
+    if (error) {
+      setMessage("Logboeknotitie opslaan mislukt: " + error.message);
+      return;
+    }
+    setNewLog({ title: "", body: "", category: "overdracht", severity: "normaal" });
+    setMessage("Notitie aan manager-logboek toegevoegd.");
+    await load();
   }
 
   async function restoreAuditEntry(entry) {
@@ -234,6 +260,20 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <Metric label="Geblokkeerd" value={blockedTasks.length} sub="hulp of besluit nodig" onClick={() => { setDueFilter("blocked"); if (blockedTasks[0]) setExpandedRunId(blockedTasks[0].run_id); }} />
         <Metric label="Openstaand" value={openTasks.length + openProcessTasks.length} sub="taken in Horeca OS" />
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
+      </section>
+
+      <section className="panel">
+        <div className="panelHead"><div><p className="eyebrow">MANAGER-LOGBOEK</p><h3>Overdracht en bijzonderheden</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
+        {canManage && <form onSubmit={createLogEntry} className="stack">
+          <div className="formGrid">
+            <label>Categorie<select value={newLog.category} onChange={(event) => setNewLog((current) => ({ ...current, category: event.target.value }))}><option value="overdracht">Overdracht</option><option value="storing">Storing</option><option value="klacht">Klacht</option><option value="tekort">Tekort</option><option value="afspraak">Afspraak</option><option value="overig">Overig</option></select></label>
+            <label>Urgentie<select value={newLog.severity} onChange={(event) => setNewLog((current) => ({ ...current, severity: event.target.value }))}><option value="laag">Laag</option><option value="normaal">Normaal</option><option value="hoog">Hoog</option><option value="kritiek">Kritiek</option></select></label>
+          </div>
+          <label>Titel<input required value={newLog.title} onChange={(event) => setNewLog((current) => ({ ...current, title: event.target.value }))} placeholder="Bijvoorbeeld: Koeling maakt lawaai" /></label>
+          <label>Notitie<textarea required value={newLog.body} onChange={(event) => setNewLog((current) => ({ ...current, body: event.target.value }))} placeholder="Wat moet de volgende dienst of manager weten?" /></label>
+          <button className="primary" type="submit">Notitie opslaan</button>
+        </form>}
+        {logEntries.length === 0 ? <p>Nog geen managernotities.</p> : <div className="tableLike">{logEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{entry.title}</strong><small>{entry.body}</small><span>{entry.entry_date} · {entry.category} · urgentie {entry.severity}</span></div></div>)}</div>}
       </section>
 
       <section className="panel">
