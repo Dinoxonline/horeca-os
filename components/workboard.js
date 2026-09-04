@@ -33,6 +33,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [dueFilter, setDueFilter] = useState("all");
   const [runFilter, setRunFilter] = useState("active");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedModuleIds, setSelectedModuleIds] = useState([]);
   const [name, setName] = useState("");
   const [anchorDate, setAnchorDate] = useState(new Date().toISOString().slice(0, 10));
   const [message, setMessage] = useState("");
@@ -164,6 +165,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
+  const moduleTemplates = useMemo(() => templates.filter((item) => item.id !== selectedTemplateId && ["menu", "dish"].includes(item.template_key)), [templates, selectedTemplateId]);
+  const selectedModuleSteps = useMemo(() => steps.filter((item) => selectedModuleIds.includes(item.template_id)), [steps, selectedModuleIds]);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const myRunIds = new Set(processTasks.filter((task) => task.assigned_to === userId).map((task) => task.run_id));
   const visibleRuns = runs.filter((run) => (runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed")) && (canMonitor || !mineOnly || myRunIds.has(run.id)));
@@ -217,7 +220,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       setSaving(false);
       return;
     }
-    const taskRows = selectedSteps.map((step) => {
+    const taskRows = [...selectedSteps, ...selectedModuleSteps].map((step) => {
       const due = new Date(anchorDate + "T12:00:00");
       due.setDate(due.getDate() + Number(step.relative_days || 0));
       return {
@@ -351,6 +354,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
             <label>Proces<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={!canManage}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
             <label>Naam van dit initiatief<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Bijvoorbeeld: Nieuw concept september" disabled={!canManage} /></label>
             <label>Start- of uitvoeringsdatum<input type="date" value={anchorDate} onChange={(event) => setAnchorDate(event.target.value)} disabled={!canManage} /></label>
+            {moduleTemplates.length > 0 && <fieldset><legend>Onderdelen toevoegen (optioneel)</legend><p className="muted">Kies alleen wat bij dit proces hoort. De gekozen onderdelen worden als extra taken toegevoegd.</p>{moduleTemplates.map((module) => <label key={module.id}><input type="checkbox" checked={selectedModuleIds.includes(module.id)} onChange={(event) => setSelectedModuleIds((current) => event.target.checked ? [...current, module.id] : current.filter((id) => id !== module.id))} disabled={!canManage} /> {module.name}</label>)}</fieldset>}
             {businessId === "all" && <p className="muted">Er wordt standaard een vestiging gekozen. Kies bovenaan een vestiging als dit proces locatiegebonden is.</p>}
             <button className="primary" type="submit" disabled={!canManage || saving || !selectedTemplateId || !name.trim()}>{saving ? "Proces starten…" : "Proces starten"}</button>
           </form>}
