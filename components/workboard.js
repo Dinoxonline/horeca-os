@@ -61,7 +61,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     const { data: trashRows } = await supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(50);
     setTrashRuns(trashRows || []);
     setProcessTasks(processTaskRows || []);
-    setAuditEntries(filterAuditEntries(auditRows || []));
+    setAuditEntries(filterAuditEntries((auditRows || []).filter((entry) => entry.actor_id)));
     setLogEntries(logRows || []);
     const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
     if (memberIds.length) {
