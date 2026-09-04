@@ -379,6 +379,13 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onUpd
 
 function filterAuditEntries(entries) {
   const processCreations = entries.filter((entry) => entry.table_name === "process_runs" && entry.action === "INSERT");
+  const assignmentBatchCounts = entries.reduce((counts, entry) => {
+    if (entry.table_name === "process_run_tasks" && entry.action === "UPDATE" && entry.new_data?.run_id) {
+      const key = entry.new_data.run_id + "|" + entry.created_at;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, new Map());
   return entries.filter((entry) => {
     if (entry.action === "UPDATE" && entry.old_data && entry.new_data && entry.table_name === "process_runs") {
       const oldData = { ...entry.old_data };
@@ -386,6 +393,16 @@ function filterAuditEntries(entries) {
       delete oldData.updated_at;
       delete newData.updated_at;
       if (JSON.stringify(oldData) === JSON.stringify(newData)) return false;
+    }
+    if (entry.table_name === "process_run_tasks" && entry.action === "UPDATE" && entry.old_data && entry.new_data && entry.new_data.run_id) {
+      const oldData = { ...entry.old_data };
+      const newData = { ...entry.new_data };
+      delete oldData.assigned_to;
+      delete newData.assigned_to;
+      delete oldData.updated_at;
+      delete newData.updated_at;
+      const key = entry.new_data.run_id + "|" + entry.created_at;
+      if (assignmentBatchCounts.get(key) >= 3 && JSON.stringify(oldData) === JSON.stringify(newData)) return false;
     }
     if (entry.table_name === "process_run_tasks" && entry.action === "INSERT" && entry.new_data?.run_id) {
       return !processCreations.some((processEntry) => processEntry.new_data?.id === entry.new_data.run_id && Math.abs(new Date(processEntry.created_at).getTime() - new Date(entry.created_at).getTime()) <= 10000);
