@@ -60,8 +60,12 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setLogEntries(logRows || []);
     const memberIds = (memberRows || []).map((item) => item.user_id).filter(Boolean);
     if (memberIds.length) {
-      const { data: profileRows } = await supabase.from("profiles").select("id, full_name").in("id", memberIds).order("full_name");
-      setMembers(profileRows || []);
+      const [{ data: profileRows }, { data: employeeRows }] = await Promise.all([
+        supabase.from("profiles").select("id, full_name").in("id", memberIds).order("full_name"),
+        supabase.from("employee_profiles").select("user_id, functions, robuust_roles").eq("workspace_id", workspaceId).in("user_id", memberIds),
+      ]);
+      const employeeByUserId = new Map((employeeRows || []).map((item) => [item.user_id, item]));
+      setMembers((profileRows || []).map((profile) => ({ ...profile, ...(employeeByUserId.get(profile.id) || {}) })));
     } else setMembers([]);
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
   }
@@ -182,6 +186,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         description: step.description,
         due_date: due.toISOString().slice(0, 10),
         priority: step.priority || "medium",
+        assigned_to: step.role_key ? members.find((member) => [...(member.functions || []), ...(member.robuust_roles || [])].some((role) => String(role).toLowerCase() === String(step.role_key).toLowerCase()))?.id || null : null,
         status: "not_started",
       };
     });
@@ -256,7 +261,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       <section className="pageIntro">
         <p className="eyebrow">WERKBORD</p>
         <h2>Van idee naar uitvoering</h2>
-        <p>Start een proces en Horeca OS maakt automatisch de bijbehorende checklist, deadlines en opvolging.</p>
+        <p>Start een proces en Horeca OS maakt automatisch de bijbehorende checklist, deadlines, roltoewijzing en opvolging.</p>
       </section>
 
       {message && <div className="notice">{message}</div>}
