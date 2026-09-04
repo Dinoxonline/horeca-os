@@ -62,6 +62,20 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
   }
 
+  async function restoreAuditEntry(entry) {
+    if (!canManage || !entry.old_data || !["process_templates", "process_template_steps", "process_runs", "process_run_tasks"].includes(entry.table_name)) return;
+    if (!window.confirm("Deze vorige versie herstellen? De huidige versie blijft zichtbaar in het logboek.")) return;
+    setMessage("");
+    const { error } = await supabase.from(entry.table_name).upsert(entry.old_data, { onConflict: "id" });
+    if (error) {
+      setMessage("Herstellen mislukt: " + error.message);
+      return;
+    }
+    setMessage("Vorige versie hersteld.");
+    await load();
+    onRefresh?.();
+  }
+
   useEffect(() => { load(); }, [workspaceId]);
   useEffect(() => { setMineOnly(!canMonitor); }, [canMonitor]);
 
@@ -223,7 +237,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">WIJZIGINGSLOGBOEK</p><h3>Wie heeft wat gewijzigd?</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {auditEntries.length === 0 ? <p>Nog geen wijzigingen in de processen geregistreerd.</p> : <div className="tableLike">{auditEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{auditActionLabel(entry.action)} · {auditTableLabel(entry.table_name)}</strong><span>{new Date(entry.created_at).toLocaleString("nl-NL")} · record {String(entry.record_id || "").slice(0, 8)} · {entry.actor_id ? "door " + String(entry.actor_id).slice(0, 8) : "systeem"}</span></div></div>)}</div>}
+        {auditEntries.length === 0 ? <p>Nog geen wijzigingen in de processen geregistreerd.</p> : <div className="tableLike">{auditEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{auditActionLabel(entry.action)} · {auditTableLabel(entry.table_name)}</strong><span>{new Date(entry.created_at).toLocaleString("nl-NL")} · record {String(entry.record_id || "").slice(0, 8)} · {entry.actor_id ? "door " + String(entry.actor_id).slice(0, 8) : "systeem"}</span></div>{canManage && entry.old_data && <button type="button" className="secondary" onClick={() => restoreAuditEntry(entry)}>Herstellen</button>}</div>)}</div>}
       </section>
 
       {canManage && <div className="dashboardGrid">
