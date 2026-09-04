@@ -360,11 +360,6 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         {logEntries.length === 0 ? <p>Nog geen managernotities.</p> : <div className="tableLike">{logEntries.map((entry) => <div className={"task " + (entry.resolved_at ? "resolved" : "")} key={entry.id}><div><strong>{entry.title}</strong><small>{entry.body}</small><span>{entry.entry_date} · {entry.category} · urgentie {entry.severity} · {entry.resolved_at ? "Opgelost" : "Openstaand"}</span></div>{canManage && <button type="button" className="secondary" onClick={() => resolveLogEntry(entry)}>{entry.resolved_at ? "Opnieuw openen" : "Markeer als opgelost"}</button>}</div>)}</div>}
       </section>
 
-      <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">WIJZIGINGSLOGBOEK</p><h3>Wie heeft wat gewijzigd?</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {auditEntries.length === 0 ? <p>Nog geen wijzigingen in de processen geregistreerd.</p> : <div className="tableLike">{auditEntries.map((entry) => <div className="task" key={entry.id}><div><strong>{auditActionLabel(entry.action)} · {auditTableLabel(entry.table_name)}</strong><span>{new Date(entry.created_at).toLocaleString("nl-NL")} · record {String(entry.record_id || "").slice(0, 8)} · {entry.actor_id ? "door " + String(entry.actor_id).slice(0, 8) : "systeem"}</span></div>{canManage && entry.old_data && <button type="button" className="secondary" onClick={() => restoreAuditEntry(entry)}>Herstellen</button>}</div>)}</div>}
-      </section>
-
       {canManage && <div className="dashboardGrid">
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
