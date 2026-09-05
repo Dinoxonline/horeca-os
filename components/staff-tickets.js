@@ -27,17 +27,20 @@ export default function StaffTickets({ workspaceId, canManage = false }) {
   const [sort, setSort] = useState("priority");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [accessRequests, setAccessRequests] = useState([]);
 
   async function load() {
     setLoading(true);
     setMessage("");
-    const [{ data, error }, { data: memberRows }] = await Promise.all([
+    const [{ data, error }, { data: memberRows }, { data: requestRows }] = await Promise.all([
       supabase.from("staff_tickets").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name").order("full_name"),
+      supabase.from("staff_access_requests").select("id, email, full_name, status, created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
     ]);
     if (error) setMessage("De tickets konden niet worden geladen. Controleer je verbinding en probeer opnieuw.");
     else setTickets(data || []);
     setMembers(memberRows || []);
+    setAccessRequests(requestRows || []);
     setLoading(false);
   }
 
@@ -50,6 +53,13 @@ export default function StaffTickets({ workspaceId, canManage = false }) {
     if (patch.status && !["opgelost", "gesloten"].includes(patch.status)) update.resolved_at = null;
     const { error } = await supabase.from("staff_tickets").update(update).eq("workspace_id", workspaceId).eq("id", id);
     if (error) setMessage("Deze wijziging kon niet worden opgeslagen."); else load();
+  }
+
+  async function reviewAccessRequest(id, status) {
+    setMessage("");
+    const { error } = await supabase.rpc("review_staff_access_request", { p_request_id: id, p_status: status });
+    if (error) setMessage("De aanvraag kon niet worden bijgewerkt.");
+    else load();
   }
 
   const counts = useMemo(() => ({
@@ -81,6 +91,10 @@ export default function StaffTickets({ workspaceId, canManage = false }) {
       <div><p className="eyebrow">TICKETMODULE · BACKOFFICE</p><h2>Medewerkersmeldingen</h2><p>Hier komen alle meldingen uit de gedeelde medewerkerslink binnen. Beoordeel, wijs toe en volg ze op.</p></div>
       <button className="refresh" onClick={load} disabled={loading}>{loading ? "Laden…" : "Verversen"}</button>
     </div>
+    {canManage && <section className="accessRequests" style={{ marginBottom: 18 }}>
+      <div className="panelHead"><div><p className="eyebrow">TOEGANGSAANVRAGEN</p><h3>Nieuwe medewerkers</h3><p>Medewerkers kunnen zelf een account aanvragen. Jij bepaalt wie toegang krijgt.</p></div></div>
+      {accessRequests.filter((request) => request.status === "pending").length === 0 ? <p className="empty">Geen openstaande aanvragen.</p> : <div className="tableLike">{accessRequests.filter((request) => request.status === "pending").map((request) => <article className="task" key={request.id}><div><strong>{request.full_name}</strong><span>{request.email} · aangevraagd op {formatDate(request.created_at)}</span></div><div className="toolbar"><button type="button" className="primary" onClick={() => reviewAccessRequest(request.id, "approved")}>Goedkeuren</button><button type="button" className="secondary" onClick={() => reviewAccessRequest(request.id, "rejected")}>Afwijzen</button></div></article>)}</div>}
+    </section>}
     <div className="ticketKpis">
       <button className={statusFilter === "open" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("open")}><span>Openstaand</span><strong>{counts.open}</strong><small>actie nodig</small></button>
       <button className={statusFilter === "nieuw" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("nieuw")}><span>Nieuw binnen</span><strong>{counts.new}</strong><small>nog niet beoordeeld</small></button>
