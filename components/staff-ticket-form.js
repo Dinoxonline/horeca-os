@@ -81,8 +81,22 @@ export default function StaffTicketForm({ token }) {
     const { data: created, error } = await supabase.rpc("submit_staff_ticket", { p_token: token, p_category: form.category, p_priority: form.priority, p_title: form.title, p_description: form.description, p_location: form.location });
     if (error) { setState({ loading: false, saving: false, message: error.message?.includes("toegang") ? "Je account is nog niet goedgekeurd voor deze medewerkerslink." : "Melden lukt niet. Probeer het opnieuw.", success: false, ticketNumber: "" }); return; }
     const ticketNumber = created ? String(created) : "";
+    const files = [...(event.currentTarget.elements.namedItem("attachments")?.files || [])];
+    let attachmentMessage = "";
+    for (const file of files) {
+      const uploadData = new FormData();
+      uploadData.append("token", token);
+      uploadData.append("ticketNumber", ticketNumber);
+      uploadData.append("file", file);
+      const uploadResponse = await fetch("/api/staff-tickets/attachment", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: uploadData,
+      });
+      if (!uploadResponse.ok) attachmentMessage = " Het ticket is wel aangemaakt, maar een bijlage kon niet worden opgeslagen.";
+    }
     setTracking({ ticketNumber }); setForm(emptyForm);
-    setState({ loading: false, saving: false, message: "Je melding is ontvangen. Bewaar je ticketnummer om de status later te bekijken.", success: true, ticketNumber });
+    setState({ loading: false, saving: false, message: `Je melding is ontvangen.${files.length ? ` ${files.length} bijlage${files.length === 1 ? "" : "n"} toegevoegd.` : ""}${attachmentMessage} Bewaar je ticketnummer om de status later te bekijken.`, success: true, ticketNumber });
   }
 
   async function lookup(event) {
@@ -112,6 +126,7 @@ export default function StaffTicketForm({ token }) {
         <label>Waar gaat het over?*<input required maxLength={160} value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
         <label>Wat is er aan de hand?*<textarea required minLength={5} maxLength={5000} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
         <label>Locatie<select value={form.location} onChange={(e) => update("location", e.target.value)}><option value="">Kies een locatie</option><option>Caribbean Corner</option><option>Grand Café Het Plein</option><option>Beide locaties</option><option>Overig</option></select></label>
+        <label>Foto of bestand (optioneel)<input name="attachments" type="file" accept="image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" capture="environment" multiple /><small>JPEG, PNG, PDF of Word · maximaal 10 MB per bestand. Op mobiel kun je direct de camera gebruiken.</small></label>
         <button className="primary" disabled={state.saving}>{state.saving ? "Melding versturen…" : "Melding versturen"}</button>
       </form>}
       {state.success && <button className="primary" onClick={() => setState((current) => ({ ...current, success: false, message: "" }))}>Nog een melding doen</button>}
