@@ -82,6 +82,22 @@ export async function POST(request) {
   const auth = await context(request, body.workspaceId, String(body.mailbox || "").toLowerCase());
   if (!auth) return NextResponse.json({ error: "Geen toegang tot deze mailbox." }, { status: 403 });
   try {
+    if (body.action === "create_task") {
+      const title = String(body.title || "").trim();
+      if (!title) throw new Error("Geef deze taak eerst een naam.");
+      const { data: task, error } = await auth.admin.from("tasks").insert({
+        workspace_id: body.workspaceId,
+        business_id: body.businessId || null,
+        title,
+        description: String(body.description || "").trim() || null,
+        priority: body.priority || "medium",
+        status: "not_started",
+        assigned_to: body.assignedTo || null,
+        due_date: body.dueDate || null,
+      }).select("id").single();
+      if (error) throw new Error(error.message || "De e-mail kon niet als taak worden opgeslagen.");
+      return NextResponse.json({ message: "E-mail toegevoegd als taak in het Werkbord.", taskId: task.id });
+    }
     if (body.action === "reply") {
       if (!body.messageId || !String(body.comment || "").trim()) throw new Error("Schrijf eerst een reactie.");
       await graph(auth.connection, auth.admin, `messages/${encodeURIComponent(body.messageId)}/reply`, { method: "POST", body: JSON.stringify({ comment: String(body.comment).trim() }) });

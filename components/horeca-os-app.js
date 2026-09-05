@@ -5,6 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import CentralEventCreator from "./central-event-creator";
+import Workboard from "./workboard";
+import ProcessTrash from "./process-trash";
+import ProcessAudit from "./process-audit";
+import ManagerLogbook from "./manager-logbook";
+import Documents from "./documents";
+import StaffTicketForm from "./staff-ticket-form";
+import StaffTickets from "./staff-tickets";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
 const priorityLabel = { critical: "Kritiek", high: "Hoog", medium: "Midden", low: "Laag" };
@@ -12,12 +19,18 @@ const statusLabel = { not_started: "Niet gestart", in_progress: "Bezig", blocked
 const integrationStatusLabel = { not_started: "Niet gestart", in_progress: "Bezig", blocked: "Geblokkeerd", connected: "Verbonden", error: "Fout" };
 
 const emptyData = {
-  tasks: [], businesses: [], decisions: [], events: [], sales: [], products: [], security: [], integrations: [],
+  tasks: [], processTasks: [], businesses: [], decisions: [], events: [], sales: [], products: [], security: [], integrations: [],
   suppliers: [], foodProducts: [], ingredients: [], recipes: [], recipeItems: [], menuItems: [], aiConversations: [],
 };
 
 const routeViews = {
   "/dashboard": "dashboard",
+  "/werkbord": "workboard",
+  "/werkbord/prullenbak": "processTrash",
+  "/werkbord/logboek": "processAudit",
+  "/werkbord/manager-logboek": "managerLogbook",
+  "/werkbord/tickets": "staffTickets",
+  "/documenten": "documents",
   "/foodcost": "foodcost",
   "/producten": "products",
   "/recepten": "recipes",
@@ -38,6 +51,7 @@ const routeViews = {
 
 export default function HorecaOsApp() {
   const pathname = usePathname();
+  if (pathname.startsWith("/medewerkers/")) return <StaffTicketForm token={decodeURIComponent(pathname.split("/")[2] || "")} />;
   const recoveryPage = pathname === "/wachtwoord-herstellen";
   const [session, setSession] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(() => typeof window !== "undefined" && (
@@ -57,10 +71,11 @@ export default function HorecaOsApp() {
   const [workspaceId, setWorkspaceId] = useState("");
   const [businessId, setBusinessId] = useState("all");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [workboardOpen, setWorkboardOpen] = useState(pathname.startsWith("/werkbord/"));
   const [data, setData] = useState(emptyData);
   const activeView = routeViews[pathname] || "dashboard";
 
-  useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
+  useEffect(() => { setMobileMenuOpen(false); setWorkboardOpen(pathname.startsWith("/werkbord/")); }, [pathname]);
 
   useEffect(() => {
     const recoveryFromUrl = window.location.hash.includes("type=recovery")
@@ -206,6 +221,7 @@ export default function HorecaOsApp() {
 
     const results = await Promise.all([
       scope(supabase.from("tasks").select("*, assignee:profiles!tasks_assigned_to_fkey(full_name)")).order("created_at", { ascending: true }),
+      scope(supabase.from("process_run_tasks").select("*, assignee:profiles!process_run_tasks_assigned_to_fkey(full_name), process_runs(name)")).order("due_date", { ascending: true }).limit(200),
       supabase.from("businesses").select("id, workspace_id, name, active").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       scope(supabase.from("decisions").select("*")).order("decided_on", { ascending: false }).limit(50),
       scope(supabase.from("events").select("*")).gte("starts_at", new Date().toISOString()).order("starts_at").limit(8),
@@ -263,6 +279,8 @@ export default function HorecaOsApp() {
   }, [activeWorkspace?.role, businessId, roleAssignments]);
   const featureVisibility = useMemo(() => ({
     dashboard: canUseFeature("operations:read") || canUseFeature("operations:manage") || canUseFeature("revenue:read") || canUseFeature("finance:read"),
+    workboard: canUseFeature("processes:read") || canUseFeature("processes:manage"),
+    documents: canUseFeature("documents:read") || canUseFeature("documents:manage"),
     foodcost: canUseFeature("foodcost:read"),
     products: canUseFeature("foodcost:read"),
     recipes: canUseFeature("foodcost:read"),
@@ -285,7 +303,7 @@ export default function HorecaOsApp() {
   const viewAllowed = featureVisibility[activeView] !== false;
   const mfaRequired = isOwner || canUseFeature("users:manage") || canUseFeature("integrations:manage");
   const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
-  const openTasks = data.tasks.filter((task) => task.status !== "done");
+  const openTasks = [...data.tasks, ...data.processTasks].filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
   const priorities = [...openTasks].sort((a, b) => (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9)).slice(0, 6);
   const securityOk = data.security.filter((item) => ["ok", "pass", "passed", "connected"].includes(String(item.status).toLowerCase())).length;
@@ -363,6 +381,9 @@ export default function HorecaOsApp() {
         </div>
         <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
+          {featureVisibility.workboard && <NavLink href="/werkbord/tickets" active={activeView === "staffTickets"}>Medewerkerstickets</NavLink>}
+          {featureVisibility.workboard && <div className="navGroup"><div style={{ display: "flex", alignItems: "center", gap: 8 }}><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><button type="button" className="secondary" style={{ padding: "2px 8px", marginLeft: "auto" }} aria-label={workboardOpen ? "Werkbord-submenu inklappen" : "Werkbord-submenu openen"} onClick={() => setWorkboardOpen((value) => !value)}>{workboardOpen ? "−" : "+"}</button></div>{workboardOpen && <div className="navChildren" style={{ margin: "4px 0 12px 14px", paddingLeft: 12, borderLeft: "2px solid rgba(255,255,255,.35)", display: "grid", gap: 4 }}><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>Prullenbak</NavLink><NavLink href="/werkbord/logboek" active={activeView === "processAudit"}>Wijzigingslogboek</NavLink><NavLink href="/werkbord/manager-logboek" active={activeView === "managerLogbook"}>Manager-logboek</NavLink></div>}</div>}
+          {featureVisibility.documents && <NavLink href="/documenten" active={activeView === "documents"}>Documenten</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
           {featureVisibility.recipes && <NavLink href="/recepten" active={activeView === "recipes"}>Recepturen</NavLink>}
@@ -393,6 +414,7 @@ export default function HorecaOsApp() {
         </header>
 
         {message && <div className="notice">{message}</div>}
+        {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}
 
         {!viewAllowed && <AccessDenied />}
 
@@ -431,13 +453,13 @@ export default function HorecaOsApp() {
         </> : <StaffDashboard priorities={priorities} events={data.events} />}
         </>}
 
-        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
+        {activeView === "workboard" && featureVisibility.workboard && <Workboard workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} tasks={data.tasks} canManage={isOwner || canUseFeature("processes:manage")} canMonitor={isOwner || canUseFeature("processes:manage") || canUseFeature("processes:monitor")} onRefresh={loadData} />}\n        {activeView === "processTrash" && featureVisibility.workboard && <ProcessTrash workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} onRefresh={loadData} />}\n        {activeView === "processAudit" && featureVisibility.workboard && <ProcessAudit workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}\n        {activeView === "managerLogbook" && featureVisibility.workboard && <ManagerLogbook workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} canManage={isOwner || canUseFeature("processes:manage")} />}\n        {activeView === "documents" && featureVisibility.documents && <Documents workspaceId={workspaceId} businessId={businessId} userId={session.user.id} canManage={isOwner || canUseFeature("documents:manage")} />}\n        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
         {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} ingredients={data.ingredients} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview recipes={data.recipes} recipeItems={data.recipeItems} ingredients={data.ingredients} products={data.foodProducts} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
         {activeView === "reviews" && featureVisibility.reviews && <ReviewsInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("reviews:manage") || canUseFeature("reviews:respond")} canAdd={isOwner || canUseFeature("reviews:manage")} />}
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
-        {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} session={session} />}
+        {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} businessId={businessId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && (businessId === "all"
           ? <section className="panel" style={{ marginBottom: 24 }}>
@@ -3027,7 +3049,7 @@ function CalendarOverview({ workspaceId, session }) {
   </section>;
 }
 
-function MailAgenda({ workspaceId, session }) {
+function MailAgenda({ workspaceId, businessId, session }) {
   const [mailboxes, setMailboxes] = useState([]);
   const [selectedMailbox, setSelectedMailbox] = useState("all");
   const [selectedFolder, setSelectedFolder] = useState("inbox");
@@ -3119,7 +3141,7 @@ function MailAgenda({ workspaceId, session }) {
       {visible.map((mail) => <article className="panel stack" key={`${mail.mailbox}-${mail.id}`}>
         <div className="connectionRow"><div><p className="eyebrow">{mail.mailbox} {!mail.isRead && <span className="status">Nieuw</span>}</p><h3>{mail.subject || "(Geen onderwerp)"}</h3><p><strong>{mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekende afzender"}</strong>{mail.from?.emailAddress?.address ? ` · ${mail.from.emailAddress.address}` : ""}</p><small>{new Date(mail.receivedDateTime).toLocaleString("nl-NL")}</small></div>{mail.webLink && <a className="secondary" href={mail.webLink} target="_blank" rel="noreferrer">Volledig openen</a>}</div>
         {mail.bodyPreview && <p>{mail.bodyPreview}</p>}
-        <div className="toolbar"><button type="button" className="secondary" onClick={() => setReplying((current) => ({ ...current, [mail.id]: current[mail.id] ?? "" }))}>Beantwoorden</button><button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "read", messageId: mail.id, isRead: !mail.isRead })}>{mail.isRead ? "Ongelezen" : "Gelezen"}</button>{selectedMailbox !== "all" && <select defaultValue="" onChange={(event) => event.target.value && mailAction(mail.mailbox, { action: "move", messageId: mail.id, folderId: event.target.value }, "Deze e-mail verplaatsen?")}><option value="">Verplaatsen naar…</option>{(activeBox?.folders || []).map((folder) => <option key={folder.id} value={folder.id}>{folder.displayName}</option>)}</select>}<button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "delete", messageId: mail.id }, "Deze e-mail verwijderen?")}>Verwijderen</button></div>
+        <div className="toolbar"><button type="button" className="secondary" onClick={() => setReplying((current) => ({ ...current, [mail.id]: current[mail.id] ?? "" }))}>Beantwoorden</button><button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "create_task", messageId: mail.id, businessId: businessId === "all" ? null : businessId, title: mail.subject || "Opvolging e-mail", description: [`Afzender: ${mail.from?.emailAddress?.name || mail.from?.emailAddress?.address || "Onbekend"}`, `Ontvangen: ${new Date(mail.receivedDateTime).toLocaleString("nl-NL")}`, mail.bodyPreview || "", mail.webLink ? `Openen in Outlook: ${mail.webLink}` : ""].filter(Boolean).join("\n\n") }, "Deze e-mail als taak toevoegen aan het Werkbord?")}>Als taak toevoegen</button><button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "read", messageId: mail.id, isRead: !mail.isRead })}>{mail.isRead ? "Ongelezen" : "Gelezen"}</button>{selectedMailbox !== "all" && <select defaultValue="" onChange={(event) => event.target.value && mailAction(mail.mailbox, { action: "move", messageId: mail.id, folderId: event.target.value }, "Deze e-mail verplaatsen?")}><option value="">Verplaatsen naar…</option>{(activeBox?.folders || []).map((folder) => <option key={folder.id} value={folder.id}>{folder.displayName}</option>)}</select>}<button type="button" className="secondary" onClick={() => mailAction(mail.mailbox, { action: "delete", messageId: mail.id }, "Deze e-mail verwijderen?")}>Verwijderen</button></div>
         {Object.prototype.hasOwnProperty.call(replying, mail.id) && <div className="stack"><textarea placeholder="Schrijf je antwoord" value={replying[mail.id]} onChange={(event) => setReplying({ ...replying, [mail.id]: event.target.value })} /><button type="button" className="primary" disabled={!replying[mail.id]?.trim() || Boolean(working)} onClick={() => mailAction(mail.mailbox, { action: "reply", messageId: mail.id, comment: replying[mail.id] }, "Dit antwoord nu verzenden?")}>Antwoord verzenden</button></div>}
       </article>)}
     </div>
@@ -4191,6 +4213,9 @@ function UsersAdmin({ workspaceId, session }) {
 const PERMISSION_OPTIONS = [
   ["workspace:manage", "Volledige werkruimte beheren", false],
   ["operations:read", "Eigen werk, planning en inklokken"], ["operations:manage", "Operationele gegevens beheren"],
+  ["processes:read", "Procestaken bekijken"],
+  ["processes:monitor", "Procesvoortgang van anderen volgen"],
+  ["processes:manage", "Processen starten, toewijzen en beheren"],
   ["revenue:read", "Omzet en verkoopcijfers bekijken"],
   ["time:read", "Uren van medewerkers bekijken"],
   ["time:manage", "Uren van medewerkers corrigeren"],
@@ -4212,11 +4237,21 @@ function AccessFields({ roles, businesses, initialRoleId = "", initialBusinessId
   const [roleId, setRoleId] = useState(initialRoleId || "");
   const role = roles.find((item) => item.id === roleId);
   const custom = role?.role_key === "custom";
+  const roleHelp = {
+    owner: "Volledige toegang tot de werkruimte, gebruikers en alle instellingen.",
+    manager: "Mag processen starten, taken toewijzen, voortgang beheren en alle relevante onderdelen bekijken.",
+    shift_lead: "Kan de voortgang van processen volgen, maar hoeft geen taken toe te wijzen of processen te beheren.",
+    viewer: "Kan toegankelijke informatie bekijken zonder wijzigingen te maken.",
+    employee: "Werkt met eigen toegewezen taken en kan de voortgang daarvan vooruitzetten.",
+    staff: "Werkt met eigen toegewezen taken en kan de voortgang daarvan vooruitzetten.",
+    kitchen_manager: "Kan keuken- en procesinformatie beheren binnen de toegewezen vestiging.",
+  }[role?.role_key] || "";
   const fixedPermissions = new Set(role?.role_permissions?.map((item) => item.permission) || []);
   const customOptions = PERMISSION_OPTIONS.filter(([, , customAllowed = true]) => customAllowed);
   return <>
     <label>Horeca OS-rol *<select name="roleId" required value={roleId} onChange={(event) => setRoleId(event.target.value)}><option value="" disabled>Kies een rol</option>{roles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label>{compact ? "Toegang" : "Vestigingstoegang"}<select name="businessId" defaultValue={initialBusinessId || ""}><option value="">Alle vestigingen</option>{businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}</select></label>
+    {roleHelp && <p className="muted full">{roleHelp}</p>}
     {role && <fieldset className={`permissionPicker full ${custom ? "editable" : "readOnly"}`}><legend>{custom ? "Machtigingen voor deze gebruiker *" : `Toegang met de rol ${role.name}`}</legend><p>{custom ? "Vink alleen aan wat deze gebruiker binnen de gekozen vestiging mag doen." : "Dit is het vaste rechtenpakket van deze rol. Kies Aangepast wanneer je losse rechten wilt aanvinken."}</p>{custom
       ? <div className="permissionGrid">{customOptions.map(([value, label]) => <label className="checkOption" key={value}><input type="checkbox" name="permissions" value={value} defaultChecked={initialPermissions.includes(value)} />{label}</label>)}</div>
       : <div className="permissionGrid permissionSummary">{PERMISSION_OPTIONS.map(([value, label]) => <span className={fixedPermissions.has(value) || role.role_key === "owner" ? "granted" : "denied"} key={value}><b>{fixedPermissions.has(value) || role.role_key === "owner" ? "✓" : "–"}</b>{label}</span>)}</div>}</fieldset>}
