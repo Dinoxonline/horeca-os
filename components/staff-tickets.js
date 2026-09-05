@@ -36,7 +36,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     setLoading(true);
     setMessage("");
     const [{ data, error }, membersResponse] = await Promise.all([
-      supabase.from("staff_tickets").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
+      (canManage ? supabase.from("staff_tickets").select("*").eq("workspace_id", workspaceId) : supabase.from("staff_tickets").select("*").eq("workspace_id", workspaceId).eq("assignee_id", session?.user?.id || "__none__")).order("created_at", { ascending: false }),
       fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
         headers: { Authorization: `Bearer ${session?.access_token || ""}` },
       }),
