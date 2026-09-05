@@ -58,14 +58,21 @@ export default function StaffTicketForm({ token }) {
   async function signUp(event) {
     event.preventDefault(); setAuthMessage("");
     const data = new FormData(event.currentTarget);
-    const email = String(data.get("email") || "").trim().toLowerCase();
-    const fullName = String(data.get("fullName") || "").trim();
-    const { data: result, error } = await supabase.auth.signUp({ email, password: data.get("password"), options: { data: { full_name: fullName } } });
-    if (error) { setAuthMessage(error.message.includes("already") ? "Dit e-mailadres bestaat al. Kies Inloggen." : "Account aanmaken lukt niet. Controleer de gegevens."); return; }
-    const { error: requestError } = await supabase.rpc("request_staff_access", { p_token: token, p_email: email, p_full_name: fullName });
-    if (requestError) { setAuthMessage("Account aangemaakt, maar de toegangsaanvraag kon niet worden verzonden."); return; }
-    setAuthMessage(result.session ? "Je aanvraag is verzonden. Wacht op goedkeuring van de beheerder." : "Controleer eerst je e-mail en wacht daarna op goedkeuring van de beheerder.");
-    setAuthMessage((current) => current);
+    const response = await fetch("/api/staff-access/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token,
+        email: String(data.get("email") || "").trim(),
+        fullName: String(data.get("fullName") || "").trim(),
+        password: data.get("password"),
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) { setAuthMessage(result.error || "Account aanmaken lukt niet. Probeer het opnieuw."); return; }
+    const { error } = await supabase.auth.signInWithPassword({ email: data.get("email"), password: data.get("password") });
+    if (error) { setAuthMessage("Account aangemaakt. Log nu in met je nieuwe account; daarna wacht je op goedkeuring."); return; }
+    setAuthMessage("Je account is aangemaakt. Wacht op goedkeuring van de beheerder.");
   }
 
   async function submit(event) {
