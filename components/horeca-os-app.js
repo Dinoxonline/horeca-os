@@ -279,8 +279,10 @@ export default function HorecaOsApp() {
       return businessMatches && (assignment.role?.role_key === "owner" || permissions.includes(permission));
     });
   }, [activeWorkspace?.role, businessId, roleAssignments]);
+  const ticketVisibility = Boolean(session && workspaceId);
   const featureVisibility = useMemo(() => ({
     dashboard: canUseFeature("operations:read") || canUseFeature("operations:manage") || canUseFeature("revenue:read") || canUseFeature("finance:read"),
+    staffTickets: ticketVisibility,
     workboard: canUseFeature("processes:read") || canUseFeature("processes:manage"),
     documents: canUseFeature("documents:read") || canUseFeature("documents:manage"),
     foodcost: canUseFeature("foodcost:read"),
@@ -298,7 +300,7 @@ export default function HorecaOsApp() {
     calendar: isOwner,
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
     security: true,
-  }), [canUseFeature]);
+  }), [canUseFeature, ticketVisibility]);
   const canViewRevenue = isOwner || canUseFeature("revenue:read") || canUseFeature("finance:read");
   const canViewDirectie = canViewRevenue;
   const dashboardLabel = isOwner ? "CEO Home" : canViewDirectie ? "Management Home" : "Mijn werk";
@@ -451,7 +453,7 @@ export default function HorecaOsApp() {
         </div>
         <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
-          {featureVisibility.workboard && <NavLink href="/werkbord/tickets" active={activeView === "staffTickets"}>Medewerkerstickets</NavLink>}
+          {featureVisibility.staffTickets && <NavLink href="/werkbord/tickets" active={activeView === "staffTickets"}>Medewerkerstickets</NavLink>}
           {featureVisibility.workboard && <div className="navGroup"><div style={{ display: "flex", alignItems: "center", gap: 8 }}><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><button type="button" className="secondary" style={{ padding: "2px 8px", marginLeft: "auto" }} aria-label={workboardOpen ? "Werkbord-submenu inklappen" : "Werkbord-submenu openen"} onClick={() => setWorkboardOpen((value) => !value)}>{workboardOpen ? "−" : "+"}</button></div>{workboardOpen && <div className="navChildren" style={{ margin: "4px 0 12px 14px", paddingLeft: 12, borderLeft: "2px solid rgba(255,255,255,.35)", display: "grid", gap: 4 }}><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>Prullenbak</NavLink><NavLink href="/werkbord/logboek" active={activeView === "processAudit"}>Wijzigingslogboek</NavLink><NavLink href="/werkbord/manager-logboek" active={activeView === "managerLogbook"}>Manager-logboek</NavLink></div>}</div>}
           {featureVisibility.documents && <NavLink href="/documenten" active={activeView === "documents"}>Documenten</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
@@ -486,7 +488,7 @@ export default function HorecaOsApp() {
         {message && <div className="notice">{message}</div>}
         {activeView === "dashboard" && pendingStaffRequests > 0 && <div className="notice warning"><strong>{pendingStaffRequests} nieuwe accountaanvraag{pendingStaffRequests === 1 ? "" : "en"}</strong><br />Beoordeel deze bij <Link href="/gebruikers">Gebruikers & rollen</Link>.</div>}
         {activeView === "dashboard" && pendingStaffTickets > 0 && <div className="notice warning"><strong>{pendingStaffTickets} openstaande medewerkersticket{pendingStaffTickets === 1 ? "" : "s"}</strong><br />Bekijk en wijs deze toe bij <Link href="/werkbord/tickets">Medewerkerstickets</Link>.</div>}
-        {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} session={session} canManage={isOwner || canUseFeature("processes:manage")} />}
+        {activeView === "staffTickets" && featureVisibility.staffTickets && <StaffTickets workspaceId={workspaceId} session={session} canManage={isOwner || canUseFeature("processes:manage")} />}
 
         {!viewAllowed && <AccessDenied />}
 
