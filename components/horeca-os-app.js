@@ -321,6 +321,29 @@ export default function HorecaOsApp() {
       .catch(() => { if (active) setPendingStaffRequests(0); });
     return () => { active = false; };
   }, [isOwner, session?.access_token, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !isOwner) return undefined;
+    let active = true;
+    const refreshPendingRequests = async () => {
+      const response = await fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        headers: { Authorization: `Bearer ${session?.access_token || ""}` },
+      });
+      if (!active || !response.ok) return;
+      const result = await response.json();
+      setPendingStaffRequests((result.accessRequests || []).filter((request) => request.status === "pending").length);
+    };
+    const channel = supabase
+      .channel(`staff-access-${workspaceId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_access_requests", filter: `workspace_id=eq.${workspaceId}` }, refreshPendingRequests)
+      .subscribe();
+    const fallbackTimer = window.setInterval(refreshPendingRequests, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(fallbackTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [isOwner, session?.access_token, workspaceId]);
   const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
   const openTasks = [...data.tasks, ...data.processTasks].filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
