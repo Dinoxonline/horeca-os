@@ -23,6 +23,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
   const [categoryFilter, setCategoryFilter] = useState("alle");
   const [locationFilter, setLocationFilter] = useState("alle");
   const [assigneeFilter, setAssigneeFilter] = useState("alle");
+  const [reporterFilter, setReporterFilter] = useState("alle");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("priority");
   const [message, setMessage] = useState("");
@@ -117,6 +118,8 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     open: tickets.filter((ticket) => !["opgelost", "gesloten"].includes(ticket.status)).length,
   }), [tickets]);
 
+  const reporterOptions = useMemo(() => [...new Set(tickets.map((ticket) => ticket.reporter_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, "nl")), [tickets]);
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return tickets.filter((ticket) => {
@@ -125,14 +128,15 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       const matchesCategory = categoryFilter === "alle" || ticket.category === categoryFilter;
       const matchesLocation = locationFilter === "alle" || ticket.location === locationFilter;
       const matchesAssignee = assigneeFilter === "alle" || (assigneeFilter === "niet toegewezen" ? !ticket.assignee_id : ticket.assignee_id === assigneeFilter);
+      const matchesReporter = reporterFilter === "alle" || ticket.reporter_name === reporterFilter;
       const haystack = `${ticket.ticket_number} ${ticket.title} ${ticket.description} ${ticket.reporter_name} ${ticket.reporter_contact}`.toLowerCase();
-      return matchesStatus && matchesPriority && matchesCategory && matchesLocation && matchesAssignee && (!term || haystack.includes(term));
+      return matchesStatus && matchesPriority && matchesCategory && matchesLocation && matchesAssignee && matchesReporter && (!term || haystack.includes(term));
     }).sort((a, b) => {
       if (sort === "oldest") return new Date(a.created_at) - new Date(b.created_at);
       if (sort === "newest") return new Date(b.created_at) - new Date(a.created_at);
       return (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9) || new Date(a.created_at) - new Date(b.created_at);
     });
-  }, [tickets, statusFilter, priorityFilter, categoryFilter, locationFilter, assigneeFilter, search, sort]);
+  }, [tickets, statusFilter, priorityFilter, categoryFilter, locationFilter, assigneeFilter, reporterFilter, search, sort]);
 
   return <section className="panel ticketBackoffice">
     <div className="panelHead">
@@ -153,7 +157,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       <label>Prioriteit<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="alle">Alle prioriteiten</option>{priorityOptions.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label>
       <label>Categorie<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="alle">Alle categorieën</option>{categoryOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label>Locatie<select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}><option value="alle">Alle locaties</option>{locationOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-      <label>Toegewezen aan<select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option value="alle">Iedereen</option><option value="niet toegewezen">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>
+      <label>Toegewezen aan<select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option value="alle">Iedereen</option><option value="niet toegewezen">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label><label>Ingediend door<select value={reporterFilter} onChange={(event) => setReporterFilter(event.target.value)}><option value="alle">Iedereen</option>{reporterOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
       <label>Sorteren<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="priority">Urgentie eerst</option><option value="oldest">Oudste eerst</option><option value="newest">Nieuwste eerst</option></select></label>
     </div>
     {message && <div className="notice">{message}</div>}
