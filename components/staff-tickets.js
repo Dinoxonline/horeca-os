@@ -27,6 +27,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
   const [sort, setSort] = useState("priority");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [assignmentEmailState, setAssignmentEmailState] = useState({});
 
   async function load() {
     setLoading(true);
@@ -70,12 +71,21 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
   async function sendAssignmentEmail(ticket) {
     if (!ticket.assignee_id) return;
     setMessage("");
-    const response = await fetch("/api/staff-tickets/assignment-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
-      body: JSON.stringify({ workspaceId, ticketId: ticket.id, assigneeId: ticket.assignee_id }),
-    });
-    setMessage(response.ok ? "Toewijzingsmail verstuurd." : "De toewijzingsmail kon niet worden verstuurd.");
+    setAssignmentEmailState((current) => ({ ...current, [ticket.id]: "sending" }));
+    try {
+      const response = await fetch("/api/staff-tickets/assignment-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ workspaceId, ticketId: ticket.id, assigneeId: ticket.assignee_id }),
+      });
+      const result = await response.json().catch(() => ({}));
+      const status = response.ok && result.emailSent ? "sent" : "error";
+      setAssignmentEmailState((current) => ({ ...current, [ticket.id]: status }));
+      setMessage(status === "sent" ? "Toewijzingsmail verstuurd." : result.message || "De toewijzingsmail kon niet worden verstuurd.");
+    } catch {
+      setAssignmentEmailState((current) => ({ ...current, [ticket.id]: "error" }));
+      setMessage("De toewijzingsmail kon niet worden verstuurd.");
+    }
   }
 
   const counts = useMemo(() => ({
@@ -128,7 +138,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     <div className="ticketResultMeta"><strong>{visible.length} {visible.length === 1 ? "ticket" : "tickets"}</strong><span>{statusFilter === "open" ? "openstaand" : statusFilter === "alle" ? "alle statussen" : statusLabels[statusFilter]}</span></div>
     {visible.length === 0 ? <p className="empty">Geen tickets die aan deze selectie voldoen.</p> : <div className="ticketQueue">{visible.map((ticket) => <article className={`ticketCard ${ticket.priority === "urgent" ? "urgent" : ticket.priority === "hoog" ? "high" : ""}`} key={ticket.id}>
       <div className="ticketCardMain"><div className="ticketCardTop"><span className="ticketNumber">#{ticket.ticket_number}</span><span className={`ticketPriority ${ticket.priority}`}>{priorityLabels[ticket.priority] || ticket.priority}</span><span className={`ticketStatus ${ticket.status.replaceAll(" ", "-")}`}>{statusLabels[ticket.status] || ticket.status}</span><time>{formatDate(ticket.created_at)}</time></div><h3>{ticket.title}</h3><p className="ticketMeta">{ticket.category} · {ticket.location || "Locatie niet opgegeven"} · gemeld door <strong>{ticket.reporter_name}</strong></p><p className="ticketDescription">{ticket.description}</p>{ticket.attachments?.length > 0 && <p className="ticketAttachments"><strong>Bijlagen:</strong> {ticket.attachments.map((attachment) => attachment.name).join(", ")}</p>}<p className="ticketContact">Contact: {ticket.reporter_contact || "niet opgegeven"}</p>{canManage && <label className="ticketNote">Interne notitie<textarea defaultValue={ticket.internal_note || ""} onBlur={(event) => updateTicket(ticket.id, { internal_note: event.target.value.trim() || null })} placeholder="Afspraken, opvolging of oplossing" /></label>}</div>
-      {canManage && <div className="ticketActions"><label>Status<select value={ticket.status} onChange={(event) => updateTicket(ticket.id, { status: event.target.value })}>{statusOptions.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label><label>Prioriteit<select value={ticket.priority} onChange={(event) => updateTicket(ticket.id, { priority: event.target.value })}>{priorityOptions.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label><label>Toewijzen aan<select value={ticket.assignee_id || ""} onChange={(event) => updateTicket(ticket.id, { assignee_id: event.target.value || null })}><option value="">Nog niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>{ticket.assignee_id && <button type="button" className="secondaryButton" onClick={() => sendAssignmentEmail(ticket)}>Toewijzingsmail versturen</button>}</div>}
+      {canManage && <div className="ticketActions"><label>Status<select value={ticket.status} onChange={(event) => updateTicket(ticket.id, { status: event.target.value })}>{statusOptions.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label><label>Prioriteit<select value={ticket.priority} onChange={(event) => updateTicket(ticket.id, { priority: event.target.value })}>{priorityOptions.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label><label>Toewijzen aan<select value={ticket.assignee_id || ""} onChange={(event) => updateTicket(ticket.id, { assignee_id: event.target.value || null })}><option value="">Nog niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>{ticket.assignee_id && <><button type="button" className="secondaryButton" disabled={assignmentEmailState[ticket.id] === "sending"} onClick={() => sendAssignmentEmail(ticket)}>{assignmentEmailState[ticket.id] === "sending" ? "Bezig met versturen…" : assignmentEmailState[ticket.id] === "sent" ? "E-mail verstuurd" : "Toewijzingsmail versturen"}</button>{assignmentEmailState[ticket.id] === "sent" && <small className="muted">Bevestiging verzonden.</small>}{assignmentEmailState[ticket.id] === "error" && <small className="muted">Versturen mislukt.</small>}</>}</div>}
     </article>)}</div>}
   </section>;
 }
