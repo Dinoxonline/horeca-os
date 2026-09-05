@@ -434,7 +434,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCreateSubtask, onUpdate }) {
   const [completionNote, setCompletionNote] = useState(task.completion_note || "");
   const [evidenceUrl, setEvidenceUrl] = useState(task.evidence_url || "");
-  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);\n  const [showDetails, setShowDetails] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const assignedMember = members.find((member) => member.id === task.assigned_to);
   const belongsToOther = Boolean(task.assigned_to && task.assigned_to !== currentUserId);
@@ -450,9 +450,13 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
-    {(task.requires_evidence || task.status === "done") && <div className="stack" style={{ marginTop: 8 }}>
-      <label>Oplevernotitie<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Wat is precies uitgevoerd of gecontroleerd?" disabled={!canAct || task.status === "done"} /></label>
-      <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto of document" disabled={!canAct || task.status === "done"} /></label>
+    <div className="toolbar" style={{ marginTop: 8 }}>
+      <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invoer openen"}</button>
+    </div>
+    {showDetails && <div className="stack" style={{ marginTop: 8 }}>
+      <label>Werknotitie<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Wat moet er gebeuren, wat heb je besloten of wat is de uitkomst?" disabled={!canAct} /></label>
+      <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto, vergunning of document" disabled={!canAct} /></label>
+      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null })}>Notitie opslaan</button>}
     </div>}
     <div className="statusBar" aria-label="Voortgang taak">
       {statuses.map((status, index) => {
