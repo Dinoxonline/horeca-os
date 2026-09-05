@@ -67,10 +67,11 @@ export default function HorecaOsApp() {
   const [workspaceId, setWorkspaceId] = useState("");
   const [businessId, setBusinessId] = useState("all");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [workboardOpen, setWorkboardOpen] = useState(pathname.startsWith("/werkbord/"));
   const [data, setData] = useState(emptyData);
   const activeView = routeViews[pathname] || "dashboard";
 
-  useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
+  useEffect(() => { setMobileMenuOpen(false); setWorkboardOpen(pathname.startsWith("/werkbord/")); }, [pathname]);
 
   useEffect(() => {
     const recoveryFromUrl = window.location.hash.includes("type=recovery")
@@ -376,7 +377,7 @@ export default function HorecaOsApp() {
         </div>
         <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
-          {featureVisibility.workboard && <><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>↳ Prullenbak</NavLink><NavLink href="/werkbord/logboek" active={activeView === "processAudit"}>↳ Wijzigingslogboek</NavLink><NavLink href="/werkbord/manager-logboek" active={activeView === "managerLogbook"}>↳ Manager-logboek</NavLink></>}
+          {featureVisibility.workboard && <div className="navGroup"><div style={{ display: "flex", alignItems: "center", gap: 8 }}><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><button type="button" className="secondary" style={{ padding: "2px 8px", marginLeft: "auto" }} aria-label={workboardOpen ? "Werkbord-submenu inklappen" : "Werkbord-submenu openen"} onClick={() => setWorkboardOpen((value) => !value)}>{workboardOpen ? "−" : "+"}</button></div>{workboardOpen && <div className="navChildren"><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>Prullenbak</NavLink><NavLink href="/werkbord/logboek" active={activeView === "processAudit"}>Wijzigingslogboek</NavLink><NavLink href="/werkbord/manager-logboek" active={activeView === "managerLogbook"}>Manager-logboek</NavLink></div>}</div>}
           {featureVisibility.documents && <NavLink href="/documenten" active={activeView === "documents"}>Documenten</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
