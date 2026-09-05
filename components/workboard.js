@@ -35,50 +35,7 @@ const TASK_FIELD_CONFIG = {
     { key: "grand_cafe_het_plein_buitenruimte", label: "Grand Café Het Plein – buitenruimte", type: "textarea", placeholder: "Terras, tuin, capaciteit en gebruik…" },
     { key: "grand_cafe_het_plein_geluid", label: "Grand Café Het Plein – geluidsmogelijkheden", type: "textarea", placeholder: "Muziek, DJ, eindtijden, geluidsbeperkingen…" },
   ],
-  "Doel, doelgroep en budget bepalen": [
-    { key: "doel", label: "Doel", type: "textarea", placeholder: "Wat moet dit initiatief opleveren?" },
-    { key: "doelgroep", label: "Doelgroep", type: "textarea", placeholder: "Voor wie is dit bedoeld?" },
-    { key: "budget", label: "Budget", type: "number", placeholder: "Bedrag in euro’s" },
-    { key: "kpi_of_succesmaatstaf", label: "Succesmaatstaf", type: "textarea", placeholder: "Wanneer is dit geslaagd?" },
-  ],
-  "Website en evenement aanmaken": [
-    { key: "evenement_titel", label: "Titel evenement", type: "text", placeholder: "Naam van het evenement" },
-    { key: "evenement_datum", label: "Datum", type: "date", placeholder: "" },
-    { key: "evenement_begintijd", label: "Begintijd", type: "time", placeholder: "" },
-    { key: "evenement_eindtijd", label: "Eindtijd", type: "time", placeholder: "" },
-    { key: "evenement_prijs", label: "Prijs", type: "number", placeholder: "Prijs in euro’s" },
-    { key: "evenement_locatie", label: "Locatie", type: "text", placeholder: "Caribbean Corner of Grand Café Het Plein" },
-    { key: "evenement_doelgroep", label: "Doelgroep", type: "textarea", placeholder: "Voor wie is het evenement?" },
-    { key: "evenement_omschrijving", label: "Omschrijving", type: "textarea", placeholder: "Wat kunnen bezoekers verwachten?" },
-    { key: "evenement_aanmeldlink", label: "Aanmeldlink", type: "url", placeholder: "Link naar reserveren of aanmelden" },
-  ],
-  "Flyer, website en socials voorbereiden": [
-    { key: "campagne_titel", label: "Campagnetitel", type: "text", placeholder: "Naam van de campagne" },
-    { key: "campagne_doelgroep", label: "Doelgroep", type: "textarea", placeholder: "Wie wil je bereiken?" },
-    { key: "campagne_budget", label: "Budget", type: "number", placeholder: "Bedrag in euro’s" },
-    { key: "campagne_kanalen", label: "Kanalen", type: "textarea", placeholder: "Website, Instagram, Facebook, nieuwsbrief…" },
-    { key: "campagne_startdatum", label: "Startdatum", type: "date", placeholder: "" },
-    { key: "campagne_einddatum", label: "Einddatum", type: "date", placeholder: "" },
-  ],
-  "Arrangementen en prijzen samenstellen": [
-    { key: "arrangement_naam", label: "Naam arrangement", type: "text", placeholder: "Bijvoorbeeld: Bruiloft compleet" },
-    { key: "arrangement_prijs", label: "Prijs", type: "number", placeholder: "Prijs in euro’s" },
-    { key: "arrangement_inbegrepen", label: "Inbegrepen", type: "textarea", placeholder: "Eten, drinken, zaal, personeel, techniek…" },
-    { key: "arrangement_minimum_aantal", label: "Minimumaantal gasten", type: "number", placeholder: "Aantal personen" },
-    { key: "arrangement_voorwaarden", label: "Voorwaarden", type: "textarea", placeholder: "Tijden, aanbetaling, annulering…" },
-  ],
 };
-
-const DEFAULT_TASK_FIELDS = [
-  { key: "uitvoering", label: "Wat moet er gebeuren?", type: "textarea", placeholder: "Beschrijf de werkzaamheden en gewenste aanpak." },
-  { key: "benodigdheden", label: "Benodigde informatie of middelen", type: "textarea", placeholder: "Welke informatie, documenten, mensen of middelen zijn nodig?" },
-  { key: "resultaat", label: "Resultaat", type: "textarea", placeholder: "Wat is het concrete eindresultaat?" },
-  { key: "vervolgstap", label: "Vervolgstap", type: "textarea", placeholder: "Wat gebeurt hierna en wie pakt dat op?" },
-];
-
-function getTaskFields(task) {
-  return TASK_FIELD_CONFIG[typeof task === "string" ? task : task.title] || DEFAULT_TASK_FIELDS;
-}
 
 export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, canMonitor = false, onRefresh }) {
   const [templates, setTemplates] = useState([]);
@@ -269,8 +226,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   function downloadProcessExcel(run) {
     const runTasks = processTasks.filter((task) => task.run_id === run.id);
-    const fieldKeys = [...new Set(runTasks.flatMap((task) => getTaskFields(task).map((field) => field.key) || []))];
-    const fieldLabels = Object.fromEntries(runTasks.flatMap((task) => getTaskFields(task)).map((field) => [field.key, field.label]));
+    const fieldKeys = [...new Set(runTasks.flatMap((task) => TASK_FIELD_CONFIG[task.title]?.map((field) => field.key) || []))];
+    const fieldLabels = Object.fromEntries(runTasks.flatMap((task) => TASK_FIELD_CONFIG[task.title] || []).map((field) => [field.key, field.label]));
     const memberById = new Map(members.map((member) => [member.id, member.full_name || member.id]));
     const headers = ["Taak", "Omschrijving", "Status", "Prioriteit", "Deadline", "Toegewezen aan", "Werknotitie", "Bewijslink", ...fieldKeys.map((key) => fieldLabels[key] || key)];
     const rows = runTasks.map((task) => [
@@ -461,7 +418,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <p className="eyebrow">MEDEWERKERSLINK</p><h3>Een melding doorgeven</h3>
         <p>Deel deze link via WhatsApp. Medewerkers kunnen zonder account een ticket insturen; de melding verschijnt bij Medewerkerstickets.</p>
         <div className="toolbar" style={{ justifyContent: "flex-start", alignItems: "center" }}><input readOnly value="https://horeca-os-git-feature-werkbord-processen-le-club.vercel.app/medewerkers/cc-plein-medewerkers" style={{ flex: 1, minWidth: 280 }} /><button type="button" className="primary" onClick={() => navigator.clipboard?.writeText("https://horeca-os-git-feature-werkbord-processen-le-club.vercel.app/medewerkers/cc-plein-medewerkers")}>Link kopiëren</button><a className="secondary" href="/werkbord/tickets">Tickets bekijken</a></div>
-      </section>}
++      </section>}
       {canMonitor && !canManage && <div className="notice">Je kijkt mee in dit Werkbord. Je kunt voortgang bekijken, maar geen taken toewijzen of wijzigen.</div>}
 
       <div className="taskLegend"><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#fff7ed", borderLeft: "4px solid #f59e0b", marginRight: 6 }} />Oranje: taak van iemand anders</span><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#f8fafc", marginRight: 6 }} />Normaal: jouw taak of niet toegewezen</span></div>
@@ -545,13 +502,13 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
     <div className="toolbar" style={{ marginTop: 8 }}>
-      <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invullen"}</button>
+      <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invoer openen"}</button>
     </div>
     {showDetails && <div className="stack" style={{ marginTop: 8 }}>
-      {getTaskFields(task).length > 0 && <fieldset><legend>Gegevens voor deze taak</legend>{getTaskFields(task).map((field) => <label key={field.key}>{field.label}{field.type === "textarea" ? <textarea value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} /> : <input type={field.type} value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} />}</label>)}</fieldset>}
-      <label>Invoer / uitwerking<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Vul hier de uitwerking, afspraken, keuzes, resultaten of vervolgstappen van deze taak in." disabled={!canAct} /></label>
+      {TASK_FIELD_CONFIG[task.title]?.length > 0 && <fieldset><legend>Gegevens voor deze taak</legend>{TASK_FIELD_CONFIG[task.title].map((field) => <label key={field.key}>{field.label}{field.type === "textarea" ? <textarea value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} /> : <input type={field.type} value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} />}</label>)}</fieldset>}
+      <label>Werknotitie<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Wat moet er gebeuren, wat heb je besloten of wat is de uitkomst?" disabled={!canAct} /></label>
       <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto, vergunning of document" disabled={!canAct} /></label>
-      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, structured_data: structuredData })}>Invoer opslaan</button>}
+      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, structured_data: structuredData })}>Gegevens en notitie opslaan</button>}
     </div>}
     <div className="statusBar" aria-label="Voortgang taak">
       {statuses.map((status, index) => {
@@ -614,4 +571,3 @@ function auditTableLabel(tableName) {
 }
 
 function Metric({ label, value, sub, onClick }) { const content = <><span>{label}</span><strong>{value}</strong><small>{sub}</small></>; return onClick ? <button type="button" className="card" onClick={onClick}>{content}</button> : <div className="card">{content}</div>; }
-
