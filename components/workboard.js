@@ -497,13 +497,13 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
     <div className="toolbar" style={{ marginTop: 8 }}>
-      <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invoer openen"}</button>
+      <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invullen"}</button>
     </div>
     {showDetails && <div className="stack" style={{ marginTop: 8 }}>
       {TASK_FIELD_CONFIG[task.title]?.length > 0 && <fieldset><legend>Gegevens voor deze taak</legend>{TASK_FIELD_CONFIG[task.title].map((field) => <label key={field.key}>{field.label}{field.type === "textarea" ? <textarea value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} /> : <input type={field.type} value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} />}</label>)}</fieldset>}
-      <label>Werknotitie<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Wat moet er gebeuren, wat heb je besloten of wat is de uitkomst?" disabled={!canAct} /></label>
+      <label>Invoer / uitwerking<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Vul hier de uitwerking, afspraken, keuzes, resultaten of vervolgstappen van deze taak in." disabled={!canAct} /></label>
       <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto, vergunning of document" disabled={!canAct} /></label>
-      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, structured_data: structuredData })}>Gegevens en notitie opslaan</button>}
+      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, structured_data: structuredData })}>Invoer opslaan</button>}
     </div>}
     <div className="statusBar" aria-label="Voortgang taak">
       {statuses.map((status, index) => {
