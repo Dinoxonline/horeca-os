@@ -41,7 +41,15 @@ export default function StaffTickets({ workspaceId, canManage = false }) {
     setLoading(false);
   }
 
-  useEffect(() => { if (workspaceId) load(); }, [workspaceId]);
+  useEffect(() => {
+    if (!workspaceId) return undefined;
+    load();
+    const channel = supabase
+      .channel(`staff-tickets-backoffice-${workspaceId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_tickets", filter: `workspace_id=eq.${workspaceId}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [workspaceId]);
 
   async function updateTicket(id, patch) {
     setMessage("");
