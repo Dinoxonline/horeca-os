@@ -303,6 +303,24 @@ export default function HorecaOsApp() {
   const dashboardLabel = isOwner ? "CEO Home" : canViewDirectie ? "Management Home" : "Mijn werk";
   const viewAllowed = featureVisibility[activeView] !== false;
   const mfaRequired = isOwner || canUseFeature("users:manage") || canUseFeature("integrations:manage");
+
+  useEffect(() => {
+    if (!workspaceId || !isOwner || !session?.access_token) {
+      setPendingStaffRequests(0);
+      return;
+    }
+    let active = true;
+    fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (!active) return;
+        setPendingStaffRequests((result?.accessRequests || []).filter((request) => request.status === "pending").length);
+      })
+      .catch(() => { if (active) setPendingStaffRequests(0); });
+    return () => { active = false; };
+  }, [isOwner, session?.access_token, workspaceId]);
   const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
   const openTasks = [...data.tasks, ...data.processTasks].filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
