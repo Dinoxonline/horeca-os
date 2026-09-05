@@ -457,6 +457,11 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </section>
 
       {message && <div className="notice">{message}</div>}
+      {canManage && <section className="panel" style={{ marginBottom: 14 }}>
+        <p className="eyebrow">MEDEWERKERSLINK</p><h3>Een melding doorgeven</h3>
+        <p>Deel deze link via WhatsApp. Medewerkers kunnen zonder account een ticket insturen; de melding verschijnt bij Medewerkerstickets.</p>
+        <div className="toolbar" style={{ justifyContent: "flex-start", alignItems: "center" }}><input readOnly value="https://horeca-os-git-feature-werkbord-processen-le-club.vercel.app/medewerkers/cc-plein-medewerkers" style={{ flex: 1, minWidth: 280 }} /><button type="button" className="primary" onClick={() => navigator.clipboard?.writeText("https://horeca-os-git-feature-werkbord-processen-le-club.vercel.app/medewerkers/cc-plein-medewerkers")}>Link kopiëren</button><a className="secondary" href="/werkbord/tickets">Tickets bekijken</a></div>
+      </section>}
       {canMonitor && !canManage && <div className="notice">Je kijkt mee in dit Werkbord. Je kunt voortgang bekijken, maar geen taken toewijzen of wijzigen.</div>}
 
       <div className="taskLegend"><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#fff7ed", borderLeft: "4px solid #f59e0b", marginRight: 6 }} />Oranje: taak van iemand anders</span><span><i style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#f8fafc", marginRight: 6 }} />Normaal: jouw taak of niet toegewezen</span></div>
@@ -609,3 +614,4 @@ function auditTableLabel(tableName) {
 }
 
 function Metric({ label, value, sub, onClick }) { const content = <><span>{label}</span><strong>{value}</strong><small>{sub}</small></>; return onClick ? <button type="button" className="card" onClick={onClick}>{content}</button> : <div className="card">{content}</div>; }
+
