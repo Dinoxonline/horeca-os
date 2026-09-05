@@ -115,7 +115,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
   return <section className="panel ticketBackoffice">
     <div className="panelHead">
       <div><p className="eyebrow">TICKETMODULE · BACKOFFICE</p><h2>Medewerkersmeldingen</h2><p>Hier komen alle meldingen uit de gedeelde medewerkerslink binnen. Beoordeel, wijs toe en volg ze op.</p></div>
-      <button className="refresh" onClick={load} disabled={loading}>{loading ? "Laden…" : "Verversen"}</button>
+      <div className="toolbar"><a className="primary" href="/medewerkers/cc-plein-medewerkers">Zelf een ticket aanmaken</a><button className="refresh" onClick={load} disabled={loading}>{loading ? "Laden…" : "Verversen"}</button></div>
     </div>
     <div className="ticketKpis">
       <button className={statusFilter === "open" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("open")}><span>Openstaand</span><strong>{counts.open}</strong><small>actie nodig</small></button>
