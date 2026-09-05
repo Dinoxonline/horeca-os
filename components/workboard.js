@@ -382,20 +382,6 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <Metric label="Processen" value={runs.length} sub="recent gestart" />
       </section>
 
-      <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">MANAGER-LOGBOEK</p><h3>Overdracht en bijzonderheden</h3></div><button type="button" className="secondary" onClick={load}>Verversen</button></div>
-        {canManage && <form onSubmit={createLogEntry} className="stack">
-          <div className="formGrid">
-            <label>Categorie<select value={newLog.category} onChange={(event) => setNewLog((current) => ({ ...current, category: event.target.value }))}><option value="overdracht">Overdracht</option><option value="storing">Storing</option><option value="klacht">Klacht</option><option value="tekort">Tekort</option><option value="afspraak">Afspraak</option><option value="overig">Overig</option></select></label>
-            <label>Urgentie<select value={newLog.severity} onChange={(event) => setNewLog((current) => ({ ...current, severity: event.target.value }))}><option value="laag">Laag</option><option value="normaal">Normaal</option><option value="hoog">Hoog</option><option value="kritiek">Kritiek</option></select></label>
-          </div>
-          <label>Titel<input required value={newLog.title} onChange={(event) => setNewLog((current) => ({ ...current, title: event.target.value }))} placeholder="Bijvoorbeeld: Koeling maakt lawaai" /></label>
-          <label>Notitie<textarea required value={newLog.body} onChange={(event) => setNewLog((current) => ({ ...current, body: event.target.value }))} placeholder="Wat moet de volgende dienst of manager weten?" /></label>
-          <button className="primary" type="submit">Notitie opslaan</button>
-        </form>}
-        {logEntries.length === 0 ? <p>Nog geen managernotities.</p> : <div className="tableLike">{logEntries.map((entry) => <div className={"task " + (entry.resolved_at ? "resolved" : "")} key={entry.id}><div><strong>{entry.title}</strong><small>{entry.body}</small><span>{entry.entry_date} · {entry.category} · urgentie {entry.severity} · {entry.resolved_at ? "Opgelost" : "Openstaand"}</span></div>{canManage && <button type="button" className="secondary" onClick={() => resolveLogEntry(entry)}>{entry.resolved_at ? "Opnieuw openen" : "Markeer als opgelost"}</button>}</div>)}</div>}
-      </section>
-
       {canManage && <div className="dashboardGrid">
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
