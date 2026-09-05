@@ -40,7 +40,7 @@ export default function StaffTicketForm({ token }) {
       <p className="eyebrow">MEDEWERKERSLINK</p>
       <h1>Een melding doorgeven</h1>
       <p>Gebruik dit formulier voor alles wat met de zaak te maken heeft: een kapotte lamp, onderhoud, een idee, marketing of een vraag.</p>
-      {state.message && <div className={state.success ? "notice" : "notice"}>{state.message}</div>}
+      {state.message && <div className="notice">{typeof state.message === "string" ? state.message : "Deze medewerkerslink kon niet worden geladen."}</div>}
       {!state.success && <form className="stack" onSubmit={submit}>
         <label>Categorie<select value={form.category} onChange={(event) => update("category", event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label>Prioriteit<select value={form.priority} onChange={(event) => update("priority", event.target.value)}><option value="laag">Laag</option><option value="normaal">Normaal</option><option value="hoog">Hoog</option><option value="urgent">Urgent</option></select></label>
