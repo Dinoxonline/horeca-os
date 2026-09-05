@@ -4108,9 +4108,7 @@ function UsersAdmin({ workspaceId, session }) {
     });
     const result = await response.json();
     if (!response.ok) setAdminError(result.error || "Gebruikers konden niet worden geladen.");
-    else setAdminData(result);
-    const { data: requests } = await supabase.from("staff_access_requests").select("id, email, full_name, status, created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false });
-    setAccessRequests(requests || []);
+    else { setAdminData(result); setAccessRequests(result.accessRequests || []); }
     setLoadingUsers(false);
   }, [session.access_token, workspaceId]);
 
