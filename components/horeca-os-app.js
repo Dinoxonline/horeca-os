@@ -74,6 +74,7 @@ export default function HorecaOsApp() {
   const [workboardOpen, setWorkboardOpen] = useState(pathname.startsWith("/werkbord/"));
   const [data, setData] = useState(emptyData);
   const [pendingStaffRequests, setPendingStaffRequests] = useState(0);
+  const [pendingStaffTickets, setPendingStaffTickets] = useState(0);
   const activeView = routeViews[pathname] || "dashboard";
 
   useEffect(() => { setMobileMenuOpen(false); setWorkboardOpen(pathname.startsWith("/werkbord/")); }, [pathname]);
@@ -344,6 +345,33 @@ export default function HorecaOsApp() {
       supabase.removeChannel(channel);
     };
   }, [isOwner, session?.access_token, workspaceId]);
+  useEffect(() => {
+    if (!workspaceId || !isOwner) {
+      setPendingStaffTickets(0);
+      return undefined;
+    }
+    let active = true;
+    const refreshPendingTickets = async () => {
+      const { count } = await supabase
+        .from("staff_tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .in("status", ["nieuw", "in behandeling", "wacht op informatie"]);
+      if (active) setPendingStaffTickets(count || 0);
+    };
+    refreshPendingTickets();
+    const channel = supabase
+      .channel(`staff-tickets-${workspaceId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_tickets", filter: `workspace_id=eq.${workspaceId}` }, refreshPendingTickets)
+      .subscribe();
+    const fallbackTimer = window.setInterval(refreshPendingTickets, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(fallbackTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [isOwner, workspaceId]);
+
   const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
   const openTasks = [...data.tasks, ...data.processTasks].filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
@@ -457,6 +485,7 @@ export default function HorecaOsApp() {
 
         {message && <div className="notice">{message}</div>}
         {activeView === "dashboard" && pendingStaffRequests > 0 && <div className="notice warning"><strong>{pendingStaffRequests} nieuwe accountaanvraag{pendingStaffRequests === 1 ? "" : "en"}</strong><br />Beoordeel deze bij <Link href="/gebruikers">Gebruikers & rollen</Link>.</div>}
+        {activeView === "dashboard" && pendingStaffTickets > 0 && <div className="notice warning"><strong>{pendingStaffTickets} openstaande medewerkersticket{pendingStaffTickets === 1 ? "" : "s"}</strong><br />Bekijk en wijs deze toe bij <Link href="/werkbord/tickets">Medewerkerstickets</Link>.</div>}
         {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}
 
         {!viewAllowed && <AccessDenied />}
