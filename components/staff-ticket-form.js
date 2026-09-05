@@ -77,11 +77,12 @@ export default function StaffTicketForm({ token }) {
 
   async function submit(event) {
     event.preventDefault(); if (!link) return;
+    const formElement = event.currentTarget;
+    const files = [...(formElement.elements.namedItem("attachments")?.files || []), ...(formElement.elements.namedItem("cameraAttachment")?.files || [])];
     setState({ loading: false, saving: true, message: "", success: false, ticketNumber: "" });
     const { data: created, error } = await supabase.rpc("submit_staff_ticket", { p_token: token, p_category: form.category, p_priority: form.priority, p_title: form.title, p_description: form.description, p_location: form.location });
     if (error) { setState({ loading: false, saving: false, message: error.message?.includes("toegang") ? "Je account is nog niet goedgekeurd voor deze medewerkerslink." : "Melden lukt niet. Probeer het opnieuw.", success: false, ticketNumber: "" }); return; }
     const ticketNumber = created ? String(created) : "";
-    const files = [...(event.currentTarget.elements.namedItem("attachments")?.files || []), ...(event.currentTarget.elements.namedItem("cameraAttachment")?.files || [])];
     let attachmentMessage = "";
     for (const file of files) {
       const uploadData = new FormData();
