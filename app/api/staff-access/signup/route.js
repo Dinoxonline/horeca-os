@@ -57,7 +57,7 @@ export async function POST(request) {
 
 async function sendApprovalEmail({ email, fullName }) {
   const apiKey = process.env.BREVO_API_KEY?.trim();
-  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim() || "info@leclubbbq.nl";
+  const senderEmail = "info@leclubbbq.nl";
   if (!apiKey || !senderEmail) return;
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
