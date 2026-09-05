@@ -1,42 +1,110 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const statusOptions = ["nieuw", "in behandeling", "wacht op informatie", "opgelost", "gesloten"];
 const statusLabels = { nieuw: "Nieuw", "in behandeling": "In behandeling", "wacht op informatie": "Wacht op informatie", opgelost: "Opgelost", gesloten: "Gesloten" };
+const priorityOptions = ["urgent", "hoog", "normaal", "laag"];
+const priorityLabels = { urgent: "Urgent", hoog: "Hoog", normaal: "Normaal", laag: "Laag" };
+const priorityRank = { urgent: 0, hoog: 1, normaal: 2, laag: 3 };
+const categoryOptions = ["Techniek / reparatie", "Onderhoud", "Voorraad", "Marketing", "Personeel", "Idee of vraag", "Overig"];
+const locationOptions = ["Caribbean Corner", "Grand Café Het Plein", "Beide locaties", "Overig"];
+
+function formatDate(value) {
+  return value ? new Date(value).toLocaleString("nl-NL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+}
 
 export default function StaffTickets({ workspaceId, canManage = false }) {
   const [tickets, setTickets] = useState([]);
   const [members, setMembers] = useState([]);
-  const [filter, setFilter] = useState("open");
+  const [statusFilter, setStatusFilter] = useState("open");
+  const [priorityFilter, setPriorityFilter] = useState("alle");
+  const [categoryFilter, setCategoryFilter] = useState("alle");
+  const [locationFilter, setLocationFilter] = useState("alle");
+  const [assigneeFilter, setAssigneeFilter] = useState("alle");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("priority");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function load() {
+    setLoading(true);
+    setMessage("");
     const [{ data, error }, { data: memberRows }] = await Promise.all([
       supabase.from("staff_tickets").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name").order("full_name"),
     ]);
-    if (error) setMessage(error.message); else setTickets(data || []);
+    if (error) setMessage("De tickets konden niet worden geladen. Controleer je verbinding en probeer opnieuw.");
+    else setTickets(data || []);
     setMembers(memberRows || []);
+    setLoading(false);
   }
+
   useEffect(() => { if (workspaceId) load(); }, [workspaceId]);
 
   async function updateTicket(id, patch) {
-    const { error } = await supabase.from("staff_tickets").update({ ...patch, updated_at: new Date().toISOString(), ...(patch.status === "opgelost" ? { resolved_at: new Date().toISOString() } : {}) }).eq("workspace_id", workspaceId).eq("id", id);
-    if (error) setMessage(error.message); else load();
+    setMessage("");
+    const update = { ...patch, updated_at: new Date().toISOString() };
+    if (patch.status === "opgelost" || patch.status === "gesloten") update.resolved_at = new Date().toISOString();
+    if (patch.status && !["opgelost", "gesloten"].includes(patch.status)) update.resolved_at = null;
+    const { error } = await supabase.from("staff_tickets").update(update).eq("workspace_id", workspaceId).eq("id", id);
+    if (error) setMessage("Deze wijziging kon niet worden opgeslagen."); else load();
   }
 
-  const visible = tickets.filter((ticket) => filter === "alle" || (filter === "open" ? !["opgelost", "gesloten"].includes(ticket.status) : ticket.status === filter));
-  return <section className="panel">
-    <div className="panelHead"><div><p className="eyebrow">TICKETS</p><h2>Medewerkersmeldingen</h2><p>Alle meldingen uit de gedeelde medewerkerslink, met opvolging op één plek.</p></div><div className="toolbar"><button className={filter === "open" ? "primary" : "secondary"} onClick={() => setFilter("open")}>Openstaand</button><button className={filter === "alle" ? "primary" : "secondary"} onClick={() => setFilter("alle")}>Alle</button><button className="secondary" onClick={load}>Verversen</button></div></div>
+  const counts = useMemo(() => ({
+    all: tickets.length,
+    new: tickets.filter((ticket) => ticket.status === "nieuw").length,
+    urgent: tickets.filter((ticket) => ticket.priority === "urgent" && !["opgelost", "gesloten"].includes(ticket.status)).length,
+    open: tickets.filter((ticket) => !["opgelost", "gesloten"].includes(ticket.status)).length,
+  }), [tickets]);
+
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return tickets.filter((ticket) => {
+      const matchesStatus = statusFilter === "alle" || (statusFilter === "open" ? !["opgelost", "gesloten"].includes(ticket.status) : ticket.status === statusFilter);
+      const matchesPriority = priorityFilter === "alle" || ticket.priority === priorityFilter;
+      const matchesCategory = categoryFilter === "alle" || ticket.category === categoryFilter;
+      const matchesLocation = locationFilter === "alle" || ticket.location === locationFilter;
+      const matchesAssignee = assigneeFilter === "alle" || (assigneeFilter === "niet toegewezen" ? !ticket.assignee_id : ticket.assignee_id === assigneeFilter);
+      const haystack = `${ticket.ticket_number} ${ticket.title} ${ticket.description} ${ticket.reporter_name} ${ticket.reporter_contact}`.toLowerCase();
+      return matchesStatus && matchesPriority && matchesCategory && matchesLocation && matchesAssignee && (!term || haystack.includes(term));
+    }).sort((a, b) => {
+      if (sort === "oldest") return new Date(a.created_at) - new Date(b.created_at);
+      if (sort === "newest") return new Date(b.created_at) - new Date(a.created_at);
+      return (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9) || new Date(a.created_at) - new Date(b.created_at);
+    });
+  }, [tickets, statusFilter, priorityFilter, categoryFilter, locationFilter, assigneeFilter, search, sort]);
+
+  return <section className="panel ticketBackoffice">
+    <div className="panelHead">
+      <div><p className="eyebrow">TICKETMODULE · BACKOFFICE</p><h2>Medewerkersmeldingen</h2><p>Hier komen alle meldingen uit de gedeelde medewerkerslink binnen. Beoordeel, wijs toe en volg ze op.</p></div>
+      <button className="refresh" onClick={load} disabled={loading}>{loading ? "Laden…" : "Verversen"}</button>
+    </div>
+    <div className="ticketKpis">
+      <button className={statusFilter === "open" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("open")}><span>Openstaand</span><strong>{counts.open}</strong><small>actie nodig</small></button>
+      <button className={statusFilter === "nieuw" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("nieuw")}><span>Nieuw binnen</span><strong>{counts.new}</strong><small>nog niet beoordeeld</small></button>
+      <button className={priorityFilter === "urgent" ? "ticketKpi urgent active" : "ticketKpi urgent"} onClick={() => { setPriorityFilter("urgent"); setStatusFilter("open"); }}><span>Urgent</span><strong>{counts.urgent}</strong><small>hoogste prioriteit</small></button>
+      <button className={statusFilter === "alle" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("alle")}><span>Alle tickets</span><strong>{counts.all}</strong><small>inclusief afgerond</small></button>
+    </div>
+    <div className="ticketViews" aria-label="Ticketweergave">
+      {["open", "nieuw", "in behandeling", "wacht op informatie", "opgelost", "alle"].map((value) => <button key={value} className={statusFilter === value ? "primary" : "secondaryButton"} onClick={() => setStatusFilter(value)}>{value === "open" ? "Openstaand" : value === "alle" ? "Alle" : statusLabels[value]}</button>)}
+    </div>
+    <div className="ticketFilters">
+      <label className="ticketSearch">Zoeken<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ticket, onderwerp, melder…" /></label>
+      <label>Prioriteit<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="alle">Alle prioriteiten</option>{priorityOptions.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label>
+      <label>Categorie<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="alle">Alle categorieën</option>{categoryOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+      <label>Locatie<select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}><option value="alle">Alle locaties</option>{locationOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+      <label>Toegewezen aan<select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}><option value="alle">Iedereen</option><option value="niet toegewezen">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>
+      <label>Sorteren<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="priority">Urgentie eerst</option><option value="oldest">Oudste eerst</option><option value="newest">Nieuwste eerst</option></select></label>
+    </div>
     {message && <div className="notice">{message}</div>}
-    {visible.length === 0 ? <p className="empty">Geen tickets in deze selectie.</p> : <div className="tableLike">{visible.map((ticket) => <article className={`task ${ticket.priority === "urgent" ? "critical" : ticket.priority === "hoog" ? "high" : ""}`} key={ticket.id}>
-      <div style={{ flex: 1 }}><strong>#{ticket.ticket_number} · {ticket.title}</strong><span>{ticket.category} · {ticket.location || "Locatie niet opgegeven"} · {ticket.reporter_name} · {new Date(ticket.created_at).toLocaleString("nl-NL")}</span><p style={{ whiteSpace: "pre-wrap" }}>{ticket.description}</p>{ticket.reporter_contact && <small>Contact: {ticket.reporter_contact}</small>}
-        {canManage && <><label style={{ display: "block", marginTop: 10 }}>Interne notitie<textarea defaultValue={ticket.internal_note || ""} onBlur={(event) => updateTicket(ticket.id, { internal_note: event.target.value.trim() || null })} placeholder="Afspraken, opvolging of oplossing" /></label></>}
-      </div>
-      {canManage && <div className="stack" style={{ minWidth: 190 }}><label>Status<select value={ticket.status} onChange={(event) => updateTicket(ticket.id, { status: event.target.value })}>{statusOptions.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label><label>Toewijzen aan<select value={ticket.assignee_id || ""} onChange={(event) => updateTicket(ticket.id, { assignee_id: event.target.value || null })}><option value="">Nog niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label></div>}
+    <div className="ticketResultMeta"><strong>{visible.length} {visible.length === 1 ? "ticket" : "tickets"}</strong><span>{statusFilter === "open" ? "openstaand" : statusFilter === "alle" ? "alle statussen" : statusLabels[statusFilter]}</span></div>
+    {visible.length === 0 ? <p className="empty">Geen tickets die aan deze selectie voldoen.</p> : <div className="ticketQueue">{visible.map((ticket) => <article className={`ticketCard ${ticket.priority === "urgent" ? "urgent" : ticket.priority === "hoog" ? "high" : ""}`} key={ticket.id}>
+      <div className="ticketCardMain"><div className="ticketCardTop"><span className="ticketNumber">#{ticket.ticket_number}</span><span className={`ticketPriority ${ticket.priority}`}>{priorityLabels[ticket.priority] || ticket.priority}</span><span className={`ticketStatus ${ticket.status.replaceAll(" ", "-")}`}>{statusLabels[ticket.status] || ticket.status}</span><time>{formatDate(ticket.created_at)}</time></div><h3>{ticket.title}</h3><p className="ticketMeta">{ticket.category} · {ticket.location || "Locatie niet opgegeven"} · gemeld door <strong>{ticket.reporter_name}</strong></p><p className="ticketDescription">{ticket.description}</p><p className="ticketContact">Contact: {ticket.reporter_contact || "niet opgegeven"}</p>{canManage && <label className="ticketNote">Interne notitie<textarea defaultValue={ticket.internal_note || ""} onBlur={(event) => updateTicket(ticket.id, { internal_note: event.target.value.trim() || null })} placeholder="Afspraken, opvolging of oplossing" /></label>}</div>
+      {canManage && <div className="ticketActions"><label>Status<select value={ticket.status} onChange={(event) => updateTicket(ticket.id, { status: event.target.value })}>{statusOptions.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label><label>Prioriteit<select value={ticket.priority} onChange={(event) => updateTicket(ticket.id, { priority: event.target.value })}>{priorityOptions.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label><label>Toewijzen aan<select value={ticket.assignee_id || ""} onChange={(event) => updateTicket(ticket.id, { assignee_id: event.target.value || null })}><option value="">Nog niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label></div>}
     </article>)}</div>}
   </section>;
 }
+
 
