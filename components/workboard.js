@@ -69,6 +69,17 @@ const TASK_FIELD_CONFIG = {
   ],
 };
 
+const DEFAULT_TASK_FIELDS = [
+  { key: "uitvoering", label: "Wat moet er gebeuren?", type: "textarea", placeholder: "Beschrijf de werkzaamheden en gewenste aanpak." },
+  { key: "benodigdheden", label: "Benodigde informatie of middelen", type: "textarea", placeholder: "Welke informatie, documenten, mensen of middelen zijn nodig?" },
+  { key: "resultaat", label: "Resultaat", type: "textarea", placeholder: "Wat is het concrete eindresultaat?" },
+  { key: "vervolgstap", label: "Vervolgstap", type: "textarea", placeholder: "Wat gebeurt hierna en wie pakt dat op?" },
+];
+
+function getTaskFields(task) {
+  return TASK_FIELD_CONFIG[typeof task === "string" ? task : task.title] || DEFAULT_TASK_FIELDS;
+}
+
 export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, canMonitor = false, onRefresh }) {
   const [templates, setTemplates] = useState([]);
   const [steps, setSteps] = useState([]);
@@ -258,8 +269,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   function downloadProcessExcel(run) {
     const runTasks = processTasks.filter((task) => task.run_id === run.id);
-    const fieldKeys = [...new Set(runTasks.flatMap((task) => TASK_FIELD_CONFIG[task.title]?.map((field) => field.key) || []))];
-    const fieldLabels = Object.fromEntries(runTasks.flatMap((task) => TASK_FIELD_CONFIG[task.title] || []).map((field) => [field.key, field.label]));
+    const fieldKeys = [...new Set(runTasks.flatMap((task) => getTaskFields(task).map((field) => field.key) || []))];
+    const fieldLabels = Object.fromEntries(runTasks.flatMap((task) => getTaskFields(task)).map((field) => [field.key, field.label]));
     const memberById = new Map(members.map((member) => [member.id, member.full_name || member.id]));
     const headers = ["Taak", "Omschrijving", "Status", "Prioriteit", "Deadline", "Toegewezen aan", "Werknotitie", "Bewijslink", ...fieldKeys.map((key) => fieldLabels[key] || key)];
     const rows = runTasks.map((task) => [
@@ -532,7 +543,7 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
       <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invullen"}</button>
     </div>
     {showDetails && <div className="stack" style={{ marginTop: 8 }}>
-      {TASK_FIELD_CONFIG[task.title]?.length > 0 && <fieldset><legend>Gegevens voor deze taak</legend>{TASK_FIELD_CONFIG[task.title].map((field) => <label key={field.key}>{field.label}{field.type === "textarea" ? <textarea value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} /> : <input type={field.type} value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} />}</label>)}</fieldset>}
+      {getTaskFields(task).length > 0 && <fieldset><legend>Gegevens voor deze taak</legend>{TASK_FIELD_CONFIG[task.title].map((field) => <label key={field.key}>{field.label}{field.type === "textarea" ? <textarea value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} /> : <input type={field.type} value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} />}</label>)}</fieldset>}
       <label>Invoer / uitwerking<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Vul hier de uitwerking, afspraken, keuzes, resultaten of vervolgstappen van deze taak in." disabled={!canAct} /></label>
       <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto, vergunning of document" disabled={!canAct} /></label>
       {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, structured_data: structuredData })}>Invoer opslaan</button>}
