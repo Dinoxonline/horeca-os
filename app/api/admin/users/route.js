@@ -12,7 +12,7 @@ export async function GET(request) {
       return jsonError("Ongeldige werkruimte.", 400);
     }
 
-    const [authResult, membersResult, assignmentsResult, rolesResult, businessesResult, locationsResult, employeesResult] = await Promise.all([
+    const [authResult, membersResult, assignmentsResult, rolesResult, businessesResult, locationsResult, employeesResult, accessRequestsResult] = await Promise.all([
       admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
       admin.from("workspace_members").select("user_id, role, created_at").eq("workspace_id", workspaceId),
       admin.from("user_role_assignments").select("id, user_id, role_id, business_id, location_id, assignment_permissions(permission), role:roles!inner(role_key, name)").eq("workspace_id", workspaceId),
@@ -20,9 +20,10 @@ export async function GET(request) {
       admin.from("businesses").select("id, name").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       admin.from("business_locations").select("id, business_id, name").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       admin.from("employee_profiles").select("*").eq("workspace_id", workspaceId).order("ranking").order("last_name"),
+      admin.from("staff_access_requests").select("id, email, full_name, status, created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
     ]);
 
-    const firstError = authResult.error || membersResult.error || assignmentsResult.error || rolesResult.error || businessesResult.error || locationsResult.error || employeesResult.error;
+    const firstError = authResult.error || membersResult.error || assignmentsResult.error || rolesResult.error || businessesResult.error || locationsResult.error || employeesResult.error || accessRequestsResult.error;
     if (firstError) throw firstError;
 
     const memberMap = new Map((membersResult.data || []).map((item) => [item.user_id, item]));
@@ -68,6 +69,7 @@ export async function GET(request) {
       businesses: businessesResult.data || [],
       locations: locationsResult.data || [],
       currentUserId: context.user.id,
+      accessRequests: accessRequestsResult.data || [],
     });
   } catch (error) {
     console.error("User management read failed", { error: error.message });
