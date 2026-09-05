@@ -43,9 +43,35 @@ export async function POST(request) {
     });
     if (requestError) return NextResponse.json({ error: "Account aangemaakt, maar je toegangsaanvraag kon niet worden opgeslagen." }, { status: 500 });
 
+    await sendApprovalEmail({ email, fullName }).catch((error) => {
+      console.error("Staff approval email failed", { error: error.message });
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Staff signup failed", { error: error.message });
     return NextResponse.json({ error: "Account aanmaken lukt momenteel niet. Probeer het opnieuw." }, { status: 500 });
   }
+}
+
+
+async function sendApprovalEmail({ email, fullName }) {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
+  if (!apiKey || !senderEmail) return;
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sender: { name: "Horeca OS", email: senderEmail },
+      to: [{ email: "dino@leclubbbq.nl", name: "Dino" }],
+      subject: "Nieuwe accountaanvraag voor Horeca OS",
+      htmlContent: `<p>Er is een nieuwe accountaanvraag voor Horeca OS.</p><p><strong>Naam:</strong> ${escapeHtml(fullName)}<br /><strong>E-mail:</strong> ${escapeHtml(email)}</p><p>Open Horeca OS → Gebruikers & rollen om de aanvraag goed te keuren of af te wijzen.</p>`,
+    }),
+  });
+  if (!response.ok) throw new Error(`Brevo returned ${response.status}`);
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
 }
