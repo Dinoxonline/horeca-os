@@ -48,7 +48,7 @@ export default function StaffTicketForm({ token }) {
         <label>Wat is er aan de hand?*<textarea required minLength={5} maxLength={5000} value={form.description} onChange={(event) => update("description", event.target.value)} placeholder="Beschrijf de melding zo duidelijk mogelijk." /></label>
         <label>Locatie<select value={form.location} onChange={(event) => update("location", event.target.value)}><option value="">Kies een locatie</option><option>Caribbean Corner</option><option>Grand Café Het Plein</option><option>Beide locaties</option><option>Overig</option></select></label>
         <label>Jouw naam*<input required minLength={2} maxLength={120} value={form.reporter_name} onChange={(event) => update("reporter_name", event.target.value)} placeholder="Voor- en achternaam" /></label>
-        <label>Hoe kunnen we je bereiken?<input maxLength={160} value={form.reporter_contact} onChange={(event) => update("reporter_contact", event.target.value)} placeholder="Optioneel: WhatsApp of e-mail" /></label>
+        <label>WhatsApp-nummer of e-mailadres*<input required minLength={3} maxLength={160} value={form.reporter_contact} onChange={(event) => update("reporter_contact", event.target.value)} placeholder="Bijvoorbeeld 06-12345678 of naam@bedrijf.nl" /></label>
         <button className="primary" disabled={state.saving}>{state.saving ? "Melding versturen…" : "Melding versturen"}</button>
       </form>}
       {state.success && <button className="primary" onClick={() => setState((current) => ({ ...current, success: false, message: "" }))}>Nog een melding doen</button>}
