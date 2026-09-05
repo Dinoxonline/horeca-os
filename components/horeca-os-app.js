@@ -1799,10 +1799,6 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   return <>
     <section className="pageIntro"><p className="eyebrow">Commerciële groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vóór verzending.</p></section>
     <CampaignDistributor workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />
-    <section className="panel" style={{ marginBottom: 18 }}>
-      <div className="panelHead"><div><p className="eyebrow">ACCOUNT AANVRAGEN</p><h2>Nieuwe medewerkers goedkeuren</h2><p>Hier komen aanvragen binnen vanaf de medewerkerslink.</p></div><button type="button" className="secondary" onClick={loadUsers}>Verversen</button></div>
-      {accessRequests.filter((request) => request.status === "pending").length === 0 ? <p className="empty">Geen openstaande accountaanvragen.</p> : <div className="tableLike">{accessRequests.filter((request) => request.status === "pending").map((request) => <article className="task" key={request.id}><div><strong>{request.full_name}</strong><span>{request.email} · aangevraagd op {new Date(request.created_at).toLocaleString("nl-NL")}</span></div><div className="toolbar"><button type="button" className="primary" onClick={() => reviewAccessRequest(request.id, "approved")}>Goedkeuren</button><button type="button" className="secondary" onClick={() => reviewAccessRequest(request.id, "rejected")}>Afwijzen</button></div></article>)}</div>}
-    </section>
     <section className="userAdminGrid">
       <article className="panel creationPanel">
         <div className="panelHead"><div><h2>{selectedDraftId ? "Campagneconcept bewerken" : "Nieuwe Brevo-campagne"}</h2><p>Concepten worden in Horeca OS opgeslagen. Er wordt niets verzonden of in Brevo gewijzigd.</p></div>{selectedDraftId && <button type="button" onClick={startNewDraft}>Nieuw concept</button>}</div>
@@ -4193,6 +4189,10 @@ function UsersAdmin({ workspaceId, session }) {
     <section className="pageIntro"><p className="eyebrow">Toegangs- en personeelsbeheer</p><h2>Gebruikers & rollen</h2><p>Beheer Horeca OS-toegang en het Robuust-personeelsdossier afzonderlijk en veilig.</p></section>
     {adminMessage && <div className="notice successNotice">{adminMessage}</div>}
     {adminError && <div className="notice">{adminError}</div>}
+    <section className="panel" style={{ marginBottom: 18 }}>
+      <div className="panelHead"><div><p className="eyebrow">ACCOUNT AANVRAGEN</p><h2>Nieuwe medewerkers goedkeuren</h2><p>Hier komen aanvragen binnen vanaf de medewerkerslink.</p></div><button type="button" className="secondary" onClick={loadUsers}>Verversen</button></div>
+      {accessRequests.filter((request) => request.status === "pending").length === 0 ? <p className="empty">Geen openstaande accountaanvragen.</p> : <div className="tableLike">{accessRequests.filter((request) => request.status === "pending").map((request) => <article className="task" key={request.id}><div><strong>{request.full_name}</strong><span>{request.email} · aangevraagd op {new Date(request.created_at).toLocaleString("nl-NL")}</span></div><div className="toolbar"><button type="button" className="primary" onClick={() => reviewAccessRequest(request.id, "approved")}>Goedkeuren</button><button type="button" className="secondary" onClick={() => reviewAccessRequest(request.id, "rejected")}>Afwijzen</button></div></article>)}</div>}
+    </section>
     <section className="userAdminGrid">
       <article className="panel invitePanel creationPanel">
         <div className="panelHead"><div><h2>Nieuwe medewerker</h2><p>Volledig personeelsformulier, voorbereid op de toekomstige Robuust-koppeling.</p></div></div>
