@@ -29,12 +29,21 @@ export default function StaffTicketForm({ token }) {
     event.preventDefault();
     if (!link) return;
     setState({ loading: false, saving: true, message: "", success: false, ticketNumber: "" });
-    const { data: created, error } = await supabase.from("staff_tickets").insert({ ...form, workspace_id: link.workspace_id, link_id: link.id }).select("ticket_number").single();
+    const { data: created, error } = await supabase.rpc("submit_staff_ticket", {
+      p_token: token,
+      p_category: form.category,
+      p_priority: form.priority,
+      p_title: form.title,
+      p_description: form.description,
+      p_location: form.location,
+      p_reporter_name: form.reporter_name,
+      p_reporter_contact: form.reporter_contact,
+    });
     if (error) {
       setState({ loading: false, saving: false, message: "Melden lukt niet. Controleer de velden en probeer het opnieuw.", success: false, ticketNumber: "" });
       return;
     }
-    const ticketNumber = created?.ticket_number ? String(created.ticket_number) : "";
+    const ticketNumber = created ? String(created) : "";
     setTracking({ ticketNumber, contact: form.reporter_contact });
     setForm(emptyForm);
     setState({ loading: false, saving: false, message: "Je melding is ontvangen. Bewaar je ticketnummer om de status later te bekijken.", success: true, ticketNumber });
