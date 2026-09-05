@@ -28,6 +28,9 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [assignmentEmailState, setAssignmentEmailState] = useState({});
+  const [messagesByTicket, setMessagesByTicket] = useState({});
+  const [replyDrafts, setReplyDrafts] = useState({});
+  const [replyState, setReplyState] = useState({});
 
   async function load() {
     setLoading(true);
@@ -39,7 +42,14 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       }),
     ]);
     if (error) setMessage("De tickets konden niet worden geladen. Controleer je verbinding en probeer opnieuw.");
-    else setTickets(data || []);
+    else {
+      const nextTickets = data || [];
+      setTickets(nextTickets);
+      if (nextTickets.length) {
+        const { data: rows } = await supabase.from("staff_ticket_messages").select("*").eq("workspace_id", workspaceId).in("ticket_id", nextTickets.map((ticket) => ticket.id)).order("created_at", { ascending: true });
+        setMessagesByTicket((rows || []).reduce((result, item) => ({ ...result, [item.ticket_id]: [...(result[item.ticket_id] || []), item] }), {}));
+      }
+    }
     const membersResult = await membersResponse.json().catch(() => ({}));
     setMembers((membersResult.users || []).map((member) => ({ id: member.id, full_name: member.fullName || member.email })));
     setLoading(false);
@@ -51,6 +61,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     const channel = supabase
       .channel(`staff-tickets-backoffice-${workspaceId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "staff_tickets", filter: `workspace_id=eq.${workspaceId}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_ticket_messages", filter: `workspace_id=eq.${workspaceId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [workspaceId]);
@@ -66,6 +77,17 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     } else {
       load();
     }
+  }
+
+  async function sendReply(ticket) {
+    const body = String(replyDrafts[ticket.id] || "").trim();
+    if (!body || !session?.user?.id) return;
+    setReplyState((current) => ({ ...current, [ticket.id]: "sending" }));
+    const { error } = await supabase.from("staff_ticket_messages").insert({ workspace_id: workspaceId, ticket_id: ticket.id, author_user_id: session.user.id, author_name: session.user.user_metadata?.full_name || session.user.email || "Beheerder", author_role: "manager", body });
+    if (error) { setReplyState((current) => ({ ...current, [ticket.id]: "error" })); setMessage("De reactie kon niet worden geplaatst."); return; }
+    setReplyDrafts((current) => ({ ...current, [ticket.id]: "" }));
+    setReplyState((current) => ({ ...current, [ticket.id]: "sent" }));
+    load();
   }
 
   async function sendAssignmentEmail(ticket) {
@@ -137,7 +159,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     {message && <div className="notice">{message}</div>}
     <div className="ticketResultMeta"><strong>{visible.length} {visible.length === 1 ? "ticket" : "tickets"}</strong><span>{statusFilter === "open" ? "openstaand" : statusFilter === "alle" ? "alle statussen" : statusLabels[statusFilter]}</span></div>
     {visible.length === 0 ? <p className="empty">Geen tickets die aan deze selectie voldoen.</p> : <div className="ticketQueue">{visible.map((ticket) => <article className={`ticketCard ${ticket.priority === "urgent" ? "urgent" : ticket.priority === "hoog" ? "high" : ""}`} key={ticket.id}>
-      <div className="ticketCardMain"><div className="ticketCardTop"><span className="ticketNumber">#{ticket.ticket_number}</span><span className={`ticketPriority ${ticket.priority}`}>{priorityLabels[ticket.priority] || ticket.priority}</span><span className={`ticketStatus ${ticket.status.replaceAll(" ", "-")}`}>{statusLabels[ticket.status] || ticket.status}</span><time>{formatDate(ticket.created_at)}</time></div><h3>{ticket.title}</h3><p className="ticketMeta">{ticket.category} · {ticket.location || "Locatie niet opgegeven"} · gemeld door <strong>{ticket.reporter_name}</strong></p><p className="ticketDescription">{ticket.description}</p>{ticket.attachments?.length > 0 && <p className="ticketAttachments"><strong>Bijlagen:</strong> {ticket.attachments.map((attachment) => attachment.name).join(", ")}</p>}<p className="ticketContact">Contact: {ticket.reporter_contact || "niet opgegeven"}</p>{canManage && <label className="ticketNote">Interne notitie<textarea defaultValue={ticket.internal_note || ""} onBlur={(event) => updateTicket(ticket.id, { internal_note: event.target.value.trim() || null })} placeholder="Afspraken, opvolging of oplossing" /></label>}</div>
+      <div className="ticketCardMain"><div className="ticketCardTop"><span className="ticketNumber">#{ticket.ticket_number}</span><span className={`ticketPriority ${ticket.priority}`}>{priorityLabels[ticket.priority] || ticket.priority}</span><span className={`ticketStatus ${ticket.status.replaceAll(" ", "-")}`}>{statusLabels[ticket.status] || ticket.status}</span><time>{formatDate(ticket.created_at)}</time></div><h3>{ticket.title}</h3><p className="ticketMeta">{ticket.category} · {ticket.location || "Locatie niet opgegeven"} · gemeld door <strong>{ticket.reporter_name}</strong></p><p className="ticketDescription">{ticket.description}</p>{ticket.attachments?.length > 0 && <p className="ticketAttachments"><strong>Bijlagen:</strong> {ticket.attachments.map((attachment) => attachment.name).join(", ")}</p>}<p className="ticketContact">Contact: {ticket.reporter_contact || "niet opgegeven"}</p><details className="ticketConversation"><summary>Gesprek ({(messagesByTicket[ticket.id] || []).length})</summary>{(messagesByTicket[ticket.id] || []).map((item) => <div className={`ticketMessage ${item.author_role === "manager" ? "fromManager" : ""}`} key={item.id}><strong>{item.author_name}</strong><time>{formatDate(item.created_at)}</time><p>{item.body}</p></div>)}{(messagesByTicket[ticket.id] || []).length === 0 && <p className="muted">Nog geen reacties.</p>}<textarea value={replyDrafts[ticket.id] || ""} onChange={(event) => setReplyDrafts((current) => ({ ...current, [ticket.id]: event.target.value }))} placeholder="Schrijf een reactie voor de medewerker…" maxLength={5000} /><button type="button" className="secondaryButton" disabled={replyState[ticket.id] === "sending" || !String(replyDrafts[ticket.id] || "").trim()} onClick={() => sendReply(ticket)}>{replyState[ticket.id] === "sending" ? "Reactie plaatsen…" : replyState[ticket.id] === "sent" ? "Reactie geplaatst" : "Reactie versturen"}</button></details>{canManage && <label className="ticketNote">Interne notitie<textarea defaultValue={ticket.internal_note || ""} onBlur={(event) => updateTicket(ticket.id, { internal_note: event.target.value.trim() || null })} placeholder="Afspraken, opvolging of oplossing" /></label>}</div>
       {canManage && <div className="ticketActions"><label>Status<select value={ticket.status} onChange={(event) => updateTicket(ticket.id, { status: event.target.value })}>{statusOptions.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label><label>Prioriteit<select value={ticket.priority} onChange={(event) => updateTicket(ticket.id, { priority: event.target.value })}>{priorityOptions.map((value) => <option key={value} value={value}>{priorityLabels[value]}</option>)}</select></label><label>Toewijzen aan<select value={ticket.assignee_id || ""} onChange={(event) => updateTicket(ticket.id, { assignee_id: event.target.value || null })}><option value="">Nog niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select></label>{ticket.assignee_id && <><button type="button" className="secondaryButton" disabled={assignmentEmailState[ticket.id] === "sending"} onClick={() => sendAssignmentEmail(ticket)}>{assignmentEmailState[ticket.id] === "sending" ? "Bezig met versturen…" : assignmentEmailState[ticket.id] === "sent" ? "E-mail verstuurd" : "Toewijzingsmail versturen"}</button>{assignmentEmailState[ticket.id] === "sent" && <small className="muted">Bevestiging verzonden.</small>}{assignmentEmailState[ticket.id] === "error" && <small className="muted">Versturen mislukt.</small>}</>}</div>}
     </article>)}</div>}
   </section>;
