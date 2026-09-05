@@ -4131,8 +4131,24 @@ function UsersAdmin({ workspaceId, session }) {
   async function reviewAccessRequest(id, status) {
     setAdminMessage(""); setAdminError("");
     const { error } = await supabase.rpc("review_staff_access_request", { p_request_id: id, p_status: status });
-    if (error) setAdminError("De aanvraag kon niet worden bijgewerkt.");
-    else { setAdminMessage(status === "approved" ? "Medewerker goedgekeurd." : "Aanvraag afgewezen."); await loadUsers(); }
+    if (error) {
+      setAdminError("De aanvraag kon niet worden bijgewerkt.");
+    } else {
+      if (status === "approved") {
+        const emailResponse = await fetch("/api/staff-access/approval-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ requestId: id }),
+        });
+        const emailResult = await emailResponse.json().catch(() => ({}));
+        setAdminMessage(emailResult.emailSent === false
+          ? "Medewerker goedgekeurd. De e-mailkoppeling is nog niet ingesteld."
+          : emailResponse.ok ? "Medewerker goedgekeurd en bevestigingsmail verstuurd." : "Medewerker goedgekeurd, maar de bevestigingsmail kon niet worden verstuurd.");
+      } else {
+        setAdminMessage("Aanvraag afgewezen.");
+      }
+      await loadUsers();
+    }
   }
 
   async function submitAdminAction(payload) {
