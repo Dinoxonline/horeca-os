@@ -15,7 +15,7 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleString("nl-NL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 }
 
-export default function StaffTickets({ workspaceId, canManage = false }) {
+export default function StaffTickets({ workspaceId, canManage = false, session }) {
   const [tickets, setTickets] = useState([]);
   const [members, setMembers] = useState([]);
   const [statusFilter, setStatusFilter] = useState("open");
@@ -31,13 +31,16 @@ export default function StaffTickets({ workspaceId, canManage = false }) {
   async function load() {
     setLoading(true);
     setMessage("");
-    const [{ data, error }, { data: memberRows }] = await Promise.all([
+    const [{ data, error }, membersResponse] = await Promise.all([
       supabase.from("staff_tickets").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
-      supabase.from("profiles").select("id, full_name").order("full_name"),
+      fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        headers: { Authorization: `Bearer ${session?.access_token || ""}` },
+      }),
     ]);
     if (error) setMessage("De tickets konden niet worden geladen. Controleer je verbinding en probeer opnieuw.");
     else setTickets(data || []);
-    setMembers(memberRows || []);
+    const membersResult = await membersResponse.json().catch(() => ({}));
+    setMembers((membersResult.users || []).map((member) => ({ id: member.id, full_name: member.fullName || member.email })));
     setLoading(false);
   }
 
