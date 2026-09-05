@@ -73,6 +73,7 @@ export default function HorecaOsApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [workboardOpen, setWorkboardOpen] = useState(pathname.startsWith("/werkbord/"));
   const [data, setData] = useState(emptyData);
+  const [pendingStaffRequests, setPendingStaffRequests] = useState(0);
   const activeView = routeViews[pathname] || "dashboard";
 
   useEffect(() => { setMobileMenuOpen(false); setWorkboardOpen(pathname.startsWith("/werkbord/")); }, [pathname]);
@@ -414,6 +415,7 @@ export default function HorecaOsApp() {
         </header>
 
         {message && <div className="notice">{message}</div>}
+        {activeView === "dashboard" && pendingStaffRequests > 0 && <div className="notice warning"><strong>{pendingStaffRequests} nieuwe accountaanvraag{pendingStaffRequests === 1 ? "" : "en"}</strong><br />Beoordeel deze bij <Link href="/gebruikers">Gebruikers & rollen</Link>.</div>}
         {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}
 
         {!viewAllowed && <AccessDenied />}
