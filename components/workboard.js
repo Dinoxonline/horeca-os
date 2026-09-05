@@ -16,6 +16,27 @@ const TEMPLATE_HINTS = {
   grill_your_own: "Nieuw concept",
 };
 
+const TASK_FIELD_CONFIG = {
+  "Verhuuraanbod per locatie bepalen": [
+    { key: "caribbean_corner_aanbod", label: "Aanbod Caribbean Corner", type: "textarea", placeholder: "Bijvoorbeeld: verjaardagen, borrels, private dining…" },
+    { key: "grand_cafe_het_plein_aanbod", label: "Aanbod Grand Café Het Plein", type: "textarea", placeholder: "Bijvoorbeeld: bruiloften, bedrijfsfeesten, recepties…" },
+  ],
+  "Capaciteit en indeling per locatie vastleggen": [
+    { key: "caribbean_corner_maximale_bezetting", label: "Caribbean Corner – maximale bezetting", type: "number", placeholder: "Aantal personen" },
+    { key: "caribbean_corner_zitcapaciteit", label: "Caribbean Corner – zitcapaciteit", type: "number", placeholder: "Aantal zitplaatsen" },
+    { key: "caribbean_corner_sta_capaciteit", label: "Caribbean Corner – sta-capaciteit", type: "number", placeholder: "Aantal staande gasten" },
+    { key: "caribbean_corner_zaalindeling", label: "Caribbean Corner – zaalindeling", type: "textarea", placeholder: "Opstellingen, tafels, bar, dansvloer…" },
+    { key: "caribbean_corner_buitenruimte", label: "Caribbean Corner – buitenruimte", type: "textarea", placeholder: "Terras, tuin, capaciteit en gebruik…" },
+    { key: "caribbean_corner_geluid", label: "Caribbean Corner – geluidsmogelijkheden", type: "textarea", placeholder: "Muziek, DJ, eindtijden, geluidsbeperkingen…" },
+    { key: "grand_cafe_het_plein_maximale_bezetting", label: "Grand Café Het Plein – maximale bezetting", type: "number", placeholder: "Aantal personen" },
+    { key: "grand_cafe_het_plein_zitcapaciteit", label: "Grand Café Het Plein – zitcapaciteit", type: "number", placeholder: "Aantal zitplaatsen" },
+    { key: "grand_cafe_het_plein_sta_capaciteit", label: "Grand Café Het Plein – sta-capaciteit", type: "number", placeholder: "Aantal staande gasten" },
+    { key: "grand_cafe_het_plein_zaalindeling", label: "Grand Café Het Plein – zaalindeling", type: "textarea", placeholder: "Opstellingen, tafels, bar, dansvloer…" },
+    { key: "grand_cafe_het_plein_buitenruimte", label: "Grand Café Het Plein – buitenruimte", type: "textarea", placeholder: "Terras, tuin, capaciteit en gebruik…" },
+    { key: "grand_cafe_het_plein_geluid", label: "Grand Café Het Plein – geluidsmogelijkheden", type: "textarea", placeholder: "Muziek, DJ, eindtijden, geluidsbeperkingen…" },
+  ],
+};
+
 export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, canMonitor = false, onRefresh }) {
   const [templates, setTemplates] = useState([]);
   const [steps, setSteps] = useState([]);
@@ -202,6 +223,29 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const todayTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date?.slice(0, 10) === today);
   const overdueTasks = [...openTasks, ...openProcessTasks].filter((task) => task.due_date && task.due_date.slice(0, 10) < today);
   const blockedTasks = openProcessTasks.filter((task) => task.status === "blocked");
+
+  function downloadProcessExcel(run) {
+    const runTasks = processTasks.filter((task) => task.run_id === run.id);
+    const fieldKeys = [...new Set(runTasks.flatMap((task) => TASK_FIELD_CONFIG[task.title]?.map((field) => field.key) || []))];
+    const fieldLabels = Object.fromEntries(runTasks.flatMap((task) => TASK_FIELD_CONFIG[task.title] || []).map((field) => [field.key, field.label]));
+    const memberById = new Map(members.map((member) => [member.id, member.full_name || member.id]));
+    const headers = ["Taak", "Omschrijving", "Status", "Prioriteit", "Deadline", "Toegewezen aan", "Werknotitie", "Bewijslink", ...fieldKeys.map((key) => fieldLabels[key] || key)];
+    const rows = runTasks.map((task) => [
+      task.title, task.description || "", task.status, task.priority || "", task.due_date || "",
+      task.assigned_to ? memberById.get(task.assigned_to) || "" : "", task.completion_note || "", task.evidence_url || "",
+      ...fieldKeys.map((key) => task.structured_data?.[key] || ""),
+    ]);
+    const sheet = (sheetName, values) => `<Worksheet ss:Name="${xmlEscape(sheetName)}"><Table>${values.map((row) => `<Row>${row.map((value) => `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`).join("")}</Row>`).join("")}</Table></Worksheet>`;
+    const xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Proces"><Table><Row><Cell><Data ss:Type="String">Proces</Data></Cell><Cell><Data ss:Type="String">${xmlEscape(run.name)}</Data></Cell></Row><Row><Cell><Data ss:Type="String">Sjabloon</Data></Cell><Cell><Data ss:Type="String">${xmlEscape(run.process_templates?.name || "")}</Data></Cell></Row><Row><Cell><Data ss:Type="String">Vestiging</Data></Cell><Cell><Data ss:Type="String">${xmlEscape(run.businesses?.name || "Alle vestigingen")}</Data></Cell></Row><Row><Cell><Data ss:Type="String">Startdatum</Data></Cell><Cell><Data ss:Type="String">${xmlEscape(run.anchor_date || "")}</Data></Cell></Row></Table></Worksheet>${sheet("Taken", [headers, ...rows])}</Workbook>`;
+    const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = (run.name || "proces").replace(/[\\/:*?"<>|]+/g, "-") + ".xls";
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage("Excel-export gemaakt voor " + run.name + ".");
+  }
 
   async function createProcess(event) {
     event.preventDefault();
@@ -400,7 +444,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
       <section className="panel">
         <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
-        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className={"task " + (expandedRunId === run.id ? "selected" : "")} key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date} · {run.status === "completed" ? "Afgerond" : "Actief"} · {runAssignmentLabel(run.id)}</span><progress style={{ accentColor: run.status === "completed" ? "#16a34a" : processTasks.some((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today) ? "#dc2626" : "#f59e0b" }} value={processProgress[run.id]?.done || 0} max={processProgress[run.id]?.total || 1} /><button type="button" className="secondary" onClick={() => setExpandedRunId((current) => current === run.id ? null : run.id)}>{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done").length} openstaand · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today).length} te laat · {expandedRunId === run.id ? "Verberg taken" : "Bekijk taken"}</button></div><div className="toolbar"><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{runAssignees[run.id]?.mixed && <option value="__mixed__" disabled>Meerdere medewerkers</option>}{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select>{canManage && <button type="button" className="secondary" onClick={() => moveProcessToTrash(run)} title="Naar prullenbak">🗑️</button>}</div></div>)}</div>}
+        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className={"task " + (expandedRunId === run.id ? "selected" : "")} key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date} · {run.status === "completed" ? "Afgerond" : "Actief"} · {runAssignmentLabel(run.id)}</span><progress style={{ accentColor: run.status === "completed" ? "#16a34a" : processTasks.some((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today) ? "#dc2626" : "#f59e0b" }} value={processProgress[run.id]?.done || 0} max={processProgress[run.id]?.total || 1} /><button type="button" className="secondary" onClick={() => setExpandedRunId((current) => current === run.id ? null : run.id)}>{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done").length} openstaand · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today).length} te laat · {expandedRunId === run.id ? "Verberg taken" : "Bekijk taken"}</button></div><div className="toolbar"><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{runAssignees[run.id]?.mixed && <option value="__mixed__" disabled>Meerdere medewerkers</option>}{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select>{canManage && <><button type="button" className="secondary" onClick={() => downloadProcessExcel(run)}>Excel exporteren</button><button type="button" className="secondary" onClick={() => moveProcessToTrash(run)} title="Naar prullenbak">🗑️</button></>}</div></div>)}</div>}
       </section>
 
       <section className="panel">
@@ -434,6 +478,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCreateSubtask, onUpdate }) {
   const [completionNote, setCompletionNote] = useState(task.completion_note || "");
   const [evidenceUrl, setEvidenceUrl] = useState(task.evidence_url || "");
+  const [structuredData, setStructuredData] = useState(task.structured_data || {});
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
@@ -455,9 +500,10 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
       <button type="button" className="secondary" onClick={() => setShowDetails((value) => !value)}>{showDetails ? "Invoer verbergen" : "Invoer openen"}</button>
     </div>
     {showDetails && <div className="stack" style={{ marginTop: 8 }}>
+      {TASK_FIELD_CONFIG[task.title]?.length > 0 && <fieldset><legend>Gegevens voor deze taak</legend>{TASK_FIELD_CONFIG[task.title].map((field) => <label key={field.key}>{field.label}{field.type === "textarea" ? <textarea value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} /> : <input type={field.type} value={structuredData[field.key] || ""} onChange={(event) => setStructuredData((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} disabled={!canAct} />}</label>)}</fieldset>}
       <label>Werknotitie<textarea value={completionNote} onChange={(event) => setCompletionNote(event.target.value)} placeholder="Wat moet er gebeuren, wat heb je besloten of wat is de uitkomst?" disabled={!canAct} /></label>
       <label>Bewijslink<input value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="Optioneel: link naar foto, vergunning of document" disabled={!canAct} /></label>
-      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null })}>Notitie opslaan</button>}
+      {canAct && <button type="button" className="primary" onClick={() => onUpdate({ completion_note: completionNote.trim() || null, evidence_url: evidenceUrl.trim() || null, structured_data: structuredData })}>Gegevens en notitie opslaan</button>}
     </div>}
     <div className="statusBar" aria-label="Voortgang taak">
       {statuses.map((status, index) => {
@@ -471,6 +517,10 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
     {showSubtaskForm && canManage && <form className="toolbar" onSubmit={(event) => { event.preventDefault(); onCreateSubtask(task, subtaskTitle); setSubtaskTitle(""); setShowSubtaskForm(false); }}><input required value={subtaskTitle} onChange={(event) => setSubtaskTitle(event.target.value)} placeholder="Naam van de kleine stap" /><button type="submit" className="primary">Toevoegen</button></form>}
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
+}
+
+function xmlEscape(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 function filterAuditEntries(entries) {
