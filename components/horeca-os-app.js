@@ -486,7 +486,7 @@ export default function HorecaOsApp() {
         {message && <div className="notice">{message}</div>}
         {activeView === "dashboard" && pendingStaffRequests > 0 && <div className="notice warning"><strong>{pendingStaffRequests} nieuwe accountaanvraag{pendingStaffRequests === 1 ? "" : "en"}</strong><br />Beoordeel deze bij <Link href="/gebruikers">Gebruikers & rollen</Link>.</div>}
         {activeView === "dashboard" && pendingStaffTickets > 0 && <div className="notice warning"><strong>{pendingStaffTickets} openstaande medewerkersticket{pendingStaffTickets === 1 ? "" : "s"}</strong><br />Bekijk en wijs deze toe bij <Link href="/werkbord/tickets">Medewerkerstickets</Link>.</div>}
-        {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}
+        {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} session={session} canManage={isOwner || canUseFeature("processes:manage")} />}
 
         {!viewAllowed && <AccessDenied />}
 
