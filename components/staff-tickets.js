@@ -83,7 +83,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     const body = String(replyDrafts[ticket.id] || "").trim();
     if (!body || !session?.user?.id) return;
     setReplyState((current) => ({ ...current, [ticket.id]: "sending" }));
-    const { error } = await supabase.from("staff_ticket_messages").insert({ workspace_id: workspaceId, ticket_id: ticket.id, author_user_id: session.user.id, author_name: session.user.user_metadata?.full_name || session.user.email || "Beheerder", author_role: "manager", body });
+    const { error } = await supabase.from("staff_ticket_messages").insert({ workspace_id: workspaceId, ticket_id: ticket.id, author_user_id: session.user.id, author_name: session.user.user_metadata?.full_name || session.user.email || (canManage ? "Beheerder" : "Medewerker"), author_role: canManage ? "manager" : "employee", body });
     if (error) { setReplyState((current) => ({ ...current, [ticket.id]: "error" })); setMessage("De reactie kon niet worden geplaatst."); return; }
     setReplyDrafts((current) => ({ ...current, [ticket.id]: "" }));
     setReplyState((current) => ({ ...current, [ticket.id]: "sent" }));
