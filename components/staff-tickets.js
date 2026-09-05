@@ -60,7 +60,19 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
     if (patch.status === "opgelost" || patch.status === "gesloten") update.resolved_at = new Date().toISOString();
     if (patch.status && !["opgelost", "gesloten"].includes(patch.status)) update.resolved_at = null;
     const { error } = await supabase.from("staff_tickets").update(update).eq("workspace_id", workspaceId).eq("id", id);
-    if (error) setMessage("Deze wijziging kon niet worden opgeslagen."); else load();
+    if (error) {
+      setMessage("Deze wijziging kon niet worden opgeslagen.");
+    } else {
+      if (Object.prototype.hasOwnProperty.call(patch, "assignee_id") && patch.assignee_id) {
+        const emailResponse = await fetch("/api/staff-tickets/assignment-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+          body: JSON.stringify({ workspaceId, ticketId: id, assigneeId: patch.assignee_id }),
+        });
+        if (!emailResponse.ok) setMessage("Ticket toegewezen, maar de e-mail kon niet worden verstuurd.");
+      }
+      load();
+    }
   }
 
   const counts = useMemo(() => ({
