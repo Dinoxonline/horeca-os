@@ -35,7 +35,7 @@ export async function POST(request) {
         sender: { name: "Horeca OS", email: "info@leclubbbq.nl" },
         to: [{ email: accessRequest.email, name: accessRequest.full_name }],
         subject: "Je Horeca OS-account is goedgekeurd",
-        htmlContent: `<p>Hallo ${escapeHtml(accessRequest.full_name)},</p><p>Je account voor Horeca OS is goedgekeurd. Je kunt nu inloggen via de medewerkerslink.</p><p>Gebruik je e-mailadres en je gekozen wachtwoord.</p>`,
+        htmlContent: `<p>Hallo ${escapeHtml(accessRequest.full_name)},</p><p>Je account voor Horeca OS is goedgekeurd. Je kunt nu direct inloggen.</p><p><a href="https://horeca-os-le-club.vercel.app/medewerkers/cc-plein-medewerkers">Open Horeca OS en log in</a></p><p>Gebruik je e-mailadres en je gekozen wachtwoord.</p>`,
       }),
     });
     if (!response.ok) throw new Error(`Brevo returned ${response.status}`);
