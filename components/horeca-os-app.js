@@ -8,6 +8,7 @@ import CentralEventCreator from "./central-event-creator";
 import Workboard from "./workboard";
 import ProcessTrash from "./process-trash";
 import ProcessAudit from "./process-audit";
+import ManagerLogbook from "./manager-logbook";
 import Documents from "./documents";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -25,6 +26,7 @@ const routeViews = {
   "/werkbord": "workboard",
   "/werkbord/prullenbak": "processTrash",
   "/werkbord/logboek": "processAudit",
+  "/werkbord/manager-logboek": "managerLogbook",
   "/documenten": "documents",
   "/foodcost": "foodcost",
   "/producten": "products",
@@ -374,7 +376,7 @@ export default function HorecaOsApp() {
         </div>
         <nav id="main-navigation" className={mobileMenuOpen ? "open" : ""}>
           {featureVisibility.dashboard && <NavLink href="/dashboard" active={activeView === "dashboard"}>{dashboardLabel}</NavLink>}
-          {featureVisibility.workboard && <><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>↳ Prullenbak</NavLink><NavLink href="/werkbord/logboek" active={activeView === "processAudit"}>↳ Wijzigingslogboek</NavLink></>}
+          {featureVisibility.workboard && <><NavLink href="/werkbord" active={activeView === "workboard"}>Werkbord</NavLink><NavLink href="/werkbord/prullenbak" active={activeView === "processTrash"}>↳ Prullenbak</NavLink><NavLink href="/werkbord/logboek" active={activeView === "processAudit"}>↳ Wijzigingslogboek</NavLink><NavLink href="/werkbord/manager-logboek" active={activeView === "managerLogbook"}>↳ Manager-logboek</NavLink></>}
           {featureVisibility.documents && <NavLink href="/documenten" active={activeView === "documents"}>Documenten</NavLink>}
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
@@ -444,7 +446,7 @@ export default function HorecaOsApp() {
         </> : <StaffDashboard priorities={priorities} events={data.events} />}
         </>}
 
-        {activeView === "workboard" && featureVisibility.workboard && <Workboard workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} tasks={data.tasks} canManage={isOwner || canUseFeature("processes:manage")} canMonitor={isOwner || canUseFeature("processes:manage") || canUseFeature("processes:monitor")} onRefresh={loadData} />}\n        {activeView === "processTrash" && featureVisibility.workboard && <ProcessTrash workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} onRefresh={loadData} />}\n        {activeView === "processAudit" && featureVisibility.workboard && <ProcessAudit workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}\n        {activeView === "documents" && featureVisibility.documents && <Documents workspaceId={workspaceId} businessId={businessId} userId={session.user.id} canManage={isOwner || canUseFeature("documents:manage")} />}\n        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
+        {activeView === "workboard" && featureVisibility.workboard && <Workboard workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} tasks={data.tasks} canManage={isOwner || canUseFeature("processes:manage")} canMonitor={isOwner || canUseFeature("processes:manage") || canUseFeature("processes:monitor")} onRefresh={loadData} />}\n        {activeView === "processTrash" && featureVisibility.workboard && <ProcessTrash workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} onRefresh={loadData} />}\n        {activeView === "processAudit" && featureVisibility.workboard && <ProcessAudit workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}\n        {activeView === "managerLogbook" && featureVisibility.workboard && <ManagerLogbook workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} canManage={isOwner || canUseFeature("processes:manage")} />}\n        {activeView === "documents" && featureVisibility.documents && <Documents workspaceId={workspaceId} businessId={businessId} userId={session.user.id} canManage={isOwner || canUseFeature("documents:manage")} />}\n        {activeView === "foodcost" && featureVisibility.foodcost && <FoodcostDashboard analytics={foodcost} />}
         {activeView === "products" && featureVisibility.products && <ProductOverview products={data.foodProducts} suppliers={data.suppliers} ingredients={data.ingredients} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "recipes" && featureVisibility.recipes && <RecipeOverview recipes={data.recipes} recipeItems={data.recipeItems} ingredients={data.ingredients} products={data.foodProducts} canManage={isOwner || canUseFeature("foodcost:manage")} onRefresh={loadData} />}
         {activeView === "suppliers" && featureVisibility.suppliers && <SupplierOverview suppliers={data.suppliers} products={data.foodProducts} />}
