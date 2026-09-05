@@ -64,7 +64,7 @@ async function sendApprovalEmail({ email, fullName }) {
     headers: { "api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       sender: { name: "Horeca OS", email: senderEmail },
-      to: [{ email: "dino@leclubbbq.nl", name: "Dino" }],
+      to: [{ email: "info@leclubbbq.nl", name: "Dino" }],
       subject: "Nieuwe accountaanvraag voor Horeca OS",
       htmlContent: `<p>Er is een nieuwe accountaanvraag voor Horeca OS.</p><p><strong>Naam:</strong> ${escapeHtml(fullName)}<br /><strong>E-mail:</strong> ${escapeHtml(email)}</p><p>Open Horeca OS → Gebruikers & rollen om de aanvraag goed te keuren of af te wijzen.</p>`,
     }),
