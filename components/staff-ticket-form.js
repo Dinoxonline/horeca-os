@@ -18,6 +18,7 @@ export default function StaffTicketForm({ token }) {
   const [tracking, setTracking] = useState({ ticketNumber: "" });
   const [state, setState] = useState({ loading: true, saving: false, message: "", success: false, ticketNumber: "" });
   const [trackingState, setTrackingState] = useState({ loading: false, message: "", ticket: null });
+  const [conversation, setConversation] = useState({ ticketId: "", messages: [], draft: "", sending: false, message: "" });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false); });
@@ -47,6 +48,24 @@ export default function StaffTicketForm({ token }) {
 
   function update(key, value) { setForm((current) => ({ ...current, [key]: value })); }
   function updateTracking(key, value) { setTracking((current) => ({ ...current, [key]: value })); }
+
+  async function loadConversation(ticketNumber) {
+    if (!link || !session || !ticketNumber) return;
+    const { data: ticket } = await supabase.from("staff_tickets").select("id").eq("link_id", link.id).eq("ticket_number", ticketNumber).eq("reporter_user_id", session.user.id).maybeSingle();
+    if (!ticket) return;
+    const { data: messages } = await supabase.from("staff_ticket_messages").select("*").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
+    setConversation((current) => ({ ...current, ticketId: ticket.id, messages: messages || [] }));
+  }
+
+  async function sendConversationReply() {
+    const body = conversation.draft.trim();
+    if (!body || !conversation.ticketId) return;
+    setConversation((current) => ({ ...current, sending: true, message: "" }));
+    const { error } = await supabase.from("staff_ticket_messages").insert({ workspace_id: link.workspace_id, ticket_id: conversation.ticketId, author_user_id: session.user.id, author_name: session.user.user_metadata?.full_name || session.user.email || "Medewerker", author_role: "employee", body });
+    if (error) { setConversation((current) => ({ ...current, sending: false, message: "De reactie kon niet worden geplaatst." })); return; }
+    const { data: messages } = await supabase.from("staff_ticket_messages").select("*").eq("ticket_id", conversation.ticketId).order("created_at", { ascending: true });
+    setConversation({ ticketId: conversation.ticketId, messages: messages || [], draft: "", sending: false, message: "Reactie geplaatst." });
+  }
 
   async function signIn(event) {
     event.preventDefault(); setAuthMessage("");
@@ -103,7 +122,7 @@ export default function StaffTicketForm({ token }) {
         attachmentMessage = " Het ticket is wel aangemaakt, maar de bijlage kon niet worden opgeslagen. Probeer een kleiner bestand.";
       }
     }
-    setTracking({ ticketNumber }); setForm(emptyForm);
+    setTracking({ ticketNumber }); setForm(emptyForm); await loadConversation(ticketNumber);
     setState({ loading: false, saving: false, message: `Je melding is ontvangen.${files.length ? ` ${files.length} bijlage${files.length === 1 ? "" : "n"} toegevoegd.` : ""}${attachmentMessage} Bewaar je ticketnummer om de status later te bekijken.`, success: true, ticketNumber });
   }
 
@@ -112,6 +131,7 @@ export default function StaffTicketForm({ token }) {
     const { data, error } = await supabase.rpc("lookup_staff_ticket", { p_token: token, p_ticket_number: tracking.ticketNumber });
     const ticket = Array.isArray(data) ? data[0] : data;
     setTrackingState(error || !ticket ? { loading: false, message: "Ticket niet gevonden onder jouw account. Controleer het ticketnummer.", ticket: null } : { loading: false, message: "", ticket });
+    if (ticket) await loadConversation(tracking.ticketNumber);
   }
 
   if (authLoading) return <main className="center">Beveiligde medewerkerslink laden…</main>;
@@ -139,6 +159,7 @@ export default function StaffTicketForm({ token }) {
         <button className="primary" disabled={state.saving}>{state.saving ? "Melding versturen…" : "Melding versturen"}</button>
       </form>}
       {state.success && <button className="primary" onClick={() => setState((current) => ({ ...current, success: false, message: "" }))}>Nog een melding doen</button>}
+      {conversation.ticketId && <ConversationPanel conversation={conversation} setConversation={setConversation} onSend={sendConversationReply} />}
       <p className="muted" style={{ marginTop: 18 }}>Ingelogd als {session.user.email}</p>
     </section>
     <section className="authCard" style={{ width: "min(680px, 100%)", margin: "18px auto 0" }}>
@@ -148,6 +169,11 @@ export default function StaffTicketForm({ token }) {
       {trackingState.ticket && <div className="notice"><strong>Ticket #{trackingState.ticket.ticket_number}: {trackingState.ticket.title}</strong><p>Status: <strong>{statusLabels[trackingState.ticket.status] || trackingState.ticket.status}</strong><br />Prioriteit: {trackingState.ticket.priority}<br />Categorie: {trackingState.ticket.category}{trackingState.ticket.location ? ` · ${trackingState.ticket.location}` : ""}</p></div>}
     </section>
   </main>;
+}
+
+
+function ConversationPanel({ conversation, setConversation, onSend }) {
+  return <section className="authCard" style={{ width: "min(680px, 100%)", margin: "18px auto 0" }}><p className="eyebrow">GESPREK</p><h2>Communicatie over dit ticket</h2><p>Alle reacties blijven bij hetzelfde ticket staan.</p><div className="ticketMessages">{conversation.messages.length === 0 ? <p className="muted">Nog geen reacties.</p> : conversation.messages.map((item) => <div className={`ticketMessage ${item.author_role === "employee" ? "fromEmployee" : "fromManager"}`} key={item.id}><strong>{item.author_name}</strong><time>{new Date(item.created_at).toLocaleString("nl-NL")}</time><p>{item.body}</p></div>)}</div><textarea value={conversation.draft} onChange={(event) => setConversation((current) => ({ ...current, draft: event.target.value }))} placeholder="Schrijf een reactie…" maxLength={5000} /><button className="primary" disabled={conversation.sending || !conversation.draft.trim()} onClick={onSend}>{conversation.sending ? "Reactie plaatsen…" : "Reactie versturen"}</button>{conversation.message && <p className="muted">{conversation.message}</p>}</section>;
 }
 
 function StaffLogin({ mode, setMode, message, onSignIn, onSignUp }) {
