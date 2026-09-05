@@ -1774,6 +1774,10 @@ function MarketingCampaignBuilder({ workspaceId, businessId, businesses, session
   return <>
     <section className="pageIntro"><p className="eyebrow">Commerciële groei</p><h2>Marketing</h2><p>Bereid Brevo-campagnes veilig per vestiging voor en controleer de doelgroep vóór verzending.</p></section>
     <CampaignDistributor workspaceId={workspaceId} businessId={businessId} businesses={businesses} session={session} />
+    <section className="panel" style={{ marginBottom: 18 }}>
+      <div className="panelHead"><div><p className="eyebrow">ACCOUNT AANVRAGEN</p><h2>Nieuwe medewerkers goedkeuren</h2><p>Hier komen aanvragen binnen vanaf de medewerkerslink.</p></div><button type="button" className="secondary" onClick={loadUsers}>Verversen</button></div>
+      {accessRequests.filter((request) => request.status === "pending").length === 0 ? <p className="empty">Geen openstaande accountaanvragen.</p> : <div className="tableLike">{accessRequests.filter((request) => request.status === "pending").map((request) => <article className="task" key={request.id}><div><strong>{request.full_name}</strong><span>{request.email} · aangevraagd op {new Date(request.created_at).toLocaleString("nl-NL")}</span></div><div className="toolbar"><button type="button" className="primary" onClick={() => reviewAccessRequest(request.id, "approved")}>Goedkeuren</button><button type="button" className="secondary" onClick={() => reviewAccessRequest(request.id, "rejected")}>Afwijzen</button></div></article>)}</div>}
+    </section>
     <section className="userAdminGrid">
       <article className="panel creationPanel">
         <div className="panelHead"><div><h2>{selectedDraftId ? "Campagneconcept bewerken" : "Nieuwe Brevo-campagne"}</h2><p>Concepten worden in Horeca OS opgeslagen. Er wordt niets verzonden of in Brevo gewijzigd.</p></div>{selectedDraftId && <button type="button" onClick={startNewDraft}>Nieuw concept</button>}</div>
@@ -4088,6 +4092,7 @@ function UsersAdmin({ workspaceId, session }) {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [adminMessage, setAdminMessage] = useState("");
   const [adminError, setAdminError] = useState("");
+  const [accessRequests, setAccessRequests] = useState([]);
 
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true); setAdminError("");
@@ -4097,10 +4102,19 @@ function UsersAdmin({ workspaceId, session }) {
     const result = await response.json();
     if (!response.ok) setAdminError(result.error || "Gebruikers konden niet worden geladen.");
     else setAdminData(result);
+    const { data: requests } = await supabase.from("staff_access_requests").select("id, email, full_name, status, created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false });
+    setAccessRequests(requests || []);
     setLoadingUsers(false);
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  async function reviewAccessRequest(id, status) {
+    setAdminMessage(""); setAdminError("");
+    const { error } = await supabase.rpc("review_staff_access_request", { p_request_id: id, p_status: status });
+    if (error) setAdminError("De aanvraag kon niet worden bijgewerkt.");
+    else { setAdminMessage(status === "approved" ? "Medewerker goedgekeurd." : "Aanvraag afgewezen."); await loadUsers(); }
+  }
 
   async function submitAdminAction(payload) {
     setAdminMessage(""); setAdminError("");
