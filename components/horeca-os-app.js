@@ -4288,6 +4288,11 @@ const PERMISSION_OPTIONS = [
 
 function AccessFields({ roles, businesses, initialRoleId = "", initialBusinessId = "", initialPermissions = [], compact = false }) {
   const [roleId, setRoleId] = useState(initialRoleId || "");
+
+  useEffect(() => {
+    setRoleId(initialRoleId || "");
+  }, [initialRoleId]);
+
   const role = roles.find((item) => item.id === roleId);
   const custom = role?.role_key === "custom";
   const roleHelp = {
