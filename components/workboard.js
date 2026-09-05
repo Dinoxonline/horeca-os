@@ -35,6 +35,38 @@ const TASK_FIELD_CONFIG = {
     { key: "grand_cafe_het_plein_buitenruimte", label: "Grand Café Het Plein – buitenruimte", type: "textarea", placeholder: "Terras, tuin, capaciteit en gebruik…" },
     { key: "grand_cafe_het_plein_geluid", label: "Grand Café Het Plein – geluidsmogelijkheden", type: "textarea", placeholder: "Muziek, DJ, eindtijden, geluidsbeperkingen…" },
   ],
+  "Doel, doelgroep en budget bepalen": [
+    { key: "doel", label: "Doel", type: "textarea", placeholder: "Wat moet dit initiatief opleveren?" },
+    { key: "doelgroep", label: "Doelgroep", type: "textarea", placeholder: "Voor wie is dit bedoeld?" },
+    { key: "budget", label: "Budget", type: "number", placeholder: "Bedrag in euro’s" },
+    { key: "kpi_of_succesmaatstaf", label: "Succesmaatstaf", type: "textarea", placeholder: "Wanneer is dit geslaagd?" },
+  ],
+  "Website en evenement aanmaken": [
+    { key: "evenement_titel", label: "Titel evenement", type: "text", placeholder: "Naam van het evenement" },
+    { key: "evenement_datum", label: "Datum", type: "date", placeholder: "" },
+    { key: "evenement_begintijd", label: "Begintijd", type: "time", placeholder: "" },
+    { key: "evenement_eindtijd", label: "Eindtijd", type: "time", placeholder: "" },
+    { key: "evenement_prijs", label: "Prijs", type: "number", placeholder: "Prijs in euro’s" },
+    { key: "evenement_locatie", label: "Locatie", type: "text", placeholder: "Caribbean Corner of Grand Café Het Plein" },
+    { key: "evenement_doelgroep", label: "Doelgroep", type: "textarea", placeholder: "Voor wie is het evenement?" },
+    { key: "evenement_omschrijving", label: "Omschrijving", type: "textarea", placeholder: "Wat kunnen bezoekers verwachten?" },
+    { key: "evenement_aanmeldlink", label: "Aanmeldlink", type: "url", placeholder: "Link naar reserveren of aanmelden" },
+  ],
+  "Flyer, website en socials voorbereiden": [
+    { key: "campagne_titel", label: "Campagnetitel", type: "text", placeholder: "Naam van de campagne" },
+    { key: "campagne_doelgroep", label: "Doelgroep", type: "textarea", placeholder: "Wie wil je bereiken?" },
+    { key: "campagne_budget", label: "Budget", type: "number", placeholder: "Bedrag in euro’s" },
+    { key: "campagne_kanalen", label: "Kanalen", type: "textarea", placeholder: "Website, Instagram, Facebook, nieuwsbrief…" },
+    { key: "campagne_startdatum", label: "Startdatum", type: "date", placeholder: "" },
+    { key: "campagne_einddatum", label: "Einddatum", type: "date", placeholder: "" },
+  ],
+  "Arrangementen en prijzen samenstellen": [
+    { key: "arrangement_naam", label: "Naam arrangement", type: "text", placeholder: "Bijvoorbeeld: Bruiloft compleet" },
+    { key: "arrangement_prijs", label: "Prijs", type: "number", placeholder: "Prijs in euro’s" },
+    { key: "arrangement_inbegrepen", label: "Inbegrepen", type: "textarea", placeholder: "Eten, drinken, zaal, personeel, techniek…" },
+    { key: "arrangement_minimum_aantal", label: "Minimumaantal gasten", type: "number", placeholder: "Aantal personen" },
+    { key: "arrangement_voorwaarden", label: "Voorwaarden", type: "textarea", placeholder: "Tijden, aanbetaling, annulering…" },
+  ],
 };
 
 export default function Workboard({ workspaceId, businessId, userId, businesses = [], tasks = [], canManage = false, canMonitor = false, onRefresh }) {
