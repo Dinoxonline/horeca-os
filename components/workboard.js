@@ -434,7 +434,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCreateSubtask, onUpdate }) {
   const [completionNote, setCompletionNote] = useState(task.completion_note || "");
   const [evidenceUrl, setEvidenceUrl] = useState(task.evidence_url || "");
-  const [showSubtaskForm, setShowSubtaskForm] = useState(false);\n  const [showDetails, setShowDetails] = useState(false);
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const assignedMember = members.find((member) => member.id === task.assigned_to);
   const belongsToOther = Boolean(task.assigned_to && task.assigned_to !== currentUserId);
