@@ -157,7 +157,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       <button className={statusFilter === "open" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("open")}><span>Openstaand</span><strong>{counts.open}</strong><small>actie nodig</small></button>
       <button className={statusFilter === "nieuw" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("nieuw")}><span>Nieuw binnen</span><strong>{counts.new}</strong><small>nog niet beoordeeld</small></button>
       <button className={priorityFilter === "urgent" ? "ticketKpi urgent active" : "ticketKpi urgent"} onClick={() => { setPriorityFilter("urgent"); setStatusFilter("open"); }}><span>Urgent</span><strong>{counts.urgent}</strong><small>hoogste prioriteit</small></button>
-      <button className={statusFilter === "alle" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("alle")><span>Alle tickets</span><strong>{counts.all}</strong><small>inclusief afgerond</small></button>
+      <button className={statusFilter === "alle" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("alle")}><span>Alle tickets</span><strong>{counts.all}</strong><small>inclusief afgerond</small></button>
     </div>
     <div className="ticketViews" aria-label="Ticketweergave">
       {["open", "nieuw", "in behandeling", "wacht op informatie", "opgelost", "alle"].map((value) => <button key={value} className={statusFilter === value ? "primary" : "secondaryButton"} onClick={() => setStatusFilter(value)}>{value === "open" ? "Openstaand" : value === "alle" ? "Alle" : statusLabels[value]}</button>)}
