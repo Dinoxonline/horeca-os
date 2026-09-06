@@ -140,12 +140,13 @@ export default function StaffTicketForm({ token }) {
     setState({ loading: false, saving: false, message: `Je melding is ontvangen.${files.length ? ` ${files.length} bijlage${files.length === 1 ? "" : "n"} toegevoegd.` : ""}${attachmentMessage} Bewaar je ticketnummer om de status later te bekijken.`, success: true, ticketNumber });
   }
 
-  async function lookup(event) {
+  async function lookup(event, ticketNumberOverride = "") {
     event.preventDefault(); setTrackingState({ loading: true, message: "", ticket: null });
-    const { data, error } = await supabase.rpc("lookup_staff_ticket", { p_token: token, p_ticket_number: tracking.ticketNumber });
+    const ticketNumber = ticketNumberOverride || tracking.ticketNumber;
+    const { data, error } = await supabase.rpc("lookup_staff_ticket", { p_token: token, p_ticket_number: ticketNumber });
     const ticket = Array.isArray(data) ? data[0] : data;
     setTrackingState(error || !ticket ? { loading: false, message: "Ticket niet gevonden onder jouw account. Controleer het ticketnummer.", ticket: null } : { loading: false, message: "", ticket });
-    if (ticket) await loadConversation(tracking.ticketNumber);
+    if (ticket) await loadConversation(ticketNumber);
   }
 
   if (authLoading) return <main className="center">Beveiligde medewerkerslink laden…</main>;
@@ -178,7 +179,7 @@ export default function StaffTicketForm({ token }) {
     </section>
     <section className="authCard" style={{ width: "min(680px, 100%)", margin: "18px auto 0" }}>
       <p className="eyebrow">MIJN TICKETS</p><h2>Mijn meldingen</h2><p>Hier vind je alle tickets die je met dit account hebt ingediend.</p>
-      {myTickets.length === 0 ? <p className="muted">Je hebt nog geen tickets ingediend.</p> : <div className="stack">{myTickets.map((ticket) => <button type="button" className="ticketMine" key={ticket.ticket_number} onClick={() => { setTracking({ ticketNumber: String(ticket.ticket_number) }); lookup({ preventDefault: () => {} }); }}><span><strong>#{ticket.ticket_number} · {ticket.title}</strong><small>{statusLabels[ticket.status] || ticket.status} · {ticket.location || "Geen locatie"} · {new Date(ticket.created_at).toLocaleDateString("nl-NL")}</small></span><span aria-hidden="true">Bekijk →</span></button>)}</div>}
+      {myTickets.length === 0 ? <p className="muted">Je hebt nog geen tickets ingediend.</p> : <div className="stack">{myTickets.map((ticket) => <button type="button" className="ticketMine" key={ticket.ticket_number} onClick={() => { const ticketNumber = String(ticket.ticket_number); setTracking({ ticketNumber }); lookup({ preventDefault: () => {} }, ticketNumber); }}><span><strong>#{ticket.ticket_number} · {ticket.title}</strong><small>{statusLabels[ticket.status] || ticket.status} · {ticket.location || "Geen locatie"} · {new Date(ticket.created_at).toLocaleDateString("nl-NL")}</small></span><span aria-hidden="true">Bekijk →</span></button>)}</div>}
     </section>
     <section className="authCard" style={{ width: "min(680px, 100%)", margin: "18px auto 0" }}>
       <p className="eyebrow">STATUS</p><h2>Ticket opzoeken</h2><p>Open een ticketnummer om de details en het gesprek te bekijken.</p>
