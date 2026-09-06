@@ -18,20 +18,44 @@ export async function POST(request) {
 
     const formData = await request.formData();
     const token = String(formData.get("token") || "").trim();
+    const workspaceId = String(formData.get("workspaceId") || "").trim();
+    const ticketId = String(formData.get("ticketId") || "").trim();
     const ticketNumber = Number(formData.get("ticketNumber"));
     const file = formData.get("file");
-    if (!token || !Number.isInteger(ticketNumber) || !(file instanceof File)) return NextResponse.json({ error: "Bestand of ticket ontbreekt." }, { status: 400 });
+    if ((!token && !(workspaceId && ticketId)) || !(file instanceof File)) return NextResponse.json({ error: "Bestand of ticket ontbreekt." }, { status: 400 });
     if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "Een bestand mag maximaal 10 MB zijn." }, { status: 400 });
     if (!allowedTypes.has(file.type)) return NextResponse.json({ error: "Alleen JPEG, PNG, PDF en Word-bestanden zijn toegestaan." }, { status: 400 });
 
     const admin = createAdminSupabase();
-    const { data: link } = await admin.from("staff_ticket_links").select("id, workspace_id").eq("token", token).eq("active", true).maybeSingle();
-    if (!link) return NextResponse.json({ error: "Deze medewerkerslink is niet actief." }, { status: 400 });
-    const { data: ticket } = await admin.from("staff_tickets").select("id, workspace_id, attachments").eq("workspace_id", link.workspace_id).eq("link_id", link.id).eq("ticket_number", ticketNumber).eq("reporter_user_id", authData.user.id).maybeSingle();
+    let ticket;
+    if (workspaceId && ticketId) {
+      if (verifiedTokenAal(accessToken) !== "aal2") return NextResponse.json({ error: "Bevestig eerst je tweestapsverificatie." }, { status: 403 });
+      const { data: assignments, error: assignmentError } = await userClient
+        .from("user_role_assignments")
+        .select("assignment_permissions(permission), role:roles!inner(role_key, role_permissions(permission))")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", authData.user.id);
+      if (assignmentError) throw assignmentError;
+      const allowed = (assignments || []).some((assignment) => {
+        const permissions = assignment.role?.role_key === "custom"
+          ? assignment.assignment_permissions?.map((item) => item.permission) || []
+          : assignment.role?.role_permissions?.map((item) => item.permission) || [];
+        return assignment.role?.role_key === "owner" || permissions.includes("users:manage") || permissions.includes("processes:manage");
+      });
+      if (!allowed) return NextResponse.json({ error: "Je hebt geen toegang om bijlagen aan tickets toe te voegen." }, { status: 403 });
+      const { data: managerTicket } = await admin.from("staff_tickets").select("id, workspace_id, ticket_number, attachments").eq("workspace_id", workspaceId).eq("id", ticketId).maybeSingle();
+      ticket = managerTicket;
+    } else {
+      if (!token || !Number.isInteger(ticketNumber)) return NextResponse.json({ error: "Bestand of ticket ontbreekt." }, { status: 400 });
+      const { data: link } = await admin.from("staff_ticket_links").select("id, workspace_id").eq("token", token).eq("active", true).maybeSingle();
+      if (!link) return NextResponse.json({ error: "Deze medewerkerslink is niet actief." }, { status: 400 });
+      const { data: employeeTicket } = await admin.from("staff_tickets").select("id, workspace_id, ticket_number, attachments").eq("workspace_id", link.workspace_id).eq("link_id", link.id).eq("ticket_number", ticketNumber).eq("reporter_user_id", authData.user.id).maybeSingle();
+      ticket = employeeTicket;
+    }
     if (!ticket) return NextResponse.json({ error: "Ticket niet gevonden." }, { status: 404 });
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
-    const path = `${link.workspace_id}/${ticketNumber}/${crypto.randomUUID()}-${safeName}`;
+    const path = `${ticket.workspace_id}/${ticket.ticket_number}/${crypto.randomUUID()}-${safeName}`;
     const { error: uploadError } = await admin.storage.from("staff-ticket-attachments").upload(path, file, { contentType: file.type, upsert: false });
     if (uploadError) throw uploadError;
 
@@ -45,5 +69,15 @@ export async function POST(request) {
   } catch (error) {
     console.error("Staff ticket attachment failed", { error: error.message });
     return NextResponse.json({ error: "De bijlage kon niet worden opgeslagen." }, { status: 500 });
+  }
+}
+
+function verifiedTokenAal(token) {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).aal || null;
+  } catch {
+    return null;
   }
 }
