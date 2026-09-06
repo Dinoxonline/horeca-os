@@ -9,6 +9,45 @@ const allowedTypes = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
+export async function GET(request) {
+  try {
+    const accessToken = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "");
+    const userClient = createUserSupabase(accessToken || "");
+    const { data: authData, error: authError } = await userClient.auth.getUser();
+    if (authError || !authData.user || verifiedTokenAal(accessToken) !== "aal2") return NextResponse.json({ error: "Bevestig eerst je tweestapsverificatie." }, { status: 403 });
+
+    const workspaceId = request.nextUrl.searchParams.get("workspaceId");
+    const ticketId = request.nextUrl.searchParams.get("ticketId");
+    const path = request.nextUrl.searchParams.get("path");
+    if (!workspaceId || !ticketId || !path) return NextResponse.json({ error: "Bijlage ontbreekt." }, { status: 400 });
+
+    const { data: assignments, error: assignmentError } = await userClient
+      .from("user_role_assignments")
+      .select("assignment_permissions(permission), role:roles!inner(role_key, role_permissions(permission))")
+      .eq("workspace_id", workspaceId)
+      .eq("user_id", authData.user.id);
+    if (assignmentError) throw assignmentError;
+    const allowed = (assignments || []).some((assignment) => {
+      const permissions = assignment.role?.role_key === "custom"
+        ? assignment.assignment_permissions?.map((item) => item.permission) || []
+        : assignment.role?.role_permissions?.map((item) => item.permission) || [];
+      return assignment.role?.role_key === "owner" || permissions.includes("users:manage") || permissions.includes("processes:manage");
+    });
+    if (!allowed) return NextResponse.json({ error: "Je hebt geen toegang tot deze bijlage." }, { status: 403 });
+
+    const admin = createAdminSupabase();
+    const { data: ticket } = await admin.from("staff_tickets").select("attachments").eq("workspace_id", workspaceId).eq("id", ticketId).maybeSingle();
+    const attachment = (Array.isArray(ticket?.attachments) ? ticket.attachments : []).find((item) => item.path === path);
+    if (!attachment) return NextResponse.json({ error: "Bijlage niet gevonden." }, { status: 404 });
+    const { data, error } = await admin.storage.from("staff-ticket-attachments").createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) return NextResponse.json({ error: "De bijlage kon niet worden geopend." }, { status: 404 });
+    return NextResponse.json({ url: data.signedUrl, name: attachment.name });
+  } catch (error) {
+    console.error("Staff ticket attachment view failed", { error: error.message });
+    return NextResponse.json({ error: "De bijlage kon niet worden geopend." }, { status: 500 });
+  }
+}
+
 export async function POST(request) {
   try {
     const accessToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
