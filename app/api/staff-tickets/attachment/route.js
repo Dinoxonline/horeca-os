@@ -11,7 +11,7 @@ const allowedTypes = new Set([
 
 export async function GET(request) {
   try {
-    const accessToken = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "");
+    const accessToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     const userClient = createUserSupabase(accessToken || "");
     const { data: authData, error: authError } = await userClient.auth.getUser();
     if (authError || !authData.user || verifiedTokenAal(accessToken) !== "aal2") return NextResponse.json({ error: "Bevestig eerst je tweestapsverificatie." }, { status: 403 });
