@@ -16,6 +16,7 @@ export default function StaffTicketForm({ token }) {
   const [link, setLink] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [tracking, setTracking] = useState({ ticketNumber: "" });
+  const [myTickets, setMyTickets] = useState([]);
   const [state, setState] = useState({ loading: true, saving: false, message: "", success: false, ticketNumber: "" });
   const [trackingState, setTrackingState] = useState({ loading: false, message: "", ticket: null });
   const [conversation, setConversation] = useState({ ticketId: "", messages: [], draft: "", sending: false, message: "" });
@@ -48,6 +49,19 @@ export default function StaffTicketForm({ token }) {
 
   function update(key, value) { setForm((current) => ({ ...current, [key]: value })); }
   function updateTracking(key, value) { setTracking((current) => ({ ...current, [key]: value })); }
+
+  async function loadMyTickets() {
+    if (!link || !session) return;
+    const { data } = await supabase.from("staff_tickets").select("ticket_number, title, status, priority, category, location, created_at").eq("link_id", link.id).eq("reporter_user_id", session.user.id).order("created_at", { ascending: false });
+    setMyTickets(data || []);
+  }
+
+  useEffect(() => {
+    if (!link || !session) return;
+    loadMyTickets();
+    const channel = supabase.channel(`my-staff-tickets-${session.user.id}`).on("postgres_changes", { event: "*", schema: "public", table: "staff_tickets", filter: `reporter_user_id=eq.${session.user.id}` }, loadMyTickets).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [link, session]);
 
   async function loadConversation(ticketNumber) {
     if (!link || !session || !ticketNumber) return;
@@ -163,7 +177,11 @@ export default function StaffTicketForm({ token }) {
       <p className="muted" style={{ marginTop: 18 }}>Ingelogd als {session.user.email}</p>
     </section>
     <section className="authCard" style={{ width: "min(680px, 100%)", margin: "18px auto 0" }}>
-      <p className="eyebrow">STATUS</p><h2>Mijn tickets volgen</h2><p>Je ziet alleen tickets die onder jouw account zijn aangemaakt.</p>
+      <p className="eyebrow">MIJN TICKETS</p><h2>Mijn meldingen</h2><p>Hier vind je alle tickets die je met dit account hebt ingediend.</p>
+      {myTickets.length === 0 ? <p className="muted">Je hebt nog geen tickets ingediend.</p> : <div className="stack">{myTickets.map((ticket) => <button type="button" className="ticketMine" key={ticket.ticket_number} onClick={() => { setTracking({ ticketNumber: String(ticket.ticket_number) }); lookup({ preventDefault: () => {} }); }}><span><strong>#{ticket.ticket_number} · {ticket.title}</strong><small>{statusLabels[ticket.status] || ticket.status} · {ticket.location || "Geen locatie"} · {new Date(ticket.created_at).toLocaleDateString("nl-NL")}</small></span><span aria-hidden="true">Bekijk →</span></button>)}</div>}
+    </section>
+    <section className="authCard" style={{ width: "min(680px, 100%)", margin: "18px auto 0" }}>
+      <p className="eyebrow">STATUS</p><h2>Ticket opzoeken</h2><p>Open een ticketnummer om de details en het gesprek te bekijken.</p>
       <form className="stack" onSubmit={lookup}><label>Ticketnummer*<input required value={tracking.ticketNumber} onChange={(e) => updateTracking("ticketNumber", e.target.value)} placeholder="Bijvoorbeeld 10023" /></label><button className="primary" disabled={trackingState.loading}>{trackingState.loading ? "Status ophalen…" : "Status bekijken"}</button></form>
       {trackingState.message && <div className="notice">{trackingState.message}</div>}
       {trackingState.ticket && <div className="notice"><strong>Ticket #{trackingState.ticket.ticket_number}: {trackingState.ticket.title}</strong><p>Status: <strong>{statusLabels[trackingState.ticket.status] || trackingState.ticket.status}</strong><br />Prioriteit: {trackingState.ticket.priority}<br />Categorie: {trackingState.ticket.category}{trackingState.ticket.location ? ` · ${trackingState.ticket.location}` : ""}</p></div>}
