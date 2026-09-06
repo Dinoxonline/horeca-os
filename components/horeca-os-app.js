@@ -441,7 +441,7 @@ export default function HorecaOsApp() {
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
   if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
   if (mfaRequired && !verifiedMfaFactor) {
-    return <MfaEnrollment required onComplete={refreshMfa} />;
+    return <MfaEnrollment required existingFactor={mfaState.factors.find((factor) => factor.status === "unverified")} onComplete={refreshMfa} />;
   }
 
   return (
@@ -3750,7 +3750,7 @@ function MfaChallenge({ factor, onComplete }) {
   </section></main>;
 }
 
-function MfaEnrollment({ required = false, onComplete, onCancel }) {
+function MfaEnrollment({ required = false, existingFactor, onComplete, onCancel }) {
   const [enrollment, setEnrollment] = useState(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -3758,13 +3758,17 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
 
   useEffect(() => {
     let active = true;
+    if (existingFactor) {
+      setEnrollment({ id: existingFactor.id, pending: true });
+      return () => { active = false; };
+    }
     supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" }).then(({ data, error: enrollError }) => {
       if (!active) return;
       if (enrollError) setError(enrollError.message);
       else setEnrollment({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
     });
     return () => { active = false; };
-  }, []);
+  }, [existingFactor]);
 
   async function confirmEnrollment(event) {
     event.preventDefault();
@@ -3787,8 +3791,8 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
     {error && <div className="notice">{error}</div>}
     {!enrollment && !error && <p>Beveiligde QR-code voorbereiden…</p>}
     {enrollment && <form onSubmit={confirmEnrollment} className="stack">
-      <div className="mfaQr"><img src={enrollment.qr} alt="QR-code voor de authenticator-app" /></div>
-      <details><summary>QR-code werkt niet?</summary><p>Voer deze sleutel handmatig in:</p><code className="mfaSecret">{enrollment.secret}</code></details>
+      {enrollment.qr ? <><div className="mfaQr"><img src={enrollment.qr} alt="QR-code voor de authenticator-app" /></div>
+      <details><summary>QR-code werkt niet?</summary><p>Voer deze sleutel handmatig in:</p><code className="mfaSecret">{enrollment.secret}</code></details></> : <div className="notice">Er staat al een authenticator klaar. Open je authenticator-app en gebruik de actuele zescijferige code.</div>}
       <label>Code uit authenticator<input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required /></label>
       <button className="primary" disabled={verifying}>{verifying ? "Activeren…" : "2FA activeren"}</button>
     </form>}
