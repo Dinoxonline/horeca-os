@@ -130,6 +130,17 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
 
   const reporterOptions = useMemo(() => [...new Set(tickets.map((ticket) => ticket.reporter_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, "nl")), [tickets]);
 
+  const report = useMemo(() => {
+    const openTickets = tickets.filter((ticket) => !["opgelost", "gesloten"].includes(ticket.status));
+    const groupBy = (items, key, fallback) => Object.entries(items.reduce((result, item) => { const value = item[key] || fallback; result[value] = (result[value] || 0) + 1; return result; }, {})).sort((a, b) => b[1] - a[1]);
+    return {
+      open: openTickets.length,
+      overdue: openTickets.filter(isOverdue).length,
+      categories: groupBy(openTickets, "category", "Overig").slice(0, 4),
+      locations: groupBy(openTickets, "location", "Geen locatie").slice(0, 4),
+    };
+  }, [tickets]);
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return tickets.filter((ticket) => {
@@ -158,6 +169,12 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       <button className={statusFilter === "nieuw" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("nieuw")}><span>Nieuw binnen</span><strong>{counts.new}</strong><small>nog niet beoordeeld</small></button>
       <button className={priorityFilter === "urgent" ? "ticketKpi urgent active" : "ticketKpi urgent"} onClick={() => { setPriorityFilter("urgent"); setStatusFilter("open"); }}><span>Urgent</span><strong>{counts.urgent}</strong><small>hoogste prioriteit</small></button>
       <button className={statusFilter === "alle" ? "ticketKpi active" : "ticketKpi"} onClick={() => setStatusFilter("alle")}><span>Alle tickets</span><strong>{counts.all}</strong><small>inclusief afgerond</small></button>
+    </div>
+    <div className="ticketReport" aria-label="Ticketrapportage">
+      <div><span>Openstaand</span><strong>{report.open}</strong></div>
+      <div><span>Te laat</span><strong>{report.overdue}</strong></div>
+      <div><span>Meeste categorieën</span><p>{report.categories.length ? report.categories.map(([name, count]) => <span key={name}>{name}: {count}</span>) : "Geen open tickets"}</p></div>
+      <div><span>Per locatie</span><p>{report.locations.length ? report.locations.map(([name, count]) => <span key={name}>{name}: {count}</span>) : "Geen open tickets"}</p></div>
     </div>
     <div className="ticketViews" aria-label="Ticketweergave">
       {["open", "nieuw", "in behandeling", "wacht op informatie", "opgelost", "alle"].map((value) => <button key={value} className={statusFilter === value ? "primary" : "secondaryButton"} onClick={() => setStatusFilter(value)}>{value === "open" ? "Openstaand" : value === "alle" ? "Alle" : statusLabels[value]}</button>)}
