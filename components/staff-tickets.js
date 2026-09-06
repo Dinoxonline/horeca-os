@@ -40,6 +40,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
   const [locationFilter, setLocationFilter] = useState("alle");
   const [assigneeFilter, setAssigneeFilter] = useState("alle");
   const [reporterFilter, setReporterFilter] = useState("alle");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("priority");
   const [message, setMessage] = useState("");
@@ -157,14 +158,15 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       const matchesLocation = locationFilter === "alle" || ticket.location === locationFilter;
       const matchesAssignee = assigneeFilter === "alle" || (assigneeFilter === "niet toegewezen" ? !ticket.assignee_id : ticket.assignee_id === assigneeFilter);
       const matchesReporter = reporterFilter === "alle" || ticket.reporter_name === reporterFilter;
+      const matchesOverdue = !overdueOnly || isOverdue(ticket);
       const haystack = `${ticket.ticket_number} ${ticket.title} ${ticket.description} ${ticket.reporter_name} ${ticket.reporter_contact}`.toLowerCase();
-      return matchesStatus && matchesPriority && matchesCategory && matchesLocation && matchesAssignee && matchesReporter && (!term || haystack.includes(term));
+      return matchesStatus && matchesPriority && matchesCategory && matchesLocation && matchesAssignee && matchesReporter && matchesOverdue && (!term || haystack.includes(term));
     }).sort((a, b) => {
       if (sort === "oldest") return new Date(a.created_at) - new Date(b.created_at);
       if (sort === "newest") return new Date(b.created_at) - new Date(a.created_at);
       return (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9) || new Date(a.created_at) - new Date(b.created_at);
     });
-  }, [tickets, statusFilter, priorityFilter, categoryFilter, locationFilter, assigneeFilter, reporterFilter, search, sort]);
+  }, [tickets, statusFilter, priorityFilter, categoryFilter, locationFilter, assigneeFilter, reporterFilter, overdueOnly, search, sort]);
 
   return <section className="panel ticketBackoffice">
     <div className="panelHead">
@@ -184,7 +186,7 @@ export default function StaffTickets({ workspaceId, canManage = false, session }
       <div><span>Per locatie</span><p>{report.locations.length ? report.locations.map(([name, count]) => <span key={name}>{name}: {count}</span>) : "Geen open tickets"}</p></div>
     </div>
     <div className="ticketViews" aria-label="Ticketweergave">
-      {["open", "nieuw", "in behandeling", "wacht op informatie", "opgelost", "alle"].map((value) => <button key={value} className={statusFilter === value ? "primary" : "secondaryButton"} onClick={() => setStatusFilter(value)}>{value === "open" ? "Openstaand" : value === "alle" ? "Alle" : statusLabels[value]}</button>)}
+      <button className={overdueOnly ? "primary" : "secondaryButton"} onClick={() => { setOverdueOnly((value) => !value); setStatusFilter("open"); }}>{overdueOnly ? "Alleen te laat" : "Te late tickets"}</button>{["open", "nieuw", "in behandeling", "wacht op informatie", "opgelost", "alle"].map((value) => <button key={value} className={statusFilter === value && !overdueOnly ? "primary" : "secondaryButton"} onClick={() => { setOverdueOnly(false); setStatusFilter(value); }}>{value === "open" ? "Openstaand" : value === "alle" ? "Alle" : statusLabels[value]}</button>)}
     </div>
     <div className="ticketFilters">
       <label className="ticketSearch">Zoeken<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ticket, onderwerp, melder…" /></label>
