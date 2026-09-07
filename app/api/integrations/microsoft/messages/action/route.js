@@ -105,7 +105,10 @@ export async function POST(request) {
     }
     if (body.action === "send") {
       if (!String(body.to || "").trim() || !String(body.subject || "").trim()) throw new Error("Vul ontvanger en onderwerp in.");
-      await graph(auth.connection, auth.admin, "sendMail", { method: "POST", body: JSON.stringify({ message: { subject: String(body.subject), body: { contentType: "Text", content: String(body.content || "") }, toRecipients: String(body.to).split(",").map((address) => ({ emailAddress: { address: address.trim() } })).filter((item) => item.emailAddress.address) }, saveToSentItems: true }) });
+      const addresses = (value) => String(value || "").split(",").map((address) => address.trim()).filter(Boolean).map((address) => ({ emailAddress: { address } }));
+      const toRecipients = addresses(body.to);
+      const bccRecipients = addresses(body.bcc);
+      await graph(auth.connection, auth.admin, "sendMail", { method: "POST", body: JSON.stringify({ message: { subject: String(body.subject), body: { contentType: "Text", content: String(body.content || "") }, toRecipients, ...(bccRecipients.length ? { bccRecipients } : {}) }, saveToSentItems: true }) });
       return NextResponse.json({ message: "E-mail verzonden." });
     }
     if (body.action === "delete") {

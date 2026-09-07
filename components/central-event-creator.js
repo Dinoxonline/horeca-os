@@ -192,7 +192,7 @@ function editorialEmailDraft(target, common = {}, sourceUrl = "") {
   const description = common.description || common.short_description || "";
   const imageUrl = common.image_url || common.images?.landscape?.url || common.images?.square?.url || "";
   const lines = [
-    `Beste redactie van ${target.label},`,
+    target?.label ? `Beste redactie van ${target.label},` : "Beste redactie,",
     "",
     `Graag melden wij het volgende evenement van ${common.organizer || "onze locatie"} aan:`,
     "",
@@ -209,8 +209,9 @@ function editorialEmailDraft(target, common = {}, sourceUrl = "") {
     common.organizer || "Horeca OS",
   ].filter(Boolean);
   return {
-    targetLabel: target.label,
-    to: target.email,
+    targetLabel: target?.label || "",
+    to: "info@leclubbarbecue.nl",
+    bcc: target?.email || "",
     subject: `Evenement aanmelden: ${common.title || "evenement"}`,
     body: lines.join("\n"),
   };
@@ -2537,15 +2538,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult(null);
     const failed = [];
     try {
-      for (const target of targets) {
-        const draft = editorialEmailDraft(target, distribution.common, distribution.source_url);
-        const response = await fetch("/api/integrations/microsoft/messages/action", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId, mailbox, action: "send", to: draft.to, subject: draft.subject, content: draft.body }),
-        });
-        if (!response.ok) failed.push(target.label);
-      }
+      const draft = editorialEmailDraft(null, distribution.common, distribution.source_url);
+      const response = await fetch("/api/integrations/microsoft/messages/action", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, mailbox, action: "send", to: draft.to, bcc: targets.map((target) => target.email).join(","), subject: draft.subject, content: draft.body }),
+      });
+      if (!response.ok) failed.push(...targets.map((target) => target.label));
       setResult(failed.length
         ? { ok: false, message: `${targets.length - failed.length} van ${targets.length} e-mails zijn verstuurd. Niet gelukt: ${failed.join(", ")}.` }
         : { ok: true, message: `Alle ${targets.length} redactie-e-mails zijn vanuit ${mailbox} verstuurd.` });
@@ -2861,7 +2860,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <div><h3>{form.title}</h3><p><b>Datum en tijd:</b> {form.start ? new Date(form.start).toLocaleString("nl-NL") : "niet ingevuld"} – {form.end ? new Date(form.end).toLocaleString("nl-NL") : "niet ingevuld"}</p><p><b>Locatie:</b> {form.location || "niet ingevuld"}</p><p className="providerPreviewText">{form.description || form.shortDescription || "Nog geen omschrijving"}</p><p><b>Tickets:</b> {(form.tickets || []).length ? (form.tickets || []).map((ticket) => `${ticket.name || "Ticket"} (${ticket.type === "paid" ? `€ ${Number(ticket.price || 0).toFixed(2)}` : "gratis"})`).join(" · ") : "geen tickets"}</p><small>Status bij opslaan: {form.status === "publish" ? "direct publiceren" : "eerst als concept"}</small></div>
       </div>}
       {previewChannel === "email" && <div className="emailProviderPreview">
-        <p><b>Aan:</b> {editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).map(({ email, label }) => email || label).join(", ") || (form.channels.brevo ? selectedBrevoLists.map((item) => item.name).join(", ") : "nog geen ontvangers geselecteerd")}</p>
+        <p><b>Aan:</b> info@leclubbarbecue.nl</p>
+        <p><b>BCC:</b> {editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).length ? `${editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).length} gekozen redactieadres(sen) (niet zichtbaar voor ontvangers)` : form.channels.brevo ? "gekozen verzendlijst (niet zichtbaar voor ontvangers)" : "nog geen ontvangers geselecteerd"}</p>
         <p><b>Onderwerp:</b> {form.brevoSubject || form.title}</p>
         {form.brevoPreview && <p><b>Voorbeeldregel:</b> {form.brevoPreview}</p>}
         <div className="emailPreviewBody"><p><b>{form.title}</b></p>{form.shortDescription && <p>{form.shortDescription}</p>}<p className="providerPreviewText">{form.description || "Nog geen volledige omschrijving"}</p>{isEvent && <p>{form.start ? new Date(form.start).toLocaleString("nl-NL") : "Datum niet ingevuld"}<br />{form.location || "Locatie niet ingevuld"}</p>}</div>
