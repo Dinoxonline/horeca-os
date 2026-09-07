@@ -3610,7 +3610,7 @@ function RecipeOverview({ recipes, recipeItems, ingredients, products, canManage
 function SupplierOverview({ workspaceId, suppliers, products, canManage, onRefresh }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", contact_name: "", support_email: "", support_phone: "" });
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState({});
   const [savingId, setSavingId] = useState("");
   const [message, setMessage] = useState("");
   async function createSupplier(event) {
