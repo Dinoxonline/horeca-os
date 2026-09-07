@@ -4,6 +4,7 @@ alter table public.staff_tickets
     check (ticket_kind in ('staff', 'supplier', 'internal', 'customer')),
   add column if not exists supplier_id uuid,
   add column if not exists supplier_email text,
+  add column if not exists supplier_contact text,
   add column if not exists outbound_sent_at timestamptz,
   add column if not exists last_external_message_at timestamptz;
 
