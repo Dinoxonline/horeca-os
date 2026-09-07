@@ -105,7 +105,8 @@ export async function POST(request) {
     }
     if (body.action === "send") {
       if (!String(body.to || "").trim() || !String(body.subject || "").trim()) throw new Error("Vul ontvanger en onderwerp in.");
-      await graph(auth.connection, auth.admin, "sendMail", { method: "POST", body: JSON.stringify({ message: { subject: String(body.subject), body: { contentType: "Text", content: String(body.content || "") }, toRecipients: String(body.to).split(",").map((address) => ({ emailAddress: { address: address.trim() } })).filter((item) => item.emailAddress.address) }, saveToSentItems: true }) });
+      const attachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 10).map((item) => ({ "@odata.type": "#microsoft.graph.fileAttachment", name: String(item.name || "bijlage"), contentType: String(item.contentType || "application/octet-stream"), contentBytes: String(item.contentBytes || "") })).filter((item) => item.contentBytes) : [];
+      await graph(auth.connection, auth.admin, "sendMail", { method: "POST", body: JSON.stringify({ message: { subject: String(body.subject), body: { contentType: "Text", content: String(body.content || "") }, toRecipients: String(body.to).split(",").map((address) => ({ emailAddress: { address: address.trim() } })).filter((item) => item.emailAddress.address), attachments }, saveToSentItems: true }) });
       return NextResponse.json({ message: "E-mail verzonden." });
     }
     if (body.action === "delete") {
