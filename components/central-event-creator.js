@@ -210,7 +210,7 @@ function editorialEmailDraft(target, common = {}, sourceUrl = "") {
   ].filter(Boolean);
   return {
     targetLabel: target?.label || "",
-    to: "info@leclubbarbecue.nl",
+    to: "info@leclubbbq.nl",
     bcc: target?.email || "",
     subject: `Evenement aanmelden: ${common.title || "evenement"}`,
     body: lines.join("\n"),
@@ -2860,7 +2860,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <div><h3>{form.title}</h3><p><b>Datum en tijd:</b> {form.start ? new Date(form.start).toLocaleString("nl-NL") : "niet ingevuld"} – {form.end ? new Date(form.end).toLocaleString("nl-NL") : "niet ingevuld"}</p><p><b>Locatie:</b> {form.location || "niet ingevuld"}</p><p className="providerPreviewText">{form.description || form.shortDescription || "Nog geen omschrijving"}</p><p><b>Tickets:</b> {(form.tickets || []).length ? (form.tickets || []).map((ticket) => `${ticket.name || "Ticket"} (${ticket.type === "paid" ? `€ ${Number(ticket.price || 0).toFixed(2)}` : "gratis"})`).join(" · ") : "geen tickets"}</p><small>Status bij opslaan: {form.status === "publish" ? "direct publiceren" : "eerst als concept"}</small></div>
       </div>}
       {previewChannel === "email" && <div className="emailProviderPreview">
-        <p><b>Aan:</b> info@leclubbarbecue.nl</p>
+        <p><b>Aan:</b> info@leclubbbq.nl</p>
         <p><b>BCC:</b> {editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).length ? `${editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).length} gekozen redactieadres(sen) (niet zichtbaar voor ontvangers)` : form.channels.brevo ? "gekozen verzendlijst (niet zichtbaar voor ontvangers)" : "nog geen ontvangers geselecteerd"}</p>
         <p><b>Onderwerp:</b> {form.brevoSubject || form.title}</p>
         {form.brevoPreview && <p><b>Voorbeeldregel:</b> {form.brevoPreview}</p>}
