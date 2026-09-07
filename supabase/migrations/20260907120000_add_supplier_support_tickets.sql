@@ -20,3 +20,8 @@ alter table public.suppliers
 
 create index if not exists staff_tickets_supplier_queue_idx
   on public.staff_tickets(workspace_id, ticket_kind, supplier_id, status, created_at desc);
+
+-- Supplier tickets need two additional lifecycle states.
+alter table public.staff_tickets drop constraint if exists staff_tickets_status_check;
+alter table public.staff_tickets add constraint staff_tickets_status_check
+  check (status in ('nieuw', 'verzonden', 'wacht op leverancier', 'in behandeling', 'opgelost', 'gesloten'));
