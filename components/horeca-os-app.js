@@ -233,7 +233,7 @@ export default function HorecaOsApp() {
         .gte("period_end", ranges.monthStart).lte("period_start", ranges.today),
       scope(supabase.from("security_checks").select("*"), false).order("label"),
       scope(supabase.from("integrations").select("*"), false).order("provider"),
-      scope(supabase.from("suppliers").select("id, workspace_id, business_id, location_id, name, active, support_email, support_phone, support_notes")).order("name"),
+      scope(supabase.from("suppliers").select("id, workspace_id, business_id, location_id, name, active, contact_name, email, phone, support_email, support_phone, support_notes")).order("name"),
       scope(supabase.from("products").select("id, workspace_id, business_id, location_id, supplier_id, name, category, purchase_price, content_quantity, content_unit, currency_code, active")).order("name"),
       scope(supabase.from("ingredients").select("id, workspace_id, business_id, location_id, product_id, name, base_unit, units_per_product, yield_percentage, active")).order("name"),
       scope(supabase.from("recipes").select("id, workspace_id, business_id, location_id, name, target_foodcost_percentage, active")).order("name"),
