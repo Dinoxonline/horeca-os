@@ -12,6 +12,7 @@ import ManagerLogbook from "./manager-logbook";
 import Documents from "./documents";
 import StaffTicketForm from "./staff-ticket-form";
 import StaffTickets from "./staff-tickets";
+import SupplierTickets from "./supplier-tickets";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
 const priorityLabel = { critical: "Kritiek", high: "Hoog", medium: "Midden", low: "Laag" };
@@ -30,6 +31,7 @@ const routeViews = {
   "/werkbord/logboek": "processAudit",
   "/werkbord/manager-logboek": "managerLogbook",
   "/werkbord/tickets": "staffTickets",
+  "/leveranciers/tickets": "supplierTickets",
   "/documenten": "documents",
   "/foodcost": "foodcost",
   "/producten": "products",
@@ -231,7 +233,7 @@ export default function HorecaOsApp() {
         .gte("period_end", ranges.monthStart).lte("period_start", ranges.today),
       scope(supabase.from("security_checks").select("*"), false).order("label"),
       scope(supabase.from("integrations").select("*"), false).order("provider"),
-      scope(supabase.from("suppliers").select("id, workspace_id, business_id, location_id, name, active")).order("name"),
+      scope(supabase.from("suppliers").select("id, workspace_id, business_id, location_id, name, active, support_email, support_phone, support_notes")).order("name"),
       scope(supabase.from("products").select("id, workspace_id, business_id, location_id, supplier_id, name, category, purchase_price, content_quantity, content_unit, currency_code, active")).order("name"),
       scope(supabase.from("ingredients").select("id, workspace_id, business_id, location_id, product_id, name, base_unit, units_per_product, yield_percentage, active")).order("name"),
       scope(supabase.from("recipes").select("id, workspace_id, business_id, location_id, name, target_foodcost_percentage, active")).order("name"),
@@ -387,7 +389,7 @@ export default function HorecaOsApp() {
           {featureVisibility.foodcost && <NavLink href="/foodcost" active={activeView === "foodcost"}>Foodcost</NavLink>}
           {featureVisibility.products && <NavLink href="/producten" active={activeView === "products"}>Producten</NavLink>}
           {featureVisibility.recipes && <NavLink href="/recepten" active={activeView === "recipes"}>Recepturen</NavLink>}
-          {featureVisibility.suppliers && <NavLink href="/leveranciers" active={activeView === "suppliers"}>Leveranciers</NavLink>}
+          {featureVisibility.suppliers && <div className="navGroup"><NavLink href="/leveranciers" active={activeView === "suppliers"}>Leveranciers</NavLink><div className="navChildren"><NavLink href="/leveranciers/tickets" active={activeView === "supplierTickets"}>Supporttickets</NavLink></div></div>}
           {featureVisibility.reviews && <NavLink href="/reviews" active={activeView === "reviews"}>Reviews</NavLink>}
           {featureVisibility.social && <NavLink href="/social-inbox" active={activeView === "social"}>Social inbox</NavLink>}
           {featureVisibility.mail && <NavLink href="/mail" active={activeView === "mail"}>Mail</NavLink>}
@@ -415,6 +417,7 @@ export default function HorecaOsApp() {
 
         {message && <div className="notice">{message}</div>}
         {activeView === "staffTickets" && featureVisibility.workboard && <StaffTickets workspaceId={workspaceId} canManage={isOwner || canUseFeature("processes:manage")} />}
+        {activeView === "supplierTickets" && featureVisibility.suppliers && <SupplierTickets workspaceId={workspaceId} suppliers={data.suppliers} canManage={isOwner || canUseFeature("foodcost:manage")} />}
 
         {!viewAllowed && <AccessDenied />}
 
