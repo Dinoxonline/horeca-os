@@ -7,6 +7,14 @@ alter table public.staff_tickets
   add column if not exists outbound_sent_at timestamptz,
   add column if not exists last_external_message_at timestamptz;
 
+alter table public.staff_ticket_messages
+  add column if not exists external_message_id text,
+  add column if not exists source text not null default 'horeca_os';
+
+create unique index if not exists staff_ticket_messages_external_id_idx
+  on public.staff_ticket_messages(workspace_id, external_message_id)
+  where external_message_id is not null;
+
 alter table public.staff_tickets
   add constraint staff_tickets_supplier_scope_fkey
   foreign key (supplier_id, workspace_id)
