@@ -16,6 +16,13 @@ const TEMPLATE_HINTS = {
   grill_your_own: "Nieuw concept",
 };
 
+const CATEGORY_LABELS = {
+  marketing: "Marketing",
+  product: "Product & menu",
+  people: "Personeel",
+  operations: "Operatie",
+};
+
 const TASK_FIELD_CONFIG = {
   "Verhuuraanbod per locatie bepalen": [
     { key: "caribbean_corner_aanbod", label: "Aanbod Caribbean Corner", type: "textarea", placeholder: "Bijvoorbeeld: verjaardagen, borrels, private dining…" },
@@ -96,6 +103,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const [customTemplate, setCustomTemplate] = useState({ name: "", category: "operations", description: "", steps: "" });
   const [dueFilter, setDueFilter] = useState("all");
   const [runFilter, setRunFilter] = useState("active");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedModuleIds, setSelectedModuleIds] = useState([]);
   const [moduleToAdd, setModuleToAdd] = useState("");
@@ -113,7 +121,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     const [{ data: templateRows, error: templateError }, { data: stepRows }, { data: runRows }, { data: processTaskRows, error: processTaskError }, { data: memberRows }, { data: auditRows, error: auditError }, { data: logRows, error: logError }] = await Promise.all([
       supabase.from("process_templates").select("*").eq("workspace_id", workspaceId).eq("active", true).order("name"),
       supabase.from("process_template_steps").select("*").eq("workspace_id", workspaceId).order("sort_order"),
-      supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).is("deleted_at", null).order("created_at", { ascending: false }).limit(12),
+      supabase.from("process_runs").select("*, process_templates(name, category), businesses(name)").eq("workspace_id", workspaceId).is("deleted_at", null).order("created_at", { ascending: false }).limit(12),
       supabase.from("process_run_tasks").select("*, process_runs(name)").eq("workspace_id", workspaceId).order("due_date", { ascending: true }).limit(200),
       supabase.from("workspace_members").select("user_id").eq("workspace_id", workspaceId),
       supabase.from("audit_log").select("id, actor_id, table_name, action, record_id, old_data, new_data, created_at").eq("workspace_id", workspaceId).in("table_name", ["process_templates", "process_template_steps", "process_runs", "process_run_tasks"]).order("created_at", { ascending: false }).limit(30),
@@ -123,7 +131,7 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setTemplates(templateRows || []);
     setSteps(stepRows || []);
     setRuns(runRows || []);
-    const { data: trashRows } = await supabase.from("process_runs").select("*, process_templates(name), businesses(name)").eq("workspace_id", workspaceId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(50);
+    const { data: trashRows } = await supabase.from("process_runs").select("*, process_templates(name, category), businesses(name)").eq("workspace_id", workspaceId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(50);
     setTrashRuns(trashRows || []);
     setProcessTasks(processTaskRows || []);
     setAuditEntries(filterAuditEntries((auditRows || []).filter((entry) => entry.actor_id)));
@@ -235,7 +243,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
   const availableModuleTemplates = useMemo(() => templates.filter((item) => item.can_be_added_as_module), [templates]);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const myRunIds = new Set(processTasks.filter((task) => task.assigned_to === userId).map((task) => task.run_id));
-  const visibleRuns = runs.filter((run) => (runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed")) && (canMonitor || !mineOnly || myRunIds.has(run.id)));
+  const categories = useMemo(() => [...new Set(templates.map((template) => template.category).filter(Boolean))].sort(), [templates]);
+  const visibleRuns = runs.filter((run) => (runFilter === "all" || (runFilter === "active" ? run.status === "active" : run.status === "completed")) && (!categoryFilter || run.process_templates?.category === categoryFilter) && (canMonitor || !mineOnly || myRunIds.has(run.id)));
   const processProgress = useMemo(() => processTasks.reduce((map, task) => {
     const current = map[task.run_id] || { total: 0, done: 0 };
     current.total += 1;
@@ -491,8 +500,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       </div>}
 
       <section className="panel">
-        <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
-        {visibleRuns.length === 0 ? <p>{runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className={"task " + (expandedRunId === run.id ? "selected" : "")} key={run.id}><div><strong>{run.name}</strong><span>{run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date} · {run.status === "completed" ? "Afgerond" : "Actief"} · {runAssignmentLabel(run.id)}</span><progress style={{ accentColor: run.status === "completed" ? "#16a34a" : processTasks.some((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today) ? "#dc2626" : "#f59e0b" }} value={processProgress[run.id]?.done || 0} max={processProgress[run.id]?.total || 1} /><button type="button" className="secondary" onClick={() => setExpandedRunId((current) => current === run.id ? null : run.id)}>{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done").length} openstaand · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today).length} te laat · {expandedRunId === run.id ? "Verberg taken" : "Bekijk taken"}</button></div><div className="toolbar"><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{runAssignees[run.id]?.mixed && <option value="__mixed__" disabled>Meerdere medewerkers</option>}{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select>{canManage && <><button type="button" className="secondary" onClick={() => downloadProcessExcel(run)}>Excel exporteren</button><button type="button" className="secondary" onClick={() => moveProcessToTrash(run)} title="Naar prullenbak">🗑️</button></>}</div></div>)}</div>}
+        <div className="panelHead"><div><p className="eyebrow">OPVOLGING</p><h3>Processen volgen</h3></div><div className="toolbar"><label>Categorie<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Alle categorieën</option>{categories.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category] || category}</option>)}</select></label><button type="button" className={runFilter === "active" ? "primary" : "secondary"} onClick={() => setRunFilter("active")}>Actief</button> <button type="button" className={runFilter === "completed" ? "primary" : "secondary"} onClick={() => setRunFilter("completed")}>Afgerond</button> <button type="button" className={runFilter === "all" ? "primary" : "secondary"} onClick={() => setRunFilter("all")}>Alles</button> <button type="button" className="secondary" onClick={load}>Verversen</button></div></div>
+        {visibleRuns.length === 0 ? <p>{categoryFilter ? `Geen ${CATEGORY_LABELS[categoryFilter] || categoryFilter.toLowerCase()}-processen gevonden voor deze status.` : runFilter === "completed" ? "Er zijn nog geen afgeronde processen." : "Er zijn geen actieve processen."}</p> : <div className="tableLike">{visibleRuns.map((run) => <div className={"task " + (expandedRunId === run.id ? "selected" : "")} key={run.id}><div><strong>{run.name}</strong><span><b>Categorie: {CATEGORY_LABELS[run.process_templates?.category] || run.process_templates?.category || "Onbekend"}</b> · {run.process_templates?.name || "Proces"} · {run.businesses?.name || "Alle vestigingen"} · {run.anchor_date} · {run.status === "completed" ? "Afgerond" : "Actief"} · {runAssignmentLabel(run.id)}</span><progress style={{ accentColor: run.status === "completed" ? "#16a34a" : processTasks.some((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today) ? "#dc2626" : "#f59e0b" }} value={processProgress[run.id]?.done || 0} max={processProgress[run.id]?.total || 1} /><button type="button" className="secondary" onClick={() => setExpandedRunId((current) => current === run.id ? null : run.id)}>{processProgress[run.id]?.done || 0}/{processProgress[run.id]?.total || 0} gereed · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done").length} openstaand · {processTasks.filter((task) => task.run_id === run.id && task.status !== "done" && task.due_date && task.due_date < today).length} te laat · {expandedRunId === run.id ? "Verberg taken" : "Bekijk taken"}</button></div><div className="toolbar"><select value={runAssignees[run.id]?.mixed ? "__mixed__" : (runAssignees[run.id]?.assignedTo || "")} disabled={!canManage} onChange={(event) => assignRun(run.id, event.target.value === "__mixed__" ? "" : event.target.value)}><option value="">Hele proces toewijzen…</option>{runAssignees[run.id]?.mixed && <option value="__mixed__" disabled>Meerdere medewerkers</option>}{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}</select>{canManage && <><button type="button" className="secondary" onClick={() => downloadProcessExcel(run)}>Excel exporteren</button><button type="button" className="secondary" onClick={() => moveProcessToTrash(run)} title="Naar prullenbak">🗑️</button></>}</div></div>)}</div>}
       </section>
 
       <section className="panel">
