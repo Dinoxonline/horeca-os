@@ -3702,11 +3702,29 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" }).then(({ data, error: enrollError }) => {
+    async function prepareEnrollment() {
+      const { data: factorData, error: factorError } = await supabase.auth.mfa.listFactors();
       if (!active) return;
-      if (enrollError) setError(enrollError.message);
+      if (factorError) { setError("De authenticator kon niet worden voorbereid. Probeer opnieuw."); return; }
+
+      // A previous interrupted attempt leaves an unverified factor behind. Supabase
+      // rejects a second enroll call for the same account, so remove only those
+      // unfinished factors before starting a fresh enrollment.
+      const unfinishedFactors = (factorData?.totp || []).filter((factor) => factor.status === "unverified");
+      for (const factor of unfinishedFactors) {
+        const { error: removeError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (removeError) {
+          if (active) setError("Er staat al een onafgemaakte authenticator-koppeling. Vernieuw de pagina en probeer opnieuw.");
+          return;
+        }
+      }
+
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" });
+      if (!active) return;
+      if (enrollError) setError("De authenticator kon niet worden gestart. Vernieuw de pagina en probeer opnieuw.");
       else setEnrollment({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
-    });
+    }
+    prepareEnrollment();
     return () => { active = false; };
   }, []);
 
