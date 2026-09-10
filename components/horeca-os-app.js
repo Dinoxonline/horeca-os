@@ -3770,9 +3770,9 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
           return;
         }
       }
-      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" });
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `Horeca OS authenticator ${Date.now()}` });
       if (!active) return;
-      if (enrollError) setError(enrollError.message);
+      if (enrollError) setError("De authenticator kon niet worden gestart. Vernieuw de pagina één keer en probeer opnieuw.");
       else setEnrollment({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
     }
     prepareEnrollment();
