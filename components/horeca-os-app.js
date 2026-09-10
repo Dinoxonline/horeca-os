@@ -441,7 +441,7 @@ export default function HorecaOsApp() {
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
   if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
   if (mfaRequired && !verifiedMfaFactor) {
-    return <MfaEnrollment required existingFactor={mfaState.factors.find((factor) => factor.status === "unverified")} onComplete={refreshMfa} />;
+    return <MfaEnrollment required onComplete={refreshMfa} />;
   }
 
   return (
@@ -3750,7 +3750,7 @@ function MfaChallenge({ factor, onComplete }) {
   </section></main>;
 }
 
-function MfaEnrollment({ required = false, existingFactor, onComplete, onCancel }) {
+function MfaEnrollment({ required = false, onComplete, onCancel }) {
   const [enrollment, setEnrollment] = useState(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -3758,17 +3758,26 @@ function MfaEnrollment({ required = false, existingFactor, onComplete, onCancel 
 
   useEffect(() => {
     let active = true;
-    if (existingFactor) {
-      setEnrollment({ id: existingFactor.id, pending: true });
-      return () => { active = false; };
-    }
-    supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" }).then(({ data, error: enrollError }) => {
+    async function prepareEnrollment() {
+      const { data: factorData, error: factorError } = await supabase.auth.mfa.listFactors();
+      if (!active) return;
+      if (factorError) { setError("De authenticator kon niet worden voorbereid. Probeer opnieuw."); return; }
+      const unfinishedFactors = (factorData?.totp || []).filter((factor) => factor.status === "unverified");
+      for (const factor of unfinishedFactors) {
+        const { error: removeError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (removeError) {
+          if (active) setError("Er staat al een onafgemaakte authenticator-koppeling. Vernieuw de pagina en probeer opnieuw.");
+          return;
+        }
+      }
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" });
       if (!active) return;
       if (enrollError) setError(enrollError.message);
       else setEnrollment({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
-    });
+    }
+    prepareEnrollment();
     return () => { active = false; };
-  }, [existingFactor]);
+  }, []);
 
   async function confirmEnrollment(event) {
     event.preventDefault();
