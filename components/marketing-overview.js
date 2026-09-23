@@ -40,7 +40,7 @@ function isToday(date) { return sameDay(date, todayStart()); }
 function startOfWeek(date) { const result = new Date(date); const day = result.getDay(); result.setDate(result.getDate() - (day === 0 ? 6 : day - 1)); result.setHours(0, 0, 0, 0); return result; }
 function formatDate(value, options = { day: "numeric", month: "long", year: "numeric" }) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Datum onbekend" : new Intl.DateTimeFormat("nl-NL", options).format(date); }
 function eventText(item) { const distribution = distributionFor(item); return distribution.common?.title || "Zonder titel"; }
-function isExternalEvent(item) { const distribution = distributionFor(item); return ["facebook_event", "eventin_event"].includes(distribution.source_type) && !distribution.linked_to_horeca_os; }
+function isExternalEvent(item) { const distribution = distributionFor(item); return (["facebook_event", "eventin_event", "external_event"].includes(distribution.source_type) || distribution.external_sources?.length > 0) && !distribution.linked_to_horeca_os; }
 
 function facebookCalendarItem(event, business) {
   const checkedAt = new Date().toISOString();
@@ -140,8 +140,39 @@ function deduplicateCalendarItems(items) {
   });
 }
 
+function normalizeEventTitle(value) { return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim(); }
+function externalTitlesMatch(left, right) {
+  const a = new Set(normalizeEventTitle(left).split(" ").filter((word) => word.length > 2));
+  const b = new Set(normalizeEventTitle(right).split(" ").filter((word) => word.length > 2));
+  if (!a.size || !b.size) return false;
+  const overlap = [...a].filter((word) => b.has(word)).length;
+  return overlap >= 2 && overlap / Math.min(a.size, b.size) >= 0.6;
+}
+
+function mergeExternalSourceItems(items) {
+  const result = [];
+  for (const item of items) {
+    const distribution = distributionFor(item);
+    if (!isExternalEvent(item)) { result.push(item); continue; }
+    const match = result.find((candidate) => {
+      if (!isExternalEvent(candidate) || String(candidate.business_id) !== String(item.business_id)) return false;
+      return dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
+        && externalTitlesMatch(eventText(candidate), eventText(item));
+    });
+    if (!match) { result.push(item); continue; }
+    const current = distributionFor(match);
+    const sources = [...new Set([...(current.external_sources || [current.external_source]), ...(distribution.external_sources || [distribution.external_source])].filter(Boolean))];
+    const externalIds = { ...(current.external_ids || {}), ...(distribution.external_ids || {}) };
+    if (distribution.external_source && distribution.external_id) externalIds[distribution.external_source] = String(distribution.external_id);
+    if (current.external_source && current.external_id) externalIds[current.external_source] = String(current.external_id);
+    const merged = { ...current, ...distribution, source_type: "external_event", external_source: "multiple", external_sources: sources, external_ids: externalIds, external_id: externalIds.eventin || externalIds.facebook, target_channels: [...new Set([...(current.target_channels || []), ...(distribution.target_channels || [])])], provider_delivery: { ...(current.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, verification: { ...(current.verification || {}), ...(distribution.verification || {}) }, common: { ...(current.common || {}), ...(distribution.common || {}) } };
+    match.media = (match.media || []).map((entry) => entry?.kind === "campaign_distribution" ? merged : entry);
+  }
+  return result;
+}
+
 function CalendarEvent({ item, business, onSelectEvent }) {
-  const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event";
+  const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event";
   return <button type="button" className={`marketingCalendarEvent ${business?.color || "venueA"} ${external ? "externalFacebookEvent" : ""}`} onClick={() => onSelectEvent(item)} title={`${eventText(item)} · ${external ? externalLabel : status.label}`}><strong>{eventText(item)}</strong><span>{external ? externalLabel : status.label}</span><div className="marketingChannelMini">{["website", "facebook", "instagram", "google"].map((channel) => { const channelState = channelStatus(item, channel); return <i className={channelState.key} key={channel} title={`${channelLabels[channel]}: ${channelState.label}`}>{channel === "website" ? "W" : channel === "facebook" ? "F" : channel === "instagram" ? "I" : "G"}</i>; })}</div></button>;
 }
 
@@ -161,7 +192,7 @@ function YearCalendar({ anchor, items, onSelectEvent }) {
 }
 
 function EventDetails({ item, business, onClose, onLink, linking }) {
-  const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event"; const start = itemStart(item); const end = distribution.common?.end;
+  const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event"; const start = itemStart(item); const end = distribution.common?.end;
   const checkedAt = distribution.verification?.checked_at;
   return <div className="marketingEventModalBackdrop" role="dialog" aria-modal="true" aria-label={`Details van ${eventText(item)}`} onMouseDown={(event) => event.target === event.currentTarget && onClose()}><article className={`marketingEventDetails ${external ? "externalFacebookDetails" : ""}`} onMouseDown={(event) => event.stopPropagation()}><div><p className="eyebrow">EVENEMENTDETAILS</p><h3>{eventText(item)}</h3><p>{business?.name || "Onbekende vestiging"} · <span className={`marketingDetailStatus ${status.key}`}>{status.label}</span>{external && <span className="marketingExternalBadge">{externalLabel}</span>}</p></div><div className="marketingDetailActions">{external && <button type="button" className="primaryButton" onClick={onLink} disabled={linking}>{linking ? "Bezig met koppelen…" : "Koppelen aan Horeca OS"}</button>}<span className="marketingAutoCheck">Publicaties automatisch gecontroleerd bij het laden</span><button type="button" className="secondaryButton" onClick={onClose}>Details sluiten</button></div><dl><div><dt>Datum</dt><dd>{formatDate(start, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}{end && ` · tot ${formatDate(end, { timeStyle: "short" })}`}</dd></div><div><dt>Locatie</dt><dd>{distribution.common?.location || "Geen locatie opgegeven"}</dd></div><div><dt>Omschrijving</dt><dd>{distribution.common?.description || distribution.common?.short_description || item.body || "Geen omschrijving opgegeven"}</dd></div></dl><section className="marketingChannelStatus"><h4>Publicatiestatus per kanaal</h4>{checkedAt && <p className="marketingLastChecked">Laatste controle: {formatDate(checkedAt, { dateStyle: "medium", timeStyle: "short" })}</p>}<div>{["website", "facebook", "instagram", "google", "other"].map((channel) => { const state = channelStatus(item, channel); return <div className={`marketingChannelRow ${state.key}`} key={channel}><strong>{channelLabels[channel]}</strong><span>{state.label}</span></div>; })}</div></section></article></div>;
 }
@@ -196,7 +227,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
         loadEventinItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
       ]);
       if (!active) return;
-      const merged = deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]);
+      const merged = mergeExternalSourceItems(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]));
       setItems(merged);
       setAutoChecking(false);
     }
@@ -222,7 +253,9 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
       let event = { title: distribution.common?.title, description: distribution.common?.description || "", start: distribution.common?.start, end: distribution.common?.end, location: distribution.common?.location || "", url: distribution.source_url || distribution.common?.website_url || "" };
       const { data: account, error: accountError } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("business_id", businessId).in("provider", ["marketing", "meta"]).limit(1).maybeSingle();
       if (accountError || !account?.id) throw new Error("De interne marketingkoppeling ontbreekt voor deze vestiging.");
-      const linkedDistribution = { ...distribution, linked_to_horeca_os: true, source_type: distribution.external_source === "eventin" ? "website_event" : "facebook_event", common: { ...distribution.common, title: event.title, description: event.description, start: event.start, end: event.end, location: event.location, website_url: event.url }, source_url: event.url || distribution.source_url, eventin_event_id: distribution.external_source === "eventin" ? String(distribution.external_id) : distribution.eventin_event_id, provider_delivery: distribution.external_source === "facebook" ? { ...(distribution.provider_delivery || {}), facebook: { status: "confirmed", external_id: String(distribution.external_id), permalink: distribution.source_url } } : (distribution.provider_delivery || {}), target_channels: distribution.external_source === "eventin" ? [] : ["facebook"] };
+      const hasEventinSource = distribution.external_source === "eventin" || distribution.external_sources?.includes("eventin");
+      const hasFacebookSource = distribution.external_source === "facebook" || distribution.external_sources?.includes("facebook");
+      const linkedDistribution = { ...distribution, linked_to_horeca_os: true, source_type: hasEventinSource ? "website_event" : "facebook_event", common: { ...distribution.common, title: event.title, description: event.description, start: event.start, end: event.end, location: event.location, website_url: event.url }, source_url: event.url || distribution.source_url, eventin_event_id: hasEventinSource ? String(distribution.external_ids?.eventin || distribution.external_id || "") : distribution.eventin_event_id, provider_delivery: hasFacebookSource ? { ...(distribution.provider_delivery || {}), facebook: distribution.provider_delivery?.facebook || { status: "confirmed", external_id: String(distribution.external_ids?.facebook || distribution.external_id), permalink: distribution.source_url } } : (distribution.provider_delivery || {}), target_channels: [ ...(hasEventinSource ? ["website"] : []), ...(hasFacebookSource ? ["facebook"] : []) ] };
       const { data: inserted, error: insertError } = await supabase.from("social_content_items").insert({ workspace_id: workspaceId, business_id: businessId, account_id: account.id, content_type: "post", direction: "outbound", body: event.description || event.title || "Extern evenement", media: [{ ...linkedDistribution, external_source: distribution.external_source }], status: "draft", workflow_status: "new", scheduled_for: event.start || null, created_by: session.user.id }).select("id,business_id,media,status,workflow_status,scheduled_for,published_at,created_at").single();
       if (insertError) throw insertError;
       setItems((current) => current.map((entry) => entry.id === item.id ? inserted : entry)); setSelectedItem(null);
