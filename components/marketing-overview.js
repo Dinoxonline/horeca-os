@@ -171,6 +171,47 @@ function mergeExternalSourceItems(items) {
   return result;
 }
 
+function mergeExternalWithManagedItems(items) {
+  const result = [];
+  for (const item of items) {
+    if (!isExternalEvent(item)) { result.push(item); continue; }
+    const managed = result.find((candidate) => !isExternalEvent(candidate)
+      && String(candidate.business_id) === String(item.business_id)
+      && dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
+      && externalTitlesMatch(eventText(candidate), eventText(item)));
+    if (!managed) { result.push(item); continue; }
+    const managedDistribution = distributionFor(managed);
+    const externalDistribution = distributionFor(item);
+    const sources = [...new Set([...(managedDistribution.external_sources || []), ...(externalDistribution.external_sources || [externalDistribution.external_source])].filter(Boolean))];
+    const externalIds = { ...(managedDistribution.external_ids || {}), ...(externalDistribution.external_ids || {}) };
+    if (externalDistribution.external_source && externalDistribution.external_id) externalIds[externalDistribution.external_source] = String(externalDistribution.external_id);
+    const merged = { ...managedDistribution, external_sources: sources, external_ids: externalIds, linked_to_horeca_os: true, target_channels: [...new Set([...(managedDistribution.target_channels || []), ...(externalDistribution.target_channels || [])])], provider_delivery: { ...(managedDistribution.provider_delivery || {}), ...(externalDistribution.provider_delivery || {}) }, verification: { ...(managedDistribution.verification || {}), ...(externalDistribution.verification || {}) } };
+    managed.media = (managed.media || []).map((entry) => entry?.kind === "campaign_distribution" ? merged : entry);
+  }
+  return result;
+}
+
+function statusRank(item) { const status = statusFor(item, distributionFor(item)).key; return { published: 4, scheduled: 3, approved: 2, draft: 1 }[status] || 0; }
+function mergeSimilarManagedItems(items) {
+  const result = [];
+  for (const item of items) {
+    if (isExternalEvent(item)) { result.push(item); continue; }
+    const index = result.findIndex((candidate) => !isExternalEvent(candidate)
+      && String(candidate.business_id) === String(item.business_id)
+      && dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
+      && externalTitlesMatch(eventText(candidate), eventText(item)));
+    if (index < 0) { result.push(item); continue; }
+    const candidate = result[index];
+    const preferred = statusRank(item) > statusRank(candidate) ? item : candidate;
+    const other = preferred.id === item.id ? candidate : item;
+    const preferredDistribution = distributionFor(preferred);
+    const otherDistribution = distributionFor(other);
+    const mergedDistribution = { ...preferredDistribution, external_sources: [...new Set([...(preferredDistribution.external_sources || []), ...(otherDistribution.external_sources || [])])], external_ids: { ...(otherDistribution.external_ids || {}), ...(preferredDistribution.external_ids || {}) }, provider_delivery: { ...(otherDistribution.provider_delivery || {}), ...(preferredDistribution.provider_delivery || {}) }, target_channels: [...new Set([...(preferredDistribution.target_channels || []), ...(otherDistribution.target_channels || [])])] };
+    result[index] = { ...preferred, media: (preferred.media || []).map((entry) => entry?.kind === "campaign_distribution" ? mergedDistribution : entry) };
+  }
+  return result;
+}
+
 function CalendarEvent({ item, business, onSelectEvent }) {
   const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event";
   return <button type="button" className={`marketingCalendarEvent ${business?.color || "venueA"} ${external ? "externalFacebookEvent" : ""}`} onClick={() => onSelectEvent(item)} title={`${eventText(item)} · ${external ? externalLabel : status.label}`}><strong>{eventText(item)}</strong><span>{external ? externalLabel : status.label}</span><div className="marketingChannelMini">{["website", "facebook", "instagram", "google"].map((channel) => { const channelState = channelStatus(item, channel); return <i className={channelState.key} key={channel} title={`${channelLabels[channel]}: ${channelState.label}`}>{channel === "website" ? "W" : channel === "facebook" ? "F" : channel === "instagram" ? "I" : "G"}</i>; })}</div></button>;
@@ -227,7 +268,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
         loadEventinItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
       ]);
       if (!active) return;
-      const merged = mergeExternalSourceItems(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]));
+      const merged = mergeSimilarManagedItems(mergeExternalWithManagedItems(mergeExternalSourceItems(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]))));
       setItems(merged);
       setAutoChecking(false);
     }
