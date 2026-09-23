@@ -144,6 +144,7 @@ function suggestPotentialMatches(items) {
   return items.map((item) => {
     const match = items.find((candidate) => candidate.id !== item.id
       && !isExternalEvent(candidate)
+      && !distributionFor(candidate).duplicate_of
       && String(candidate.business_id) === String(item.business_id)
       && dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
       && externalTitlesMatch(eventText(candidate), eventText(item)));
@@ -217,7 +218,7 @@ function mergeSimilarManagedItems(items) {
     const other = preferred.id === item.id ? candidate : item;
     const preferredDistribution = distributionFor(preferred);
     const otherDistribution = distributionFor(other);
-    const mergedDistribution = { ...preferredDistribution, external_sources: [...new Set([...(preferredDistribution.external_sources || []), ...(otherDistribution.external_sources || [])])], external_ids: { ...(otherDistribution.external_ids || {}), ...(preferredDistribution.external_ids || {}) }, provider_delivery: { ...(otherDistribution.provider_delivery || {}), ...(preferredDistribution.provider_delivery || {}) }, target_channels: [...new Set([...(preferredDistribution.target_channels || []), ...(otherDistribution.target_channels || [])])] };
+    const mergedDistribution = { ...preferredDistribution, external_sources: [...new Set([...(preferredDistribution.external_sources || []), ...(otherDistribution.external_sources || [])])], external_ids: { ...(otherDistribution.external_ids || {}), ...(preferredDistribution.external_ids || {}) }, provider_delivery: { ...(otherDistribution.provider_delivery || {}), ...(preferredDistribution.provider_delivery || {}) }, verification: { ...(otherDistribution.verification || {}), ...(preferredDistribution.verification || {}) }, target_channels: [...new Set([...(preferredDistribution.target_channels || []), ...(otherDistribution.target_channels || [])])] };
     result[index] = { ...preferred, media: (preferred.media || []).map((entry) => entry?.kind === "campaign_distribution" ? mergedDistribution : entry) };
   }
   return result;
@@ -310,7 +311,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
       let event = { title: distribution.common?.title, description: distribution.common?.description || "", start: distribution.common?.start, end: distribution.common?.end, location: distribution.common?.location || "", url: distribution.source_url || distribution.common?.website_url || "" };
       if (existingItem) {
         const existingDistribution = distributionFor(existingItem);
-        const linkedDistribution = { ...existingDistribution, linked_to_horeca_os: true, external_sources: [...new Set([...(existingDistribution.external_sources || []), ...(distribution.external_sources || [distribution.external_source])].filter(Boolean))], external_ids: { ...(existingDistribution.external_ids || {}), ...(distribution.external_ids || {}), ...(distribution.external_source && distribution.external_id ? { [distribution.external_source]: String(distribution.external_id) } : {}) }, provider_delivery: { ...(existingDistribution.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, target_channels: [...new Set([...(existingDistribution.target_channels || []), ...(distribution.target_channels || [])])] };
+        const linkedDistribution = { ...existingDistribution, linked_to_horeca_os: true, external_sources: [...new Set([...(existingDistribution.external_sources || []), ...(distribution.external_sources || [distribution.external_source])].filter(Boolean))], external_ids: { ...(existingDistribution.external_ids || {}), ...(distribution.external_ids || {}), ...(distribution.external_source && distribution.external_id ? { [distribution.external_source]: String(distribution.external_id) } : {}) }, provider_delivery: { ...(existingDistribution.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, verification: { ...(existingDistribution.verification || {}), ...(distribution.verification || {}) }, target_channels: [...new Set([...(existingDistribution.target_channels || []), ...(distribution.target_channels || [])])] };
         const nextMedia = (existingItem.media || []).map((entry) => entry?.kind === "campaign_distribution" ? linkedDistribution : entry);
         const { data: updated, error: updateError } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", existingItem.id).select("id,business_id,media,status,workflow_status,scheduled_for,published_at,created_at").single();
         if (updateError) throw updateError;
