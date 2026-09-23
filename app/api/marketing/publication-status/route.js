@@ -72,8 +72,11 @@ export async function POST(request) {
   if (!userData?.user) return NextResponse.json({ error: "Aanmelding verlopen." }, { status: 401 });
   const { data: campaign, error: campaignError } = await client.from("social_content_items").select("id,business_id,media,body").eq("id", campaignId).eq("workspace_id", workspaceId).maybeSingle();
   if (campaignError || !campaign) return NextResponse.json({ error: "Evenement niet gevonden of geen toegang." }, { status: 404 });
-  const distributionIndex = (campaign.media || []).findIndex((entry) => entry?.kind === "campaign_distribution"); const distribution = distributionIndex >= 0 ? campaign.media[distributionIndex] : null;
+  const distributionIndex = (campaign.media || []).findIndex((entry) => entry?.kind === "campaign_distribution"); let distribution = distributionIndex >= 0 ? campaign.media[distributionIndex] : null;
   if (!distribution) return NextResponse.json({ error: "Geen publicatiegegevens gevonden." }, { status: 400 });
+  const { data: relatedCampaigns } = await client.from("social_content_items").select("id,media,body").eq("workspace_id", workspaceId).eq("business_id", campaign.business_id).limit(500);
+  const linkedSource = (relatedCampaigns || []).map((entry) => (entry.media || []).find((media) => media?.kind === "campaign_distribution" && media.duplicate_of === campaign.id)).find(Boolean);
+  if (linkedSource) distribution = { ...linkedSource, ...distribution, source_url: distribution.source_url || linkedSource.source_url, eventin_event_id: distribution.eventin_event_id || linkedSource.eventin_event_id, external_ids: { ...(linkedSource.external_ids || {}), ...(distribution.external_ids || {}) }, provider_delivery: { ...(linkedSource.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, common: { ...(linkedSource.common || {}), ...(distribution.common || {}) } };
   const textLinks = linksFromText(distribution.common?.description || campaign.body);
   const facebookTextLink = textLinks.find((url) => /facebook\.com|fb\.me/i.test(url)) || "";
   const websiteTextLink = textLinks.find((url) => !/facebook\.com|fb\.me|instagram\.com|google\./i.test(url)) || "";
