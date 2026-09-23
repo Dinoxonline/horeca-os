@@ -7,8 +7,7 @@ async function probe(url) {
   if (!url || !/^https:\/\//i.test(url)) return result("missing", "Geen link", "Er is geen openbare publicatielink opgeslagen.");
   try {
     const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 10000);
-    let response = await fetch(url, { method: "HEAD", redirect: "follow", signal: controller.signal, cache: "no-store" });
-    if (response.status === 405 || response.status === 403) response = await fetch(url, { method: "GET", redirect: "follow", signal: controller.signal, cache: "no-store" });
+    let response = await fetch(url, { method: "GET", redirect: "follow", signal: controller.signal, cache: "no-store", headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "HorecaOS-publication-check/1.0" } });
     clearTimeout(timeout);
     return response.ok ? result("reachable", "Link bereikbaar", `${response.status} ${response.statusText}`) : result("unreachable", "Link niet bereikbaar", `${response.status} ${response.statusText}`);
   } catch (error) { return result("unreachable", "Controle mislukt", error.name === "AbortError" ? "De controle duurde te lang." : "De link kon niet worden geopend."); }
