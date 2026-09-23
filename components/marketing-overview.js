@@ -355,14 +355,14 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
         const distribution = distributionFor(item);
         return Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook);
       });
-      const comparisonEntries = await Promise.all(managedItems.slice(0, 100).map(async (item) => {
-        try { return [String(item.id), await fetchSourceComparison(item)]; } catch { return [String(item.id), null]; }
-      }));
-      if (!active) return;
-      setSourceComparisons(Object.fromEntries(comparisonEntries.filter(([, value]) => value)));
       const merged = suggestPotentialMatches(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]));
       setItems(merged);
       setAutoChecking(false);
+      Promise.all(managedItems.slice(0, 100).map(async (item) => {
+        try { return [String(item.id), await fetchSourceComparison(item)]; } catch { return [String(item.id), null]; }
+      })).then((comparisonEntries) => {
+        if (active) setSourceComparisons(Object.fromEntries(comparisonEntries.filter(([, value]) => value)));
+      });
     }
     load();
     return () => { active = false; };
