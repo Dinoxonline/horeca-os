@@ -466,7 +466,7 @@ export default function HorecaOsApp() {
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} businessId={businessId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && (businessId === "all"
-          ? <MarketingOverview workspaceId={workspaceId} businesses={visibleBusinesses} onSelectBusiness={setBusinessId} />
+          ? <MarketingOverview workspaceId={workspaceId} businesses={visibleBusinesses} session={session} />
           : <CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />)}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
