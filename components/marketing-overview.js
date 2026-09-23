@@ -351,13 +351,13 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
         loadEventinItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
       ]);
       if (!active) return;
-      const managedItems = verifiedCampaigns.filter((item) => {
-        const distribution = distributionFor(item);
-        return Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook);
-      });
       const merged = suggestPotentialMatches(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]));
       setItems(merged);
       setAutoChecking(false);
+      const managedItems = merged.filter((item) => {
+        const distribution = distributionFor(item);
+        return Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook);
+      });
       Promise.all(managedItems.slice(0, 100).map(async (item) => {
         try { return [String(item.id), await fetchSourceComparison(item)]; } catch { return [String(item.id), null]; }
       })).then((comparisonEntries) => {
