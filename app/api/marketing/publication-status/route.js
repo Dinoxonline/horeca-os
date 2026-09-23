@@ -63,6 +63,12 @@ function linksFromText(value) {
   return String(value || "").match(/https?:\/\/[^\s)]+/gi)?.map((url) => url.replace(/[.,!?]+$/, "")) || [];
 }
 
+function normalizedWords(value) { return new Set(String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((word) => word.length > 2 && !/^\d+$/.test(word))); }
+function relatedByDateAndTitle(left, right) {
+  const leftDate = String(left.common?.start || "").slice(0, 10); const rightDate = String(right.common?.start || "").slice(0, 10); if (!leftDate || leftDate !== rightDate) return false;
+  const a = normalizedWords(left.common?.title); const b = normalizedWords(right.common?.title); const overlap = [...a].filter((word) => b.has(word)).length; return overlap >= 2 && overlap / Math.min(a.size || 1, b.size || 1) >= 0.6;
+}
+
 export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldig verzoek." }, { status: 400 }); }
@@ -75,7 +81,7 @@ export async function POST(request) {
   const distributionIndex = (campaign.media || []).findIndex((entry) => entry?.kind === "campaign_distribution"); let distribution = distributionIndex >= 0 ? campaign.media[distributionIndex] : null;
   if (!distribution) return NextResponse.json({ error: "Geen publicatiegegevens gevonden." }, { status: 400 });
   const { data: relatedCampaigns } = await client.from("social_content_items").select("id,media,body").eq("workspace_id", workspaceId).eq("business_id", campaign.business_id).limit(500);
-  const linkedSource = (relatedCampaigns || []).map((entry) => (entry.media || []).find((media) => media?.kind === "campaign_distribution" && media.duplicate_of === campaign.id)).find(Boolean);
+  const linkedSource = (relatedCampaigns || []).filter((entry) => entry.id !== campaign.id).map((entry) => (entry.media || []).find((media) => media?.kind === "campaign_distribution" && (media.duplicate_of === campaign.id || relatedByDateAndTitle(distribution, media)))).find(Boolean);
   if (linkedSource) distribution = { ...linkedSource, ...distribution, source_url: distribution.source_url || linkedSource.source_url, eventin_event_id: distribution.eventin_event_id || linkedSource.eventin_event_id, external_ids: { ...(linkedSource.external_ids || {}), ...(distribution.external_ids || {}) }, provider_delivery: { ...(linkedSource.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, common: { ...(linkedSource.common || {}), ...(distribution.common || {}) } };
   const textLinks = linksFromText(distribution.common?.description || campaign.body);
   const facebookTextLink = textLinks.find((url) => /facebook\.com|fb\.me/i.test(url)) || "";
