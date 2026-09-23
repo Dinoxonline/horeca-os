@@ -208,7 +208,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
   const activeFromToday = todayStart(); const visibleItems = items.filter((item) => businessById.has(String(item.business_id)) && (dateOnly(itemStart(item)) || activeFromToday) >= activeFromToday); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
-  const externalItems = visibleItems.filter(isExternalEvent).sort((left, right) => new Date(itemStart(left) || 0) - new Date(itemStart(right) || 0));
+  const externalItems = visibleItems.filter((item) => isExternalEvent(item) && distributionFor(item).external_source === "facebook").sort((left, right) => new Date(itemStart(left) || 0) - new Date(itemStart(right) || 0));
   useEffect(() => {
     if (busy || autoChecking || selectedItem || !externalItems.length) return;
     setSelectedItem(externalItems[0]);
