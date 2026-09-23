@@ -120,8 +120,7 @@ async function loadEventinItems({ workspaceId, businesses, token, campaigns }) {
   const responses = await Promise.all((businesses || []).map(async (business) => {
     try {
       const site = siteForBusiness(business);
-      const query = new URLSearchParams({ workspaceId, businessId: String(business.id), site });
-      const endpoint = site === "grandcafehetplein.com" ? `/api/marketing/website-events?site=${encodeURIComponent(site)}` : `/api/marketing/website-events/create?${query}`;
+      const endpoint = `/api/marketing/website-events?site=${encodeURIComponent(site)}`;
       const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) return [];
       const payload = await response.json();
@@ -208,7 +207,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
   const activeFromToday = todayStart(); const visibleItems = items.filter((item) => businessById.has(String(item.business_id)) && (dateOnly(itemStart(item)) || activeFromToday) >= activeFromToday); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
-  const externalItems = visibleItems.filter((item) => isExternalEvent(item) && distributionFor(item).external_source === "facebook").sort((left, right) => new Date(itemStart(left) || 0) - new Date(itemStart(right) || 0));
+  const externalItems = visibleItems.filter(isExternalEvent).sort((left, right) => new Date(itemStart(right) || 0) - new Date(itemStart(left) || 0));
   useEffect(() => {
     if (busy || autoChecking || selectedItem || !externalItems.length) return;
     setSelectedItem(externalItems[0]);
@@ -221,12 +220,6 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     setLinkingId(String(item.id)); setError("");
     try {
       let event = { title: distribution.common?.title, description: distribution.common?.description || "", start: distribution.common?.start, end: distribution.common?.end, location: distribution.common?.location || "", url: distribution.source_url || distribution.common?.website_url || "" };
-      if (distribution.external_source === "eventin" && siteForBusiness(business) === "caribbeancorner.nl") {
-        const query = new URLSearchParams({ workspaceId, businessId, site: siteForBusiness(business), eventId: String(distribution.external_id), importEvent: "1" });
-        const response = await fetch(`/api/marketing/website-events/create?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
-        const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error || "Eventin-evenement kon niet worden gekoppeld.");
-        event = { ...event, ...(payload.event || {}) };
-      }
       const { data: account, error: accountError } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("business_id", businessId).in("provider", ["marketing", "meta"]).limit(1).maybeSingle();
       if (accountError || !account?.id) throw new Error("De interne marketingkoppeling ontbreekt voor deze vestiging.");
       const linkedDistribution = { ...distribution, linked_to_horeca_os: true, source_type: distribution.external_source === "eventin" ? "website_event" : "facebook_event", common: { ...distribution.common, title: event.title, description: event.description, start: event.start, end: event.end, location: event.location, website_url: event.url }, source_url: event.url || distribution.source_url, eventin_event_id: distribution.external_source === "eventin" ? String(distribution.external_id) : distribution.eventin_event_id, provider_delivery: distribution.external_source === "facebook" ? { ...(distribution.provider_delivery || {}), facebook: { status: "confirmed", external_id: String(distribution.external_id), permalink: distribution.source_url } } : (distribution.provider_delivery || {}), target_channels: distribution.external_source === "eventin" ? [] : ["facebook"] };
@@ -242,7 +235,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     <div className="marketingCalendarToolbar"><div className="marketingCalendarViews">{Object.entries(viewLabels).map(([key, label]) => <button type="button" className={view === key ? "active" : ""} onClick={() => setView(key)} key={key}>{label}</button>)}</div><div className="marketingCalendarNav"><button type="button" onClick={() => move(-1)}>‹</button><button type="button" onClick={() => setAnchor(new Date())}>Vandaag</button><button type="button" onClick={() => move(1)}>›</button></div><div className="marketingCalendarLayout"><button type="button" className={calendarLayout === "two" ? "active" : ""} onClick={() => setCalendarLayout("two")}>Twee agenda's</button><button type="button" className={calendarLayout === "combined" ? "active" : ""} onClick={() => setCalendarLayout("combined")}>Over elkaar leggen</button></div></div>
     <div className="marketingCalendarLegend">{venueBusinesses.map((business) => <span key={business.id}><i className={business.color} />{business.name}</span>)}<span><i className="externalLegend" />Extern evenement — nog niet gekoppeld</span></div>
     {autoChecking && <div className="marketingAutoNotice">Marketingagenda geladen. Publicaties en externe evenementen worden automatisch gecontroleerd…</div>}
-    {!autoChecking && externalItems.length > 0 && <div className="marketingExternalQueueNotice">{externalItems.length} extern {externalItems.length === 1 ? "evenement wacht" : "evenementen wachten"} op koppeling. De oudste wordt automatisch geopend.</div>}
+    {!autoChecking && externalItems.length > 0 && <div className="marketingExternalQueueNotice">{externalItems.length} extern {externalItems.length === 1 ? "evenement wacht" : "evenementen wachten"} op koppeling. Het nieuwste wordt automatisch geopend.</div>}
     {error && <div className="eventResult error"><strong>{error}</strong></div>}{calendarLayout === "two" ? <div className="marketingTwoCalendars">{venueBusinesses.map(renderBusinessCalendar)}</div> : <div className="marketingCombinedCalendar">{view === "month" && <MonthCalendar anchor={anchor} items={visibleItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "week" && <WeekCalendar anchor={anchor} items={visibleItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "day" && <div className="marketingDayAgenda"><h3>{formatDate(anchor, { weekday: "long", day: "numeric", month: "long" })}</h3>{dayItems.length ? dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={setSelectedItem} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={visibleItems} onSelectEvent={setSelectedItem} />}</div>}
     {selectedItem && <EventDetails item={selectedItem} business={businessById.get(String(selectedItem.business_id))} onClose={() => setSelectedItem(null)} onLink={() => linkExternalEvent(selectedItem)} linking={linkingId === String(selectedItem.id)} />}
     {!busy && !visibleItems.length && <div className="marketingCalendarEmptyState"><strong>Nog geen evenementen of campagnes ingepland</strong><p>Maak vanuit één van de vestigingen een campagne aan; die verschijnt daarna automatisch op deze agenda.</p></div>}
