@@ -15,7 +15,7 @@ async function probe(url) {
 }
 
 async function verifyEventin(request, token, workspaceId, businessId, distribution, fallbackUrl) {
-  const eventId = String(distribution.eventin_event_id || "").trim();
+  const eventId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
   if (!/^\d+$/.test(eventId)) return probe(fallbackUrl);
   let site = "";
   try { site = new URL(fallbackUrl).hostname.replace(/^www\./i, ""); } catch { site = "caribbeancorner.nl"; }
@@ -34,7 +34,7 @@ async function verifyEventin(request, token, workspaceId, businessId, distributi
 
 async function verifyFacebook(request, token, workspaceId, businessId, distribution, fallbackUrl) {
   const delivery = distribution.facebook_event_delivery || distribution.provider_delivery?.facebook || {};
-  const externalId = String(delivery.external_id || delivery.event_id || "").trim();
+  const externalId = String(delivery.external_id || delivery.event_id || distribution.external_ids?.facebook || "").trim();
   if (externalId) {
     const url = new URL("/api/integrations/facebook/events", request.url);
     url.searchParams.set("workspaceId", workspaceId);
