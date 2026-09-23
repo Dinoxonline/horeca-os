@@ -310,19 +310,22 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     const business = businessById.get(String(item.business_id));
     const eventinId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
     const facebookId = String(distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook || "").trim();
-    if (/^\d+$/.test(eventinId) && business) {
+    const sourceRequests = [];
+    if (/^\d+$/.test(eventinId) && business) sourceRequests.push((async () => {
       const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), site: siteForBusiness(business), eventId: eventinId, campaignId: String(item.id), importEvent: "1" });
-      const response = await fetch(`/api/marketing/website-events/create?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const response = await fetch(`/api/marketing/website-events/create?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, keepalive: true });
       const payload = await response.json().catch(() => ({}));
-      if (response.ok && payload.event) result.push({ label: "Eventin", item: { id: `compare:eventin:${eventinId}`, business_id: item.business_id, scheduled_for: payload.event.start, media: [{ kind: "campaign_distribution", source_type: "eventin_event", common: { title: payload.event.title, start: payload.event.start, end: payload.event.end, location: payload.event.location, description: payload.event.description, website_url: payload.event.url || "" } }] } });
-    }
-    if (facebookId && business) {
+      return response.ok && payload.event ? { label: "Eventin", item: { id: `compare:eventin:${eventinId}`, business_id: item.business_id, scheduled_for: payload.event.start, media: [{ kind: "campaign_distribution", source_type: "eventin_event", common: { title: payload.event.title, start: payload.event.start, end: payload.event.end, location: payload.event.location, description: payload.event.description, website_url: payload.event.url || "" } }] } } : null;
+    })());
+    if (facebookId && business) sourceRequests.push((async () => {
       const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), includePast: "true" });
-      const response = await fetch(`/api/integrations/facebook/events?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const response = await fetch(`/api/integrations/facebook/events?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, keepalive: true });
       const payload = await response.json().catch(() => ({}));
       const event = (payload.events || []).find((candidate) => String(candidate.id) === facebookId);
-      if (response.ok && event) result.push({ label: "Facebook", item: { id: `compare:facebook:${facebookId}`, business_id: item.business_id, scheduled_for: event.startDate, media: [{ kind: "campaign_distribution", source_type: "facebook_event", common: { title: event.title, start: event.startDate, end: event.endDate, location: event.location, description: event.description } }] } });
-    }
+      return response.ok && event ? { label: "Facebook", item: { id: `compare:facebook:${facebookId}`, business_id: item.business_id, scheduled_for: event.startDate, media: [{ kind: "campaign_distribution", source_type: "facebook_event", common: { title: event.title, start: event.startDate, end: event.endDate, location: event.location, description: event.description } }] } } : null;
+    })());
+    const sources = await Promise.all(sourceRequests);
+    result.push(...sources.filter(Boolean));
     return result.length > 1 ? result : null;
   }
 
