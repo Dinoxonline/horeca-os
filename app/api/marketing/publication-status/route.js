@@ -56,6 +56,10 @@ async function verifyFacebook(request, token, workspaceId, businessId, distribut
   return checked.status === "reachable" ? { ...checked, label: "Facebook gecontroleerd", detail: "De opgeslagen publicatielink op Facebook is bereikbaar." } : checked;
 }
 
+function linksFromText(value) {
+  return String(value || "").match(/https?:\/\/[^\s)]+/gi)?.map((url) => url.replace(/[.,!?]+$/, "")) || [];
+}
+
 export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldig verzoek." }, { status: 400 }); }
@@ -63,15 +67,18 @@ export async function POST(request) {
   if (!token || !workspaceId || !campaignId) return NextResponse.json({ error: "Aanmelding, werkruimte en evenement zijn verplicht." }, { status: 400 });
   const client = createUserSupabase(token); const { data: userData } = await client.auth.getUser(token);
   if (!userData?.user) return NextResponse.json({ error: "Aanmelding verlopen." }, { status: 401 });
-  const { data: campaign, error: campaignError } = await client.from("social_content_items").select("id,business_id,media").eq("id", campaignId).eq("workspace_id", workspaceId).maybeSingle();
+  const { data: campaign, error: campaignError } = await client.from("social_content_items").select("id,business_id,media,body").eq("id", campaignId).eq("workspace_id", workspaceId).maybeSingle();
   if (campaignError || !campaign) return NextResponse.json({ error: "Evenement niet gevonden of geen toegang." }, { status: 404 });
   const distributionIndex = (campaign.media || []).findIndex((entry) => entry?.kind === "campaign_distribution"); const distribution = distributionIndex >= 0 ? campaign.media[distributionIndex] : null;
   if (!distribution) return NextResponse.json({ error: "Geen publicatiegegevens gevonden." }, { status: 400 });
+  const textLinks = linksFromText(distribution.common?.description || campaign.body);
+  const facebookTextLink = textLinks.find((url) => /facebook\.com|fb\.me/i.test(url)) || "";
+  const websiteTextLink = textLinks.find((url) => !/facebook\.com|fb\.me|instagram\.com|google\./i.test(url)) || "";
   const links = {
-    website: distribution.source_url || distribution.common?.website_url || distribution.common?.cta?.url || "",
-    facebook: distribution.facebook_event_delivery?.permalink || distribution.provider_delivery?.facebook?.permalink || distribution.provider_delivery?.facebook?.result_url || "",
-    instagram: distribution.provider_delivery?.instagram?.permalink || distribution.provider_delivery?.instagram?.result_url || "",
-    google: distribution.provider_delivery?.google?.permalink || distribution.provider_delivery?.google?.result_url || "",
+    website: distribution.source_url || distribution.common?.website_url || distribution.common?.cta?.url || websiteTextLink,
+    facebook: distribution.facebook_event_delivery?.permalink || distribution.provider_delivery?.facebook?.permalink || distribution.provider_delivery?.facebook?.result_url || facebookTextLink,
+    instagram: distribution.provider_delivery?.instagram?.permalink || distribution.provider_delivery?.instagram?.result_url || textLinks.find((url) => /instagram\.com/i.test(url)) || "",
+    google: distribution.provider_delivery?.google?.permalink || distribution.provider_delivery?.google?.result_url || textLinks.find((url) => /google\./i.test(url)) || "",
   };
   const channels = {};
   channels.website = await verifyEventin(request, token, workspaceId, campaign.business_id, distribution, links.website);
