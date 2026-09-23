@@ -17,6 +17,10 @@ async function probe(url) {
 async function verifyEventin(request, token, workspaceId, businessId, distribution, fallbackUrl) {
   const eventId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
   if (!/^\d+$/.test(eventId)) return probe(fallbackUrl);
+  const fallbackCheck = async (detail) => {
+    const checked = await probe(fallbackUrl);
+    return checked.status === "reachable" ? { ...checked, label: "Website gecontroleerd", detail: `${detail} De openbare evenementpagina is bereikbaar.` } : checked;
+  };
   let site = "";
   try { site = new URL(fallbackUrl).hostname.replace(/^www\./i, ""); } catch { site = "caribbeancorner.nl"; }
   const url = new URL("/api/marketing/website-events/create", request.url);
@@ -24,12 +28,12 @@ async function verifyEventin(request, token, workspaceId, businessId, distributi
   try {
     const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return result("unreachable", "Eventin controle mislukt", payload.error || `Eventin gaf status ${response.status}.`);
+    if (!response.ok) return fallbackCheck(`Eventin-ID ${eventId} kon niet worden opgehaald.`);
     const eventTitle = String(payload.event?.title || "").trim(); const dossierTitle = String(distribution.common?.title || "").trim();
-    if (eventTitle && dossierTitle && eventTitle !== dossierTitle) return result("unreachable", "Eventin wijkt af", `Eventin toont “${eventTitle}”.`);
+    if (eventTitle && dossierTitle && eventTitle !== dossierTitle) return fallbackCheck(`Eventin toont een afwijkende titel (“${eventTitle}”).`);
     if (payload.event?.status === "draft") return result("reachable", "Eventin-concept", "Het evenement staat nog als concept in Eventin.");
     return result("reachable", "Eventin gecontroleerd", "Titel en Eventin-status zijn opnieuw opgehaald.");
-  } catch (error) { return result("unreachable", "Eventin controle mislukt", error.message || "Eventin kon niet worden gecontroleerd."); }
+  } catch (error) { return fallbackCheck("Eventin kon niet rechtstreeks worden gecontroleerd."); }
 }
 
 async function verifyFacebook(request, token, workspaceId, businessId, distribution, fallbackUrl) {
