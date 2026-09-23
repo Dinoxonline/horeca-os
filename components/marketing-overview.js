@@ -140,6 +140,27 @@ function deduplicateCalendarItems(items) {
   });
 }
 
+function duplicateRootId(item, items) {
+  let current = item; const visited = new Set();
+  while (distributionFor(current).duplicate_of && !visited.has(current.id)) {
+    visited.add(current.id);
+    const next = items.find((candidate) => String(candidate.id) === String(distributionFor(current).duplicate_of));
+    if (!next) return item.id;
+    current = next;
+  }
+  return current.id;
+}
+
+function visibleCalendarItems(items, businessById, activeFromToday) {
+  const candidates = items.filter((item) => businessById.has(String(item.business_id)) && (dateOnly(itemStart(item)) || activeFromToday) >= activeFromToday);
+  const grouped = new Map();
+  candidates.forEach((item) => {
+    const rootId = duplicateRootId(item, items); const current = grouped.get(String(rootId));
+    if (!current || statusRank(item) > statusRank(current)) grouped.set(String(rootId), item);
+  });
+  return [...grouped.values()];
+}
+
 function suggestPotentialMatches(items) {
   return items.map((item) => {
     const match = items.find((candidate) => candidate.id !== item.id
@@ -301,7 +322,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
-  const activeFromToday = todayStart(); const visibleItems = items.filter((item) => businessById.has(String(item.business_id)) && !distributionFor(item).duplicate_of && (dateOnly(itemStart(item)) || activeFromToday) >= activeFromToday); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
+  const activeFromToday = todayStart(); const visibleItems = visibleCalendarItems(items, businessById, activeFromToday); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
   const externalItems = visibleItems.filter(isExternalEvent).sort((left, right) => new Date(itemStart(right) || 0) - new Date(itemStart(left) || 0));
   useEffect(() => {
     if (busy || autoChecking || selectedItem || !externalItems.length) return;
