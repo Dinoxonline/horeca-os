@@ -13,7 +13,7 @@ async function probe(url) {
   } catch (error) { return result("unreachable", "Controle mislukt", error.name === "AbortError" ? "De controle duurde te lang." : "De link kon niet worden geopend."); }
 }
 
-async function verifyEventin(request, token, workspaceId, businessId, distribution, fallbackUrl) {
+async function verifyEventin(request, token, workspaceId, businessId, distribution, fallbackUrl, campaignId) {
   const eventId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
   if (!/^\d+$/.test(eventId)) return probe(fallbackUrl);
   const fallbackCheck = async (detail) => {
@@ -23,7 +23,7 @@ async function verifyEventin(request, token, workspaceId, businessId, distributi
   let site = "";
   try { site = new URL(fallbackUrl).hostname.replace(/^www\./i, ""); } catch { site = "caribbeancorner.nl"; }
   const url = new URL("/api/marketing/website-events/create", request.url);
-  url.searchParams.set("workspaceId", workspaceId); url.searchParams.set("businessId", businessId || ""); url.searchParams.set("site", site); url.searchParams.set("eventId", eventId); url.searchParams.set("campaignId", "");
+  url.searchParams.set("workspaceId", workspaceId); url.searchParams.set("businessId", businessId || ""); url.searchParams.set("site", site); url.searchParams.set("eventId", eventId); url.searchParams.set("campaignId", campaignId || "");
   try {
     const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
@@ -94,7 +94,7 @@ export async function POST(request) {
     google: distribution.provider_delivery?.google?.permalink || distribution.provider_delivery?.google?.result_url || textLinks.find((url) => /google\./i.test(url)) || "",
   };
   const channels = {};
-  channels.website = await verifyEventin(request, token, workspaceId, campaign.business_id, distribution, links.website);
+  channels.website = await verifyEventin(request, token, workspaceId, campaign.business_id, distribution, links.website, campaign.id);
   channels.facebook = await verifyFacebook(request, token, workspaceId, campaign.business_id, distribution, links.facebook);
   for (const channel of ["instagram", "google"]) channels[channel] = await probe(links[channel]);
   const otherLinks = Object.entries(distribution.provider_delivery || {}).filter(([channel]) => !["facebook", "instagram", "google"].includes(channel)).map(([, delivery]) => delivery?.permalink || delivery?.result_url).filter(Boolean);
