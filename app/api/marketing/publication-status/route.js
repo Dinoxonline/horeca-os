@@ -14,6 +14,24 @@ async function probe(url) {
   } catch (error) { return result("unreachable", "Controle mislukt", error.name === "AbortError" ? "De controle duurde te lang." : "De link kon niet worden geopend."); }
 }
 
+async function verifyEventin(request, token, workspaceId, businessId, distribution, fallbackUrl) {
+  const eventId = String(distribution.eventin_event_id || "").trim();
+  if (!/^\d+$/.test(eventId)) return probe(fallbackUrl);
+  let site = "";
+  try { site = new URL(fallbackUrl).hostname.replace(/^www\./i, ""); } catch { site = "caribbeancorner.nl"; }
+  const url = new URL("/api/marketing/website-events/create", request.url);
+  url.searchParams.set("workspaceId", workspaceId); url.searchParams.set("businessId", businessId || ""); url.searchParams.set("site", site); url.searchParams.set("eventId", eventId); url.searchParams.set("campaignId", "");
+  try {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return result("unreachable", "Eventin controle mislukt", payload.error || `Eventin gaf status ${response.status}.`);
+    const eventTitle = String(payload.event?.title || "").trim(); const dossierTitle = String(distribution.common?.title || "").trim();
+    if (eventTitle && dossierTitle && eventTitle !== dossierTitle) return result("unreachable", "Eventin wijkt af", `Eventin toont “${eventTitle}”.`);
+    if (payload.event?.status === "draft") return result("reachable", "Eventin-concept", "Het evenement staat nog als concept in Eventin.");
+    return result("reachable", "Eventin gecontroleerd", "Titel en Eventin-status zijn opnieuw opgehaald.");
+  } catch (error) { return result("unreachable", "Eventin controle mislukt", error.message || "Eventin kon niet worden gecontroleerd."); }
+}
+
 export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldig verzoek." }, { status: 400 }); }
@@ -32,7 +50,10 @@ export async function POST(request) {
     google: distribution.provider_delivery?.google?.permalink || distribution.provider_delivery?.google?.result_url || "",
   };
   const channels = {};
-  for (const channel of ["website", "facebook", "instagram", "google"]) channels[channel] = await probe(links[channel]);
+  channels.website = await verifyEventin(request, token, workspaceId, campaign.business_id, distribution, links.website);
+  const facebookCheck = await probe(links.facebook);
+  channels.facebook = facebookCheck.status === "reachable" ? { ...facebookCheck, label: "Facebook gecontroleerd", detail: "De opgeslagen publicatielink op Facebook is bereikbaar." } : facebookCheck;
+  for (const channel of ["instagram", "google"]) channels[channel] = await probe(links[channel]);
   const otherLinks = Object.entries(distribution.provider_delivery || {}).filter(([channel]) => !["facebook", "instagram", "google"].includes(channel)).map(([, delivery]) => delivery?.permalink || delivery?.result_url).filter(Boolean);
   channels.other = otherLinks.length ? (await Promise.all(otherLinks.map(probe))).reduce((current, entry) => entry.status === "reachable" ? entry : current, result("unreachable", "Niet alle links bereikbaar")) : result("missing", "Geen links");
   const verification = { checked_at: new Date().toISOString(), checked_by: userData.user.id, channels, links };

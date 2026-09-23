@@ -17,8 +17,8 @@ function statusFor(item, distribution) {
 function channelStatus(item, channel) {
   const distribution = distributionFor(item); const targetChannels = distribution.target_channels || [];
   const verified = distribution.verification?.channels?.[channel];
-  if (verified?.status === "reachable") return { key: "placed", label: "Live gecontroleerd" };
-  if (verified?.status === "unreachable") return { key: "error", label: "Controle mislukt" };
+  if (verified?.status === "reachable") return { key: "placed", label: verified.label || (channel === "website" ? "Eventin gecontroleerd" : channel === "facebook" ? "Facebook gecontroleerd" : "Live gecontroleerd") };
+  if (verified?.status === "unreachable") return { key: "error", label: verified.label || (channel === "website" ? "Eventin controle mislukt" : channel === "facebook" ? "Facebook controle mislukt" : "Controle mislukt") };
   if (verified?.status === "missing") return { key: "recorded", label: "Alleen geregistreerd" };
   if (channel === "website") {
     if (distribution.website_event_status === "publish" && (distribution.source_type === "website_event" || distribution.eventin_event_id)) return { key: "placed", label: "Geplaatst" };
