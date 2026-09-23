@@ -64,8 +64,9 @@ function linksFromText(value) {
 }
 
 function normalizedWords(value) { return new Set(String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((word) => word.length > 2 && !/^\d+$/.test(word))); }
-function relatedByDateAndTitle(left, right) {
-  const leftDate = String(left.common?.start || "").slice(0, 10); const rightDate = String(right.common?.start || "").slice(0, 10); if (!leftDate || leftDate !== rightDate) return false;
+function recordDate(record, distribution) { return String(distribution.common?.start || distribution.source_preview?.startDate || record?.scheduled_for || record?.created_at || "").slice(0, 10); }
+function relatedByDateAndTitle(leftRecord, left, rightRecord, right) {
+  const leftDate = recordDate(leftRecord, left); const rightDate = recordDate(rightRecord, right); if (!leftDate || leftDate !== rightDate) return false;
   const a = normalizedWords(left.common?.title); const b = normalizedWords(right.common?.title); const overlap = [...a].filter((word) => b.has(word)).length; return overlap >= 2 && overlap / Math.min(a.size || 1, b.size || 1) >= 0.6;
 }
 
@@ -80,9 +81,9 @@ export async function POST(request) {
   if (campaignError || !campaign) return NextResponse.json({ error: "Evenement niet gevonden of geen toegang." }, { status: 404 });
   const distributionIndex = (campaign.media || []).findIndex((entry) => entry?.kind === "campaign_distribution"); let distribution = distributionIndex >= 0 ? campaign.media[distributionIndex] : null;
   if (!distribution) return NextResponse.json({ error: "Geen publicatiegegevens gevonden." }, { status: 400 });
-  const { data: relatedCampaigns } = await client.from("social_content_items").select("id,media,body").eq("workspace_id", workspaceId).eq("business_id", campaign.business_id).limit(500);
-  const linkedSource = (relatedCampaigns || []).filter((entry) => entry.id !== campaign.id).map((entry) => (entry.media || []).find((media) => media?.kind === "campaign_distribution" && (media.duplicate_of === campaign.id || relatedByDateAndTitle(distribution, media)))).find(Boolean);
-  if (linkedSource) distribution = { ...linkedSource, ...distribution, source_url: distribution.source_url || linkedSource.source_url, eventin_event_id: distribution.eventin_event_id || linkedSource.eventin_event_id, external_ids: { ...(linkedSource.external_ids || {}), ...(distribution.external_ids || {}) }, provider_delivery: { ...(linkedSource.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, common: { ...(linkedSource.common || {}), ...(distribution.common || {}) } };
+  const { data: relatedCampaigns } = await client.from("social_content_items").select("id,media,body,scheduled_for,created_at").eq("workspace_id", workspaceId).eq("business_id", campaign.business_id).limit(500);
+  const linkedSource = (relatedCampaigns || []).filter((entry) => entry.id !== campaign.id).map((entry) => ({ entry, distribution: (entry.media || []).find((media) => media?.kind === "campaign_distribution" && (media.duplicate_of === campaign.id || relatedByDateAndTitle(campaign, distribution, entry, media))) })).find((candidate) => candidate.distribution)?.distribution;
+  if (linkedSource) distribution = { ...linkedSource, ...distribution, source_url: distribution.source_url || linkedSource.source_url, eventin_event_id: distribution.eventin_event_id || linkedSource.eventin_event_id, external_ids: { ...(linkedSource.external_ids || {}), ...(distribution.external_ids || {}) }, provider_delivery: { ...(linkedSource.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, common: { ...(linkedSource.common || {}), ...(distribution.common || {}), ...(linkedSource.common?.website_url && !distribution.common?.website_url ? { website_url: linkedSource.common.website_url } : {}) } };
   const textLinks = linksFromText(distribution.common?.description || campaign.body);
   const facebookTextLink = textLinks.find((url) => /facebook\.com|fb\.me/i.test(url)) || "";
   const websiteTextLink = textLinks.find((url) => !/facebook\.com|fb\.me|instagram\.com|google\./i.test(url)) || "";
