@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const typeLabels = { event: "Evenement", product: "Gerecht of product", offer: "Aanbieding", package: "Arrangement", review: "Review", custom: "Campagne", website_event: "Evenement" };
@@ -300,7 +300,7 @@ function EventDetails({ item, matchItem, sameDayItems = [], sourceComparisonItem
 }
 
 export default function MarketingOverview({ workspaceId, businesses, session }) {
-  const [items, setItems] = useState([]); const [busy, setBusy] = useState(true); const [autoChecking, setAutoChecking] = useState(false); const [linkingId, setLinkingId] = useState(""); const [error, setError] = useState(""); const [view, setView] = useState("month"); const [anchor, setAnchor] = useState(() => new Date()); const [refreshKey, setRefreshKey] = useState(0); const [calendarLayout, setCalendarLayout] = useState("two"); const [selectedItem, setSelectedItem] = useState(null); const [sourceComparisons, setSourceComparisons] = useState({});
+  const [items, setItems] = useState([]); const [busy, setBusy] = useState(true); const [autoChecking, setAutoChecking] = useState(false); const [linkingId, setLinkingId] = useState(""); const [error, setError] = useState(""); const [view, setView] = useState("month"); const [anchor, setAnchor] = useState(() => new Date()); const [refreshKey, setRefreshKey] = useState(0); const [calendarLayout, setCalendarLayout] = useState("two"); const [selectedItem, setSelectedItem] = useState(null); const [sourceComparisons, setSourceComparisons] = useState({}); const comparisonTargetRef = useRef("");
   const venueBusinesses = useMemo(() => (businesses || []).map((business, index) => ({ ...business, color: index % 2 ? "venueB" : "venueA" })), [businesses]);
   const businessById = useMemo(() => new Map(venueBusinesses.map((business) => [String(business.id), business])), [venueBusinesses]);
 
@@ -371,6 +371,17 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     return () => { active = false; };
   }, [workspaceId, refreshKey, session?.access_token, venueBusinesses]);
 
+  useEffect(() => {
+    function resumeComparison() {
+      if (document.visibilityState !== "visible" || !comparisonTargetRef.current) return;
+      const item = items.find((entry) => String(entry.id) === comparisonTargetRef.current);
+      if (item) compareSources(item, true);
+    }
+    document.addEventListener("visibilitychange", resumeComparison);
+    window.addEventListener("focus", resumeComparison);
+    return () => { document.removeEventListener("visibilitychange", resumeComparison); window.removeEventListener("focus", resumeComparison); };
+  }, [items]);
+
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
   const activeFromToday = todayStart(); const visibleItems = visibleCalendarItems(items, businessById, activeFromToday); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
@@ -431,13 +442,16 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     } catch (syncError) { setError(syncError.message || "De externe evenementteksten konden niet worden bijgewerkt."); }
     finally { setLinkingId(""); }
   }
-  async function compareSources(item) {
-    if (!item || linkingId) return;
-    setLinkingId(`compare:${String(item.id)}`); setError("");
+  async function compareSources(item, resume = false) {
+    if (!item || (linkingId && !resume)) return;
+    const comparisonKey = `compare:${String(item.id)}`;
+    comparisonTargetRef.current = String(item.id);
+    setLinkingId(comparisonKey); setError("");
     try {
       const comparison = await fetchSourceComparison(item);
       setSourceComparisons((current) => ({ ...current, [String(item.id)]: comparison || [] }));
       setSelectedItem((current) => current ? { ...current, sourceComparisonItems: comparison || [] } : current);
+      comparisonTargetRef.current = "";
     } catch (compareError) { setError(compareError.message || "De bronnen konden niet opnieuw worden vergeleken."); }
     finally { setLinkingId(""); }
   }
