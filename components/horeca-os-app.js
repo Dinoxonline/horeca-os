@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import CentralEventCreator from "./central-event-creator";
+import MarketingOverview from "./marketing-overview";
 import Workboard from "./workboard";
 import ProcessTrash from "./process-trash";
 import ProcessAudit from "./process-audit";
@@ -465,12 +466,7 @@ export default function HorecaOsApp() {
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} businessId={businessId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && (businessId === "all"
-          ? <section className="panel" style={{ marginBottom: 24 }}>
-              <div className="panelHead"><div><p className="eyebrow">MARKETING</p><h2>Kies eerst een vestiging</h2><p>Een campagne hoort altijd bij één zaak. Kies hieronder de juiste vestiging om verkeerde locaties, doelgroepen of afzenders te voorkomen.</p></div></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {visibleBusinesses.map((business) => <button type="button" className="primary" key={business.id} onClick={() => setBusinessId(business.id)}>{business.name}</button>)}
-              </div>
-            </section>
+          ? <MarketingOverview workspaceId={workspaceId} businesses={visibleBusinesses} onSelectBusiness={setBusinessId} />
           : <CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />)}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
@@ -3719,9 +3715,9 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
         }
       }
 
-      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Horeca OS authenticator" });
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `Horeca OS authenticator ${Date.now()}` });
       if (!active) return;
-      if (enrollError) setError("De authenticator kon niet worden gestart. Vernieuw de pagina en probeer opnieuw.");
+      if (enrollError) setError("De authenticator kon niet worden gestart. Vernieuw de pagina één keer en probeer opnieuw.");
       else setEnrollment({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
     }
     prepareEnrollment();
