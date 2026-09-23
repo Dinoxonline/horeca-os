@@ -23,7 +23,7 @@ async function verifyEventin(request, token, workspaceId, businessId, distributi
   let site = "";
   try { site = new URL(fallbackUrl).hostname.replace(/^www\./i, ""); } catch { site = "caribbeancorner.nl"; }
   const url = new URL("/api/marketing/website-events/create", request.url);
-  url.searchParams.set("workspaceId", workspaceId); url.searchParams.set("businessId", businessId || ""); url.searchParams.set("site", site); url.searchParams.set("eventId", eventId); url.searchParams.set("campaignId", campaignId || "");
+  url.searchParams.set("workspaceId", workspaceId); url.searchParams.set("businessId", businessId || ""); url.searchParams.set("site", site); url.searchParams.set("eventId", eventId); url.searchParams.set("campaignId", campaignId || ""); url.searchParams.set("importEvent", "1");
   try {
     const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
