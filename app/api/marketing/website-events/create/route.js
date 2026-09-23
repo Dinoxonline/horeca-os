@@ -646,7 +646,7 @@ export async function PATCH(request) {
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag website-evenementen wijzigen." }, { status: 403 });
   const id = eventId(body.eventId);
   if (!id) return NextResponse.json({ error: "Het Eventin-evenement ontbreekt." }, { status: 400 });
-  if (!await storedEventBelongsToBusiness(context, body, id)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
+  if (body.allowLinked !== true && !await storedEventBelongsToBusiness(context, body, id)) return NextResponse.json({ error: "Dit Eventin-evenement hoort niet bij het gekozen marketingdossier." }, { status: 403 });
   if (!await siteMatchesBusiness(context, body)) return NextResponse.json({ error: "De gekozen Eventin-website hoort niet bij deze vestiging." }, { status: 403 });
   const credentials = siteCredentials(body);
   if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });

@@ -330,6 +330,20 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   }, [busy, autoChecking, selectedItem, externalItems]);
 
   const itemsForBusiness = (businessId) => visibleItems.filter((item) => String(item.business_id) === String(businessId));
+  async function syncExternalEventContent(distribution, businessId, content = {}) {
+    if (!session?.access_token) return;
+    const common = distribution.common || {};
+    const payload = { workspaceId, businessId, title: content.title || common.title || "", description: content.description || common.description || "", start: common.start || "", end: common.end || "", location: common.location || "" };
+    const eventinId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
+    const facebookId = String(distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook || "").trim();
+    const requests = [];
+    if (/^\d+$/.test(eventinId)) requests.push(fetch("/api/marketing/website-events/create", { method: "PATCH", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, eventId: eventinId, allowLinked: true }) }));
+    if (facebookId) requests.push(fetch("/api/integrations/facebook/events", { method: "PATCH", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, eventId: facebookId }) }));
+    const responses = await Promise.all(requests);
+    const failures = [];
+    for (const response of responses) { if (!response.ok) { const result = await response.json().catch(() => ({})); failures.push(result.error || `Publicatiebron gaf status ${response.status}.`); } }
+    if (failures.length) throw new Error(`De Horeca OS-koppeling is opgeslagen, maar niet elke externe titel kon worden bijgewerkt: ${failures.join(" ")}`);
+  }
   async function linkExternalEvent(item, existingItem = null, content = {}) {
     if (!session?.access_token || linkingId) return;
     const distribution = distributionFor(item); const businessId = String(item.business_id); const business = businessById.get(businessId); if (!business) return;
@@ -342,6 +356,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
         const nextMedia = (existingItem.media || []).map((entry) => entry?.kind === "campaign_distribution" ? linkedDistribution : entry);
         const { data: updated, error: updateError } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", existingItem.id).select("id,business_id,media,status,workflow_status,scheduled_for,published_at,created_at").single();
         if (updateError) throw updateError;
+        await syncExternalEventContent(linkedDistribution, businessId, content);
         setItems((current) => current.filter((entry) => entry.id !== item.id).map((entry) => entry.id === existingItem.id ? updated : entry)); setSelectedItem(null); return;
       }
       const { data: account, error: accountError } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("business_id", businessId).in("provider", ["marketing", "meta"]).limit(1).maybeSingle();
@@ -367,10 +382,11 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
       const { error: updateError } = await supabase.from("social_content_items").update({ media: nextMedia }).eq("id", duplicate.id);
       if (updateError) throw updateError;
       const { duplicate_of: _ignoredDuplicateOf, ...cleanKeepDistribution } = keepDistribution;
-      const keptDistribution = { ...cleanKeepDistribution, source_url: keepDistribution.source_url || otherDistribution.source_url, eventin_event_id: keepDistribution.eventin_event_id || otherDistribution.eventin_event_id, external_sources: [...new Set([...(keepDistribution.external_sources || []), ...(otherDistribution.external_sources || [])].filter(Boolean))], external_ids: { ...(otherDistribution.external_ids || {}), ...(keepDistribution.external_ids || {}) }, provider_delivery: { ...(otherDistribution.provider_delivery || {}), ...(keepDistribution.provider_delivery || {}) }, target_channels: [...new Set([...(keepDistribution.target_channels || []), ...(otherDistribution.target_channels || [])])], common: { ...(otherDistribution.common || {}), ...(keepDistribution.common || {}), ...(content.title ? { title: content.title } : {}), ...(content.description ? { description: content.description } : {}) } };
+      const keptDistribution = { ...cleanKeepDistribution, source_url: keepDistribution.source_url || duplicateDistribution.source_url, eventin_event_id: keepDistribution.eventin_event_id || duplicateDistribution.eventin_event_id, external_sources: [...new Set([...(keepDistribution.external_sources || []), ...(duplicateDistribution.external_sources || [])].filter(Boolean))], external_ids: { ...(duplicateDistribution.external_ids || {}), ...(keepDistribution.external_ids || {}) }, provider_delivery: { ...(duplicateDistribution.provider_delivery || {}), ...(keepDistribution.provider_delivery || {}) }, target_channels: [...new Set([...(keepDistribution.target_channels || []), ...(duplicateDistribution.target_channels || [])])], common: { ...(duplicateDistribution.common || {}), ...(keepDistribution.common || {}), ...(content.title ? { title: content.title } : {}), ...(content.description ? { description: content.description } : {}) } };
       const keptMedia = (keep.media || []).map((entry) => entry?.kind === "campaign_distribution" ? keptDistribution : entry);
       const { error: keepError } = await supabase.from("social_content_items").update({ media: keptMedia }).eq("id", keep.id);
       if (keepError) throw keepError;
+      await syncExternalEventContent(keptDistribution, String(keep.business_id), content);
       setItems((current) => current.filter((entry) => entry.id !== duplicate.id)); setSelectedItem(null);
     } catch (mergeError) { setError(mergeError.message || "De dubbele records konden niet worden gekoppeld."); }
     finally { setLinkingId(""); }
