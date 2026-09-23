@@ -60,7 +60,7 @@ async function verifyFacebook(request, token, workspaceId, businessId, distribut
 }
 
 function linksFromText(value) {
-  return String(value || "").match(/https?:\/\/[^\s)]+/gi)?.map((url) => url.replace(/[.,!?]+$/, "")) || [];
+  return String(value || "").match(/https?:\/\/[^\s"'<>),}\]]+/gi)?.map((url) => url.replace(/[.,!?;:]+$/, "")) || [];
 }
 
 function normalizedWords(value) { return new Set(String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((word) => word.length > 2 && !/^\d+$/.test(word))); }
