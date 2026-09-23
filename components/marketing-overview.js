@@ -3,143 +3,59 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-const typeLabels = {
-  event: "Evenement",
-  product: "Gerecht of product",
-  offer: "Aanbieding",
-  package: "Arrangement",
-  review: "Review delen",
-  custom: "Eigen campagne",
-  website_event: "Evenement",
-};
-
-function distributionFor(item) {
-  return (item?.media || []).find((entry) => entry?.kind === "campaign_distribution") || {};
-}
-
+const typeLabels = { event: "Evenement", product: "Gerecht of product", offer: "Aanbieding", package: "Arrangement", review: "Review", custom: "Campagne", website_event: "Evenement" };
+const viewLabels = { day: "Dag", week: "Week", month: "Maand", year: "Jaar" };
+function distributionFor(item) { return (item?.media || []).find((entry) => entry?.kind === "campaign_distribution") || {}; }
+function itemStart(item) { const distribution = distributionFor(item); return distribution.common?.start || distribution.source_preview?.startDate || item.scheduled_for || item.created_at; }
 function statusFor(item, distribution) {
-  const providerConfirmed = Boolean(
-    distribution.provider_delivery?.facebook?.status === "confirmed"
-      || distribution.facebook_event_delivery?.status === "confirmed"
-      || distribution.provider_delivery?.brevo?.status === "confirmed"
-      || distribution.provider_delivery?.google?.status === "confirmed"
-      || distribution.published_at
-      || item.published_at,
-  );
-  if (providerConfirmed) return { key: "published", label: "Geplaatst" };
+  if (["cancelled", "trash"].includes(distribution.website_event_status)) return { key: "cancelled", label: "Geannuleerd" };
+  if (distribution.provider_delivery?.facebook?.status === "confirmed" || distribution.facebook_event_delivery?.status === "confirmed" || distribution.provider_delivery?.brevo?.status === "confirmed" || item.published_at) return { key: "published", label: "Geplaatst" };
   if (item.scheduled_for) return { key: "scheduled", label: "Ingepland" };
   if (item.workflow_status === "in_progress") return { key: "approved", label: "Goedgekeurd" };
-  if (distribution.website_event_status === "cancelled" || distribution.website_event_status === "trash") {
-    return { key: "cancelled", label: "Geannuleerd" };
-  }
   return { key: "draft", label: "Concept" };
 }
+function dateOnly(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? null : new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
+function sameDay(left, right) { return left && right && left.toDateString() === right.toDateString(); }
+function startOfWeek(date) { const result = new Date(date); const day = result.getDay(); result.setDate(result.getDate() - (day === 0 ? 6 : day - 1)); result.setHours(0, 0, 0, 0); return result; }
+function formatDate(value, options = { day: "numeric", month: "long", year: "numeric" }) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Datum onbekend" : new Intl.DateTimeFormat("nl-NL", options).format(date); }
+function eventText(item) { const distribution = distributionFor(item); return distribution.common?.title || "Zonder titel"; }
 
-function formatDate(value) {
-  if (!value) return "Nog geen datum gepland";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Nog geen datum gepland";
-  return new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short" }).format(date);
+function CalendarEvent({ item, business, onSelectBusiness }) {
+  const distribution = distributionFor(item); const status = statusFor(item, distribution);
+  return <button type="button" className={`marketingCalendarEvent ${business?.color || "venueA"}`} onClick={() => onSelectBusiness(item.business_id)} title={`${eventText(item)} · ${status.label}`}><strong>{eventText(item)}</strong><span>{status.label}</span></button>;
+}
+
+function MonthCalendar({ anchor, items, businessById, onSelectBusiness }) {
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1); const gridStart = startOfWeek(first);
+  const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index));
+  return <div className="marketingMonthCalendar"><div className="marketingWeekdayRow">{["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"].map((day) => <strong key={day}>{day}</strong>)}</div><div className="marketingMonthGrid">{days.map((day) => { const dayItems = items.filter((item) => sameDay(dateOnly(itemStart(item)), day)); return <div className={`marketingDayCell ${day.getMonth() !== anchor.getMonth() ? "outside" : ""}`} key={day.toISOString()}><strong>{day.getDate()}</strong><div>{dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectBusiness={onSelectBusiness} />)}</div></div>; })}</div></div>;
+}
+
+function WeekCalendar({ anchor, items, businessById, onSelectBusiness }) {
+  const first = startOfWeek(anchor); const days = Array.from({ length: 7 }, (_, index) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
+  return <div className="marketingWeekCalendar">{days.map((day) => { const dayItems = items.filter((item) => sameDay(dateOnly(itemStart(item)), day)); return <div className="marketingWeekColumn" key={day.toISOString()}><strong>{formatDate(day, { weekday: "short", day: "numeric", month: "short" })}</strong>{dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectBusiness={onSelectBusiness} />)}{!dayItems.length && <span className="marketingCalendarEmpty">Geen afspraken</span>}</div>; })}</div>;
+}
+
+function YearCalendar({ anchor, items }) {
+  return <div className="marketingYearGrid">{Array.from({ length: 12 }, (_, month) => { const monthDate = new Date(anchor.getFullYear(), month, 1); const monthItems = items.filter((item) => { const date = dateOnly(itemStart(item)); return date?.getFullYear() === anchor.getFullYear() && date.getMonth() === month; }); return <div className="marketingMiniMonth" key={month}><h4>{formatDate(monthDate, { month: "long" })}</h4><div className="marketingMiniDays">{Array.from({ length: new Date(anchor.getFullYear(), month + 1, 0).getDate() }, (_, day) => <span className={monthItems.some((item) => new Date(itemStart(item)).getDate() === day + 1) ? "hasEvent" : ""} key={day}>{day + 1}</span>)}</div><small>{monthItems.length} {monthItems.length === 1 ? "ingepland item" : "ingeplande items"}</small></div>; })}</div>;
 }
 
 export default function MarketingOverview({ workspaceId, businesses, onSelectBusiness }) {
-  const [items, setItems] = useState([]);
-  const [busy, setBusy] = useState(true);
-  const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [items, setItems] = useState([]); const [busy, setBusy] = useState(true); const [error, setError] = useState(""); const [view, setView] = useState("month"); const [anchor, setAnchor] = useState(() => new Date()); const [refreshKey, setRefreshKey] = useState(0);
+  const venueBusinesses = useMemo(() => (businesses || []).map((business, index) => ({ ...business, color: index % 2 ? "venueB" : "venueA" })), [businesses]);
+  const businessById = useMemo(() => new Map(venueBusinesses.map((business) => [String(business.id), business])), [venueBusinesses]);
 
-  useEffect(() => {
-    let active = true;
-    async function loadOverview() {
-      if (!workspaceId) return;
-      setBusy(true);
-      setError("");
-      const { data, error: queryError } = await supabase.from("social_content_items")
-        .select("id,business_id,media,status,workflow_status,scheduled_for,published_at,created_at")
-        .eq("workspace_id", workspaceId)
-        .filter("media", "cs", JSON.stringify([{ kind: "campaign_distribution" }]))
-        .order("scheduled_for", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(0, 199);
-      if (!active) return;
-      if (queryError) setError("Het gecombineerde marketingoverzicht kon niet worden geladen.");
-      else setItems(data || []);
-      setBusy(false);
-    }
-    loadOverview();
-    return () => { active = false; };
-  }, [workspaceId, refreshKey]);
+  useEffect(() => { let active = true; async function load() { if (!workspaceId) return; setBusy(true); setError(""); const { data, error: queryError } = await supabase.from("social_content_items").select("id,business_id,media,status,workflow_status,scheduled_for,published_at,created_at").eq("workspace_id", workspaceId).filter("media", "cs", JSON.stringify([{ kind: "campaign_distribution" }])).order("created_at", { ascending: false }).range(0, 499); if (!active) return; if (queryError) setError("De marketingagenda kon niet worden geladen."); else setItems(data || []); setBusy(false); } load(); return () => { active = false; }; }, [workspaceId, refreshKey]);
 
-  const itemsByBusiness = useMemo(() => {
-    const result = new Map((businesses || []).map((business) => [String(business.id), []]));
-    items.forEach((item) => {
-      const key = String(item.business_id || "");
-      if (result.has(key)) result.get(key).push(item);
-    });
-    return result;
-  }, [businesses, items]);
+  function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
+  const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
+  const visibleItems = items.filter((item) => businessById.has(String(item.business_id))); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
 
-  return <section className="panel marketingOverview">
-    <div className="panelHead marketingOverviewHead">
-      <div>
-        <p className="eyebrow">MARKETINGOVERZICHT</p>
-        <h2>Agenda van beide vestigingen</h2>
-        <p>Bekijk in één oogopslag wat er voor Caribbean Corner en Grandcafé Het Plein gepland, goedgekeurd of geplaatst is. Nieuwe campagnes blijven gekoppeld aan één vestiging.</p>
-      </div>
-      <button type="button" className="secondaryButton" onClick={() => setRefreshKey((value) => value + 1)} disabled={busy}>{busy ? "Overzicht laden…" : "Overzicht verversen"}</button>
-    </div>
-    {error && <div className="eventResult error"><strong>{error}</strong></div>}
-    <div className="marketingOverviewGrid">
-      {(businesses || []).map((business) => {
-        const businessItems = itemsByBusiness.get(String(business.id)) || [];
-        return <article className="marketingVenueColumn" key={business.id}>
-          <div className="marketingVenueHead">
-            <div><p className="eyebrow">VESTIGING</p><h3>{business.name}</h3></div>
-            <button type="button" className="primary" onClick={() => onSelectBusiness(business.id)}>Nieuwe campagne</button>
-          </div>
-          {busy ? <p className="marketingOverviewEmpty">Campagnes laden…</p> : businessItems.length === 0 ? <div className="marketingOverviewEmpty"><strong>Nog niets ingepland</strong><p>Er zijn nog geen opgeslagen campagnes voor deze vestiging.</p><button type="button" className="secondaryButton" onClick={() => onSelectBusiness(business.id)}>Campagne aanmaken</button></div> : <div className="marketingAgendaList">
-            {businessItems.map((item) => {
-              const distribution = distributionFor(item);
-              const status = statusFor(item, distribution);
-              const title = distribution.common?.title || "Zonder titel";
-              const type = typeLabels[distribution.common?.campaign_type || distribution.source_type] || "Campagne";
-              return <div className="marketingAgendaItem" key={item.id}>
-                <div className="marketingAgendaItemTop"><span className="campaignKind">{type}</span><span className={`marketingAgendaStatus ${status.key}`}>{status.label}</span></div>
-                <strong>{title}</strong>
-                <span>{item.scheduled_for ? formatDate(item.scheduled_for) : `Aangemaakt ${formatDate(item.created_at)}`}</span>
-              </div>;
-            })}
-          </div>}
-        </article>;
-      })}
-    </div>
-    <style jsx>{`
-      .marketingOverview { margin-bottom: 24px; }
-      .marketingOverviewHead { align-items: flex-start; }
-      .marketingOverviewHead p:not(.eyebrow) { max-width: 760px; }
-      .marketingOverviewGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-      .marketingVenueColumn { min-width: 0; padding: 18px; border: 1px solid #c6d5df; border-radius: 12px; background: #f8fbfc; }
-      .marketingVenueHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-      .marketingVenueHead h3 { margin: 2px 0 0; }
-      .marketingVenueHead button { flex: 0 0 auto; }
-      .marketingAgendaList { display: grid; gap: 10px; }
-      .marketingAgendaItem { display: grid; gap: 6px; padding: 12px; border: 1px solid #d5e0e7; border-radius: 10px; background: #fff; }
-      .marketingAgendaItem > strong { overflow-wrap: anywhere; }
-      .marketingAgendaItem > span:last-child { color: #5c7285; font-size: 13px; }
-      .marketingAgendaItemTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      .marketingAgendaStatus { padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; }
-      .marketingAgendaStatus.draft { background: #eef2f5; color: #4c6172; }
-      .marketingAgendaStatus.approved, .marketingAgendaStatus.published { background: #e5f6ea; color: #24723b; }
-      .marketingAgendaStatus.scheduled { background: #e7f1ff; color: #145dbf; }
-      .marketingAgendaStatus.cancelled { background: #f8eaea; color: #a12f2f; }
-      .marketingOverviewEmpty { display: grid; gap: 7px; padding: 16px; border: 1px dashed #9cbac3; border-radius: 10px; background: #fff; color: #5c7285; }
-      .marketingOverviewEmpty strong { color: #173552; }
-      .marketingOverviewEmpty p { margin: 0; }
-      @media (max-width: 760px) {
-        .marketingOverviewGrid { grid-template-columns: 1fr; }
-        .marketingOverviewHead, .marketingVenueHead { display: block; }
-        .marketingOverviewHead button, .marketingVenueHead button { width: 100%; margin-top: 12px; }
-      }
-    `}</style>
+  return <section className="panel marketingCalendarPanel"><div className="panelHead marketingCalendarHead"><div><p className="eyebrow">MARKETINGAGENDA</p><h2>{title}</h2><p>Alle evenementen en campagnes van beide vestigingen in één kalender. De kleuren laten zien bij welke vestiging een item hoort.</p></div><button type="button" className="secondaryButton" onClick={() => setRefreshKey((value) => value + 1)} disabled={busy}>{busy ? "Agenda laden…" : "Agenda verversen"}</button></div>
+    <div className="marketingCalendarToolbar"><div className="marketingCalendarViews">{Object.entries(viewLabels).map(([key, label]) => <button type="button" className={view === key ? "active" : ""} onClick={() => setView(key)} key={key}>{label}</button>)}</div><div className="marketingCalendarNav"><button type="button" onClick={() => move(-1)}>‹</button><button type="button" onClick={() => setAnchor(new Date())}>Vandaag</button><button type="button" onClick={() => move(1)}>›</button></div></div>
+    <div className="marketingCalendarLegend">{venueBusinesses.map((business) => <span key={business.id}><i className={business.color} />{business.name}</span>)}</div>
+    {error && <div className="eventResult error"><strong>{error}</strong></div>}{view === "month" && <MonthCalendar anchor={anchor} items={visibleItems} businessById={businessById} onSelectBusiness={onSelectBusiness} />}{view === "week" && <WeekCalendar anchor={anchor} items={visibleItems} businessById={businessById} onSelectBusiness={onSelectBusiness} />}{view === "day" && <div className="marketingDayAgenda"><h3>{formatDate(anchor, { weekday: "long", day: "numeric", month: "long" })}</h3>{dayItems.length ? dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectBusiness={onSelectBusiness} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={visibleItems} />}
+    {!busy && !visibleItems.length && <div className="marketingCalendarEmptyState"><strong>Nog geen evenementen of campagnes ingepland</strong><p>Maak vanuit één van de vestigingen een campagne aan; die verschijnt daarna automatisch op deze agenda.</p></div>}
+    <style jsx>{`.marketingCalendarPanel{margin-bottom:24px}.marketingCalendarHead{align-items:flex-start}.marketingCalendarHead p:not(.eyebrow){max-width:780px}.marketingCalendarToolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:18px 0 10px;flex-wrap:wrap}.marketingCalendarViews,.marketingCalendarNav{display:flex;gap:6px}.marketingCalendarViews button,.marketingCalendarNav button{border:1px solid #25889b;border-radius:8px;padding:9px 13px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.marketingCalendarViews button.active,.marketingCalendarNav button:first-child{background:#25889b;color:#fff}.marketingCalendarLegend{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 14px;color:#405866;font-size:13px;font-weight:800}.marketingCalendarLegend span{display:flex;align-items:center;gap:6px}.marketingCalendarLegend i{width:11px;height:11px;border-radius:50%;display:inline-block}.venueA{background:#25889b}.venueB{background:#d27928}.marketingCalendarEvent{display:grid;gap:2px;width:100%;padding:6px 7px;border:0;border-left:4px solid;border-radius:6px;background:#eef7f9;color:#173552;text-align:left;cursor:pointer}.marketingCalendarEvent.venueA{border-left-color:#25889b}.marketingCalendarEvent.venueB{border-left-color:#d27928;background:#fff5e9}.marketingCalendarEvent strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.marketingCalendarEvent span{font-size:11px;color:#5c7285}.marketingWeekdayRow{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}.marketingWeekdayRow strong{padding:8px;background:#173b5c;color:#fff;text-align:center}.marketingMonthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:#c6d5df;border:1px solid #c6d5df}.marketingDayCell{min-height:126px;padding:7px;background:#fff}.marketingDayCell.outside{background:#f1f4f6;color:#91a0aa}.marketingDayCell>strong{display:block;margin-bottom:6px}.marketingDayCell>div,.marketingWeekColumn{display:grid;gap:5px}.marketingWeekCalendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:#c6d5df;border:1px solid #c6d5df}.marketingWeekColumn{min-height:280px;padding:9px;background:#fff}.marketingWeekColumn>strong{padding-bottom:8px;border-bottom:1px solid #d5e0e7}.marketingCalendarEmpty{color:#91a0aa;font-size:12px}.marketingDayAgenda{display:grid;gap:10px;max-width:720px}.marketingDayAgenda h3{margin:0}.marketingDayAgenda>p,.marketingCalendarEmptyState{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.marketingYearGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.marketingMiniMonth{padding:12px;border:1px solid #c6d5df;border-radius:10px;background:#fff}.marketingMiniMonth h4{margin:0 0 9px;text-transform:capitalize}.marketingMiniDays{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.marketingMiniDays span{padding:5px 0;border-radius:4px;text-align:center;font-size:11px;background:#f4f7f9}.marketingMiniDays span.hasEvent{background:#dceff2;color:#176d7f;font-weight:800}.marketingMiniMonth small{display:block;margin-top:8px;color:#5c7285}.marketingCalendarEmptyState{margin-top:14px}.marketingCalendarEmptyState p{margin:6px 0 0}@media(max-width:760px){.marketingCalendarHead{display:block}.marketingCalendarHead button{width:100%;margin-top:12px}.marketingDayCell{min-height:94px;padding:5px}.marketingCalendarEvent{padding:4px}.marketingCalendarEvent strong{font-size:10px}.marketingCalendarEvent span{display:none}.marketingWeekColumn{min-height:220px;padding:5px}.marketingWeekColumn .marketingCalendarEvent strong{white-space:normal}.marketingYearGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
   </section>;
 }
