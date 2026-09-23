@@ -32,6 +32,30 @@ async function verifyEventin(request, token, workspaceId, businessId, distributi
   } catch (error) { return result("unreachable", "Eventin controle mislukt", error.message || "Eventin kon niet worden gecontroleerd."); }
 }
 
+async function verifyFacebook(request, token, workspaceId, businessId, distribution, fallbackUrl) {
+  const delivery = distribution.facebook_event_delivery || distribution.provider_delivery?.facebook || {};
+  const externalId = String(delivery.external_id || delivery.event_id || "").trim();
+  if (externalId) {
+    const url = new URL("/api/integrations/facebook/events", request.url);
+    url.searchParams.set("workspaceId", workspaceId);
+    url.searchParams.set("businessId", businessId || "");
+    url.searchParams.set("includePast", "true");
+    try {
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return result("unreachable", "Facebook controle mislukt", payload.error || `Facebook gaf status ${response.status}.`);
+      const found = (payload.events || []).some((event) => String(event.id || "") === externalId);
+      return found
+        ? result("reachable", "Facebook gecontroleerd", "Het gekoppelde Facebook-evenement is gevonden.")
+        : result("unreachable", "Facebook-evenement niet gevonden", "Het opgeslagen Facebook-event bestaat niet in de actuele evenementlijst.");
+    } catch (error) {
+      return result("unreachable", "Facebook controle mislukt", error.message || "Facebook kon niet worden gecontroleerd.");
+    }
+  }
+  const checked = await probe(fallbackUrl);
+  return checked.status === "reachable" ? { ...checked, label: "Facebook gecontroleerd", detail: "De opgeslagen publicatielink op Facebook is bereikbaar." } : checked;
+}
+
 export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldig verzoek." }, { status: 400 }); }
@@ -44,15 +68,14 @@ export async function POST(request) {
   const distributionIndex = (campaign.media || []).findIndex((entry) => entry?.kind === "campaign_distribution"); const distribution = distributionIndex >= 0 ? campaign.media[distributionIndex] : null;
   if (!distribution) return NextResponse.json({ error: "Geen publicatiegegevens gevonden." }, { status: 400 });
   const links = {
-    website: distribution.source_url || distribution.common?.cta?.url || "",
+    website: distribution.source_url || distribution.common?.website_url || distribution.common?.cta?.url || "",
     facebook: distribution.facebook_event_delivery?.permalink || distribution.provider_delivery?.facebook?.permalink || distribution.provider_delivery?.facebook?.result_url || "",
     instagram: distribution.provider_delivery?.instagram?.permalink || distribution.provider_delivery?.instagram?.result_url || "",
     google: distribution.provider_delivery?.google?.permalink || distribution.provider_delivery?.google?.result_url || "",
   };
   const channels = {};
   channels.website = await verifyEventin(request, token, workspaceId, campaign.business_id, distribution, links.website);
-  const facebookCheck = await probe(links.facebook);
-  channels.facebook = facebookCheck.status === "reachable" ? { ...facebookCheck, label: "Facebook gecontroleerd", detail: "De opgeslagen publicatielink op Facebook is bereikbaar." } : facebookCheck;
+  channels.facebook = await verifyFacebook(request, token, workspaceId, campaign.business_id, distribution, links.facebook);
   for (const channel of ["instagram", "google"]) channels[channel] = await probe(links[channel]);
   const otherLinks = Object.entries(distribution.provider_delivery || {}).filter(([channel]) => !["facebook", "instagram", "google"].includes(channel)).map(([, delivery]) => delivery?.permalink || delivery?.result_url).filter(Boolean);
   channels.other = otherLinks.length ? (await Promise.all(otherLinks.map(probe))).reduce((current, entry) => entry.status === "reachable" ? entry : current, result("unreachable", "Niet alle links bereikbaar")) : result("missing", "Geen links");
