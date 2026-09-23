@@ -154,8 +154,9 @@ function suggestPotentialMatches(items) {
 
 function normalizeEventTitle(value) { return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim(); }
 function externalTitlesMatch(left, right) {
-  const a = new Set(normalizeEventTitle(left).split(" ").filter((word) => word.length > 2));
-  const b = new Set(normalizeEventTitle(right).split(" ").filter((word) => word.length > 2));
+  const meaningful = (word) => word.length > 2 && !/^\d+$/.test(word);
+  const a = new Set(normalizeEventTitle(left).split(" ").filter(meaningful));
+  const b = new Set(normalizeEventTitle(right).split(" ").filter(meaningful));
   if (!a.size || !b.size) return false;
   const overlap = [...a].filter((word) => b.has(word)).length;
   return overlap >= 2 && overlap / Math.min(a.size, b.size) >= 0.6;
