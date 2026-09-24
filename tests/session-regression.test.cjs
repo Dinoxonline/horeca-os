@@ -150,6 +150,53 @@ test('difference actions follow the actual channel and saving enables navigation
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
 
+test('verified matching Facebook content overrides the manual task without inventing a confirmation', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const { prepareContent } = await load('lib/manual-event-content.js');
+  const record = (title = 'Facebook-titel') => ({ id: 'matching-facebook', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description: 'Tekst' } }] });
+  const local = record();
+  local.media[0] = prepareContent(local.media[0], { title: 'Facebook-titel', description: 'Tekst' }, '2026-09-24T19:00:00Z');
+  const original = JSON.stringify(local);
+  const calls = [];
+  let props = { item: local, sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Eventin', item: record() }, { label: 'Facebook', item: record() }], onClose() {}, onConfirmFacebook: () => calls.push('confirm'), onSyncContent: () => calls.push('save') };
+  let renderer;
+  const render = async changes => {
+    props = { ...props, ...changes };
+    await React.act(async () => {
+      if (renderer) renderer.update(React.createElement(EventDetails, props));
+      else renderer = Renderer.create(React.createElement(EventDetails, props));
+    });
+  };
+  const tile = () => renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' }).findAllByType('button').find(button => button.props['aria-controls'] === 'event-channel-facebook-matching-facebook');
+  const panel = () => renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
+  try {
+    await render({});
+    assert.match(tile().props.className, /placed/);
+    assert.match(tile().props['aria-label'], /Tekst komt overeen — geen actie nodig/);
+    assert.equal(panel().findAllByType('input').length, 0, 'no confirmation checkbox when already equal');
+    assert.equal(panel().findAllByType('button').length, 0, 'no copy, save or confirm tasks when already equal');
+    assert.equal(panel().findByType('a').props.children, 'Facebook-evenement bekijken');
+    await render({ sourceComparisonItems: [{ label: 'Eventin', item: record('Andere website') }, { label: 'Facebook', item: record() }] });
+    assert.match(tile().props['aria-label'], /geen actie nodig/, 'website differences do not create a Facebook task');
+    // An unsaved choice must not hide the manual editor as though it were saved.
+    await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Eventin gebruiken' }).props.onClick());
+    assert.equal(panel().findAllByType('input').length, 1);
+    assert.equal(panel().findByType('input').props.disabled, true);
+    // Saving a new local title invalidates the old match immediately.
+    await render({ item: record('Andere website') });
+    assert.match(tile().props['aria-label'], /Tekst verschilt/);
+    assert.equal(panel().findAllByType('input').length, 1);
+    for (const check of ['pending', 'queued', 'error', 'timeout', 'idle']) {
+      await render({ item: local, sourceComparisonCheck: check });
+      assert.doesNotMatch(tile().props['aria-label'], /geen actie nodig/);
+    }
+    await render({ sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Eventin', item: record() }] });
+    assert.doesNotMatch(tile().props['aria-label'], /geen actie nodig/, 'missing Facebook evidence is not a match');
+    assert.equal(JSON.stringify(local), original, 'comparison never records a fictitious manual confirmation');
+    assert.deepEqual(calls, []);
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('Facebook editor stays closed while checking and after equal or different results', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'one', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Title', description: 'Text' } }] };

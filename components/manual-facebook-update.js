@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId } from "../lib/manual-event-content";
 
-export default function ManualFacebookUpdate({ distribution, dirty, busy, onConfirm, draftContent, sources = [], onChooseSource, onSave, linkCheck = "idle" }) {
+export default function ManualFacebookUpdate({ distribution, dirty, busy, onConfirm, draftContent, sources = [], onChooseSource, onSave, linkCheck = "idle", textMatches = false }) {
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState("");
   const [copiedField, setCopiedField] = useState("");
@@ -34,6 +34,11 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
       setMessage("Het aparte venster kon niet worden geopend. Gebruik de link ‘Facebook-evenement openen’ hierboven.");
     }
   }
+  if (textMatches && !dirty && !busy && id) return <section className="manualFacebookUpdate" aria-label="Facebook handmatig bijwerken">
+    <h4>Tekst komt overeen — geen actie nodig</h4>
+    <p>De vergelijking bevestigt dat de opgeslagen titel en omschrijving al op Facebook staan. Je hoeft niets te kopiëren of handmatig te bevestigen.</p>
+    <a className="secondaryButton" href={`https://www.facebook.com/events/${id}/`} target="_blank" rel="noopener noreferrer">Facebook-evenement bekijken</a>
+  </section>;
   return <section className="manualFacebookUpdate" aria-label="Facebook handmatig bijwerken">
     <header className="workspaceHeading"><h4>Facebook handmatig bijwerken</h4><strong className="statusBadge">{!id ? linkMessage : dirty ? "Nog niet bewaard" : state.label}</strong></header>
     {state.at && <small>Door een gebruiker bevestigd op {new Date(state.at).toLocaleString("nl-NL")}. Niet automatisch door Facebook gecontroleerd.</small>}
