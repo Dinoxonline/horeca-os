@@ -103,7 +103,7 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
   const button = text => renderer.root.findAllByType('button').find(b => b.props.children === text);
   try {
     assert.equal(button('Handmatig bijgewerkt').props.disabled, true);
-    assert.equal(renderer.root.findByType('a').props.href, 'https://www.facebook.com/events/456/');
+    assert.ok(renderer.root.findAllByType('a').every(a => a.props.href === 'https://www.facebook.com/events/456/'));
     await React.act(async () => button('Titel kopiëren').props.onClick());
     await React.act(async () => button('Beschrijving kopiëren').props.onClick());
     assert.deepEqual(copied, ['Avond', 'Tekst\n🎵']);
@@ -124,6 +124,51 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
   } finally {
     await React.act(async () => renderer.unmount());
     if (originalNavigator) Object.defineProperty(global, 'navigator', originalNavigator); else delete global.navigator;
+  }
+});
+
+test('event workspace opens a secure compact window only on click, with fallback and unchanged confirmation', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js');
+  const Panel = load('components/manual-facebook-update.js').default;
+  const originalWindow = global.window;
+  const opened = [], saves = [], choices = [], confirmations = [];
+  global.window = { screen: { availWidth: 1920, availHeight: 1080 }, open: (...args) => { opened.push(args); return null; } };
+  const distribution = m.prepareContent(base(), m.eventContent(base()), at);
+  const source = { label: 'Eventin', item: { id: 'existing' } };
+  const props = { distribution, sources: [source], onChooseSource: value => choices.push(value), onSave: value => saves.push(value), onConfirm: value => confirmations.push(value) };
+  let renderer;
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Panel, props)); });
+    const button = text => renderer.root.findAllByType('button').find(b => b.props.children === text);
+    const link = () => renderer.root.findAllByType('a').find(a => a.props.onClick);
+    assert.equal(opened.length, 0, 'mount must not open Facebook');
+    assert.equal(button('Tekst bewaren en website bijwerken').props.disabled, true);
+    let prevented = false;
+    await React.act(async () => link().props.onClick({ button: 0, preventDefault() { prevented = true; } }));
+    assert.equal(prevented, true);
+    assert.deepEqual(opened[0], ['https://www.facebook.com/events/456/', '_blank', 'popup=yes,width=760,height=900,left=1160,top=0,noopener,noreferrer']);
+    assert.match(JSON.stringify(renderer.toJSON()), /Geen Facebook-venster verschenen/);
+    assert.equal(button('Handmatig bijgewerkt').props.disabled, true);
+    assert.equal(confirmations.length, 0);
+    assert.equal(saves.length, 0);
+    await React.act(async () => link().props.onClick({ ctrlKey: true, preventDefault() { throw new Error('modified click intercepted'); } }));
+    assert.equal(opened.length, 1);
+    global.window.open = () => { throw new Error('Blocked'); };
+    await React.act(async () => link().props.onClick({ button: 0, preventDefault() {} }));
+    assert.match(JSON.stringify(renderer.toJSON()), /kon niet worden geopend/);
+    assert.equal(renderer.root.findAllByType('a').find(a => !a.props.onClick).props.target, '_blank');
+    await React.act(async () => renderer.root.findByType('select').props.onChange({ target: { value: 'Eventin' } }));
+    assert.deepEqual(choices, [source]);
+    await React.act(async () => renderer.update(React.createElement(Panel, { ...props, draftContent: { label: 'Eventin', title: 'Nieuw', description: 'Andere tekst' }, dirty: true })));
+    assert.equal(renderer.root.findAllByType('textarea')[0].props.value, 'Nieuw');
+    assert.equal(button('Titel kopiëren').props.disabled, true);
+    await React.act(async () => button('Tekst bewaren en website bijwerken').props.onClick());
+    assert.deepEqual(saves, [{ title: 'Nieuw', description: 'Andere tekst' }]);
+    assert.equal(confirmations.length, 0);
+  } finally {
+    if (renderer) await React.act(async () => renderer.unmount());
+    if (originalWindow === undefined) delete global.window; else global.window = originalWindow;
   }
 });
 
