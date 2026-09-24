@@ -46,6 +46,18 @@ function descriptionFor(item) {
   return String(value).replace(/\s*\{\s*["']@context[\s\S]*$/i, "").trim() || "Geen omschrijving";
 }
 function isExternalEvent(item) { const distribution = distributionFor(item); return (["facebook_event", "eventin_event", "external_event"].includes(distribution.source_type) || distribution.external_sources?.length > 0) && !distribution.linked_to_horeca_os; }
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length); let nextIndex = 0;
+  async function run() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
 
 function facebookCalendarItem(event, business) {
   const checkedAt = new Date().toISOString();
@@ -343,13 +355,13 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
       if (!session?.access_token) return;
       setAutoChecking(true);
       const [verifiedCampaigns, facebookItems, eventinItems] = await Promise.all([
-        Promise.all(campaigns.slice(0, 100).map(async (item) => {
+        mapWithConcurrency(campaigns.slice(0, 100), 4, async (item) => {
           try {
             const response = await fetch("/api/marketing/publication-status", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, campaignId: item.id }) });
             const payload = await response.json().catch(() => ({}));
             return response.ok ? { ...item, media: payload.media || item.media } : item;
           } catch { return item; }
-        })),
+        }),
         loadFacebookItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
         loadEventinItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
       ]);
@@ -361,9 +373,9 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
         const distribution = distributionFor(item);
         return Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook);
       });
-      Promise.all(managedItems.slice(0, 100).map(async (item) => {
+      mapWithConcurrency(managedItems.slice(0, 100), 4, async (item) => {
         try { return [String(item.id), await fetchSourceComparison(item)]; } catch { return [String(item.id), null]; }
-      })).then((comparisonEntries) => {
+      }).then((comparisonEntries) => {
         if (active) setSourceComparisons(Object.fromEntries(comparisonEntries.filter(([, value]) => value)));
       });
     }
