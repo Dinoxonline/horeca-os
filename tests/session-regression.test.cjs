@@ -89,7 +89,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Volledige omschrijving bekijken', 'Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Website afzonderlijk bijwerken']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Volledige omschrijving bekijken', 'Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Website afzonderlijk bijwerken']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');

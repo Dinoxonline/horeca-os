@@ -1,0 +1,155 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
+import { withRequestTimeout } from "../lib/request-timeout";
+import { INSTAGRAM_FORMATS, validateInstagramDraft, instagramJobLabel } from "../lib/instagram-publishing";
+
+export default function InstagramEventPublisher({ item, workspaceId, session, businessName, onPublished }) {
+  const distribution = (item.media || []).find(entry => entry?.kind === "campaign_distribution") || {};
+  const [format, setFormat] = useState("feed");
+  const [caption, setCaption] = useState(distribution.channel_payloads?.instagram?.text || distribution.common?.description || item.body || "");
+  const [assets, setAssets] = useState([]);
+  const [url, setUrl] = useState("");
+  const [mediaType, setMediaType] = useState("image");
+  const [shareToFeed, setShareToFeed] = useState(true);
+  const [account, setAccount] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [warning, setWarning] = useState("");
+  const [jobs, setJobs] = useState(distribution.instagram_publications || {});
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const lock = useRef(false);
+  const job = jobs[format];
+  const locked = job && !["failed", "draft"].includes(job.status);
+  const preview = locked ? job.draft : { format, caption: format === "story" ? "" : caption, assets, shareToFeed };
+  const profileUrl = account?.name ? `https://www.instagram.com/${encodeURIComponent(account.name)}/` : "https://www.instagram.com/";
+  const existingImages = [...new Set([
+    distribution.channel_payloads?.instagram?.image_url, distribution.common?.image_url,
+    ...(distribution.campaign_assets || []).map(asset => asset.url),
+  ].filter(value => typeof value === "string" && value.startsWith("https://")))];
+
+  async function request(action, extra = {}) {
+    const params = { workspaceId, businessId: item.business_id, campaignId: item.id };
+    const controller = new AbortController();
+    const response = await withRequestTimeout(fetch(`/api/integrations/meta/publish${action ? "" : "?" + new URLSearchParams(params)}`, {
+      method: action ? "POST" : "GET", signal: controller.signal,
+      headers: { Authorization: `Bearer ${session?.access_token || ""}`, "Content-Type": "application/json" },
+      ...(action ? { body: JSON.stringify({ ...params, format, action, ...extra }) } : {}),
+    }).then(async response => ({ ok: response.ok, payload: await response.json() })), "Geen antwoord ontvangen. Controleer eerst de status voordat je opnieuw handelt.", () => controller.abort(), 55000);
+    if (response.payload.job) {
+      setJobs(previous => ({ ...previous, [format]: response.payload.job }));
+      if (response.payload.job.status === "published") onPublished?.(format, response.payload.job);
+    }
+    if (!response.ok) throw new Error(response.payload.error || "Instagram-aanvraag mislukt.");
+    return response.payload;
+  }
+  async function run(label, action) {
+    if (lock.current) return;
+    lock.current = true; setBusy(label); setMessage(""); setConfirmed(false);
+    try { await action(); } catch (error) { setMessage(error.message || "Deze actie is niet gelukt."); }
+    finally { lock.current = false; setBusy(""); }
+  }
+  function loadStatus() {
+    return run("Account en status laden…", async () => {
+      const result = await request();
+      setAccount(result.account); setWarning(result.warning || ""); setJobs(result.publications || {}); setLoaded(true);
+    });
+  }
+  function addAsset(asset) {
+    if (assets.length >= INSTAGRAM_FORMATS[format].max) { setMessage("Het maximale aantal bestanden voor dit formaat is bereikt."); return; }
+    setAssets(previous => [...previous, asset]); setMessage("");
+  }
+  async function upload(file) {
+    if (!file) return;
+    await run("Foto uploaden…", async () => {
+      if (file.type !== "image/jpeg" || file.size > 8 * 1024 * 1024) throw new Error("Kies een JPG-foto van maximaal 8 MB. Voor video gebruik je een openbare MP4/MOV-link.");
+      if (assets.length >= INSTAGRAM_FORMATS[format].max) throw new Error("Verwijder eerst een bestand of kies Carrousel.");
+      const path = `${workspaceId}/${item.business_id}/instagram-${crypto.randomUUID()}.jpg`;
+      const { error } = await supabase.storage.from("marketing-assets").upload(path, file, { contentType: "image/jpeg", upsert: false });
+      if (error) throw new Error("Uploaden is niet gelukt. Controleer je rechten en bestand.");
+      const { data } = supabase.storage.from("marketing-assets").getPublicUrl(path);
+      addAsset({ type: "image", url: data.publicUrl });
+    });
+  }
+  return <section className="instagramPublisher" aria-label="Instagram plaatsen">
+    <p>Maak een publicatie voor <strong>{businessName || "deze vestiging"}</strong>. Dit verandert het Facebook-evenement en de website niet.</p>
+    <div className="instagramToolbar">
+      <button type="button" className="secondaryButton" disabled={!!busy} onClick={loadStatus}>{loaded ? "Account en status verversen" : "Instagram-account controleren"}</button>
+      {account && <strong>Bestemming: @{account.name}</strong>}
+      <a href="/koppelingen">Koppeling beheren</a>
+    </div>
+    {warning && <p role="status">{warning}</p>}
+    <label>Wat wil je plaatsen?<select value={format} disabled={!!busy} onChange={event => { setFormat(event.target.value); setMediaType(event.target.value === "reel" ? "video" : "image"); setAssets([]); setConfirmed(false); setMessage(""); }}>
+      {Object.entries(INSTAGRAM_FORMATS).map(([key, option]) => <option key={key} value={key}>{option.label}</option>)}
+    </select></label>
+    <p>{INSTAGRAM_FORMATS[format].hint}</p>
+    {!locked && <div className="instagramComposer">
+      <div>
+        {format !== "story" && <label>Bijschrift<textarea rows={5} value={caption} disabled={!!busy} onChange={event => setCaption(event.target.value)} /><small>{[...caption].length}/2.200 tekens</small></label>}
+        {format === "reel" && <label className="instagramCheck"><input type="checkbox" checked={shareToFeed} disabled={!!busy} onChange={event => setShareToFeed(event.target.checked)} />Reel ook delen in de feed</label>}
+        {format !== "reel" && <label>JPG-foto uploaden<input aria-label="Instagram-foto uploaden" type="file" accept="image/jpeg" disabled={!!busy || assets.length >= INSTAGRAM_FORMATS[format].max} onChange={event => { upload(event.target.files?.[0]); event.target.value = ""; }} /></label>}
+        {format !== "reel" && existingImages.length > 0 && <label>Of kies een evenementafbeelding<select value="" disabled={!!busy} onChange={event => { if (event.target.value) addAsset({ type: "image", url: event.target.value }); }}>
+          <option value="">Kies afbeelding…</option>{existingImages.map((image, index) => <option key={image} value={image}>Evenementafbeelding {index + 1}</option>)}
+        </select></label>}
+        <details><summary>Foto- of videolink gebruiken</summary>
+          <label>Bestandstype<select value={mediaType} disabled={!!busy} onChange={event => setMediaType(event.target.value)}><option value="image">Foto (JPG)</option><option value="video">Video (MP4/MOV)</option></select></label>
+          <label>Openbare HTTPS-link<input type="url" value={url} disabled={!!busy} onChange={event => setUrl(event.target.value)} placeholder="https://…/video.mp4" /></label>
+          <button type="button" className="secondaryButton" disabled={!!busy || !url} onClick={() => {
+            try { const asset = { type: format === "reel" ? "video" : mediaType, url }; validateInstagramDraft({ format: asset.type === "video" ? "reel" : "feed", assets: [asset] }); addAsset(asset); setUrl(""); } catch (error) { setMessage(error.message); }
+          }}>Media toevoegen</button>
+          <small>Gebruik een directe bestandslink, geen YouTube- of Instagram-paginalink. Video-upload vanaf je computer is hier nog niet beschikbaar.</small>
+        </details>
+      </div>
+      <div>
+        <strong>Gekozen media — deze volgorde wordt gebruikt</strong>
+        {assets.length === 0 && <p>Voeg eerst een foto of video toe.</p>}
+        {assets.map((asset, index) => <div className="instagramAsset" key={index}>
+          {asset.type === "image" ? <img src={asset.url} alt={`Voorbeeld ${index + 1}`} /> : <video src={asset.url} controls preload="metadata" />}
+          <button type="button" className="secondaryButton" disabled={!!busy} onClick={() => setAssets(previous => previous.filter((_, i) => i !== index))}>Verwijder bestand {index + 1}</button>
+        </div>)}
+      </div>
+    </div>}
+    <div className="instagramPublishStatus">
+      <strong>{instagramJobLabel(job)}</strong>
+      {job?.error && <p>{job.error}</p>}
+      {!locked && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning || !account} onClick={() => run("Media klaarzetten bij Instagram…", async () => {
+        const draft = validateInstagramDraft({ format, caption, assets, shareToFeed });
+        await request("prepare", { accountId: account.id, draft });
+      })}>Voorbeeld klaarzetten — nog niet publiceren</button>}
+      {locked && preview && <details><summary>Voorbereid bericht bekijken</summary>
+        <p className="instagramCaption">{preview.caption || "Story zonder los bijschrift"}</p>
+        <div className="instagramPreview">{preview.assets.map((asset, index) => asset.type === "image" ? <img key={index} src={asset.url} alt={`Voorbereid beeld ${index + 1}`} /> : <video key={index} src={asset.url} controls preload="metadata" />)}</div>
+      </details>}
+      {job?.container_id && job.status !== "published" && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Instagram-status controleren…", () => request("status", { operationId: job.operation_id }))}>Verwerking / publicatiestatus controleren</button>}
+      {locked && ["preparing", "processing", "ready"].includes(job.status) && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Voorbereiding vrijgeven…", async () => {
+        await request("discard", { operationId: job.operation_id });
+        setCaption(job.draft.caption); setAssets(job.draft.assets); setShareToFeed(job.draft.shareToFeed);
+      })}>Voorbereiding aanpassen — niet publiceren</button>}
+      {job?.status === "ready" && <div>
+        <label className="instagramCheck"><input type="checkbox" checked={confirmed} disabled={!!busy} onChange={event => setConfirmed(event.target.checked)} />Ik wil dit voorbereide bericht nu plaatsen op @{job.account_name}.</label>
+        <button type="button" className="primaryButton" disabled={!!busy || !confirmed || !loaded || !!warning} onClick={() => run("Publiceren op Instagram…", () => request("publish", { confirm: true, operationId: job.operation_id }))}>Nu publiceren op Instagram</button>
+      </div>}
+      {job?.status === "published" && <a href={job.permalink?.startsWith("https://www.instagram.com/") ? job.permalink : profileUrl} target="_blank" rel="noopener noreferrer">Bekijk op Instagram</a>}
+      {busy && <p role="status"><span className="marketingLoadingSpinner" aria-hidden="true" /> {busy}</p>}
+      {message && <p role="alert">{message}</p>}
+    </div>
+    <details><summary>Overige Instagram-opties en vereisten</summary>
+      <p>Foto's: JPG, maximaal 8 MB. Feedfoto's: verhouding 4:5 tot 1,91:1. Stories en Reels: bij voorkeur 9:16. Instagram controleert het definitieve formaat en de verwerking.</p>
+      <p>Stories via de koppeling vereisen een zakelijk account. Muziek uit de Instagram-bibliotheek, stickers, polls, effecten en Live gebruik je in Instagram zelf.</p>
+      <a href={profileUrl} target="_blank" rel="noopener noreferrer">Instagram openen voor extra opties</a>
+      <p>Er wordt niet automatisch geplaatst of opnieuw gepubliceerd. Bewaar je media zelf; een Story verdwijnt normaal na 24 uur.</p>
+    </details>
+    <style jsx>{`
+      .instagramPublisher{display:grid;gap:12px;font-size:13px}.instagramPublisher p{margin:0;line-height:1.5}
+      .instagramPublisher label{display:grid;gap:6px}.instagramPublisher select,.instagramPublisher input:not([type=checkbox]),.instagramPublisher textarea{width:100%;padding:9px;border:1px solid #bfd1dc;border-radius:6px;background:#fff;color:#173552}
+      .instagramToolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.instagramComposer{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+      .instagramComposer>div{display:grid;gap:12px;align-content:start;min-width:0}.instagramAsset{display:grid;gap:6px}.instagramPublisher img,.instagramPublisher video{width:100%;max-height:200px;object-fit:contain;background:#f3f7f9}
+      .instagramPublisher button{width:auto;justify-self:start;margin:0}.instagramPublisher .instagramCheck{display:flex;align-items:center;gap:8px}.instagramCheck input{width:auto}
+      .instagramPublishStatus{display:grid;gap:10px;padding:12px;background:#eef7f9;border-radius:8px}.instagramCaption{white-space:pre-wrap;max-height:180px;overflow:auto}
+      .instagramPreview{display:flex;gap:8px;overflow:auto}.instagramPreview img,.instagramPreview video{max-width:200px}.instagramPublisher details{padding:8px 0}.instagramPublisher summary{cursor:pointer;font-weight:700}.instagramPublisher small{color:#5c7285}.marketingLoadingSpinner{display:inline-block}
+      @media(max-width:760px){.instagramComposer{grid-template-columns:1fr}}
+    `}</style>
+  </section>;
+}
