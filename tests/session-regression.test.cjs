@@ -34,9 +34,9 @@ test('event date is visible in the heading without opening event details', async
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onClose() {} })); });
   try {
     const heading = renderer.root.findByProps({ className: 'marketingEventHeading' });
-    assert.equal(heading.findByProps({ 'aria-label': 'Evenementdatum' }).props.children, 'donderdag 1 oktober 2026');
+    assert.equal(heading.findByProps({ 'aria-label': 'Evenementdatum' }).findByType('strong').props.children, 'donderdag 1 oktober 2026');
     await React.act(async () => renderer.update(React.createElement(EventDetails, { item: { ...item, media: [] }, onClose() {} })));
-    assert.equal(renderer.root.findByProps({ 'aria-label': 'Evenementdatum' }).props.children, 'Datum onbekend');
+    assert.equal(renderer.root.findByProps({ 'aria-label': 'Evenementdatum' }).findByType('strong').props.children, 'Datum onbekend');
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
@@ -46,6 +46,8 @@ test('comparison summary distinguishes equal, different, incomplete and failed c
   const local = item();
   const sources = [{ label: 'Horeca OS', item: local }, { label: 'Eventin', item: item() }, { label: 'Facebook', item: item() }];
   assert.equal(sourceComparisonStatus(local, sources, 'pending').key, 'pending');
+  assert.equal(sourceComparisonStatus(local, sources, 'queued').key, 'queued');
+  assert.match(sourceComparisonStatus(local, sources, 'timeout').detail, /30 seconden/);
   assert.equal(sourceComparisonStatus(local, sources, 'error').key, 'incomplete');
   assert.equal(sourceComparisonStatus(local, sources, 'done').key, 'equal');
   assert.equal(sourceComparisonStatus(local, sources.slice(0, 2), 'done').key, 'incomplete');
@@ -64,7 +66,7 @@ test('Facebook editor stays closed while checking and after equal or different r
   const props = { item, sourceComparisonItems: [source], onClose() {}, onSyncContent() {} };
   let renderer;
   try {
-    for (const check of ['pending', 'done', 'error']) {
+    for (const check of ['queued', 'pending', 'done', 'error', 'timeout']) {
       await React.act(async () => {
         if (renderer) renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonCheck: check }));
         else renderer = Renderer.create(React.createElement(EventDetails, { ...props, sourceComparisonCheck: check }));
@@ -84,15 +86,19 @@ test('event layout starts with one workspace and keeps secondary information col
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'layout', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Avond', description: 'Tekst' } }] };
   let renderer;
-  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onSyncContent() {}, onClose() {} })); });
+  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Website afzonderlijk bijwerken', 'Evenementgegevens']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Volledige omschrijving bekijken', 'Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Website afzonderlijk bijwerken']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
     const statusIndex = article.children.indexOf(statuses);
-    assert.equal(article.children[statusIndex - 1].props.className, 'marketingEventHeading', 'status appears directly below the event heading');
+    const facts = article.children[statusIndex - 1];
+    assert.equal(facts.props['aria-label'], 'Evenementgegevens', 'compact event information precedes publication status');
+    assert.equal(article.children[statusIndex - 2].props.className, 'marketingEventHeading');
+    assert.ok(facts.findAllByType('p')[0].props.children.includes('Caribbean Corner'), 'empty event location falls back to the linked venue');
+    assert.equal(facts.findAllByType('dl').length, 0, 'no tall equal-height metadata columns');
     assert.deepEqual(statuses.findAllByType('strong').map(node => node.props.children), ['Website', 'Facebook', 'Instagram', 'Google', 'Overige']);
     assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
     assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
@@ -586,6 +592,63 @@ test('startup verification updates an open event immediately, independently of s
     assert.equal(panel().findByType('strong').props.children, 'Koppeling kon niet worden gecontroleerd');
   } finally {
     await React.act(async () => { renderer.unmount(); for (const resolve of pending.values()) resolve({ ok: false, json: async () => ({}) }); });
+  }
+});
+
+for (const timeout of [false, true]) test('open event bypasses slow publication queue, shares checks and bounds waiting: ' + timeout, async () => {
+  global.window = { addEventListener() {}, removeEventListener() {} };
+  global.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
+  const now = new Date().toISOString();
+  const campaign = { id: 'priority', business_id: 'b', created_at: now, scheduled_for: now, media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', start: now, description: 'Tekst' } }] };
+  let finishPublication, finishComparison, signal, comparisons = 0;
+  global.fetch = async (url, options = {}) => {
+    if (url === '/api/marketing/publication-status') return new Promise(resolve => { finishPublication = resolve; });
+    if (String(url).includes('eventId=123')) {
+      comparisons++; signal = options.signal;
+      return new Promise(resolve => { finishComparison = resolve; });
+    }
+    return { ok: true, json: async () => ({ events: [] }) };
+  };
+  let query;
+  query = new Proxy({}, { get: (_, key) => key === 'then' ? (resolve, reject) => Promise.resolve({ data: [campaign] }).then(resolve, reject) : () => query });
+  const { withRequestTimeout } = await load('lib/request-timeout.js');
+  const Marketing = (await load('components/marketing-overview.js', {
+    '../lib/supabase': { supabase: { from: () => query } },
+    '../lib/request-timeout': { withRequestTimeout: (request, message, abort) => withRequestTimeout(request, message, abort, timeout ? 80 : 2000) },
+  })).default;
+  const props = { workspaceId: 'w', businesses: [{ id: 'b', name: 'Caribbean Corner' }], session: { user: { id: 'u' }, access_token: 't' } };
+  const reply = title => ({ ok: true, json: async () => ({ event: { title, start: now, description: 'Tekst' } }) });
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Marketing, props)); });
+  const buttons = () => renderer.root.findAllByType('button');
+  const summary = () => renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
+  const open = () => buttons().find(button => button.props.className?.includes('marketingCalendarEvent')).props.onClick();
+  try {
+    await React.act(async () => open());
+    assert.equal(comparisons, 1, 'starts before unrelated publication checks finish');
+    assert.equal(summary().props['aria-busy'], true);
+    await React.act(async () => buttons().find(button => button.props.children === 'Details sluiten').props.onClick());
+    await React.act(async () => open());
+    assert.equal(comparisons, 1, 'reopening reuses the pending request');
+    if (timeout) {
+      const lateReply = finishComparison;
+      await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+      assert.equal(signal.aborted, true);
+      assert.equal(summary().props['aria-busy'], false);
+      assert.equal(summary().findByType('strong').props.children, 'Controle duurt te lang');
+      await React.act(async () => lateReply(reply('Te laat')));
+      assert.equal(summary().findByType('strong').props.children, 'Controle duurt te lang', 'late reply cannot report success');
+      await React.act(async () => { buttons().find(button => button.props.children === 'Controle opnieuw proberen').props.onClick(); });
+      assert.equal(comparisons, 2);
+    }
+    await React.act(async () => finishComparison(reply('Avond')));
+    assert.equal(summary().props['aria-busy'], false);
+    assert.equal(summary().findByType('strong').props.children, 'Titel en tekst zijn gelijk');
+    await React.act(async () => finishPublication({ ok: true, json: async () => ({ media: campaign.media }) }));
+    await flush();
+    assert.equal(comparisons, timeout ? 2 : 1, 'background batch reuses the already completed check');
+  } finally {
+    await React.act(async () => { renderer.unmount(); finishPublication?.({ ok: false, json: async () => ({}) }); finishComparison?.(reply('Late')); });
   }
 });
 
