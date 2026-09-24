@@ -59,6 +59,40 @@ test('comparison summary distinguishes equal, different, incomplete and failed c
   assert.equal(sourceComparisonStatus({ media: [] }, [], 'done').key, 'unlinked');
 });
 
+test('comparison identifies the exact source and field against the current Horeca OS record', async () => {
+  const { sourceComparisonStatus, EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = (title = 'Avond', description = 'Tekst') => ({ id: 'source-diff', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });
+  const sources = (website, facebook) => [{ label: 'Eventin', item: website }, { label: 'Facebook', item: facebook }];
+  const check = (rows, state = 'done') => sourceComparisonStatus(item(), rows, state);
+  const titleOnly = check(sources(item(), item('Facebook-avond')));
+  assert.deepEqual(titleOnly.differences, [{ source: 'Facebook', title: 'Facebook-avond', titleDifferent: true, descriptionDifferent: false }]);
+  assert.equal(titleOnly.localTitle, 'Avond');
+  const textOnly = check(sources(item('Avond', 'Website-tekst'), item()));
+  assert.deepEqual(textOnly.differences, [{ source: 'Website (Eventin)', title: 'Avond', titleDifferent: false, descriptionDifferent: true }]);
+  const both = sources(item('Website-avond', 'Website-tekst'), item('Facebook-avond'));
+  assert.equal(check(both).differences.length, 2);
+  assert.equal(check(sources(item(' Avond ', ' Tekst '), item())).key, 'equal');
+  assert.equal(check(sources(item(), item('AVOND'))).differences[0].titleDifferent, true);
+  for (const state of ['pending', 'queued', 'error', 'timeout', 'idle']) assert.equal(check(both, state).differences, undefined);
+  assert.equal(check(both.slice(0, 1)).differences, undefined, 'incomplete checks do not present stale differences');
+  assert.equal(sourceComparisonStatus(item('Facebook-avond'), [{ label: 'Horeca OS', item: item('Old cached title') }, ...sources(item('Facebook-avond'), item('Facebook-avond'))], 'done').key, 'equal');
+  let renderer;
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item: item(), sourceComparisonItems: both, sourceComparisonCheck: 'done', onClose() {} })); });
+    const summary = renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
+    const rows = summary.findByProps({ 'aria-label': 'Afwijkingen per bron' }).findAllByType('li');
+    assert.equal(rows.length, 2);
+    const renderedText = node => typeof node === 'string' ? node : node.children.map(renderedText).join('');
+    const text = renderedText(summary);
+    assert.match(text, /Afwijkend van de opgeslagen tekst in Horeca OS/);
+    const listText = rows.map(renderedText).join('\n');
+    assert.match(listText, /Website-avond/);
+    assert.match(listText, /Facebook-avond/);
+    assert.match(listText, /Ook de omschrijving verschilt/);
+    assert.ok(renderer.root.findAllByType('details').every(node => !node.props.open), 'showing differences never opens an editor');
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('Facebook editor stays closed while checking and after equal or different results', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'one', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Title', description: 'Text' } }] };
@@ -77,7 +111,7 @@ test('Facebook editor stays closed while checking and after equal or different r
       assert.equal(summary.findAllByProps({ className: 'marketingLoadingSpinner' }).length, check === 'pending' ? 1 : 0, 'spinner follows the real check state and stops on success or failure');
     }
     await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Facebook', item: { ...item, media: [{ ...item.media[0], common: { title: 'Other', description: 'Other' } }] } }] })));
-    assert.match(JSON.stringify(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findByType('strong').props.children), /Verschillen gevonden/);
+    assert.match(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, /Verschillen gevonden/);
     assert.equal(Boolean(renderer.root.findByProps({ 'data-facebook-editor': true }).props.open), false);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
