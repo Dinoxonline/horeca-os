@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import { withRequestTimeout } from "../lib/request-timeout";
 import CentralEventCreator from "./central-event-creator";
 import MarketingOverview from "./marketing-overview";
 import Workboard from "./workboard";
@@ -55,6 +56,10 @@ export default function HorecaOsApp() {
   if (pathname.startsWith("/medewerkers/")) return <StaffTicketForm token={decodeURIComponent(pathname.split("/")[2] || "")} />;
   const recoveryPage = pathname === "/wachtwoord-herstellen";
   const [session, setSession] = useState(null);
+  const sessionRef = useRef(session); sessionRef.current = session;
+  const mfaRequestRef = useRef(0);
+  const [accessRetry, setAccessRetry] = useState(0);
+  const [accessError, setAccessError] = useState("");
   const [passwordRecovery, setPasswordRecovery] = useState(() => typeof window !== "undefined" && (
     window.location.hash.includes("type=recovery")
     || window.location.search.includes("type=recovery")
@@ -66,8 +71,10 @@ export default function HorecaOsApp() {
   const workspaceSessionRefreshAttempted = useRef("");
   const [memberships, setMemberships] = useState([]);
   const [membershipsLoading, setMembershipsLoading] = useState(true);
+  const [membershipsScope, setMembershipsScope] = useState("");
   const [roleAssignments, setRoleAssignments] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(true);
+  const [rolesScope, setRolesScope] = useState("");
   const [mfaState, setMfaState] = useState({ loading: true, currentLevel: null, nextLevel: null, factors: [] });
   const [workspaceId, setWorkspaceId] = useState("");
   const [businessId, setBusinessId] = useState("all");
@@ -115,50 +122,60 @@ export default function HorecaOsApp() {
   }, []);
 
   useEffect(() => {
-    if (!session || passwordRecovery) return;
+    if (!session?.user?.id || passwordRecovery || !mfaState.currentLevel) return;
     let active = true;
+    const controller = new AbortController();
 
     const loadMemberships = async () => {
       setMembershipsLoading(true);
+      setAccessError("");
+      try {
       const queryMemberships = () => supabase
         .from("workspace_members")
         .select("workspace_id, role, workspace:workspaces!workspace_members_workspace_id_fkey(id, name)")
-        .eq("user_id", session.user.id);
+        .eq("user_id", session.user.id).abortSignal(controller.signal);
 
-      let { data: rows, error } = await queryMemberships();
+      let { data: rows, error } = await withRequestTimeout(queryMemberships(), "De werkruimtes konden niet op tijd worden opgehaald. Probeer opnieuw.", () => controller.abort());
       if (!active) return;
 
       const issuedInFuture = error?.message?.toLowerCase().includes("jwt issued at future");
       if (issuedInFuture && workspaceSessionRefreshAttempted.current !== session.user.id) {
         workspaceSessionRefreshAttempted.current = session.user.id;
-        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        const { data: refreshed, error: refreshError } = await withRequestTimeout(supabase.auth.refreshSession(), "Je sessie kon niet worden vernieuwd. Probeer opnieuw.");
         if (!active) return;
         if (refreshError || !refreshed.session) {
           setMessage("Je beveiligde sessie kon niet worden vernieuwd. Log uit en opnieuw in.");
+          setAccessError("Je beveiligde sessie kon niet worden vernieuwd. Probeer opnieuw.");
           setMembershipsLoading(false);
           return;
         }
         setMessage("Je beveiligde sessie is vernieuwd. De werkruimtes worden opnieuw geladen.");
         setSession(refreshed.session);
+        setAccessRetry((value) => value + 1);
         return;
       }
 
       if (error) {
         setMessage(`Werkruimtes konden niet worden geladen: ${error.message}`);
+        setAccessError("De werkruimtes konden niet worden opgehaald. Probeer opnieuw.");
         setMembershipsLoading(false);
         return;
       }
 
       const available = rows || [];
       setMemberships(available);
-      setWorkspaceId((current) => current || available[0]?.workspace_id || "");
+      setMembershipsScope(`${session.user.id}:${mfaState.currentLevel}`);
+      setWorkspaceId((current) => available.some((membership) => membership.workspace_id === current) ? current : available[0]?.workspace_id || "");
       setMembershipsLoading(false);
       setMessage((current) => current.includes("JWT issued at future") || current.includes("beveiligde sessie") ? "" : current);
+      } catch (error) {
+        if (active) { setAccessError(error.message || "De werkruimtes konden niet worden opgehaald."); setMembershipsLoading(false); }
+      }
     };
 
     loadMemberships();
-    return () => { active = false; };
-  }, [session, mfaState.currentLevel, passwordRecovery]);
+    return () => { active = false; controller.abort(); };
+  }, [session?.user?.id, mfaState.currentLevel, passwordRecovery, accessRetry]);
 
   useEffect(() => {
     if (!session || passwordRecovery || !workspaceId) {
@@ -167,48 +184,62 @@ export default function HorecaOsApp() {
       return;
     }
     let active = true;
+    const controller = new AbortController();
     setRolesLoading(true);
-    supabase
+    withRequestTimeout(supabase
       .from("user_role_assignments")
       .select("business_id, location_id, assignment_permissions(permission), role:roles!inner(role_key, role_permissions(permission))")
       .eq("user_id", session.user.id)
-      .eq("workspace_id", workspaceId)
+      .eq("workspace_id", workspaceId).abortSignal(controller.signal), "Je toegangsrechten konden niet op tijd worden opgehaald. Probeer opnieuw.", () => controller.abort())
       .then(({ data: rows, error }) => {
         if (!active) return;
         if (error) {
+          setAccessError("Je toegangsrechten konden niet worden opgehaald. Probeer opnieuw.");
           setRoleAssignments([]);
           setRolesLoading(false);
           return;
         }
         setRoleAssignments(rows || []);
+        setRolesScope(`${session.user.id}:${workspaceId}:${mfaState.currentLevel}`);
         setRolesLoading(false);
+      }).catch((error) => {
+        if (active) { setAccessError(error.message || "Je toegangsrechten konden niet worden opgehaald."); setRolesLoading(false); }
       });
-    return () => { active = false; };
-  }, [passwordRecovery, session, workspaceId]);
+    return () => { active = false; controller.abort(); };
+  }, [passwordRecovery, session?.user?.id, workspaceId, mfaState.currentLevel, accessRetry]);
 
   const refreshMfa = useCallback(async () => {
-    if (!session || passwordRecovery) {
+    const requestId = ++mfaRequestRef.current;
+    const token = sessionRef.current?.access_token;
+    if (!token || passwordRecovery) {
       setMfaState({ loading: false, currentLevel: null, nextLevel: null, factors: [] });
       return;
     }
-    const [aalResult, factorResult] = await Promise.all([
+    const isCurrent = () => requestId === mfaRequestRef.current && sessionRef.current?.access_token === token;
+    setMfaState((current) => ({ ...current, loading: !current.currentLevel || Boolean(current.error), error: "" }));
+    try {
+    const [aalResult, factorResult] = await withRequestTimeout(Promise.all([
       supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
       supabase.auth.mfa.listFactors(),
-    ]);
+    ]), "De beveiligingscontrole duurt te lang. Je bestaande authenticator blijft behouden. Probeer opnieuw.");
+    if (!isCurrent()) return;
     if (aalResult.error || factorResult.error) {
-      setMfaState({ loading: false, currentLevel: null, nextLevel: null, factors: [], error: aalResult.error?.message || factorResult.error?.message });
-      return;
+      throw new Error("De beveiligingscontrole kon niet worden voltooid. Probeer opnieuw.");
     }
     setMfaState({
       loading: false,
+      userId: sessionRef.current?.user?.id,
       currentLevel: aalResult.data.currentLevel,
       nextLevel: aalResult.data.nextLevel,
       factors: factorResult.data.totp || [],
       error: "",
     });
-  }, [passwordRecovery, session]);
+    } catch (error) {
+      if (isCurrent()) setMfaState((current) => ({ ...current, loading: false, error: error.message || "De beveiligingscontrole is mislukt. Probeer opnieuw." }));
+    }
+  }, [passwordRecovery, session?.access_token]);
 
-  useEffect(() => { refreshMfa(); }, [refreshMfa]);
+  useEffect(() => { refreshMfa(); return () => { ++mfaRequestRef.current; }; }, [refreshMfa]);
 
   const loadData = useCallback(async () => {
     if (passwordRecovery || !workspaceId) return;
@@ -435,12 +466,14 @@ export default function HorecaOsApp() {
   if (recoveryPage && !passwordRecovery) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode lockResetMode />;
   if (!session) return <LoginScreen signIn={signIn} requestPasswordReset={requestPasswordReset} message={message} initialResetMode={passwordRecovery} />;
   if (passwordRecovery) return <PasswordRecoveryScreen onSave={saveRecoveredPassword} message={message} email={session?.user?.email} />;
+  if (mfaState.error || accessError) return <main className="authPage"><section className="authCard"><h1>Verbinding herstellen</h1><p role="alert">{mfaState.error || accessError}</p><button className="primary" onClick={() => { if (mfaState.error) refreshMfa(); if (accessError) { setAccessError(""); setAccessRetry((value) => value + 1); } }}>Opnieuw proberen</button><button className="textButton" onClick={() => supabase.auth.signOut()}>Uitloggen</button></section></main>;
+  if (mfaState.loading || !mfaState.currentLevel || mfaState.userId !== session.user.id) return <main className="center">Beveiliging controleren…</main>;
   if (!mfaState.loading && mfaState.nextLevel === "aal2" && mfaState.currentLevel !== "aal2") {
     return <MfaChallenge factor={verifiedMfaFactor} onComplete={refreshMfa} />;
   }
-  if (membershipsLoading) return <main className="center">Werkruimtes laden…</main>;
+  if (membershipsLoading || membershipsScope !== `${session.user.id}:${mfaState.currentLevel}`) return <main className="center">Werkruimtes laden…</main>;
   if (!workspaceId && memberships.length === 0) return <main className="center">Geen toegankelijke werkruimte gevonden.</main>;
-  if (rolesLoading || mfaState.loading) return <main className="center">Beveiliging controleren…</main>;
+  if (rolesLoading || rolesScope !== `${session.user.id}:${workspaceId}:${mfaState.currentLevel}`) return <main className="center">Beveiliging controleren…</main>;
   if (mfaRequired && !verifiedMfaFactor) {
     return <MfaEnrollment required onComplete={refreshMfa} />;
   }
@@ -3758,6 +3791,11 @@ function MfaEnrollment({ required = false, onComplete, onCancel }) {
       const { data: factorData, error: factorError } = await supabase.auth.mfa.listFactors();
       if (!active) return;
       if (factorError) { setError("De authenticator kon niet worden voorbereid. Probeer opnieuw."); return; }
+      // A failed or stale security check must never create a second authenticator.
+      if ((factorData?.totp || []).some((factor) => factor.status === "verified")) {
+        await onComplete();
+        return;
+      }
       const unfinishedFactors = (factorData?.totp || []).filter((factor) => factor.status === "unverified");
       for (const factor of unfinishedFactors) {
         const { error: removeError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });

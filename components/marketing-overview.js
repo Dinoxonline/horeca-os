@@ -359,7 +359,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
       const [verifiedCampaigns, facebookItems, eventinItems] = await Promise.all([
         mapWithConcurrency(campaigns.slice(0, 100), 4, async (item) => {
           try {
-            const response = await fetch("/api/marketing/publication-status", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, campaignId: item.id }) });
+            const response = await fetch("/api/marketing/publication-status", { method: "POST", headers: { Authorization: `Bearer ${sessionRef.current?.access_token || accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, campaignId: item.id }) });
             const payload = await response.json().catch(() => ({}));
             return response.ok ? { ...item, media: payload.media || item.media } : item;
           } catch { return item; }
@@ -384,17 +384,6 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     load();
     return () => { active = false; };
   }, [workspaceId, refreshKey, session?.user?.id, venueBusinesses]);
-
-  useEffect(() => {
-    function resumeComparison() {
-      if (document.visibilityState !== "visible" || !comparisonTargetRef.current) return;
-      const item = items.find((entry) => String(entry.id) === comparisonTargetRef.current);
-      if (item) compareSources(item, true);
-    }
-    document.addEventListener("visibilitychange", resumeComparison);
-    window.addEventListener("focus", resumeComparison);
-    return () => { document.removeEventListener("visibilitychange", resumeComparison); window.removeEventListener("focus", resumeComparison); };
-  }, [items]);
 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
@@ -456,18 +445,17 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     } catch (syncError) { setError(syncError.message || "De externe evenementteksten konden niet worden bijgewerkt."); }
     finally { setLinkingId(""); }
   }
-  async function compareSources(item, resume = false) {
-    if (!item || (linkingId && !resume)) return;
+  async function compareSources(item) {
+    if (!item || linkingId || comparisonTargetRef.current) return;
     const comparisonKey = `compare:${String(item.id)}`;
     comparisonTargetRef.current = String(item.id);
     setLinkingId(comparisonKey); setError("");
     try {
       const comparison = await fetchSourceComparison(item);
       setSourceComparisons((current) => ({ ...current, [String(item.id)]: comparison || [] }));
-      setSelectedItem((current) => current ? { ...current, sourceComparisonItems: comparison || [] } : current);
-      comparisonTargetRef.current = "";
+      setSelectedItem((current) => current && String(current.id) === String(item.id) ? { ...current, sourceComparisonItems: comparison || [] } : current);
     } catch (compareError) { setError(compareError.message || "De bronnen konden niet opnieuw worden vergeleken."); }
-    finally { setLinkingId(""); }
+    finally { comparisonTargetRef.current = ""; setLinkingId(""); }
   }
   async function mergeManagedDuplicate(item, matchingItem, content = {}) {
     if (!matchingItem || linkingId) return;
