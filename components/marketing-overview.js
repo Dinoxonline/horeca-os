@@ -384,7 +384,9 @@ export function EventDetails({ workspaceId, session, onInstagramPublished, item,
     trackChannel(channel, true);
     const summary = panel.querySelector("summary");
     summary?.focus({ preventScroll: true });
-    summary?.scrollIntoView({ block: "nearest" });
+    // "nearest" can leave only the heading visible at the bottom of the modal.
+    // Align its start so the opened form and confirmation button come into view.
+    summary?.scrollIntoView({ block: "start", inline: "nearest" });
   }
   const matchDistribution = distributionFor(matchItem); const selectedDescription = descriptionFor(item);
   const matchDescription = descriptionFor(matchItem);

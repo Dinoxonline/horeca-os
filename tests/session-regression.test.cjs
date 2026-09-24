@@ -105,7 +105,7 @@ test('difference actions follow the actual channel and saving enables navigation
       if (renderer) renderer.update(React.createElement(EventDetails, props));
       else renderer = Renderer.create(React.createElement(EventDetails, props), { createNodeMock(element) {
         if (!element.props.id?.startsWith('event-channel-')) return null;
-        return panels[element.props.id] ||= { open: false, focused: 0, scrolled: 0, querySelector() { return { focus: () => this.focused++, scrollIntoView: () => this.scrolled++ }; } };
+        return panels[element.props.id] ||= { open: false, focused: 0, scrolled: 0, querySelector() { return { focus: () => this.focused++, scrollIntoView: options => { this.scrolled++; this.scrollOptions = options; } }; } };
       } });
     });
   };
@@ -119,6 +119,7 @@ test('difference actions follow the actual channel and saving enables navigation
     await React.act(async () => actions()[0].props.onClick());
     assert.equal(panels['event-channel-website-next-step'].open, true);
     assert.equal(panels['event-channel-website-next-step'].focused, 1);
+    assert.deepEqual(panels['event-channel-website-next-step'].scrollOptions, { block: 'start', inline: 'nearest' }, 'bring the form into view, not just its bottom-edge heading');
     assert.equal(panels['event-channel-facebook-next-step'].open, false);
     assert.deepEqual(calls, [], 'navigation must not save or publish');
     await render({ sourceComparisonItems: sources('Bewaar deze', 'Oud Facebook') });
@@ -218,7 +219,7 @@ test('channel tiles open and focus their own editor without saving or publishing
         const id = element.props.id;
         return panels[id] ||= { open: false, focused: 0, scrolled: 0, querySelector(selector) {
           assert.equal(selector, 'summary');
-          return { focus: () => this.focused++, scrollIntoView: () => this.scrolled++ };
+          return { focus: () => this.focused++, scrollIntoView: options => { this.scrolled++; this.scrollOptions = options; } };
         } };
       } });
     });
@@ -233,6 +234,7 @@ test('channel tiles open and focus their own editor without saving or publishing
       assert.equal(panels[id].open, true);
       assert.equal(panels[id].focused, 1);
       assert.equal(panels[id].scrolled, 1);
+      assert.deepEqual(panels[id].scrollOptions, { block: 'start', inline: 'nearest' });
       assert.equal(button().props['aria-expanded'], true);
       assert.ok(Object.entries(panels).filter(([key]) => key !== id).every(([, panel]) => !panel.open), 'unrelated editors stay closed');
       panels[id].open = false;
