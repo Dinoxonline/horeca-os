@@ -74,6 +74,21 @@ test('scoped persistence preserves unrelated media and rejects conflicts and den
   }
 });
 
+test('legacy delivery IDs become event links only after an exact successful event comparison', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js');
+  const d = { ...base(), facebook_event_delivery: undefined, provider_delivery: { facebook: { external_id: '456' } } };
+  const validSource = [{ label: 'Facebook', item: { id: 'compare:facebook:456' } }];
+  assert.equal(m.facebookEventId(m.withVerifiedFacebookEvent(d, [])), '');
+  assert.equal(m.facebookEventId(m.withVerifiedFacebookEvent(d, [{ label: 'Facebook', item: { id: 'compare:facebook:789' } }])), '');
+  const linked = m.withVerifiedFacebookEvent(d, validSource);
+  assert.equal(m.facebookEventId(linked), '456');
+  const prepared = m.prepareContent(linked, m.eventContent(linked), at);
+  const confirmed = m.confirmFacebookContent(prepared, m.contentSnapshot(prepared, 'facebook'), 'u', at);
+  assert.equal(m.contentDeliveryStatus(JSON.parse(JSON.stringify(confirmed)), 'facebook').key, 'manual_confirmed');
+  assert.equal(d.facebook_event_delivery, undefined, 'comparison alone does not mutate stored data');
+});
+
 test('manual UI requires explicit checkbox, blocks dirty content and handles clipboard failure', async () => {
   await swc.loadBindings();
   const m = load('lib/manual-event-content.js');

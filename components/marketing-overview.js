@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import ManualFacebookUpdate from "./manual-facebook-update";
-import { confirmFacebookContent, contentDeliveryStatus, contentSnapshot, eventContent, prepareContent, saveEventContent } from "../lib/manual-event-content";
+import { confirmFacebookContent, contentDeliveryStatus, contentSnapshot, eventContent, prepareContent, saveEventContent, withVerifiedFacebookEvent } from "../lib/manual-event-content";
 
 const typeLabels = { event: "Evenement", product: "Gerecht of product", offer: "Aanbieding", package: "Arrangement", review: "Review", custom: "Campagne", website_event: "Evenement" };
 const viewLabels = { day: "Dag", week: "Week", month: "Maand", year: "Jaar" };
@@ -307,7 +307,7 @@ function YearCalendar({ anchor, items, onSelectEvent }) {
 }
 
 export function EventDetails({ item, matchItem, sameDayItems = [], sourceComparisonItems = [], business, onClose, onLink, onLinkExisting, onChooseMatch, onSyncContent, onConfirmFacebook, onCompareSources, comparing, linking, syncError }) {
-  const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event"; const start = itemStart(item); const end = distribution.common?.end;
+  const distribution = withVerifiedFacebookEvent(distributionFor(item), sourceComparisonItems); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event"; const start = itemStart(item); const end = distribution.common?.end;
   const checkedAt = distribution.verification?.checked_at;
   const matchDistribution = distributionFor(matchItem); const selectedDescription = descriptionFor(item);
   const matchDescription = descriptionFor(matchItem);
@@ -465,7 +465,8 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     contentSyncRef.current = true;
     setLinkingId(String(item.id)); setError("");
     try {
-      const nextDistribution = prepareContent(distributionFor(item), content, new Date().toISOString());
+      const linkedDistribution = withVerifiedFacebookEvent(distributionFor(item), item.sourceComparisonItems || sourceComparisons[String(item.id)] || []);
+      const nextDistribution = prepareContent(linkedDistribution, content, new Date().toISOString());
       const updated = await saveEventContent(supabase, workspaceId, item, nextDistribution, content.description);
       showSavedContent(updated);
       let websiteUpdated = false;

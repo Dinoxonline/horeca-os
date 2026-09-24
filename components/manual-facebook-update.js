@@ -21,7 +21,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
     {state.at && <small>Door een gebruiker bevestigd op {new Date(state.at).toLocaleString("nl-NL")}. Niet automatisch door Facebook gecontroleerd.</small>}
     <small>Website: {website.label}. Een website-update bevestigt geen wijziging op Facebook.</small>
     <p>Sla de gewenste tekst op, plak deze in het bestaande Facebook-evenement en bevestig daarna hieronder. Horeca OS wijzigt Facebook niet automatisch.</p>
-    {id ? <a className="secondaryButton" href={`https://www.facebook.com/events/${id}/`} target="_blank" rel="noopener noreferrer">Facebook-evenement openen</a> : <p>Koppel eerst het bestaande Facebook-evenement. Een Facebookbericht is geen evenement.</p>}
+    {id ? <a className="secondaryButton" href={`https://www.facebook.com/events/${id}/`} target="_blank" rel="noopener noreferrer">Facebook-evenement openen</a> : <p>Klik op ‘Bronnen opnieuw vergelijken’ om een oudere koppeling te controleren. Is er nog geen Facebook-evenement gekoppeld, koppel dan eerst het bestaande evenement. Een Facebookbericht is geen evenement.</p>}
     <label>Titel<textarea readOnly value={content.title} rows={2} /></label>
     <button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(content.title)}>Titel kopiëren</button>
     <label>Beschrijving<textarea readOnly value={content.description} rows={6} /></label>
