@@ -156,6 +156,51 @@ test('Instagram composer exposes all four formats without automatic network or p
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('event media includes stored image profiles, videos and linked sources without duplicates or other venues', async () => {
+  const { instagramEventMedia } = await load('lib/instagram-event-media.js');
+  const item = { id: 'c', business_id: 'b', media: [{ kind: 'campaign_distribution',
+    common: { images: { portrait: { url: photo.url, label: 'Poster' }, square: { url: 'https://images.example.com/square.jpg' } }, video_url: video.url },
+    campaign_assets: [{ url: photo.url }, { url: 'https://images.example.com/clip', content_type: 'video/mp4' }, { url: 'https://images.example.com/picture.png', content_type: 'image/png' }],
+  }, { kind: 'image', url: 'https://images.example.com/extra.jpg' }, { kind: 'image', url: 'javascript:alert(1)' }] };
+  const linked = (businessId, url) => ({ label: 'Facebook', item: { business_id: businessId, media: [{ kind: 'campaign_distribution', common: { image_url: url } }] } });
+  const media = instagramEventMedia(item, [linked('b', 'https://images.example.com/linked.jpg'), linked('other', 'https://images.example.com/private.jpg')]);
+  assert.equal(media.filter(asset => asset.url === photo.url).length, 1);
+  assert.equal(media.find(asset => asset.url === video.url).type, 'video');
+  assert.equal(media.find(asset => asset.url.endsWith('/clip')).type, 'video');
+  assert.match(media.find(asset => asset.url.endsWith('.png')).issue, /JPG/);
+  assert.ok(media.some(asset => asset.label.includes('Gekoppeld Facebook')));
+  assert.ok(media.every(asset => !asset.url.includes('private') && asset.url.startsWith('https://')));
+  assert.equal(media.length, 7);
+});
+
+test('stored event media can be selected when sources arrive, without upload, duplicate selection or publication', async () => {
+  let calls = 0;
+  global.fetch = async () => { calls++; throw new Error('Unexpected'); };
+  const Component = (await load('components/instagram-event-publisher.js')).default;
+  const item = { id: 'c', business_id: 'b', media: [{ kind: 'campaign_distribution', common: { video_url: video.url } }] };
+  const linkedSources = [{ label: 'Eventin', item: { business_id: 'b', media: [{ kind: 'campaign_distribution', common: { image_url: photo.url } }] } }];
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item, mediaLoading: true })); });
+  try {
+    assert.equal(renderer.root.findAllByProps({ type: 'file' }).length, 0, 'no computer file picker');
+    await React.act(async () => renderer.update(React.createElement(Component, { item, linkedSources })));
+    const choices = () => renderer.root.findAllByType('button').filter(button => button.props['aria-label']?.startsWith('Kies '));
+    const photoChoice = () => choices().find(button => button.props['aria-label'].startsWith('Kies foto'));
+    const videoChoice = () => choices().find(button => button.props['aria-label'].startsWith('Kies video'));
+    assert.equal(videoChoice().props.disabled, true, 'feed requires a photo');
+    await React.act(async () => photoChoice().props.onClick());
+    assert.equal(photoChoice().props.children, 'Gekozen');
+    await React.act(async () => photoChoice().props.onClick());
+    assert.equal(renderer.root.findAllByProps({ className: 'instagramAsset' }).length, 1);
+    assert.equal(renderer.root.findByProps({ className: 'instagramAsset' }).findByType('img').props.src, photo.url);
+    await React.act(async () => renderer.root.findByType('select').props.onChange({ target: { value: 'reel' } }));
+    assert.equal(photoChoice().props.disabled, true, 'reel requires a video');
+    await React.act(async () => videoChoice().props.onClick());
+    assert.equal(renderer.root.findByProps({ className: 'instagramAsset' }).findByType('video').props.src, video.url);
+    assert.equal(calls, 0, 'selection does not upload, query or publish');
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('all publication formats create the correct containers, without publishing', async () => {
   for (const format of ['feed', 'carousel', 'story', 'reel']) {
     const h = await routeHarness();
