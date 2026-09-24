@@ -27,6 +27,19 @@ function loadSync(relative, mocks = {}) {
 }
 const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
+test('event date is visible in the heading without opening event details', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'date', media: [{ kind: 'campaign_distribution', common: { title: 'Avond', start: '2026-10-01T18:00:00' } }] };
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onClose() {} })); });
+  try {
+    const heading = renderer.root.findByProps({ className: 'marketingEventHeading' });
+    assert.equal(heading.findByProps({ 'aria-label': 'Evenementdatum' }).props.children, 'donderdag 1 oktober 2026');
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { item: { ...item, media: [] }, onClose() {} })));
+    assert.equal(renderer.root.findByProps({ 'aria-label': 'Evenementdatum' }).props.children, 'Datum onbekend');
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('comparison summary distinguishes equal, different, incomplete and failed checks without trusting manual confirmation', async () => {
   const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = (title = 'Title', description = 'Text') => ({ id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });
@@ -57,6 +70,9 @@ test('Facebook editor stays closed while checking and after equal or different r
         else renderer = Renderer.create(React.createElement(EventDetails, { ...props, sourceComparisonCheck: check }));
       });
       assert.equal(Boolean(renderer.root.findByProps({ 'data-facebook-editor': true }).props.open), false);
+      const summary = renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
+      assert.equal(summary.props['aria-busy'], check === 'pending');
+      assert.equal(summary.findAllByProps({ className: 'marketingLoadingSpinner' }).length, check === 'pending' ? 1 : 0, 'spinner follows the real check state and stops on success or failure');
     }
     await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Facebook', item: { ...item, media: [{ ...item.media[0], common: { title: 'Other', description: 'Other' } }] } }] })));
     assert.match(JSON.stringify(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findByType('strong').props.children), /Verschillen gevonden/);
