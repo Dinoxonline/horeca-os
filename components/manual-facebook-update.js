@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId } from "../lib/manual-event-content";
 
-export default function ManualFacebookUpdate({ distribution, dirty, busy, onConfirm, draftContent, sources = [], onChooseSource, onSave }) {
+export default function ManualFacebookUpdate({ distribution, dirty, busy, onConfirm, draftContent, sources = [], onChooseSource, onSave, linkCheck = "idle" }) {
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState("");
   const content = draftContent || eventContent(distribution);
   const id = facebookEventId(distribution);
   const state = contentDeliveryStatus(distribution, "facebook");
+  const linkMessage = linkCheck === "pending" ? "Koppeling controleren…" : linkCheck === "error" ? "Koppeling kon niet worden gecontroleerd" : linkCheck === "done" ? "Geen evenement gekoppeld" : "Koppeling nog niet gecontroleerd";
   useEffect(() => { setChecked(false); setMessage(""); }, [content.title, content.description, id, dirty]);
   async function copy(text) {
     try { await navigator.clipboard.writeText(text); setMessage("Gekopieerd."); }
@@ -32,7 +33,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
   }
   return <section className="manualFacebookUpdate" aria-label="Facebook handmatig bijwerken">
     <h4>Facebook handmatig bijwerken</h4>
-    <strong>{dirty ? "Sla eerst de gekozen tekst op" : state.label}</strong>
+    <strong>{!id ? linkMessage : dirty ? "Sla eerst de gekozen tekst op" : state.label}</strong>
     {state.at && <small>Door een gebruiker bevestigd op {new Date(state.at).toLocaleString("nl-NL")}. Niet automatisch door Facebook gecontroleerd.</small>}
     <p>Werk vanuit dit agendapunt: kies en bewaar de tekst, open Facebook ernaast en plak de tekst daar. Horeca OS wijzigt Facebook niet automatisch.</p>
     {sources.length > 0 && onChooseSource && <div className="sourceChoice">
@@ -59,7 +60,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
       <a className="secondaryButton" href={`https://www.facebook.com/events/${id}/`} target="_blank" rel="noopener noreferrer" onClick={openFacebook}>Facebook naast Horeca OS openen</a>
       <a href={`https://www.facebook.com/events/${id}/`} target="_blank" rel="noopener noreferrer">Openen in nieuw tabblad</a>
       <p>Klik op Facebook op Bewerken, plak titel en beschrijving en sla daar op. Zet de vensters zo nodig naast elkaar; dit agendapunt blijft open.</p>
-    </> : <p>Klik op ‘Bronnen opnieuw vergelijken’ om een oudere koppeling te controleren. Is er nog geen Facebook-evenement gekoppeld, koppel dan eerst het bestaande evenement. Een Facebookbericht is geen evenement.</p>}
+    </> : <p role="status">{linkCheck === "pending" ? "De agenda controleert de Facebook-koppeling automatisch. De knop verschijnt hier zodra het bestaande evenement is gevonden; je hoeft niets opnieuw te starten." : linkCheck === "error" ? "De automatische controle is niet gelukt. Dit betekent niet dat je evenement ontbreekt. Je kunt de controle opnieuw proberen met ‘Bronnen opnieuw vergelijken’." : "Er is nog geen bevestigde Facebook-evenementkoppeling beschikbaar. Je kunt ‘Bronnen opnieuw vergelijken’ gebruiken of het bestaande evenement koppelen. Een Facebookbericht is geen evenement."}</p>}
     <h5>3. Bevestigen na opslaan op Facebook</h5>
     <label><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} disabled={dirty || busy || state.key !== "ready"} /> Ik heb deze titel en beschrijving in het gekoppelde Facebook-evenement opgeslagen.</label>
     <button type="button" className="primaryButton" disabled={!checked || dirty || busy || state.key !== "ready" || !onConfirm} onClick={() => onConfirm(contentSnapshot(distribution, "facebook"))}>Handmatig bijgewerkt</button>

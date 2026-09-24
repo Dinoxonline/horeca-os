@@ -467,6 +467,51 @@ test('a late MFA response cannot restore protected content after sign-out', asyn
   } finally { await h.close(); }
 });
 
+test('startup verification updates an open event immediately, independently of slow events and browser focus', async () => {
+  const listeners = new Map();
+  global.window = { addEventListener: (event, fn) => listeners.set(event, fn), removeEventListener() {} };
+  global.document = { visibilityState: 'visible', addEventListener: (event, fn) => listeners.set(event, fn), removeEventListener() {} };
+  const now = new Date().toISOString();
+  const campaigns = ['first', 'slow'].map(id => ({ id, business_id: 'b', created_at: now, scheduled_for: now, media: [{ kind: 'campaign_distribution', provider_delivery: { facebook: { external_id: id === 'first' ? '456' : '789' } }, common: { title: id, description: 'Text', start: now } }] }));
+  const pending = new Map(); let checks = 0;
+  global.fetch = async (url, options = {}) => {
+    if (url === '/api/marketing/publication-status') { checks++; const { campaignId } = JSON.parse(options.body); return new Promise(resolve => pending.set(campaignId, resolve)); }
+    return { ok: true, json: async () => ({ events: [] }) };
+  };
+  let query;
+  query = new Proxy({}, { get: (_, key) => key === 'then' ? (resolve, reject) => Promise.resolve({ data: campaigns }).then(resolve, reject) : () => query });
+  const Marketing = (await load('components/marketing-overview.js', { '../lib/supabase': { supabase: { from: () => query } } })).default;
+  const props = { workspaceId: 'w', businesses: [{ id: 'b', name: 'Caribbean Corner' }], session: { user: { id: 'u' }, access_token: 't' } };
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Marketing, props)); });
+  await flush();
+  const buttons = () => renderer.root.findAllByType('button');
+  const open = index => buttons().filter(b => b.props.className?.includes('marketingCalendarEvent'))[index].props.onClick();
+  const panel = () => renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
+  try {
+    await React.act(async () => open(0));
+    assert.equal(panel().findByType('strong').props.children, 'Koppeling controleren…');
+    assert.match(panel().findByProps({ role: 'status' }).props.children, /automatisch/);
+    const media = [{ ...campaigns[0].media[0], facebook_event_delivery: { external_id: '456', permalink: 'https://www.facebook.com/events/456/' }, verification: { channels: { facebook: { status: 'reachable' } } } }];
+    await React.act(async () => pending.get('first')({ ok: true, json: async () => ({ media }) }));
+    assert.equal(panel().findAllByType('a')[0].props.href, 'https://www.facebook.com/events/456/');
+    assert.equal(checks, 2);
+    await React.act(async () => { listeners.get('focus')?.(); listeners.get('visibilitychange')?.(); renderer.update(React.createElement(Marketing, { ...props, session: { ...props.session, access_token: 'new' } })); });
+    assert.equal(checks, 2, 'focus and token refresh must not restart startup checks');
+    assert.equal(panel().findAllByType('a')[0].props.href, 'https://www.facebook.com/events/456/');
+    await React.act(async () => pending.get('slow')({ ok: false, json: async () => ({ error: 'Unavailable' }) }));
+    await flush();
+    await React.act(async () => buttons().find(b => b.props.children === 'Details sluiten').props.onClick());
+    await React.act(async () => open(0));
+    assert.equal(panel().findAllByType('a')[0].props.href, 'https://www.facebook.com/events/456/', 'verified link survives reopening');
+    await React.act(async () => buttons().find(b => b.props.children === 'Details sluiten').props.onClick());
+    await React.act(async () => open(1));
+    assert.equal(panel().findByType('strong').props.children, 'Koppeling kon niet worden gecontroleerd');
+  } finally {
+    await React.act(async () => { renderer.unmount(); for (const resolve of pending.values()) resolve({ ok: false, json: async () => ({}) }); });
+  }
+});
+
 test('focus and visibility events do not duplicate a manual source comparison', async () => {
   const listeners = new Map();
   global.window = { addEventListener: (event, fn) => listeners.set(event, fn), removeEventListener() {} };

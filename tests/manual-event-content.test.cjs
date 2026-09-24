@@ -190,6 +190,36 @@ test('server rejects automatic Facebook event edits without any network or datab
   } finally { global.fetch = original; }
 });
 
+for (const scenario of ['event', 'post', 'not-found', 'failed']) test('startup verification persists only an exact native Facebook event: ' + scenario, async () => {
+  await swc.loadBindings();
+  const campaign = { id: 'i', business_id: 'b', media: [{ kind: 'campaign_distribution', provider_delivery: { facebook: { external_id: scenario === 'post' ? '123_456' : '456' } }, common: { title: 'Keep', description: 'Keep text' } }] };
+  let patch, calls = 0;
+  const client = { auth: { getUser: async () => ({ data: { user: { id: 'u' } } }) }, from() {
+    const call = ++calls;
+    return { select() { return this; }, update(value) { patch = value; return this; }, eq() { return this; }, limit() { return this; },
+      maybeSingle: async () => ({ data: call === 1 ? campaign : { id: 'i' } }),
+      then: (resolve, reject) => Promise.resolve({ data: [] }).then(resolve, reject) };
+  } };
+  const originalFetch = global.fetch;
+  let reads = 0;
+  global.fetch = async (url, options) => { reads++; assert.match(String(url), /\/api\/integrations\/facebook\/events/); assert.equal(options.method, undefined); return { ok: scenario !== 'failed', status: 503, json: async () => ({ events: scenario === 'event' ? [{ id: '456' }] : scenario === 'post' ? [{ id: '123_456' }] : [] }) }; };
+  try {
+    const route = load('app/api/marketing/publication-status/route.js', {
+      'next/server': { NextResponse: { json: (body, init) => ({ body, status: init?.status || 200 }) } },
+      '../../../../lib/server-supabase': { createUserSupabase: () => client },
+    });
+    const result = await route.POST(new Request('https://example.test', { method: 'POST', headers: { authorization: 'Bearer test' }, body: JSON.stringify({ workspaceId: 'w', campaignId: 'i' }) }));
+    assert.equal(result.status, 200);
+    assert.equal(reads, 1, 'no additional Facebook request for storing the link');
+    assert.deepEqual(patch.media[0].common, campaign.media[0].common);
+    if (scenario === 'event') {
+      assert.equal(patch.media[0].facebook_event_delivery.external_id, '456');
+      assert.equal(patch.media[0].facebook_event_delivery.permalink, 'https://www.facebook.com/events/456/');
+      assert.equal(result.body.media[0].verification.links.facebook, 'https://www.facebook.com/events/456/');
+    } else assert.equal(patch.media[0].facebook_event_delivery, undefined);
+  } finally { global.fetch = originalFetch; }
+});
+
 test('a background publication check cannot overwrite a newer manual confirmation', async () => {
   await swc.loadBindings();
   const campaign = { id: 'i', business_id: 'b', media: [{ kind: 'campaign_distribution', common: { title: 'Old' } }] };
