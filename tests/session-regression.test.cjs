@@ -24,6 +24,150 @@ async function load(relative, mocks = {}) {
 }
 const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
+test('source selection previews without saving, survives rerenders and resets for another event', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'one', media: [{ kind: 'campaign_distribution', common: { title: 'Original', description: 'Original body' } }] };
+  const source = (label, description) => ({ label, item: { id: label, media: [{ kind: 'campaign_distribution', common: { title: label + ' title', description } }] } });
+  const sources = [source('Horeca OS', 'Original body'), source('Eventin', ''), source('Facebook', 'Chosen body')];
+  const saved = [];
+  const props = { item, sourceComparisonItems: sources, onClose() {}, onSyncContent: content => saved.push(content) };
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props)); });
+  const buttons = () => renderer.root.findAllByType('button');
+  const sync = () => buttons().find(b => b.props.children === 'Gekozen tekst synchroniseren');
+  const choose = label => buttons().find(b => b.props['aria-label'] === 'Tekst van ' + label + ' gebruiken');
+  try {
+    assert.equal(sync().props.disabled, true);
+    await React.act(async () => choose('Facebook').props.onClick());
+    assert.equal(saved.length, 0);
+    assert.equal(choose('Facebook').props['aria-pressed'], true);
+    const preview = () => renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+    assert.equal(preview().findByType('p').props.children, 'Chosen body');
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonItems: [source('Facebook', 'New remote text')] })));
+    assert.equal(preview().findByType('p').props.children, 'Chosen body');
+    await React.act(async () => sync().props.onClick());
+    assert.deepEqual(saved, [{ title: 'Facebook title', description: 'Chosen body' }]);
+    await React.act(async () => renderer.update(React.createElement(EventDetails, props)));
+    await React.act(async () => choose('Eventin').props.onClick());
+    await React.act(async () => sync().props.onClick());
+    assert.deepEqual(saved[1], { title: 'Eventin title', description: '' });
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, item: { ...item, id: 'two' } })));
+    assert.equal(sync().props.disabled, true);
+    assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Voorbeeld gekozen tekst' }).length, 0);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+for (const failure of [null, 'save', 'external']) test('chosen content is scoped and saved before external sync: ' + (failure || 'success'), async () => {
+  global.window = { addEventListener() {}, removeEventListener() {} };
+  global.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
+  const now = new Date().toISOString();
+  const campaign = { id: 'campaign', business_id: 'b', scheduled_for: now, created_at: now, body: 'Old body', media: [
+    { kind: 'image', url: 'keep-image' },
+    { kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: 'fb123' }, common: { title: 'Old title', description: 'Old body', start: now, location: 'Keep location' } }
+  ] };
+  const writes = [], patches = [], order = [];
+  global.fetch = async (url, options = {}) => {
+    if (options.method === 'PATCH') {
+      order.push('external'); patches.push(JSON.parse(options.body));
+      return { ok: failure !== 'external', status: 500, json: async () => ({ error: 'Remote unavailable' }) };
+    }
+    return { ok: true, json: async () => ({ events: [], media: campaign.media, event: { title: 'Selected title', description: 'Selected body', start: now } }) };
+  };
+  const supabase = { from: () => {
+    const write = { filters: [] };
+    let updating = false, query;
+    query = new Proxy({}, { get: (_, key) => {
+      if (key === 'then') return (resolve, reject) => Promise.resolve({ data: [campaign] }).then(resolve, reject);
+      if (key === 'update') return value => { updating = true; write.value = value; return query; };
+      if (key === 'eq') return (key, value) => { if (updating) write.filters.push([key, value]); return query; };
+      if (key === 'single') return async () => {
+        writes.push(write); order.push('save');
+        return failure === 'save' ? { error: new Error('Save denied') } : { data: { id: 'campaign' } };
+      };
+      return () => query;
+    } });
+    return query;
+  } };
+  const Marketing = (await load('components/marketing-overview.js', { '../lib/supabase': { supabase } })).default;
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Marketing, { workspaceId: 'w', businesses: [{ id: 'b', name: 'Caribbean Corner' }], session: { user: { id: 'u' }, access_token: 't' } })); });
+  await flush();
+  try {
+    const buttons = () => renderer.root.findAllByType('button');
+    await React.act(async () => buttons().find(b => b.props.className?.includes('marketingCalendarEvent')).props.onClick());
+    await flush();
+    await React.act(async () => buttons().find(b => b.props['aria-label'] === 'Tekst van Eventin gebruiken').props.onClick());
+    assert.equal(writes.length, 0);
+    assert.equal(patches.length, 0);
+    await React.act(async () => buttons().find(b => b.props.children === 'Gekozen tekst synchroniseren').props.onClick());
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'campaign']]);
+    assert.equal(writes[0].value.body, 'Selected body');
+    assert.deepEqual(writes[0].value.media[0], campaign.media[0]);
+    assert.equal(writes[0].value.media[1].common.location, 'Keep location');
+    assert.equal(writes[0].value.media[1].common.title, 'Selected title');
+    assert.equal(order[0], 'save');
+    assert.equal(patches.length, failure === 'save' ? 0 : 2);
+    for (const payload of patches) {
+      assert.equal(payload.title, 'Selected title');
+      assert.equal(payload.description, 'Selected body');
+      assert.equal(payload.workspaceId, 'w');
+      assert.equal(payload.businessId, 'b');
+      if (payload.eventId === '123') {
+        assert.equal(payload.site, 'caribbeancorner.nl');
+        assert.equal(payload.action, 'sync-content');
+      }
+    }
+    if (failure) {
+      assert.ok(renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' }));
+      assert.match(JSON.stringify(renderer.toJSON()), failure === 'save' ? /Save denied/ : /niet volledig gelukt/);
+    }
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+for (const failure of [null, 'read', 'write', 'auth']) test('Eventin text-only update preserves event settings: ' + (failure || 'success'), async () => {
+  const oldUsername = process.env.EVENTIN_CARIBBEAN_USERNAME;
+  const oldPassword = process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD;
+  process.env.EVENTIN_CARIBBEAN_USERNAME = 'test-user';
+  process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD = 'test-password';
+  const existing = { id: 123, title: 'Old title', description: 'Old body', excerpt: 'Old excerpt', visibility_status: 'publish',
+    start_date: '2026-10-01', end_date: '2026-10-02', start_time: '20:00', end_time: '01:00',
+    event_banner: 'keep-banner', event_banner_id: 456, location: { address: 'Keep venue' },
+    ticket_variations: [{ id: 'ticket', etn_ticket_price: 25, etn_sold_tickets: 12 }], total_ticket: 100 };
+  const calls = [];
+  global.fetch = async (_url, options) => {
+    calls.push(options);
+    return { ok: options.method === 'POST' ? failure !== 'write' : failure !== 'read', json: async () => ({ data: existing }) };
+  };
+  const client = { auth: { getUser: async () => ({ data: { user: { id: 'u' } } }) }, from(table) {
+    const query = { select() { return query; }, eq() { return query; }, maybeSingle: async () => ({
+      data: table === 'workspace_members' ? { role: failure === 'auth' ? 'staff' : 'owner' } : { name: 'Caribbean Corner' }
+    }) };
+    return query;
+  } };
+  try {
+    const { PATCH } = await load('app/api/marketing/website-events/create/route.js', {
+      '../../../../../lib/server-supabase': { createUserSupabase: () => client },
+    });
+    const response = await PATCH(new Request('https://test.local/api/event', { method: 'PATCH',
+      headers: { authorization: 'Bearer fake', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sync-content', allowLinked: true, workspaceId: 'w', businessId: 'b', site: 'caribbeancorner.nl',
+        eventId: '123', title: 'Chosen title', description: 'Chosen & safe <text>\nSecond line' }) }));
+    assert.equal(response.status, failure === 'auth' ? 403 : failure ? 502 : 200);
+    if (failure === 'auth') assert.equal(calls.length, 0);
+    else if (failure === 'read') assert.equal(calls.length, 1);
+    else {
+      assert.equal(calls.length, 2);
+      const payload = JSON.parse(calls[1].body);
+      assert.deepEqual(payload, { ...existing, title: 'Chosen title',
+        description: '<p>Chosen &amp; safe &lt;text&gt;<br>Second line</p>', excerpt: 'Chosen & safe <text>\nSecond line' });
+    }
+  } finally {
+    if (oldUsername === undefined) delete process.env.EVENTIN_CARIBBEAN_USERNAME; else process.env.EVENTIN_CARIBBEAN_USERNAME = oldUsername;
+    if (oldPassword === undefined) delete process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD; else process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD = oldPassword;
+  }
+});
+
 async function harness({ failMfa = false, stuckMembership = false, pathname = '/marketing' } = {}) {
   const listeners = new Map();
   global.window = {

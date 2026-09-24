@@ -651,6 +651,38 @@ export async function PATCH(request) {
   const credentials = siteCredentials(body);
   if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
   const { site, authorization } = credentials;
+  if (body.action === "sync-content") {
+    if (!text(body.title) || typeof body.description !== "string") {
+      return NextResponse.json({ error: "Kies eerst de titel en omschrijving." }, { status: 400 });
+    }
+    const currentResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      cache: "no-store",
+    });
+    const currentPayload = currentResponse.ok ? await currentResponse.json().catch(() => null) : null;
+    const currentEvent = currentPayload?.data || currentPayload?.event || currentPayload;
+    // Never use the full editor's defaults for a text-only update: they reset
+    // publication status, tickets and artwork. Require the existing record.
+    if (!currentEvent || String(currentEvent.id) !== id) {
+      return NextResponse.json({ error: "De bestaande Eventin-gegevens konden niet veilig worden opgehaald. Er is niets gewijzigd." }, { status: 502 });
+    }
+    const description = text(body.description).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+    const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      body: JSON.stringify({
+        ...currentEvent,
+        title: text(body.title, 300),
+        description: `<p>${description}</p>`,
+        excerpt: text(body.description, 500),
+        start_date: normalizeEventinAgendaDate(currentEvent.start_date),
+        end_date: normalizeEventinAgendaDate(currentEvent.end_date),
+      }),
+      cache: "no-store",
+    });
+    if (!response.ok) return NextResponse.json({ error: "Eventin heeft de gekozen tekst niet geaccepteerd." }, { status: 502 });
+    return NextResponse.json({ event: { id, status: currentEvent.visibility_status, website: site.origin } });
+  }
   if (body.action === "publish" || body.action === "draft") {
     const visibilityStatus = body.action;
     const wordpressResponse = await fetch(`${site.origin}/wp-json/wp/v2/etn/${id}`, {
