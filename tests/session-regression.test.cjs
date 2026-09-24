@@ -27,6 +27,43 @@ function loadSync(relative, mocks = {}) {
 }
 const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
+test('comparison summary distinguishes equal, different, incomplete and failed checks without trusting manual confirmation', async () => {
+  const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = (title = 'Title', description = 'Text') => ({ id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });
+  const local = item();
+  const sources = [{ label: 'Horeca OS', item: local }, { label: 'Eventin', item: item() }, { label: 'Facebook', item: item() }];
+  assert.equal(sourceComparisonStatus(local, sources, 'pending').key, 'pending');
+  assert.equal(sourceComparisonStatus(local, sources, 'error').key, 'incomplete');
+  assert.equal(sourceComparisonStatus(local, sources, 'done').key, 'equal');
+  assert.equal(sourceComparisonStatus(local, sources.slice(0, 2), 'done').key, 'incomplete');
+  assert.equal(sourceComparisonStatus(local, [], 'done').key, 'incomplete');
+  assert.equal(sourceComparisonStatus(item('Changed'), sources, 'done').key, 'different', 'newly saved local content takes precedence over cached local copy');
+  const confirmed = item();
+  confirmed.media[0].event_content_delivery = { facebook: { status: 'manual_confirmed', confirmed_at: '2026-09-24' } };
+  assert.equal(sourceComparisonStatus(confirmed, [], 'idle').key, 'incomplete', 'manual confirmation is not a remote text comparison');
+  assert.equal(sourceComparisonStatus({ media: [] }, [], 'done').key, 'unlinked');
+});
+
+test('Facebook editor stays closed while checking and after equal or different results', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'one', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Title', description: 'Text' } }] };
+  const source = { label: 'Facebook', item };
+  const props = { item, sourceComparisonItems: [source], onClose() {}, onSyncContent() {} };
+  let renderer;
+  try {
+    for (const check of ['pending', 'done', 'error']) {
+      await React.act(async () => {
+        if (renderer) renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonCheck: check }));
+        else renderer = Renderer.create(React.createElement(EventDetails, { ...props, sourceComparisonCheck: check }));
+      });
+      assert.equal(Boolean(renderer.root.findByProps({ 'data-facebook-editor': true }).props.open), false);
+    }
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Facebook', item: { ...item, media: [{ ...item.media[0], common: { title: 'Other', description: 'Other' } }] } }] })));
+    assert.match(JSON.stringify(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findByType('strong').props.children), /Verschillen gevonden/);
+    assert.equal(Boolean(renderer.root.findByProps({ 'data-facebook-editor': true }).props.open), false);
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('event layout starts with one workspace and keeps secondary information collapsed', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'layout', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Avond', description: 'Tekst' } }] };
@@ -34,7 +71,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findByType('summary').props.children), ['Bronnen vergelijken en tekst kiezen', 'Website afzonderlijk bijwerken', 'Evenementgegevens']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Website afzonderlijk bijwerken', 'Evenementgegevens']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
