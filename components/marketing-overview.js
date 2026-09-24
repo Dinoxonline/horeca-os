@@ -313,6 +313,7 @@ function EventDetails({ item, matchItem, sameDayItems = [], sourceComparisonItem
 
 export default function MarketingOverview({ workspaceId, businesses, session }) {
   const [items, setItems] = useState([]); const [busy, setBusy] = useState(true); const [autoChecking, setAutoChecking] = useState(false); const [linkingId, setLinkingId] = useState(""); const [error, setError] = useState(""); const [view, setView] = useState("month"); const [anchor, setAnchor] = useState(() => new Date()); const [refreshKey, setRefreshKey] = useState(0); const [calendarLayout, setCalendarLayout] = useState("two"); const [selectedItem, setSelectedItem] = useState(null); const [sourceComparisons, setSourceComparisons] = useState({}); const comparisonTargetRef = useRef("");
+  const sessionRef = useRef(session); sessionRef.current = session;
   const venueBusinesses = useMemo(() => (businesses || []).map((business, index) => ({ ...business, color: index % 2 ? "venueB" : "venueA" })), [businesses]);
   const businessById = useMemo(() => new Map(venueBusinesses.map((business) => [String(business.id), business])), [venueBusinesses]);
 
@@ -325,13 +326,13 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     const sourceRequests = [];
     if (/^\d+$/.test(eventinId) && business) sourceRequests.push((async () => {
       const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), site: siteForBusiness(business), eventId: eventinId, campaignId: String(item.id), importEvent: "1" });
-      const response = await fetch(`/api/marketing/website-events/create?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, keepalive: true });
+      const response = await fetch(`/api/marketing/website-events/create?${params}`, { headers: { Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}` }, keepalive: true });
       const payload = await response.json().catch(() => ({}));
       return response.ok && payload.event ? { label: "Eventin", item: { id: `compare:eventin:${eventinId}`, business_id: item.business_id, scheduled_for: payload.event.start, media: [{ kind: "campaign_distribution", source_type: "eventin_event", common: { title: payload.event.title, start: payload.event.start, end: payload.event.end, location: payload.event.location, description: payload.event.description, website_url: payload.event.url || "" } }] } } : null;
     })());
     if (facebookId && business) sourceRequests.push((async () => {
       const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), includePast: "true" });
-      const response = await fetch(`/api/integrations/facebook/events?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, keepalive: true });
+      const response = await fetch(`/api/integrations/facebook/events?${params}`, { headers: { Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}` }, keepalive: true });
       const payload = await response.json().catch(() => ({}));
       const event = (payload.events || []).find((candidate) => String(candidate.id) === facebookId);
       return response.ok && event ? { label: "Facebook", item: { id: `compare:facebook:${facebookId}`, business_id: item.business_id, scheduled_for: event.startDate, media: [{ kind: "campaign_distribution", source_type: "facebook_event", common: { title: event.title, start: event.startDate, end: event.endDate, location: event.location, description: event.description } }] } } : null;
@@ -352,18 +353,19 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
       const campaigns = data || [];
       setItems(campaigns);
       setBusy(false);
-      if (!session?.access_token) return;
+      const accessToken = sessionRef.current?.access_token;
+      if (!accessToken) return;
       setAutoChecking(true);
       const [verifiedCampaigns, facebookItems, eventinItems] = await Promise.all([
         mapWithConcurrency(campaigns.slice(0, 100), 4, async (item) => {
           try {
-            const response = await fetch("/api/marketing/publication-status", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, campaignId: item.id }) });
+            const response = await fetch("/api/marketing/publication-status", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, campaignId: item.id }) });
             const payload = await response.json().catch(() => ({}));
             return response.ok ? { ...item, media: payload.media || item.media } : item;
           } catch { return item; }
         }),
-        loadFacebookItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
-        loadEventinItems({ workspaceId, businesses: venueBusinesses, token: session.access_token, campaigns }),
+        loadFacebookItems({ workspaceId, businesses: venueBusinesses, token: accessToken, campaigns }),
+        loadEventinItems({ workspaceId, businesses: venueBusinesses, token: accessToken, campaigns }),
       ]);
       if (!active) return;
       const merged = suggestPotentialMatches(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]));
@@ -381,7 +383,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     }
     load();
     return () => { active = false; };
-  }, [workspaceId, refreshKey, session?.access_token, venueBusinesses]);
+  }, [workspaceId, refreshKey, session?.user?.id, venueBusinesses]);
 
   useEffect(() => {
     function resumeComparison() {
