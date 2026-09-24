@@ -143,7 +143,7 @@ test('event workspace opens a secure compact window only on click, with fallback
     const button = text => renderer.root.findAllByType('button').find(b => b.props.children === text);
     const link = () => renderer.root.findAllByType('a').find(a => a.props.onClick);
     assert.equal(opened.length, 0, 'mount must not open Facebook');
-    assert.equal(button('Tekst bewaren en website bijwerken').props.disabled, true);
+    assert.equal(button('Tekst bewaren in Horeca OS').props.disabled, true);
     let prevented = false;
     await React.act(async () => link().props.onClick({ button: 0, preventDefault() { prevented = true; } }));
     assert.equal(prevented, true);
@@ -163,7 +163,7 @@ test('event workspace opens a secure compact window only on click, with fallback
     await React.act(async () => renderer.update(React.createElement(Panel, { ...props, draftContent: { label: 'Eventin', title: 'Nieuw', description: 'Andere tekst' }, dirty: true })));
     assert.equal(renderer.root.findAllByType('textarea')[0].props.value, 'Nieuw');
     assert.equal(button('Titel kopiëren').props.disabled, true);
-    await React.act(async () => button('Tekst bewaren en website bijwerken').props.onClick());
+    await React.act(async () => button('Tekst bewaren in Horeca OS').props.onClick());
     assert.deepEqual(saves, [{ title: 'Nieuw', description: 'Andere tekst' }]);
     assert.equal(confirmations.length, 0);
   } finally {

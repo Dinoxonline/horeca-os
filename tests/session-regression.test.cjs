@@ -29,19 +29,23 @@ const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
 test('source selection previews without saving, survives rerenders and resets for another event', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
-  const item = { id: 'one', media: [{ kind: 'campaign_distribution', common: { title: 'Original', description: 'Original body' } }] };
+  const item = { id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Original', description: 'Original body' } }] };
   const source = (label, description) => ({ label, item: { id: label, media: [{ kind: 'campaign_distribution', common: { title: label + ' title', description } }] } });
   const sources = [source('Horeca OS', 'Original body'), source('Eventin', ''), source('Facebook', 'Chosen body')];
   const saved = [];
-  const props = { item, sourceComparisonItems: sources, onClose() {}, onSyncContent: content => saved.push(content) };
+  const props = { item, sourceComparisonItems: sources, onClose() {}, onUpdateWebsite() {}, onSyncContent: content => saved.push(content) };
   let renderer;
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props)); });
   const buttons = () => renderer.root.findAllByType('button');
-  const sync = () => buttons().find(b => b.props.children === 'Tekst opslaan en website bijwerken');
+  const sync = () => buttons().find(b => b.props.children === 'Tekst bewaren in Horeca OS');
   const choose = label => buttons().find(b => b.props['aria-label'] === 'Tekst van ' + label + ' gebruiken');
   try {
     assert.equal(sync().props.disabled, true);
+    assert.equal(buttons().find(b => b.props.children === 'Website bijwerken').props.disabled, false);
+    const facebookPanel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
+    assert.equal(facebookPanel.findAllByType('button').some(b => String(b.props.children).includes('website')), false);
     await React.act(async () => choose('Facebook').props.onClick());
+    assert.equal(buttons().find(b => b.props.children === 'Website bijwerken').props.disabled, true, 'unsaved source choice must block website updates');
     assert.equal(saved.length, 0);
     assert.equal(choose('Facebook').props['aria-pressed'], true);
     const preview = () => renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
@@ -60,7 +64,7 @@ test('source selection previews without saving, survives rerenders and resets fo
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
-for (const failure of [null, 'save', 'external']) test('chosen content is scoped and saved before external sync: ' + (failure || 'success'), async () => {
+for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) test('local save and explicit website update are independent: ' + (failure || 'success'), async () => {
   global.window = { addEventListener() {}, removeEventListener() {} };
   global.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
   const now = new Date().toISOString();
@@ -69,6 +73,7 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
     { kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title: 'Old title', description: 'Old body', start: now, location: 'Keep location' } }
   ] };
   const writes = [], patches = [], order = [];
+  if (failure === 'unlinked') delete campaign.media[1].eventin_event_id;
   global.fetch = async (url, options = {}) => {
     if (options.method === 'PATCH') {
       order.push('external'); patches.push(JSON.parse(options.body));
@@ -85,7 +90,7 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
       if (key === 'eq') return (key, value) => { if (updating) write.filters.push([key, value]); return query; };
       if (key === 'single' || key === 'maybeSingle') return async () => {
         writes.push(write); order.push('save');
-        return failure === 'save' ? { error: new Error('Save denied') } : { data: { id: 'campaign' } };
+        return failure === 'save' || (failure === 'website_save' && writes.length === 3) ? { error: new Error('Save denied') } : { data: { id: 'campaign' } };
       };
       return () => query;
     } });
@@ -99,32 +104,21 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
     const buttons = () => renderer.root.findAllByType('button');
     await React.act(async () => buttons().find(b => b.props.className?.includes('marketingCalendarEvent')).props.onClick());
     await flush();
-    await React.act(async () => buttons().find(b => b.props['aria-label'] === 'Tekst van Eventin gebruiken').props.onClick());
+    await React.act(async () => buttons().find(b => b.props['aria-label'] === 'Tekst van ' + (failure === 'unlinked' ? 'Horeca OS' : 'Eventin') + ' gebruiken').props.onClick());
     assert.equal(writes.length, 0);
     assert.equal(patches.length, 0);
-    await React.act(async () => buttons().find(b => b.props.children === 'Tekst opslaan en website bijwerken').props.onClick());
-    assert.equal(writes.length, failure === 'save' ? 1 : 2);
+    await React.act(async () => buttons().find(b => b.props.children === 'Tekst bewaren in Horeca OS').props.onClick());
+    assert.equal(writes.length, 1, 'saving is exactly one local write');
+    assert.equal(patches.length, 0, 'saving must never update any external source');
     assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'campaign'], ['media', JSON.stringify(campaign.media)]]);
-    assert.equal(writes[0].value.body, 'Selected body');
+    assert.equal(writes[0].value.body, failure === 'unlinked' ? 'Old body' : 'Selected body');
     assert.deepEqual(writes[0].value.media[0], campaign.media[0]);
     assert.equal(writes[0].value.media[1].common.location, 'Keep location');
-    assert.equal(writes[0].value.media[1].common.title, 'Selected title');
+    assert.equal(writes[0].value.media[1].common.title, failure === 'unlinked' ? 'Old title' : 'Selected title');
     assert.equal(order[0], 'save');
-    assert.equal(patches.length, failure === 'save' ? 0 : 1);
-    for (const payload of patches) {
-      assert.equal(payload.eventId, '123', 'only the existing website event is written');
-      assert.equal(payload.title, 'Selected title');
-      assert.equal(payload.description, 'Selected body');
-      assert.equal(payload.workspaceId, 'w');
-      assert.equal(payload.businessId, 'b');
-      if (payload.eventId === '123') {
-        assert.equal(payload.site, 'caribbeancorner.nl');
-        assert.equal(payload.action, 'sync-content');
-      }
-    }
-    if (failure) {
+    if (failure === 'save') {
       assert.ok(renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' }));
-      assert.match(JSON.stringify(renderer.toJSON()), failure === 'save' ? /Save denied/ : /website kon niet worden bijgewerkt/);
+      assert.match(JSON.stringify(renderer.toJSON()), /Save denied/);
     }
     if (failure !== 'save') {
       const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
@@ -134,10 +128,30 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
       const facebook = writes.at(-1).value.media[1].event_content_delivery.facebook;
       assert.equal(facebook.status, 'manual_confirmed');
       assert.equal(facebook.confirmed_by, 'u');
-      assert.equal(facebook.snapshot.description, 'Selected body');
+      assert.equal(facebook.snapshot.description, failure === 'unlinked' ? 'Old body' : 'Selected body');
       assert.ok(facebook.confirmed_at);
-      assert.equal(patches.length, 1, 'confirmation never calls Facebook or the website');
-      assert.equal(writes.at(-1).value.media[1].event_content_delivery.website.status, failure === 'external' ? 'failed' : 'updated');
+      assert.equal(patches.length, 0, 'confirmation never calls Facebook or the website');
+      assert.equal(writes.at(-1).value.media[1].event_content_delivery.website, undefined);
+      const websiteButton = buttons().find(b => b.props.children === 'Website bijwerken');
+      assert.equal(websiteButton.props.disabled, failure === 'unlinked');
+      // Invoke even a disabled handler to ensure the no-link server-call guard also holds.
+      await React.act(async () => websiteButton.props.onClick());
+      assert.equal(patches.length, ['website_save', 'unlinked'].includes(failure) ? 0 : 1);
+      for (const payload of patches) {
+        assert.equal(payload.eventId, '123');
+        assert.equal(payload.title, 'Selected title');
+        assert.equal(payload.description, 'Selected body');
+        assert.equal(payload.workspaceId, 'w');
+        assert.equal(payload.businessId, 'b');
+        assert.equal(payload.site, 'caribbeancorner.nl');
+        assert.equal(payload.action, 'sync-content');
+      }
+      assert.deepEqual(writes.at(-1).value.media[1].event_content_delivery.facebook, facebook, 'website action preserves manual Facebook confirmation');
+      if (!['website_save', 'unlinked'].includes(failure)) {
+        assert.equal(writes.at(-1).value.media[1].event_content_delivery.website.status, failure === 'external' ? 'failed' : 'updated');
+        assert.deepEqual(order, ['save', 'save', 'save', 'external', 'save']);
+      }
+      if (failure === 'external') assert.match(JSON.stringify(renderer.toJSON()), /website kon niet worden bijgewerkt/);
     }
   } finally { await React.act(async () => renderer.unmount()); }
 });

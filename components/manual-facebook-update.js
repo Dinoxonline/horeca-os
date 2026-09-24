@@ -9,7 +9,6 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
   const content = draftContent || eventContent(distribution);
   const id = facebookEventId(distribution);
   const state = contentDeliveryStatus(distribution, "facebook");
-  const website = contentDeliveryStatus(distribution, "website");
   useEffect(() => { setChecked(false); setMessage(""); }, [content.title, content.description, id, dirty]);
   async function copy(text) {
     try { await navigator.clipboard.writeText(text); setMessage("Gekopieerd."); }
@@ -35,14 +34,14 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
     <h4>Facebook handmatig bijwerken</h4>
     <strong>{dirty ? "Sla eerst de gekozen tekst op" : state.label}</strong>
     {state.at && <small>Door een gebruiker bevestigd op {new Date(state.at).toLocaleString("nl-NL")}. Niet automatisch door Facebook gecontroleerd.</small>}
-    <small>Website: {website.label}. Een website-update bevestigt geen wijziging op Facebook.</small>
     <p>Werk vanuit dit agendapunt: kies en bewaar de tekst, open Facebook ernaast en plak de tekst daar. Horeca OS wijzigt Facebook niet automatisch.</p>
     {sources.length > 0 && onChooseSource && <div className="sourceChoice">
       <label>Tekstbron<select value={draftContent?.label || ""} disabled={busy} onChange={event => { const source = sources.find(source => source.label === event.target.value); if (source) onChooseSource(source); }}>
         <option value="" disabled>Kies de tekst die je wilt gebruiken</option>
         {sources.map(source => <option key={source.label} value={source.label}>{source.label}</option>)}
       </select></label>
-      <button type="button" className="secondaryButton" disabled={busy || !draftContent || !onSave} onClick={() => onSave({ title: content.title, description: content.description })}>Tekst bewaren en website bijwerken</button>
+      <button type="button" className="secondaryButton" disabled={busy || !draftContent || !onSave} onClick={() => onSave({ title: content.title, description: content.description })}>Tekst bewaren in Horeca OS</button>
+      <small>Dit bewaart alleen de tekst in Horeca OS. De website en Facebook worden niet gewijzigd.</small>
     </div>}
     <div className="facebookWorkspace">
     <div className="copyPane">
