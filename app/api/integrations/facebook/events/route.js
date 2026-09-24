@@ -55,43 +55,9 @@ export async function GET(request) {
   }
 }
 
-export async function PATCH(request) {
-  const body = await request.json().catch(() => ({}));
-  const workspaceId = body.workspaceId;
-  const businessId = body.businessId;
-  const eventId = String(body.eventId || "").trim();
-  if (!eventId || !body.title) return jsonError("Het Facebook-evenement en de nieuwe titel zijn verplicht.", 400);
-  const context = await authorizedContext(request, workspaceId, businessId);
-  if (context.error) return context.error;
-  const { admin } = context;
-  const { data: account } = await admin.from("integration_accounts")
-    .select("id,external_account_id")
-    .eq("workspace_id", workspaceId)
-    .eq("business_id", businessId)
-    .eq("provider", "facebook")
-    .maybeSingle();
-  if (!account) return jsonError("Voor deze vestiging is geen Facebookpagina gekoppeld.", 404);
-  const { data: credential } = await admin.from("integration_credentials")
-    .select("token_ciphertext,token_iv,token_tag")
-    .eq("account_id", account.id)
-    .maybeSingle();
-  if (!credential) return jsonError("De beveiligde Facebook-toegang ontbreekt.", 409);
-  try {
-    const accessToken = decryptMetaToken(credential);
-    const graphUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(eventId)}`);
-    graphUrl.searchParams.set("access_token", accessToken);
-    const response = await fetch(graphUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: String(body.title).slice(0, 255), description: String(body.description || "").slice(0, 5000) }),
-      cache: "no-store",
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.error) return jsonError(result.error?.message || "Facebook heeft de wijziging niet geaccepteerd.", response.ok ? 502 : response.status);
-    return NextResponse.json({ ok: true, eventId });
-  } catch (error) {
-    return jsonError(error.message || "Facebook kon het evenement niet bijwerken.", 502);
-  }
+export async function PATCH() {
+  // Explicit server-side stop, including requests from older open clients.
+  return NextResponse.json({ code: "FACEBOOK_EVENT_MANUAL_ONLY", error: "Facebook-evenementen worden voorlopig handmatig bijgewerkt. Kopieer de gekozen tekst en open het gekoppelde Facebook-evenement." }, { status: 409 });
 }
 
 function normalizeEvent(event) {

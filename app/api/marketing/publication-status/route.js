@@ -102,7 +102,15 @@ export async function POST(request) {
   const verification = { checked_at: new Date().toISOString(), checked_by: userData.user.id, channels, links };
   const nextDistribution = { ...distribution, verification };
   const nextMedia = (campaign.media || []).map((entry, index) => index === distributionIndex ? nextDistribution : entry);
-  const { error: updateError } = await client.from("social_content_items").update({ media: nextMedia }).eq("id", campaign.id).eq("workspace_id", workspaceId);
+  const { data: saved, error: updateError } = await client.from("social_content_items").update({ media: nextMedia }).eq("id", campaign.id).eq("workspace_id", workspaceId)
+    .eq("media", JSON.stringify(campaign.media)).select("id").maybeSingle();
   if (updateError) return NextResponse.json({ error: "De controle lukte, maar de uitslag kon niet worden opgeslagen.", channels, checkedAt: verification.checked_at }, { status: 500 });
+  if (!saved) {
+    // A user may have prepared/confirmed newer text while probes were running.
+    // Never overwrite their content or hand-written confirmation with old media.
+    const { data: latest, error: latestError } = await client.from("social_content_items").select("media").eq("id", campaign.id).eq("workspace_id", workspaceId).maybeSingle();
+    if (latestError || !latest) return NextResponse.json({ error: "Evenement is intussen gewijzigd. Ververs de agenda." }, { status: 409 });
+    return NextResponse.json({ ok: true, media: latest.media, skipped: "concurrent_change" });
+  }
   return NextResponse.json({ ok: true, channels, checkedAt: verification.checked_at, media: nextMedia });
 }

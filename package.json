@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:session": "node --test tests/session-regression.test.cjs"
+    "test:session": "node --test tests/session-regression.test.cjs",
+    "test:manual-events": "node --test tests/manual-event-content.test.cjs tests/session-regression.test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.55.0",

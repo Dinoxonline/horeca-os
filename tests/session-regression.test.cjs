@@ -11,6 +11,9 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 const root = path.resolve(__dirname, '..');
 async function load(relative, mocks = {}) {
   await swc.loadBindings();
+  return loadSync(relative, mocks);
+}
+function loadSync(relative, mocks = {}) {
   const { code } = swc.transformSync(fs.readFileSync(path.join(root, relative), 'utf8'), {
     filename: relative,
     jsc: { parser: { syntax: 'ecmascript', jsx: true }, target: 'es2022', transform: { react: { runtime: 'automatic' } } },
@@ -18,7 +21,7 @@ async function load(relative, mocks = {}) {
   });
   const module = { exports: {} };
   vm.runInThisContext('(function(require,module,exports){' + code + '\n})', { filename: relative })(
-    (name) => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : require(name), module, module.exports,
+    (name) => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.startsWith('.') ? loadSync(path.join(path.dirname(relative), name) + '.js', mocks) : require(name), module, module.exports,
   );
   return module.exports;
 }
@@ -34,7 +37,7 @@ test('source selection previews without saving, survives rerenders and resets fo
   let renderer;
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props)); });
   const buttons = () => renderer.root.findAllByType('button');
-  const sync = () => buttons().find(b => b.props.children === 'Gekozen tekst synchroniseren');
+  const sync = () => buttons().find(b => b.props.children === 'Tekst opslaan en website bijwerken');
   const choose = label => buttons().find(b => b.props['aria-label'] === 'Tekst van ' + label + ' gebruiken');
   try {
     assert.equal(sync().props.disabled, true);
@@ -63,7 +66,7 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
   const now = new Date().toISOString();
   const campaign = { id: 'campaign', business_id: 'b', scheduled_for: now, created_at: now, body: 'Old body', media: [
     { kind: 'image', url: 'keep-image' },
-    { kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: 'fb123' }, common: { title: 'Old title', description: 'Old body', start: now, location: 'Keep location' } }
+    { kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title: 'Old title', description: 'Old body', start: now, location: 'Keep location' } }
   ] };
   const writes = [], patches = [], order = [];
   global.fetch = async (url, options = {}) => {
@@ -80,7 +83,7 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
       if (key === 'then') return (resolve, reject) => Promise.resolve({ data: [campaign] }).then(resolve, reject);
       if (key === 'update') return value => { updating = true; write.value = value; return query; };
       if (key === 'eq') return (key, value) => { if (updating) write.filters.push([key, value]); return query; };
-      if (key === 'single') return async () => {
+      if (key === 'single' || key === 'maybeSingle') return async () => {
         writes.push(write); order.push('save');
         return failure === 'save' ? { error: new Error('Save denied') } : { data: { id: 'campaign' } };
       };
@@ -99,16 +102,17 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
     await React.act(async () => buttons().find(b => b.props['aria-label'] === 'Tekst van Eventin gebruiken').props.onClick());
     assert.equal(writes.length, 0);
     assert.equal(patches.length, 0);
-    await React.act(async () => buttons().find(b => b.props.children === 'Gekozen tekst synchroniseren').props.onClick());
-    assert.equal(writes.length, 1);
-    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'campaign']]);
+    await React.act(async () => buttons().find(b => b.props.children === 'Tekst opslaan en website bijwerken').props.onClick());
+    assert.equal(writes.length, failure === 'save' ? 1 : 2);
+    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'campaign'], ['media', JSON.stringify(campaign.media)]]);
     assert.equal(writes[0].value.body, 'Selected body');
     assert.deepEqual(writes[0].value.media[0], campaign.media[0]);
     assert.equal(writes[0].value.media[1].common.location, 'Keep location');
     assert.equal(writes[0].value.media[1].common.title, 'Selected title');
     assert.equal(order[0], 'save');
-    assert.equal(patches.length, failure === 'save' ? 0 : 2);
+    assert.equal(patches.length, failure === 'save' ? 0 : 1);
     for (const payload of patches) {
+      assert.equal(payload.eventId, '123', 'only the existing website event is written');
       assert.equal(payload.title, 'Selected title');
       assert.equal(payload.description, 'Selected body');
       assert.equal(payload.workspaceId, 'w');
@@ -120,7 +124,20 @@ for (const failure of [null, 'save', 'external']) test('chosen content is scoped
     }
     if (failure) {
       assert.ok(renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' }));
-      assert.match(JSON.stringify(renderer.toJSON()), failure === 'save' ? /Save denied/ : /niet volledig gelukt/);
+      assert.match(JSON.stringify(renderer.toJSON()), failure === 'save' ? /Save denied/ : /website kon niet worden bijgewerkt/);
+    }
+    if (failure !== 'save') {
+      const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
+      assert.equal(panel.findByType('strong').props.children, 'Gereed voor handmatige verwerking');
+      await React.act(async () => panel.findByProps({ type: 'checkbox' }).props.onChange({ target: { checked: true } }));
+      await React.act(async () => buttons().find(b => b.props.children === 'Handmatig bijgewerkt').props.onClick());
+      const facebook = writes.at(-1).value.media[1].event_content_delivery.facebook;
+      assert.equal(facebook.status, 'manual_confirmed');
+      assert.equal(facebook.confirmed_by, 'u');
+      assert.equal(facebook.snapshot.description, 'Selected body');
+      assert.ok(facebook.confirmed_at);
+      assert.equal(patches.length, 1, 'confirmation never calls Facebook or the website');
+      assert.equal(writes.at(-1).value.media[1].event_content_delivery.website.status, failure === 'external' ? 'failed' : 'updated');
     }
   } finally { await React.act(async () => renderer.unmount()); }
 });
