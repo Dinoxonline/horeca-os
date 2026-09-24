@@ -110,6 +110,52 @@ test('event layout starts with one workspace and keeps secondary information col
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('channel tiles open and focus their own editor without saving or publishing', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'tiles', media: [{ kind: 'campaign_distribution', common: { title: 'Avond' } }] };
+  const panels = {}, actions = [];
+  const previousFetch = global.fetch;
+  global.fetch = async () => { actions.push('request'); throw new Error('Unexpected request'); };
+  let renderer;
+  try {
+    await React.act(async () => {
+      renderer = Renderer.create(React.createElement(EventDetails, {
+        item, onClose() {}, onSyncContent: () => actions.push('save'),
+        onUpdateWebsite: () => actions.push('website'), onConfirmFacebook: () => actions.push('facebook'),
+        onInstagramPublished: () => actions.push('instagram'),
+      }), { createNodeMock(element) {
+        if (!element.props.id?.startsWith('event-channel-')) return null;
+        const id = element.props.id;
+        return panels[id] ||= { open: false, focused: 0, scrolled: 0, querySelector(selector) {
+          assert.equal(selector, 'summary');
+          return { focus: () => this.focused++, scrollIntoView: () => this.scrolled++ };
+        } };
+      } });
+    });
+    const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
+    const buttons = () => statuses.findAllByType('button');
+    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children), ['Website', 'Facebook', 'Instagram']);
+    assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
+    for (const channel of ['website', 'facebook', 'instagram']) {
+      const id = `event-channel-${channel}-tiles`;
+      const button = () => buttons().find(button => button.props['aria-controls'] === id);
+      await React.act(async () => button().props.onClick());
+      assert.equal(panels[id].open, true);
+      assert.equal(panels[id].focused, 1);
+      assert.equal(panels[id].scrolled, 1);
+      assert.equal(button().props['aria-expanded'], true);
+      assert.ok(Object.entries(panels).filter(([key]) => key !== id).every(([, panel]) => !panel.open), 'unrelated editors stay closed');
+      panels[id].open = false;
+      await React.act(async () => renderer.root.findByProps({ id }).props.onToggle({ currentTarget: panels[id] }));
+      assert.equal(button().props['aria-expanded'], false, 'manual collapse updates the tile');
+    }
+    assert.deepEqual(actions, [], 'opening is navigation only');
+  } finally {
+    if (renderer) await React.act(async () => renderer.unmount());
+    global.fetch = previousFetch;
+  }
+});
+
 test('source selection previews without saving, survives rerenders and resets for another event', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Original', description: 'Original body' } }] };
