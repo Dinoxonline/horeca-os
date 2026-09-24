@@ -24,7 +24,7 @@ async function load(relative, mocks = {}) {
 }
 const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
-async function harness({ failMfa = false, stuckMembership = false } = {}) {
+async function harness({ failMfa = false, stuckMembership = false, pathname = '/marketing' } = {}) {
   const listeners = new Map();
   global.window = {
     location: { hash: '', search: '' },
@@ -33,8 +33,8 @@ async function harness({ failMfa = false, stuckMembership = false } = {}) {
     addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: (name) => listeners.delete(name),
   };
   global.document = { visibilityState: 'visible', addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: (name) => listeners.delete(name) };
-  global.fetch = async () => ({ ok: true, json: async () => ({}) });
-  const calls = { mounts: 0, unmounts: 0, factors: 0, enroll: 0, tables: {} };
+  const calls = { mounts: 0, unmounts: 0, factors: 0, enroll: 0, tables: {}, admin: 0, channels: 0 };
+  global.fetch = async () => { calls.admin++; return { ok: true, json: async () => ({}) }; };
   const state = { failMfa, stuckMembership, deferredMfa: null, level: 'aal2', session: { user: { id: 'user-a' }, access_token: 'token-a' } };
   let authListener;
   const supabase = {
@@ -60,15 +60,20 @@ async function harness({ failMfa = false, stuckMembership = false } = {}) {
         : () => request });
       return request;
     },
-    channel: () => ({ on() { return this; }, subscribe() { return this; } }),
+    channel: () => { calls.channels++; return { on() { return this; }, subscribe() { return this; } }; },
     removeChannel() {},
   };
   const timeout = await load('lib/request-timeout.js');
+  const polling = await load('lib/background-poll.js', { './request-timeout': timeout });
+  const pollTimers = new Map();
   const mocks = {
-    'next/navigation': { usePathname: () => '/marketing' },
+    'next/navigation': { usePathname: () => pathname },
     'next/link': { default: (props) => React.createElement('a', props) },
     '../lib/supabase': { supabase },
     '../lib/request-timeout': { withRequestTimeout: (promise, message, abort) => timeout.withRequestTimeout(promise, message, abort, 100) },
+    '../lib/background-poll': { startBackgroundPoll: (task) => polling.startBackgroundPoll(task, {
+      setTimer: (fn, ms) => { pollTimers.set(fn, ms); return fn; }, clearTimer: (fn) => pollTimers.delete(fn),
+    }) },
     './marketing-overview': { default: function Marketing() {
       React.useEffect(() => { calls.mounts++; return () => { calls.unmounts++; }; }, []);
       return React.createElement('span', null, 'Agenda loopt');
@@ -81,11 +86,109 @@ async function harness({ failMfa = false, stuckMembership = false } = {}) {
   await flush();
   const text = () => JSON.stringify(renderer.toJSON());
   return {
-    renderer, calls, state, text, listeners,
+    renderer, calls, state, text, listeners, pollTimers,
     emit: async (event, session) => { state.session = session; await React.act(async () => authListener(event, session)); await flush(); },
     close: async () => React.act(async () => renderer.unmount()),
   };
 }
+
+test('Marketing does not run dashboard badge queries or subscriptions', async () => {
+  const h = await harness();
+  try {
+    assert.match(h.text(), /Agenda loopt/);
+    assert.equal(h.calls.admin, 0);
+    assert.equal(h.calls.tables.staff_tickets || 0, 0);
+    assert.equal(h.calls.channels, 0);
+    assert.equal(h.pollTimers.size, 0);
+  } finally { await h.close(); }
+});
+
+test('dashboard badge polling stops on MFA failure and does not restart on token refresh', async () => {
+  const h = await harness({ pathname: '/dashboard' });
+  try {
+    assert.equal(h.calls.admin, 1);
+    assert.equal(h.calls.tables.staff_tickets, 1);
+    assert.equal(h.pollTimers.size, 2);
+    await h.emit('TOKEN_REFRESHED', { ...h.state.session, access_token: 'token-b' });
+    assert.equal(h.calls.admin, 1);
+    assert.equal(h.calls.tables.staff_tickets, 1);
+    h.state.failMfa = true;
+    await h.emit('TOKEN_REFRESHED', { ...h.state.session, access_token: 'token-c' });
+    assert.match(h.text(), /Verbinding herstellen/);
+    assert.equal(h.pollTimers.size, 0);
+    assert.equal(h.calls.channels, 0);
+  } finally { await h.close(); }
+});
+
+test('failed initial access check never starts dashboard badge polling', async () => {
+  const h = await harness({ pathname: '/dashboard', failMfa: true });
+  try {
+    assert.equal(h.calls.admin, 0);
+    assert.equal(h.calls.tables.staff_tickets || 0, 0);
+    assert.equal(h.pollTimers.size, 0);
+  } finally { await h.close(); }
+});
+
+test('background polls serialize work, back off on errors and skip hidden tabs', async () => {
+  const timeout = await load('lib/request-timeout.js');
+  const { startBackgroundPoll } = await load('lib/background-poll.js', { './request-timeout': timeout });
+  const pending = new Map();
+  let visible = true;
+  let resolveFirst;
+  let calls = 0;
+  let shouldFail = false;
+  const stop = startBackgroundPoll(async () => {
+    calls++;
+    if (calls === 1) await new Promise(resolve => { resolveFirst = resolve; });
+    if (shouldFail) throw new Error('outage');
+  }, { isVisible: () => visible, setTimer: (fn, ms) => { pending.set(fn, ms); return fn; }, clearTimer: fn => pending.delete(fn) });
+  const tick = async () => { const fn = pending.keys().next().value; pending.delete(fn); await fn(); };
+  try {
+    assert.equal(calls, 1);
+    assert.equal(pending.size, 0); // No interval can overlap the unfinished request.
+    resolveFirst(); await flush();
+    assert.equal([...pending.values()][0], 60000);
+    shouldFail = true;
+    await tick(); assert.equal([...pending.values()][0], 120000);
+    await tick(); assert.equal([...pending.values()][0], 240000);
+    await tick(); assert.equal([...pending.values()][0], 300000);
+    await tick(); assert.equal([...pending.values()][0], 300000);
+    visible = false;
+    const before = calls;
+    await tick(); assert.equal(calls, before);
+    visible = true; shouldFail = false;
+    await tick(); assert.equal([...pending.values()][0], 60000);
+  } finally { stop(); }
+  assert.equal(pending.size, 0);
+});
+
+test('stopping a background poll aborts its request and prevents late rescheduling', async () => {
+  const timeout = await load('lib/request-timeout.js');
+  const { startBackgroundPoll } = await load('lib/background-poll.js', { './request-timeout': timeout });
+  let signal, finish;
+  let scheduled = 0;
+  const stop = startBackgroundPoll(async s => { signal = s; await new Promise(resolve => { finish = resolve; }); }, {
+    isVisible: () => true, setTimer: () => { scheduled++; }, clearTimer() {},
+  });
+  stop();
+  assert.equal(signal.aborted, true);
+  finish(); await flush();
+  assert.equal(scheduled, 0);
+});
+
+test('a hung background request is aborted and its retry is delayed', async () => {
+  const timeout = await load('lib/request-timeout.js');
+  const { startBackgroundPoll } = await load('lib/background-poll.js', { './request-timeout': timeout });
+  let signal, delay;
+  const stop = startBackgroundPoll(s => { signal = s; return new Promise(() => {}); }, {
+    timeoutMs: 20, isVisible: () => true, setTimer: (_fn, ms) => { delay = ms; }, clearTimer() {},
+  });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.equal(signal.aborted, true);
+    assert.equal(delay, 120000);
+  } finally { stop(); }
+});
 
 test('returning to a tab with the same session does not reload access or remount Marketing', async () => {
   const h = await harness();

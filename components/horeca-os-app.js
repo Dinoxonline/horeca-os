@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { withRequestTimeout } from "../lib/request-timeout";
+import { startBackgroundPoll } from "../lib/background-poll";
 import CentralEventCreator from "./central-event-creator";
 import MarketingOverview from "./marketing-overview";
 import Workboard from "./workboard";
@@ -338,75 +339,50 @@ export default function HorecaOsApp() {
   const dashboardLabel = isOwner ? "CEO Home" : canViewDirectie ? "Management Home" : "Mijn werk";
   const viewAllowed = featureVisibility[activeView] !== false;
   const mfaRequired = isOwner || canUseFeature("users:manage") || canUseFeature("integrations:manage");
+  const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
+  const notificationsReady = Boolean(
+    activeView === "dashboard" && isOwner && session?.user?.id && workspaceId
+    && !passwordRecovery && !mfaState.loading && !mfaState.error && !accessError
+    && mfaState.userId === session.user.id && mfaState.currentLevel
+    && (mfaState.nextLevel !== "aal2" || mfaState.currentLevel === "aal2")
+    && (!mfaRequired || verifiedMfaFactor)
+    && !membershipsLoading && membershipsScope === `${session.user.id}:${mfaState.currentLevel}`
+    && !rolesLoading && rolesScope === `${session.user.id}:${workspaceId}:${mfaState.currentLevel}`
+  );
 
   useEffect(() => {
-    if (!workspaceId || !isOwner || !session?.access_token) {
+    if (!notificationsReady) {
       setPendingStaffRequests(0);
       return;
     }
-    let active = true;
-    fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
-      .then((response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (!active) return;
-        setPendingStaffRequests((result?.accessRequests || []).filter((request) => request.status === "pending").length);
-      })
-      .catch(() => { if (active) setPendingStaffRequests(0); });
-    return () => { active = false; };
-  }, [isOwner, session?.access_token, workspaceId]);
+    return startBackgroundPoll(async (signal) => {
+      const response = await fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        signal,
+        headers: { Authorization: `Bearer ${sessionRef.current?.access_token || ""}` },
+      });
+      if (!response.ok) throw new Error("Account requests unavailable");
+      const result = await response.json();
+      if (!signal.aborted) setPendingStaffRequests((result.accessRequests || []).filter((request) => request.status === "pending").length);
+    });
+  }, [notificationsReady, session?.user?.id, workspaceId]);
 
   useEffect(() => {
-    if (!workspaceId || !isOwner) return undefined;
-    let active = true;
-    const refreshPendingRequests = async () => {
-      const response = await fetch(`/api/admin/users?workspaceId=${encodeURIComponent(workspaceId)}`, {
-        headers: { Authorization: `Bearer ${session?.access_token || ""}` },
-      });
-      if (!active || !response.ok) return;
-      const result = await response.json();
-      setPendingStaffRequests((result.accessRequests || []).filter((request) => request.status === "pending").length);
-    };
-    const channel = supabase
-      .channel(`staff-access-${workspaceId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "staff_access_requests", filter: `workspace_id=eq.${workspaceId}` }, refreshPendingRequests)
-      .subscribe();
-    const fallbackTimer = window.setInterval(refreshPendingRequests, 30000);
-    return () => {
-      active = false;
-      window.clearInterval(fallbackTimer);
-      supabase.removeChannel(channel);
-    };
-  }, [isOwner, session?.access_token, workspaceId]);
-  useEffect(() => {
-    if (!workspaceId || !isOwner) {
+    if (!notificationsReady) {
       setPendingStaffTickets(0);
       return undefined;
     }
-    let active = true;
-    const refreshPendingTickets = async () => {
-      const { count } = await supabase
+    return startBackgroundPoll(async (signal) => {
+      const { count, error } = await supabase
         .from("staff_tickets")
         .select("id", { count: "exact", head: true })
         .eq("workspace_id", workspaceId)
-        .in("status", ["nieuw", "in behandeling", "wacht op informatie"]);
-      if (active) setPendingStaffTickets(count || 0);
-    };
-    refreshPendingTickets();
-    const channel = supabase
-      .channel(`staff-tickets-${workspaceId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "staff_tickets", filter: `workspace_id=eq.${workspaceId}` }, refreshPendingTickets)
-      .subscribe();
-    const fallbackTimer = window.setInterval(refreshPendingTickets, 30000);
-    return () => {
-      active = false;
-      window.clearInterval(fallbackTimer);
-      supabase.removeChannel(channel);
-    };
-  }, [isOwner, workspaceId]);
+        .in("status", ["nieuw", "in behandeling", "wacht op informatie"])
+        .abortSignal(signal);
+      if (error) throw error;
+      if (!signal.aborted) setPendingStaffTickets(count || 0);
+    });
+  }, [notificationsReady, session?.user?.id, workspaceId]);
 
-  const verifiedMfaFactor = mfaState.factors.find((factor) => factor.status === "verified");
   const openTasks = [...data.tasks, ...data.processTasks].filter((task) => task.status !== "done");
   const criticalTasks = openTasks.filter((task) => task.priority === "critical");
   const priorities = [...openTasks].sort((a, b) => (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9)).slice(0, 6);
