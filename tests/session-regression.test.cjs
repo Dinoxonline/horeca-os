@@ -34,7 +34,13 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findByType('summary').props.children), ['Bronnen vergelijken en tekst kiezen', 'Website afzonderlijk bijwerken', 'Evenementgegevens en publicatiestatus']);
+    assert.deepEqual(folds.map(node => node.findByType('summary').props.children), ['Bronnen vergelijken en tekst kiezen', 'Website afzonderlijk bijwerken', 'Evenementgegevens']);
+    const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
+    const article = statuses.parent;
+    assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
+    const statusIndex = article.children.indexOf(statuses);
+    assert.equal(article.children[statusIndex - 1].props.className, 'marketingEventHeading', 'status appears directly below the event heading');
+    assert.deepEqual(statuses.findAllByType('strong').map(node => node.props.children), ['Website', 'Facebook', 'Instagram', 'Google', 'Overige']);
     assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
     assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
     const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
