@@ -93,6 +93,62 @@ test('comparison identifies the exact source and field against the current Horec
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
 
+test('difference actions follow the actual channel and saving enables navigation without publishing', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = title => ({ id: 'next-step', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description: 'Tekst' } }] });
+  const panels = {}, calls = [];
+  let renderer;
+  let props = { item: item('Bewaar deze'), sourceComparisonCheck: 'done', onClose() {}, onSyncContent: content => calls.push(['save', content.title]), onUpdateWebsite: () => calls.push(['website']) };
+  const render = async (changes = {}) => {
+    props = { ...props, ...changes };
+    await React.act(async () => {
+      if (renderer) renderer.update(React.createElement(EventDetails, props));
+      else renderer = Renderer.create(React.createElement(EventDetails, props), { createNodeMock(element) {
+        if (!element.props.id?.startsWith('event-channel-')) return null;
+        return panels[element.props.id] ||= { open: false, focused: 0, scrolled: 0, querySelector() { return { focus: () => this.focused++, scrollIntoView: () => this.scrolled++ }; } };
+      } });
+    });
+  };
+  const sources = (website, facebook) => [{ label: 'Eventin', item: item(website) }, { label: 'Facebook', item: item(facebook) }];
+  const summary = () => renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
+  const actions = () => summary().findAllByType('button');
+  try {
+    await render({ sourceComparisonItems: sources('Oude website', 'Bewaar deze') });
+    assert.deepEqual(actions().map(button => button.props.children), ['Naar website bijwerken']);
+    assert.ok(Object.values(panels).every(panel => !panel.open));
+    await React.act(async () => actions()[0].props.onClick());
+    assert.equal(panels['event-channel-website-next-step'].open, true);
+    assert.equal(panels['event-channel-website-next-step'].focused, 1);
+    assert.equal(panels['event-channel-facebook-next-step'].open, false);
+    assert.deepEqual(calls, [], 'navigation must not save or publish');
+    await render({ sourceComparisonItems: sources('Bewaar deze', 'Oud Facebook') });
+    assert.deepEqual(actions().map(button => button.props.children), ['Naar Facebook handmatig bijwerken']);
+    await render({ sourceComparisonItems: sources('Oude website', 'Nieuw Facebook') });
+    assert.equal(actions().length, 2);
+    await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Facebook gebruiken' }).props.onClick());
+    const chosen = () => renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+    const nextButtons = () => chosen().findByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).findAllByType('button');
+    assert.ok(actions().every(button => button.props.disabled));
+    assert.ok(nextButtons().every(button => button.props.disabled), 'unsaved choice cannot proceed to external update');
+    await React.act(async () => chosen().findAllByType('button').find(button => button.props.children === 'Tekst bewaren in Horeca OS').props.onClick());
+    assert.deepEqual(calls, [['save', 'Nieuw Facebook']]);
+    assert.ok(nextButtons().every(button => button.props.disabled), 'wait for successful saved record, not just a click');
+    await render({ item: item('Nieuw Facebook') });
+    assert.deepEqual(nextButtons().map(button => button.props.children), ['Naar website bijwerken']);
+    assert.equal(Boolean(nextButtons()[0].props.disabled), false);
+    await React.act(async () => nextButtons()[0].props.onClick());
+    assert.deepEqual(calls, [['save', 'Nieuw Facebook']], 'saving never updates the website automatically');
+    const website = renderer.root.findByProps({ 'aria-label': 'Website afzonderlijk bijwerken' });
+    await React.act(async () => website.findByType('button').props.onClick());
+    assert.deepEqual(calls, [['save', 'Nieuw Facebook'], ['website']], 'only the explicit website confirmation updates it');
+    await render({ comparing: true });
+    assert.equal(chosen().findAllByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).length, 0);
+    await render({ comparing: false, sourceComparisonItems: sources('Nieuw Facebook', 'Nieuw Facebook') });
+    assert.equal(actions().length, 0);
+    assert.equal(chosen().findAllByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).length, 0);
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('Facebook editor stays closed while checking and after equal or different results', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'one', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Title', description: 'Text' } }] };
