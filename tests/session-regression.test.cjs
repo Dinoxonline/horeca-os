@@ -27,6 +27,24 @@ function loadSync(relative, mocks = {}) {
 }
 const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
+test('event layout starts with one workspace and keeps secondary information collapsed', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'layout', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Avond', description: 'Tekst' } }] };
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onSyncContent() {}, onClose() {} })); });
+  try {
+    const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
+    assert.deepEqual(folds.map(node => node.findByType('summary').props.children), ['Bronnen vergelijken en tekst kiezen', 'Website afzonderlijk bijwerken', 'Evenementgegevens en publicatiestatus']);
+    assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
+    assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
+    const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
+    const checkbox = panel.findByType('input');
+    assert.equal(checkbox.props.disabled, true);
+    assert.match(panel.findByProps({ id: checkbox.props['aria-describedby'] }).props.children, /Kies bij stap 1/);
+    assert.equal(panel.findAllByType('a')[0].props.onClick, undefined, 'ordinary event link supports native browser split view');
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('source selection previews without saving, survives rerenders and resets for another event', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Original', description: 'Original body' } }] };
@@ -491,7 +509,7 @@ test('startup verification updates an open event immediately, independently of s
   try {
     await React.act(async () => open(0));
     assert.equal(panel().findByType('strong').props.children, 'Koppeling controleren…');
-    assert.match(panel().findByProps({ role: 'status' }).props.children, /automatisch/);
+    assert.ok(panel().findAllByProps({ role: 'status' }).some(node => /automatisch/.test(node.props.children)));
     const media = [{ ...campaigns[0].media[0], facebook_event_delivery: { external_id: '456', permalink: 'https://www.facebook.com/events/456/' }, verification: { channels: { facebook: { status: 'reachable' } } } }];
     await React.act(async () => pending.get('first')({ ok: true, json: async () => ({ media }) }));
     assert.equal(panel().findAllByType('a')[0].props.href, 'https://www.facebook.com/events/456/');

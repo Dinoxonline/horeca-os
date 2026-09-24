@@ -105,7 +105,10 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
     assert.equal(button('Handmatig bijgewerkt').props.disabled, true);
     assert.ok(renderer.root.findAllByType('a').every(a => a.props.href === 'https://www.facebook.com/events/456/'));
     await React.act(async () => button('Titel kopiëren').props.onClick());
+    assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => node.props.children === 'Titel gekopieerd'));
     await React.act(async () => button('Beschrijving kopiëren').props.onClick());
+    assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => node.props.children === 'Beschrijving gekopieerd'));
+    assert.equal(renderer.root.findAllByProps({ role: 'status' }).some(node => node.props.children === 'Titel gekopieerd'), false);
     assert.deepEqual(copied, ['Avond', 'Tekst\n🎵']);
     assert.equal(confirmations.length, 0);
     await React.act(async () => renderer.root.findByType('input').props.onChange({ target: { checked: true } }));
