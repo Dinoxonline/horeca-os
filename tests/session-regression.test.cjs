@@ -114,7 +114,7 @@ test('difference actions follow the actual channel and saving enables navigation
   const actions = () => summary().findAllByType('button');
   try {
     await render({ sourceComparisonItems: sources('Oude website', 'Bewaar deze') });
-    assert.deepEqual(actions().map(button => button.props.children), ['Naar website bijwerken']);
+    assert.deepEqual(actions().map(button => button.props.children), ['Website bijwerken openen']);
     assert.ok(Object.values(panels).every(panel => !panel.open));
     await React.act(async () => actions()[0].props.onClick());
     assert.equal(panels['event-channel-website-next-step'].open, true);
@@ -123,7 +123,7 @@ test('difference actions follow the actual channel and saving enables navigation
     assert.equal(panels['event-channel-facebook-next-step'].open, false);
     assert.deepEqual(calls, [], 'navigation must not save or publish');
     await render({ sourceComparisonItems: sources('Bewaar deze', 'Oud Facebook') });
-    assert.deepEqual(actions().map(button => button.props.children), ['Naar Facebook handmatig bijwerken']);
+    assert.deepEqual(actions().map(button => button.props.children), ['Facebook bijwerken openen']);
     await render({ sourceComparisonItems: sources('Oude website', 'Nieuw Facebook') });
     assert.equal(actions().length, 2);
     await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Facebook gebruiken' }).props.onClick());
@@ -135,7 +135,7 @@ test('difference actions follow the actual channel and saving enables navigation
     assert.deepEqual(calls, [['save', 'Nieuw Facebook']]);
     assert.ok(nextButtons().every(button => button.props.disabled), 'wait for successful saved record, not just a click');
     await render({ item: item('Nieuw Facebook') });
-    assert.deepEqual(nextButtons().map(button => button.props.children), ['Naar website bijwerken']);
+    assert.deepEqual(nextButtons().map(button => button.props.children), ['Website bijwerken openen']);
     assert.equal(Boolean(nextButtons()[0].props.disabled), false);
     await React.act(async () => nextButtons()[0].props.onClick());
     assert.deepEqual(calls, [['save', 'Nieuw Facebook']], 'saving never updates the website automatically');
@@ -147,6 +147,27 @@ test('difference actions follow the actual channel and saving enables navigation
     await render({ comparing: false, sourceComparisonItems: sources('Nieuw Facebook', 'Nieuw Facebook') });
     assert.equal(actions().length, 0);
     assert.equal(chosen().findAllByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).length, 0);
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
+test('save feedback stays beside the selected text and hides for a different choice', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = title => ({ id: 'feedback', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description: 'Text' } }] });
+  let renderer;
+  const props = { item: item('Old'), onClose() {}, onSyncContent() {}, sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Eventin', item: item('Chosen') }, { label: 'Facebook', item: item('Old') }] };
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props)); });
+    await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Eventin gebruiken' }).props.onClick());
+    for (const kind of ['pending', 'error', 'success']) {
+      const contentSaveNotice = { itemId: 'feedback', title: 'Chosen', description: 'Text', kind, message: kind };
+      await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, syncing: kind === 'pending', contentSaveNotice })));
+      const preview = renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+      const notice = preview.findByProps({ 'aria-label': 'Resultaat tekst bewaren' });
+      assert.equal(notice.props.role, kind === 'error' ? 'alert' : 'status');
+      assert.equal(notice.findAllByProps({ className: 'marketingLoadingSpinner' }).length, kind === 'pending' ? 1 : 0);
+    }
+    await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Facebook gebruiken' }).props.onClick());
+    assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Resultaat tekst bewaren' }).length, 0);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
 
@@ -335,7 +356,7 @@ test('every compare click opens and focuses the text comparison, including the a
 
 for (const failedSave of [0, 1, 2]) test(`merge workflow reports its local outcome without a website call: ${failedSave}`, async () => {
   const start = new Date().toISOString();
-  const campaign = id => ({ id, business_id: 'b', published_at: id === 'keep' ? start : null, media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Arabian Night', description: id, start } }] });
+  const campaign = id => ({ id, business_id: 'b', updated_at: start, published_at: id === 'keep' ? start : null, media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Arabian Night', description: id, start } }] });
   const campaigns = [campaign('keep'), campaign('duplicate')], writes = [], requests = [];
   const supabase = { from() {
     const write = { filters: [] }; let query;
@@ -343,7 +364,12 @@ for (const failedSave of [0, 1, 2]) test(`merge workflow reports its local outco
       if (key === 'then') return (resolve, reject) => Promise.resolve({ data: campaigns }).then(resolve, reject);
       if (key === 'update') return value => { write.value = value; return query; };
       if (key === 'eq') return (key, value) => { write.filters.push([key, value]); return query; };
-      if (key === 'maybeSingle') return async () => { writes.push(write); return writes.length === failedSave ? { error: new Error('Save failed') } : { data: { id: write.filters.find(([key]) => key === 'id')[1] } }; };
+      if (key === 'maybeSingle') return async () => {
+        const id = write.filters.find(([key]) => key === 'id')[1];
+        if (!write.value) return { data: structuredClone(campaigns.find(row => row.id === id)) };
+        writes.push(write);
+        return writes.length === failedSave ? { error: new Error('Save failed') } : { data: { id, updated_at: start } };
+      };
       return () => query;
     } }); return query;
   } };
@@ -468,7 +494,8 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
   global.window = { addEventListener() {}, removeEventListener() {} };
   global.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
   const now = new Date().toISOString();
-  const campaign = { id: 'campaign', business_id: 'b', scheduled_for: now, created_at: now, body: 'Old body', media: [
+  const initialVersion = '2026-09-25T09:12:23.123456+00:00';
+  const campaign = { id: 'campaign', business_id: 'b', updated_at: initialVersion, scheduled_for: now, created_at: now, body: 'Old body', media: [
     { kind: 'image', url: 'keep-image' },
     { kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title: 'Old title', description: 'Old body', start: now, location: 'Keep location' } }
   ] };
@@ -489,8 +516,11 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
       if (key === 'update') return value => { updating = true; write.value = value; return query; };
       if (key === 'eq') return (key, value) => { if (updating) write.filters.push([key, value]); return query; };
       if (key === 'single' || key === 'maybeSingle') return async () => {
+        if (!updating) return { data: structuredClone(campaign) };
         writes.push(write); order.push('save');
-        return failure === 'save' || (failure === 'website_save' && writes.length === 3) ? { error: new Error('Save denied') } : { data: { id: 'campaign' } };
+        if (failure === 'save' || (failure === 'website_save' && writes.length === 3)) return { error: new Error('Save denied') };
+        Object.assign(campaign, structuredClone(write.value), { updated_at: initialVersion.replace('123456', '12345' + writes.length) });
+        return { data: { id: 'campaign', updated_at: campaign.updated_at } };
       };
       return () => query;
     } });
@@ -510,7 +540,7 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
     await React.act(async () => buttons().find(b => b.props.children === 'Tekst bewaren in Horeca OS').props.onClick());
     assert.equal(writes.length, 1, 'saving is exactly one local write');
     assert.equal(patches.length, 0, 'saving must never update any external source');
-    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'campaign'], ['media', JSON.stringify(campaign.media)]]);
+    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'campaign'], ['updated_at', initialVersion]]);
     assert.equal(writes[0].value.body, failure === 'unlinked' ? 'Old body' : 'Selected body');
     assert.deepEqual(writes[0].value.media[0], campaign.media[0]);
     assert.equal(writes[0].value.media[1].common.location, 'Keep location');
@@ -518,9 +548,13 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
     assert.equal(order[0], 'save');
     if (failure === 'save') {
       assert.ok(renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' }));
-      assert.match(JSON.stringify(renderer.toJSON()), /Save denied/);
+      const preview = renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+      assert.match(preview.findByProps({ 'aria-label': 'Resultaat tekst bewaren' }).findByType('span').props.children, /Bewaren in Horeca OS is mislukt/);
     }
     if (failure !== 'save') {
+      const preview = renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+      assert.match(preview.findByProps({ 'aria-label': 'Resultaat tekst bewaren' }).findByType('span').props.children, /Tekst bewaard in Horeca OS/);
+      assert.ok(!preview.findAllByType('button').some(button => button.props.children === 'Website bijwerken openen'), 'Eventin now matches the saved text, so no website update is suggested');
       const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
       assert.equal(panel.findByType('strong').props.children, 'Gereed voor handmatige verwerking');
       await React.act(async () => panel.findByProps({ type: 'checkbox' }).props.onChange({ target: { checked: true } }));

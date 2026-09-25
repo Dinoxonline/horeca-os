@@ -61,18 +61,20 @@ test('Eventin start, end and ticket-sale dates retain their day and time', () =>
 for (const failure of ['', 'first', 'second', 'zero']) test(`local merge verifies both saves and never publishes: ${failure || 'success'}`, async () => {
   await swc.loadBindings();
   const { saveLocalEventMerge } = load('lib/local-event-merge.js');
-  const keep = { id: 'keep', business_id: 'b', media: [{ kind: 'photo', url: '/unchanged.jpg' }, base()] };
-  const duplicate = { id: 'duplicate', business_id: 'b', media: [base()] };
+  const keep = { id: 'keep', business_id: 'b', updated_at: at, media: [{ kind: 'photo', url: '/unchanged.jpg' }, base()] };
+  const duplicate = { id: 'duplicate', business_id: 'b', updated_at: at, media: [base()] };
   const merged = { ...base(), common: { ...base().common, title: 'Chosen title' } };
   const writes = [];
   const client = { from(table) {
     assert.equal(table, 'social_content_items');
     const write = { filters: [] };
-    const query = { update(value) { write.value = value; return query; }, eq(key, value) { write.filters.push([key, value]); return query; }, select(value) { assert.equal(value, 'id'); return query; }, async maybeSingle() {
+    const query = { update(value) { write.value = value; return query; }, eq(key, value) { write.filters.push([key, value]); return query; }, select() { return query; }, async maybeSingle() {
+      const id = write.filters.find(([key]) => key === 'id')[1];
+      if (!write.value) return { data: structuredClone(id === 'keep' ? keep : duplicate) };
       writes.push(write);
       if ((failure === 'first' && writes.length === 1) || (failure === 'second' && writes.length === 2)) return { error: new Error('Database failure') };
       if (failure === 'zero') return { data: null };
-      return { data: { id: write.filters.find(([key]) => key === 'id')[1] } };
+      return { data: { id, updated_at: at } };
     } };
     return query;
   } };
@@ -90,15 +92,15 @@ for (const failure of ['', 'first', 'second', 'zero']) test(`local merge verifie
     else {
       const saved = await saveLocalEventMerge(client, 'w', keep, duplicate, merged);
       assert.equal(saved.id, keep.id);
-      assert.equal(saved.media[0], keep.media[0], 'unrelated artwork is preserved');
+      assert.deepEqual(saved.media[0], keep.media[0], 'unrelated artwork is preserved');
       assert.equal(saved.media[1].common.title, 'Chosen title');
     }
-    assert.equal(writes.length, ['first', 'zero'].includes(failure) ? 1 : 2);
-    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'keep'], ['media', JSON.stringify(keep.media)]]);
+    assert.equal(writes.length, failure === 'zero' ? 3 : failure === 'first' ? 1 : 2);
+    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'keep'], ['updated_at', at]]);
     assert.equal(writes[0].value.media[1].duplicate_of, undefined, 'retained text is saved before hiding another item');
-    if (writes[1]) {
+    if (writes[1] && failure !== 'zero') {
       assert.equal(writes[1].value.media[0].duplicate_of, 'keep');
-      assert.deepEqual(writes[1].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'duplicate'], ['media', JSON.stringify(duplicate.media)]]);
+      assert.deepEqual(writes[1].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'duplicate'], ['updated_at', at]]);
     }
     const count = writes.length;
     await assert.rejects(saveLocalEventMerge(client, 'w', keep, { ...duplicate, business_id: 'other' }, merged), /dezelfde vestiging/);
@@ -143,22 +145,150 @@ test('native event links cannot be confused with Facebook posts or untrusted URL
   assert.equal(facebookEventId({ external_ids: { facebook: '456' } }), '456');
 });
 
-test('scoped persistence preserves unrelated media and rejects conflicts and denied saves', async () => {
+function storageHarness(initial, { miss = 0, denied = false, readError = false, onMiss } = {}) {
+  let row = structuredClone(initial);
+  const reads = [], writes = [];
+  const client = { from(table) {
+    assert.equal(table, 'social_content_items');
+    let patch;
+    const filters = [];
+    const query = {
+      select() { return query; }, eq(key, value) { filters.push([key, value]); return query; },
+      update(value) { patch = value; return query; },
+      async maybeSingle() {
+        const scope = [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'i']];
+        if (!patch) {
+          reads.push(filters);
+          assert.deepEqual(filters, scope);
+          return readError ? { error: new Error('Denied read') } : { data: structuredClone(row) };
+        }
+        writes.push({ patch, filters });
+        assert.deepEqual(filters, [...scope, ['updated_at', row.updated_at]]);
+        assert.ok(filters.every(([key]) => key !== 'media'), 'large media never becomes a URL filter');
+        if (denied) return { error: new Error('Denied') };
+        if (writes.length <= miss) {
+          row.updated_at = '2026-09-25T09:12:23.123' + writes.length + '56+00:00';
+          onMiss?.(row);
+          return { data: null };
+        }
+        row = { ...row, ...patch, updated_at: '2026-09-25T09:13:00.654321+00:00' };
+        return { data: { id: row.id, updated_at: row.updated_at } };
+      },
+    };
+    return query;
+  } };
+  return { client, reads, writes, row: () => row };
+}
+const storageItem = () => ({ id: 'i', business_id: 'b', body: 'old', updated_at: '2026-09-25T09:12:23.123456+00:00', media: [{ kind: 'image', url: 'keep' }, base()] });
+
+test('short versioned save preserves large media, exact timestamps and concurrent unrelated fields', async () => {
   await swc.loadBindings();
   const m = load('lib/manual-event-content.js');
-  const item = { id: 'i', business_id: 'b', media: [{ kind: 'image', url: 'keep' }, base()] };
-  for (const result of [{ data: { id: 'i' } }, { data: null }, { error: new Error('Denied') }]) {
-    const filters = [];
-    let patch;
-    const query = { update(p) { patch = p; return this; }, eq(k, v) { filters.push([k, v]); return this; }, select() { return this; }, maybeSingle: async () => result };
-    const save = m.saveEventContent({ from: table => { assert.equal(table, 'social_content_items'); return query; } }, 'w', item, m.prepareContent(base(), { title: 'Nieuw', description: '' }, at), '');
-    if (result.data) {
-      const saved = await save;
-      assert.equal(saved.body, '');
-      assert.deepEqual(patch.media[0], item.media[0]);
-    } else await assert.rejects(save);
-    assert.deepEqual(filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'i'], ['media', JSON.stringify(item.media)]]);
+  const item = storageItem(), latest = structuredClone(item);
+  latest.media.push({ kind: 'image', url: 'new-photo', metadata: 'x'.repeat(100000) });
+  latest.media[1].instagram_publications = [{ status: 'published', permalink: 'keep-live-post' }];
+  latest.media[1].verification.checked_at = 'new-check';
+  const db = storageHarness(latest);
+  const saved = await m.saveEventContent(db.client, 'w', item, m.prepareContent(item.media[1], { title: 'Nieuw', description: '' }, at), '');
+  assert.equal(saved.body, '');
+  assert.equal(saved.media[1].common.title, 'Nieuw');
+  assert.deepEqual(saved.media[0], latest.media[0]);
+  assert.deepEqual(saved.media[2], latest.media[2]);
+  assert.deepEqual(saved.media[1].instagram_publications, latest.media[1].instagram_publications);
+  assert.deepEqual(saved.media[1].verification, latest.media[1].verification);
+  assert.equal(db.writes.length, 1);
+  assert.equal(saved.updated_at, db.row().updated_at);
+});
+
+test('version races retry boundedly and preserve changes that arrived after the read', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js'), item = storageItem();
+  for (const miss of [1, 3]) {
+    const db = storageHarness(item, { miss, onMiss: row => { row.media[1].instagram_publications = ['still-published']; } });
+    const save = m.saveEventContent(db.client, 'w', item, m.prepareContent(item.media[1], { title: 'Nieuw', description: 'new' }, at), 'new');
+    if (miss === 3) await assert.rejects(save, /intussen gewijzigd/);
+    else assert.deepEqual((await save).media[1].instagram_publications, ['still-published']);
+    assert.equal(db.writes.length, miss === 3 ? 3 : 2);
   }
+});
+
+test('content, destination and body conflicts fail closed without a write', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js');
+  for (const mutate of [
+    row => { row.media[1].common.title = 'Someone else'; },
+    row => { row.media[1].common.description = 'Other description'; },
+    row => { row.media[1].eventin_event_id = '999'; },
+    row => { row.media[1].facebook_event_delivery.external_id = '999'; },
+    row => { row.media[1].duplicate_of = 'merged'; },
+    row => { row.body = 'Someone else'; },
+    row => { delete row.updated_at; },
+    row => { row.media.push(base()); },
+    row => { row.business_id = 'other'; },
+  ]) {
+    const item = storageItem(), latest = structuredClone(item);
+    mutate(latest);
+    const db = storageHarness(latest);
+    await assert.rejects(m.saveEventContent(db.client, 'w', item, m.prepareContent(item.media[1], { title: 'Nieuw', description: 'new' }, at), 'new'), /intussen gewijzigd/);
+    assert.equal(db.writes.length, 0);
+  }
+});
+
+test('read denial, write denial and concurrent changes to the same delivery are not overwritten', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js');
+  for (const options of [{ readError: true }, { denied: true }]) {
+    const item = storageItem(), db = storageHarness(item, options);
+    await assert.rejects(m.saveEventContent(db.client, 'w', item, m.prepareContent(item.media[1], { title: 'Nieuw', description: 'new' }, at)), /niet worden gecontroleerd|mislukt/);
+    assert.equal(db.writes.length, options.readError ? 0 : 1);
+    assert.equal(db.row().media[1].common.title, 'Avond');
+  }
+  const item = storageItem();
+  item.media[1].event_content_delivery = { facebook: { status: 'ready' } };
+  const latest = structuredClone(item);
+  latest.media[1].event_content_delivery.facebook.status = 'manual_confirmed';
+  const desired = structuredClone(item.media[1]);
+  desired.event_content_delivery.facebook.status = 'failed';
+  const db = storageHarness(latest);
+  await assert.rejects(m.saveEventContent(db.client, 'w', item, desired), /intussen gewijzigd/);
+  assert.equal(db.writes.length, 0);
+});
+
+test('JSON key order does not create a false concurrent-content conflict', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js'), item = storageItem();
+  const latest = structuredClone(item);
+  latest.media[1].common = Object.fromEntries(Object.entries(latest.media[1].common).reverse());
+  const db = storageHarness(latest);
+  const saved = await m.saveEventContent(db.client, 'w', item, m.prepareContent(item.media[1], { title: 'Nieuw', description: 'new' }, at));
+  assert.equal(saved.media[1].common.title, 'Nieuw');
+});
+
+test('real Supabase query builder sends a short scoped PATCH URL with large media only in its body', async () => {
+  await swc.loadBindings();
+  const { createClient } = require('@supabase/supabase-js');
+  const { saveEventContent, prepareContent } = load('lib/manual-event-content.js');
+  const item = storageItem();
+  item.media.push({ kind: 'image', metadata: 'x'.repeat(100000) });
+  const requests = [];
+  const client = createClient('https://database.example.test', 'test-key', {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (url, options) => {
+      requests.push({ url: String(url), options });
+      return new Response(JSON.stringify(options.method === 'PATCH' ? { id: item.id, updated_at: at } : item), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    } },
+  });
+  await saveEventContent(client, 'w', item, prepareContent(item.media[1], { title: 'Nieuw', description: 'new' }, at), 'new');
+  assert.equal(requests.length, 2);
+  const patch = requests[1], url = new URL(patch.url);
+  assert.equal(patch.options.method, 'PATCH');
+  assert.ok(patch.url.length < 500);
+  assert.equal(url.searchParams.get('updated_at'), 'eq.' + item.updated_at);
+  assert.equal(url.searchParams.get('workspace_id'), 'eq.w');
+  assert.equal(url.searchParams.get('business_id'), 'eq.b');
+  assert.equal(url.searchParams.get('id'), 'eq.i');
+  assert.equal(url.searchParams.has('media'), false);
+  assert.equal(JSON.parse(patch.options.body).media[2].metadata.length, 100000);
 });
 
 test('legacy delivery IDs become event links only after an exact successful event comparison', async () => {
