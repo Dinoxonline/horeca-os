@@ -42,18 +42,24 @@ test('Instagram formats validate media count, captions, URLs and native containe
   for (const url of ['http://example.com/a.jpg', 'https://user:pass@example.com/a.jpg', 'https://127.0.0.1/a.jpg']) assert.throws(() => validate({ format: 'feed', assets: [{ ...photo, url }] }));
 });
 
-async function routeHarness({ denied = false, publishFailure = false, businessType = 'BUSINESS' } = {}) {
-  const campaign = { id: 'c', business_id: 'b', media: [{ kind: 'image', url: 'keep' }, { kind: 'campaign_distribution', common: { title: 'Keep title' }, provider_delivery: { facebook: { status: 'confirmed' } } }] };
+async function routeHarness({ denied = false, publishFailure = false, businessType = 'BUSINESS', largeMedia = false, storageError = false, conflictOnce = false, noVersion = false } = {}) {
+  let revision = 1;
+  const campaign = { id: 'c', business_id: 'b', updated_at: noVersion ? null : '2026-09-25T07:00:00.000001+00:00', media: [{ kind: 'image', url: 'keep' }, { kind: 'campaign_distribution', common: { title: 'Keep title', ...(largeMedia ? { description: 'Flyer 🎉 '.repeat(3000) } : {}) }, provider_delivery: { facebook: { status: 'confirmed' } } }] };
   const account = { id: 'a', external_account_id: 'ig', display_name: 'venue', connection_status: 'connected', granted_scopes: ['instagram_business_content_publish'] };
-  const calls = [];
+  const calls = [], updates = [];
   function query(table) {
     const filters = {}; let patch;
     const result = () => {
       if (table === 'social_content_items') {
         if (filters.workspace_id !== 'w' || filters.business_id !== 'b' || filters.id !== 'c') return { data: null };
         if (patch) {
-          if (filters.media !== JSON.stringify(campaign.media)) return { data: null };
+          updates.push({ ...filters });
+          if (new URLSearchParams(filters).toString().length > 8192) return { data: null, error: { code: '', message: 'URI too long' }, status: 414 };
+          if (storageError) return { data: null, error: { code: '42501', message: 'hidden database details' }, status: 403 };
+          if (conflictOnce) { conflictOnce = false; campaign.media[1].provider_delivery.facebook.checked_at = 'newer background check'; campaign.updated_at = `2026-09-25T07:00:00.${String(++revision).padStart(6, '0')}+00:00`; return { data: null }; }
+          if (Object.hasOwn(filters, 'media') ? filters.media !== JSON.stringify(campaign.media) : filters.updated_at !== campaign.updated_at) return { data: null };
           campaign.media = patch.media;
+          campaign.updated_at = `2026-09-25T07:00:00.${String(++revision).padStart(6, '0')}+00:00`;
           return { data: { id: 'c' } };
         }
         return { data: structuredClone(campaign) };
@@ -94,8 +100,35 @@ async function routeHarness({ denied = false, publishFailure = false, businessTy
     const response = await route.POST(new Request('https://app.example/api', { method: 'POST', headers: { Authorization: 'Bearer user-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId: 'w', businessId: 'b', campaignId: 'c', format: 'feed', action, ...extra }) }));
     return { status: response.status, ...await response.json() };
   }
-  return { post, calls, campaign, route };
+  return { post, calls, campaign, route, updates };
 }
+
+test('large campaign media never enters the status-update URL and background edits survive retries', async () => {
+  const h = await routeHarness({ largeMedia: true, conflictOnce: true });
+  const prepared = await h.post('prepare', { accountId: 'a', draft: { assets: [photo], caption: 'Keep my caption' } });
+  assert.equal(prepared.status, 200, prepared.error);
+  assert.equal(prepared.job.status, 'processing');
+  assert.equal(h.campaign.media[1].provider_delivery.facebook.checked_at, 'newer background check');
+  for (const update of h.updates) {
+    assert.equal(Object.hasOwn(update, 'media'), false);
+    assert.match(update.updated_at, /\.\d{6}\+00:00$/);
+    assert.ok(new URLSearchParams(update).toString().length < 250);
+  }
+  const discarded = await h.post('discard', { operationId: prepared.job.operation_id });
+  assert.equal(discarded.status, 200);
+  assert.deepEqual(discarded.job.draft, prepared.job.draft);
+  assert.equal(h.calls.filter(call => call.url.endsWith('/media_publish')).length, 0);
+});
+
+test('missing row version or a denied status save never starts an Instagram write', async () => {
+  for (const options of [{ noVersion: true }, { storageError: true }]) {
+    const h = await routeHarness(options);
+    const result = await h.post('prepare', { accountId: 'a', draft: { assets: [photo] } });
+    assert.notEqual(result.status, 200);
+    assert.equal(h.calls.filter(call => call.method === 'POST').length, 0);
+    assert.ok(!result.error.includes('hidden database details'));
+  }
+});
 
 test('prepare, readiness and explicit publication are separate; concurrent clicks publish once', async () => {
   const h = await routeHarness();
@@ -153,6 +186,42 @@ test('Instagram composer exposes all four formats without automatic network or p
     await React.act(async () => selector.props.onChange({ target: { value: 'reel' } }));
     assert.equal(calls, 0, 'format changes do not publish');
     assert.equal(renderer.root.findAllByProps({ type: 'file' }).length, 0, 'unsupported local video upload is not offered');
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('a stranded preparation can be restored with its exact photo and caption, without preparing or publishing', async () => {
+  const calls = [];
+  const saved = { status: 'preparing', operation_id: 'old-operation', account_id: 'a', account_name: 'venue', draft: { format: 'feed', caption: 'My edited caption', assets: [photo], shareToFeed: false } };
+  let job = structuredClone(saved), renderer;
+  global.fetch = async (_url, options) => {
+    const body = options.body && JSON.parse(options.body); calls.push(body?.action || 'read');
+    if (body) {
+      assert.equal(body.action, 'discard'); assert.equal(body.operationId, 'old-operation');
+      job = { ...job, status: 'draft', operation_id: 'new-operation', container_id: null };
+      return { ok: true, json: async () => ({ job }) };
+    }
+    return { ok: true, json: async () => ({ account: { id: 'a', name: 'venue' }, publications: { feed: job } }) };
+  };
+  const Component = (await load('components/instagram-event-publisher.js')).default;
+  const item = { id: 'c', business_id: 'b', media: [{ kind: 'campaign_distribution', instagram_publications: { feed: saved } }] };
+  const button = label => renderer.root.findAllByType('button').find(b => b.props.children === label);
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item, workspaceId: 'w' })); });
+  try {
+    const label = 'Voorbereiding herstellen — niet publiceren';
+    assert.equal(button(label).props.disabled, true, 'check the destination first');
+    await React.act(async () => button('Instagram-account controleren').props.onClick());
+    assert.equal(button(label).props.disabled, false);
+    await React.act(async () => button(label).props.onClick());
+    assert.equal(renderer.root.findByType('textarea').props.value, saved.draft.caption);
+    assert.equal(renderer.root.findByProps({ className: 'instagramAsset' }).findByType('img').props.src, photo.url);
+    assert.deepEqual(calls, ['read', 'discard']);
+    assert.equal(button('Voorbeeld klaarzetten — nog niet publiceren').props.disabled, false);
+    await React.act(async () => renderer.unmount());
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item: { ...item, media: [] }, workspaceId: 'w' })); });
+    await React.act(async () => button('Instagram-account controleren').props.onClick());
+    assert.equal(renderer.root.findByType('textarea').props.value, saved.draft.caption, 'the persisted recovery draft can be reloaded');
+    assert.equal(renderer.root.findByProps({ className: 'instagramAsset' }).findByType('img').props.src, photo.url);
+    assert.deepEqual(calls, ['read', 'discard', 'read']);
   } finally { await React.act(async () => renderer.unmount()); }
 });
 

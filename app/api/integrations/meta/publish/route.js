@@ -37,7 +37,7 @@ async function contextFor(request, input) {
 }
 
 async function readCampaign(ctx) {
-  const { data, error } = await ctx.admin.from("social_content_items").select("id,business_id,media")
+  const { data, error } = await ctx.admin.from("social_content_items").select("id,business_id,media,updated_at")
     .eq("workspace_id", ctx.workspaceId).eq("business_id", ctx.businessId).eq("id", ctx.campaignId).maybeSingle();
   if (error || !data || !distributionOf(data)) throw new Error("Dit evenement is niet toegankelijk.");
   return data;
@@ -54,10 +54,19 @@ async function updateJob(ctx, format, expectedId, next) {
     const job = typeof next === "function" ? next(old) : next;
     const updated = { ...distribution, instagram_publications: { ...distribution.instagram_publications, [format]: job } };
     const media = row.media.map(entry => entry?.kind === "campaign_distribution" ? updated : entry);
-    const { data, error } = await ctx.admin.from("social_content_items").update({ media })
+    // The database trigger advances updated_at on every write. Preserve its exact
+    // microsecond value: serializing all media into a REST filter can exceed URL
+    // limits as soon as the draft/caption is added. Never drop the CAS guard.
+    if (!row.updated_at || typeof row.updated_at !== "string") throw new Error("De evenementversie ontbreekt. De publicatiestatus is niet gewijzigd; ververs de agenda.");
+    const { data, error, status } = await ctx.admin.from("social_content_items").update({ media })
       .eq("workspace_id", ctx.workspaceId).eq("business_id", ctx.businessId).eq("id", ctx.campaignId)
-      .eq("media", JSON.stringify(row.media)).select("id").maybeSingle();
-    if (error) throw new Error("De publicatiestatus kon niet veilig worden opgeslagen.");
+      .eq("updated_at", row.updated_at).select("id").maybeSingle();
+    if (error) {
+      // Do not log event text, URLs, database error details or credentials.
+      const code = /^[A-Z0-9_]{1,20}$/.test(error.code || "") ? error.code : "unknown";
+      console.error("[instagram-publication] status_save_failed", { format, code, httpStatus: status || null, attempt: attempt + 1 });
+      throw new Error("De publicatiestatus kon niet veilig worden opgeslagen. Ververs eerst de accountstatus; start geen nieuwe publicatie.");
+    }
     if (data?.id) return job;
   }
   throw new Error("Het evenement wordt elders bijgewerkt. Probeer de status later opnieuw.");
@@ -179,7 +188,12 @@ export async function POST(request) {
   } catch (error) {
     if (acquired && job) {
       const status = body.action === "publish" ? "unknown" : "failed";
-      try { job = await updateJob(ctx, body.format, job.operation_id, { ...job, status, error: status === "unknown" ? "Controleer Instagram en de status. Niet opnieuw publiceren: het bericht kan al geplaatst zijn." : "Voorbereiden mislukt. Controleer je media en probeer opnieuw." }); } catch {}
+      try { job = await updateJob(ctx, body.format, job.operation_id, current => {
+        if (current.status === "published") return current;
+        // A simultaneous status check may have advanced this same operation.
+        if (body.action === "prepare" && current.status !== "preparing") return current;
+        return { ...current, status, error: status === "unknown" ? "Controleer Instagram en de status. Niet opnieuw publiceren: het bericht kan al geplaatst zijn." : "Voorbereiden mislukt. Controleer je media en probeer opnieuw." };
+      }); } catch {}
     }
     return NextResponse.json({ error: acquired && body.action === "publish" ? "De publicatie-uitkomst is onzeker. Controleer Instagram; plaats niet opnieuw." : error.message, ...(acquired ? { job } : {}) }, { status: 502 });
   }

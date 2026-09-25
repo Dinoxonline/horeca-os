@@ -58,6 +58,10 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
   function loadStatus() {
     return run("Account en status laden…", async () => {
       const result = await request();
+      const savedDraft = result.publications?.[format];
+      if (!loaded && assets.length === 0 && ["draft", "failed"].includes(savedDraft?.status) && savedDraft.draft) {
+        setCaption(savedDraft.draft.caption || ""); setAssets(savedDraft.draft.assets || []); setShareToFeed(savedDraft.draft.shareToFeed === true);
+      }
       setAccount(result.account); setWarning(result.warning || ""); setJobs(result.publications || {}); setLoaded(true);
     });
   }
@@ -129,6 +133,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
     </div>}
     <div className="instagramPublishStatus">
       <strong>{instagramJobLabel(job)}</strong>
+      {job?.status === "preparing" && !job.container_id && !busy && <p>De voorbereiding is nog niet afgerond. Blijft dit na het verversen van de accountstatus zo? Kies ‘Voorbereiding herstellen’. Je gekozen foto en tekst blijven bewaard. Dit plaatst niets op Instagram.</p>}
       {job?.error && <p>{job.error}</p>}
       {!locked && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning || !account} onClick={() => run("Media klaarzetten bij Instagram…", async () => {
         // Validate the whole draft before saving any local JPEG copies.
@@ -160,7 +165,8 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       {locked && ["preparing", "processing", "ready"].includes(job.status) && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Voorbereiding vrijgeven…", async () => {
         await request("discard", { operationId: job.operation_id });
         setCaption(job.draft.caption); setAssets(job.draft.assets); setShareToFeed(job.draft.shareToFeed);
-      })}>Voorbereiding aanpassen — niet publiceren</button>}
+        setMessage("Voorbereiding hersteld. Je foto en tekst staan hieronder klaar. Controleer het voorbeeld en kies opnieuw ‘Voorbeeld klaarzetten’. Er is niets gepubliceerd.");
+      })}>{job.status === "preparing" && !job.container_id ? "Voorbereiding herstellen — niet publiceren" : "Voorbereiding aanpassen — niet publiceren"}</button>}
       {job?.status === "ready" && <div>
         <label className="instagramCheck"><input type="checkbox" checked={confirmed} disabled={!!busy} onChange={event => setConfirmed(event.target.checked)} />Ik wil dit voorbereide bericht nu plaatsen op @{job.account_name}.</label>
         <button type="button" className="primaryButton" disabled={!!busy || !confirmed || !loaded || !!warning} onClick={() => run("Publiceren op Instagram…", () => request("publish", { confirm: true, operationId: job.operation_id }))}>Nu publiceren op Instagram</button>
