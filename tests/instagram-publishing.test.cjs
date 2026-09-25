@@ -167,7 +167,8 @@ test('event media includes stored image profiles, videos and linked sources with
   assert.equal(media.filter(asset => asset.url === photo.url).length, 1);
   assert.equal(media.find(asset => asset.url === video.url).type, 'video');
   assert.equal(media.find(asset => asset.url.endsWith('/clip')).type, 'video');
-  assert.match(media.find(asset => asset.url.endsWith('.png')).issue, /JPG/);
+  assert.equal(media.find(asset => asset.url.endsWith('.png')).issue, '');
+  assert.equal(media.find(asset => asset.url.endsWith('.png')).needsJpeg, true);
   assert.ok(media.some(asset => asset.label.includes('Gekoppeld Facebook')));
   assert.ok(media.every(asset => !asset.url.includes('private') && asset.url.startsWith('https://')));
   assert.equal(media.length, 7);
@@ -199,6 +200,107 @@ test('stored event media can be selected when sources arrive, without upload, du
     assert.equal(renderer.root.findByProps({ className: 'instagramAsset' }).findByType('video').props.src, video.url);
     assert.equal(calls, 0, 'selection does not upload, query or publish');
   } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('PNG selection makes a local JPEG preview, saves only on prepare, never publishes and deduplicates retries', async () => {
+  const calls = []; let conversions = 0, uploads = 0, renderer;
+  const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
+  const Component = (await load('components/instagram-event-publisher.js', {
+    '../lib/instagram-photo': {
+      prepareInstagramPhoto: async () => { conversions++; return { blob: jpeg, width: 1080, height: 1350 }; },
+      uploadInstagramPhoto: async (blob, scope) => { uploads++; assert.equal(blob, jpeg); assert.deepEqual(scope, { workspaceId: 'w', businessId: 'b', campaignId: 'c' }); return photo.url; },
+    },
+  })).default;
+  global.fetch = async (url, options) => {
+    const body = options.body && JSON.parse(options.body); calls.push(body?.action || 'status');
+    if (body) { assert.equal(body.draft.assets[0].url, photo.url); return { ok: false, json: async () => ({ error: 'Test: preparation failed before publication' }) }; }
+    return { ok: true, json: async () => ({ account: { id: 'a', name: 'venue' }, publications: {} }) };
+  };
+  const item = { id: 'c', business_id: 'b', media: [{ kind: 'image', url: 'https://images.example.com/poster.png' }] };
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item, workspaceId: 'w' })); });
+  const button = text => renderer.root.findAllByType('button').find(b => b.props.children === text);
+  try {
+    assert.equal(button('Deze foto gebruiken').props.disabled, false);
+    await React.act(async () => button('Deze foto gebruiken').props.onClick());
+    assert.equal(conversions, 1); assert.equal(uploads, 0); assert.deepEqual(calls, []);
+    assert.ok(renderer.root.findByProps({ className: 'instagramAsset' }).findByType('img').props.src.startsWith('blob:'));
+    assert.equal(button('Gekozen').props.disabled, true);
+    await React.act(async () => button('Gekozen').props.onClick());
+    assert.equal(conversions, 1);
+    await React.act(async () => button('Instagram-account controleren').props.onClick());
+    await React.act(async () => button('Voorbeeld klaarzetten — nog niet publiceren').props.onClick());
+    await React.act(async () => button('Voorbeeld klaarzetten — nog niet publiceren').props.onClick());
+    assert.equal(uploads, 1, 'reuse the saved JPEG after a failed preparation');
+    assert.deepEqual(calls, ['status', 'prepare', 'prepare']);
+    for (const format of ['feed', 'carousel', 'story', 'reel']) {
+      await React.act(async () => renderer.root.findByType('select').props.onChange({ target: { value: format } }));
+      const help = renderer.root.findByProps({ className: 'instagramFormatHelp' });
+      const text = n => typeof n === 'string' ? n : (n.children || []).map(text).join(' ');
+      assert.match(text(help), format === 'feed' || format === 'carousel' ? /1080 × 1350/ : /1080 × 1920/);
+    }
+    assert.equal(button('Deze foto gebruiken').props.disabled, true, 'a photo cannot become a reel');
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('failed PNG conversion displays an error and leaves no selected photo or upload', async () => {
+  let renderer, uploads = 0;
+  const Component = (await load('components/instagram-event-publisher.js', {
+    '../lib/instagram-photo': { prepareInstagramPhoto: async () => { throw new Error('Foto niet leesbaar'); }, uploadInstagramPhoto: async () => { uploads++; } },
+  })).default;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item: { id: 'c', media: [{ kind: 'image', url: 'https://images.example.com/a.webp' }] } })); });
+  try {
+    const choice = () => renderer.root.findAllByType('button').find(b => b.props.children === 'Deze foto gebruiken');
+    await React.act(async () => choice().props.onClick());
+    assert.equal(renderer.root.findByProps({ role: 'alert' }).props.children, 'Foto niet leesbaar');
+    assert.equal(renderer.root.findAllByProps({ className: 'instagramAsset' }).length, 0);
+    assert.equal(choice().props.disabled, false); assert.equal(uploads, 0);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('JPEG conversion preserves the complete image, paints transparency white and rejects unsupported/oversize sources', async () => {
+  const originalWindow = global.window, originalDocument = global.document;
+  const drawn = [], revoked = [];
+  const originalRevoke = URL.revokeObjectURL;
+  URL.revokeObjectURL = value => { revoked.push(value); originalRevoke.call(URL, value); };
+  const { prepareInstagramPhoto: convert } = await load('lib/instagram-photo.js');
+  const source = { type: 'image/png' };
+  global.fetch = async (url, options) => {
+    assert.equal(options.credentials, 'omit'); assert.equal(options.mode, 'cors');
+    return { ok: true, headers: new Headers(), blob: async () => new Blob(['image'], { type: source.type }) };
+  };
+  global.window = { Image: class { naturalWidth = 2160; naturalHeight = 2700; set src(value) { if (value) queueMicrotask(() => this.onload?.()); } } };
+  const context = { fillRect: (...args) => drawn.push(['background', context.fillStyle, ...args]), drawImage: (...args) => drawn.push(['draw', ...args.slice(1)]) };
+  global.document = { createElement: () => ({ getContext: () => context, toBlob: (callback, type) => callback(new Blob(['jpeg'], { type })) }) };
+  try {
+    const result = await convert({ url: photo.url });
+    assert.equal(result.blob.type, 'image/jpeg'); assert.equal(result.width, 1440); assert.equal(result.height, 1800);
+    assert.deepEqual(drawn, [['background', '#ffffff', 0, 0, 1440, 1800], ['draw', 0, 0, 1440, 1800]]);
+    assert.equal(revoked.length, 1);
+    source.type = 'image/gif'; await assert.rejects(() => convert({ url: photo.url }), /ondersteunde foto/);
+    global.fetch = async () => ({ ok: true, headers: new Headers({ 'content-length': String(11 * 1024 * 1024) }) });
+    await assert.rejects(() => convert({ url: photo.url }), /10 MB/);
+    global.fetch = async () => { throw new Error('CORS'); };
+    await assert.rejects(() => convert({ url: photo.url }), /niet bereikbaar/);
+  } finally { global.window = originalWindow; global.document = originalDocument; URL.revokeObjectURL = originalRevoke; }
+});
+
+test('JPEG storage uses event-scoped paths, insert-only uploads and never bypasses denied access', async () => {
+  const calls = []; let denied = false;
+  const { uploadInstagramPhoto: upload } = await load('lib/instagram-photo.js', {
+    './supabase': { supabase: { storage: { from: bucket => {
+      assert.equal(bucket, 'marketing-assets');
+      return { upload: async (path, blob, options) => { calls.push({ path, blob, options }); return { error: denied ? { message: 'Permission denied' } : null }; }, getPublicUrl: path => ({ data: { publicUrl: `https://images.example.com/${path}` } }) };
+    } } } },
+  });
+  const blob = new Blob(['jpeg'], { type: 'image/jpeg' });
+  const scope = { workspaceId: 'workspace', businessId: 'venue', campaignId: 'event' };
+  assert.match(await upload(blob, scope), /^https:\/\/images.example.com\/workspace\/venue\/instagram-event-.*\.jpg$/);
+  assert.equal(calls[0].options.upsert, false); assert.equal(calls[0].options.contentType, 'image/jpeg');
+  await assert.rejects(() => upload(blob, { ...scope, businessId: '../other' }), /ontbreekt/);
+  await assert.rejects(() => upload(new Blob(['png'], { type: 'image/png' }), scope), /niet geschikt/);
+  assert.equal(calls.length, 1);
+  denied = true; await assert.rejects(() => upload(blob, scope), /Permission denied/);
+  assert.equal(calls.length, 2, 'no privileged fallback or automatic retry');
 });
 
 test('all publication formats create the correct containers, without publishing', async () => {
