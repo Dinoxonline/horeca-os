@@ -291,7 +291,7 @@ test('duplicate review stays below facts and status, identifies all rows and onl
     await React.act(async () => choose('Teksten combineren').props.onClick());
     assert.equal(form().findByType('textarea').props.value, 'Huidige tekst\n\nTweede concept');
     assert.deepEqual(calls, []);
-    await React.act(async () => choose('Deze twee agendapunten samenvoegen').props.onClick());
+    await React.act(async () => choose('Samenvoegen in Horeca OS').props.onClick());
     assert.equal(calls.length, 1);
     assert.equal(calls[0][0], 'merge');
     assert.equal(calls[0][1].description, 'Huidige tekst\n\nTweede concept');
@@ -303,6 +303,81 @@ test('duplicate review stays below facts and status, identifies all rows and onl
     assert.deepEqual(duplicateChannelReferences(event('post', 'Post', '', { provider_delivery: { facebook: { external_id: '123_456' } } })), { website: '', facebook: '' }, 'a post ID is not an event link');
     assert.deepEqual(duplicateChannelReferences(event('imported', 'Imported', '', { source_type: 'eventin_event', external_source: 'eventin', external_id: '321' })), { website: '321', facebook: '' });
   } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('every compare click opens and focuses the text comparison, including the already selected candidate', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = id => ({ id, media: [{ kind: 'campaign_distribution', common: { title: 'Arabian Night', description: id } }] });
+  const current = item('current'), first = item('first'), second = item('second');
+  let selected = first, renderer;
+  const panels = [], focus = [], scroll = [], selections = [];
+  const props = () => ({ item: current, matchItem: selected, sameDayItems: [first, second], onClose() {}, onChooseMatch(candidate) { selections.push(candidate.id); selected = candidate; renderer.update(React.createElement(EventDetails, props())); } });
+  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props()), { createNodeMock(element) {
+    if (element.props.className !== 'marketingDetailFold marketingDuplicateTexts') return null;
+    const panel = { open: false, querySelector() { return { focus: value => focus.push(value), scrollIntoView: value => scroll.push(value) }; } };
+    panels.push(panel); return panel;
+  } }); });
+  const compareButtons = () => renderer.root.findAllByType('button').filter(button => button.props.children === 'Vergelijk teksten');
+  try {
+    assert.equal(panels.at(-1).open, false);
+    await React.act(async () => compareButtons()[0].props.onClick());
+    assert.equal(panels.at(-1).open, true);
+    panels.at(-1).open = false;
+    await React.act(async () => compareButtons()[0].props.onClick());
+    assert.equal(panels.at(-1).open, true, 'selected button still does something useful');
+    await React.act(async () => compareButtons()[1].props.onClick());
+    assert.equal(panels.at(-1).open, true, 'newly rendered comparison is also expanded');
+    assert.deepEqual(selections, ['first', 'first', 'second']);
+    assert.equal(focus.length, 3);
+    assert.ok(scroll.every(value => value.block === 'start'));
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+for (const failedSave of [0, 1, 2]) test(`merge workflow reports its local outcome without a website call: ${failedSave}`, async () => {
+  const start = new Date().toISOString();
+  const campaign = id => ({ id, business_id: 'b', published_at: id === 'keep' ? start : null, media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Arabian Night', description: id, start } }] });
+  const campaigns = [campaign('keep'), campaign('duplicate')], writes = [], requests = [];
+  const supabase = { from() {
+    const write = { filters: [] }; let query;
+    query = new Proxy({}, { get(_, key) {
+      if (key === 'then') return (resolve, reject) => Promise.resolve({ data: campaigns }).then(resolve, reject);
+      if (key === 'update') return value => { write.value = value; return query; };
+      if (key === 'eq') return (key, value) => { write.filters.push([key, value]); return query; };
+      if (key === 'maybeSingle') return async () => { writes.push(write); return writes.length === failedSave ? { error: new Error('Save failed') } : { data: { id: write.filters.find(([key]) => key === 'id')[1] } }; };
+      return () => query;
+    } }); return query;
+  } };
+  const originalFetch = global.fetch;
+  global.fetch = async (...args) => { requests.push(args); throw new Error('Unexpected external request'); };
+  const Marketing = (await load('components/marketing-overview.js', { '../lib/supabase': { supabase } })).default;
+  let renderer;
+  const text = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(text).join('') : node?.children ? text(node.children) : '';
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Marketing, { workspaceId: 'w', businesses: [{ id: 'b', name: 'Caribbean Corner' }] })); });
+    await flush();
+    const buttons = () => renderer.root.findAllByType('button');
+    await React.act(async () => buttons().find(button => button.props.className?.includes('marketingCalendarEvent')).props.onClick());
+    assert.equal(writes.length, 0);
+    await React.act(async () => buttons().find(button => button.props.children === 'Samenvoegen in Horeca OS').props.onClick());
+    assert.equal(writes.length, failedSave === 1 ? 1 : 2);
+    assert.equal(requests.length, 0, 'neither website nor Facebook is contacted');
+    const notice = renderer.root.findAll(node => node.type === 'div' && node.props.className?.startsWith('marketingMergeNotice'))[0];
+    assert.ok(notice);
+    assert.match(text(notice), /Website en Facebook zijn niet gewijzigd/);
+    const events = buttons().filter(button => button.props.className?.includes('marketingCalendarEvent'));
+    if (!failedSave) {
+      assert.equal(events.length, 1);
+      assert.match(text(notice), /Samengevoegd in Horeca OS/);
+      assert.equal(notice.props.role, 'status');
+      assert.equal(renderer.root.findAllByProps({ role: 'dialog' }).length, 1, 'retained event stays open');
+      assert.ok(buttons().some(button => button.props.children === 'Website bijwerken'));
+    } else {
+      assert.equal(events.length, 2, 'unconfirmed merge is not hidden optimistically');
+      assert.equal(notice.props.role, 'alert');
+      assert.equal(buttons().find(button => button.props.children === 'Samenvoegen in Horeca OS').props.disabled, true, 'uncertain outcome cannot be blindly retried');
+      if (failedSave === 2) assert.match(text(notice), /gekozen tekst is opgeslagen/);
+    }
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); global.fetch = originalFetch; }
 });
 
 test('channel tiles open and focus their own editor without saving or publishing', async () => {

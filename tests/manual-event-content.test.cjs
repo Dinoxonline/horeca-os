@@ -20,6 +20,55 @@ function load(file, mocks = {}) {
 const base = () => ({ kind: 'campaign_distribution', common: { title: 'Avond', description: 'Tekst\n🎵', start: '2026-10-01' }, eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, verification: { channels: { facebook: { status: 'reachable' } } } });
 const at = '2026-09-24T15:00:00.000Z';
 
+for (const failure of ['', 'first', 'second', 'zero']) test(`local merge verifies both saves and never publishes: ${failure || 'success'}`, async () => {
+  await swc.loadBindings();
+  const { saveLocalEventMerge } = load('lib/local-event-merge.js');
+  const keep = { id: 'keep', business_id: 'b', media: [{ kind: 'photo', url: '/unchanged.jpg' }, base()] };
+  const duplicate = { id: 'duplicate', business_id: 'b', media: [base()] };
+  const merged = { ...base(), common: { ...base().common, title: 'Chosen title' } };
+  const writes = [];
+  const client = { from(table) {
+    assert.equal(table, 'social_content_items');
+    const write = { filters: [] };
+    const query = { update(value) { write.value = value; return query; }, eq(key, value) { write.filters.push([key, value]); return query; }, select(value) { assert.equal(value, 'id'); return query; }, async maybeSingle() {
+      writes.push(write);
+      if ((failure === 'first' && writes.length === 1) || (failure === 'second' && writes.length === 2)) return { error: new Error('Database failure') };
+      if (failure === 'zero') return { data: null };
+      return { data: { id: write.filters.find(([key]) => key === 'id')[1] } };
+    } };
+    return query;
+  } };
+  const originalFetch = global.fetch;
+  global.fetch = async () => { throw new Error('Publishing is forbidden during local merge'); };
+  try {
+    if (failure) await assert.rejects(saveLocalEventMerge(client, 'w', keep, duplicate, merged), error => {
+      assert.match(error.message, /Website en Facebook zijn niet gewijzigd/);
+      if (failure === 'second') {
+        assert.match(error.message, /gekozen tekst is opgeslagen/);
+        assert.equal(error.savedItem.media[1].common.title, 'Chosen title');
+      } else assert.equal(error.savedItem, undefined);
+      return true;
+    });
+    else {
+      const saved = await saveLocalEventMerge(client, 'w', keep, duplicate, merged);
+      assert.equal(saved.id, keep.id);
+      assert.equal(saved.media[0], keep.media[0], 'unrelated artwork is preserved');
+      assert.equal(saved.media[1].common.title, 'Chosen title');
+    }
+    assert.equal(writes.length, ['first', 'zero'].includes(failure) ? 1 : 2);
+    assert.deepEqual(writes[0].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'keep'], ['media', JSON.stringify(keep.media)]]);
+    assert.equal(writes[0].value.media[1].duplicate_of, undefined, 'retained text is saved before hiding another item');
+    if (writes[1]) {
+      assert.equal(writes[1].value.media[0].duplicate_of, 'keep');
+      assert.deepEqual(writes[1].filters, [['workspace_id', 'w'], ['business_id', 'b'], ['id', 'duplicate'], ['media', JSON.stringify(duplicate.media)]]);
+    }
+    const count = writes.length;
+    await assert.rejects(saveLocalEventMerge(client, 'w', keep, { ...duplicate, business_id: 'other' }, merged), /dezelfde vestiging/);
+    await assert.rejects(saveLocalEventMerge(client, 'w', keep, keep, merged), /verschillende agendapunten/);
+    assert.equal(writes.length, count);
+  } finally { global.fetch = originalFetch; }
+});
+
 test('content versions invalidate manual confirmations, independently of website and link health', async () => {
   await swc.loadBindings();
   const m = load('lib/manual-event-content.js');
