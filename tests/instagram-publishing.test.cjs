@@ -336,6 +336,76 @@ test('a status error is shown beside the final step and cannot enable publicatio
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('local Instagram preview supports every format, plain captions, carousel navigation and media failure without API calls', async () => {
+  const Preview = (await load('components/instagram-post-preview.js')).default;
+  let renderer, calls = 0;
+  global.fetch = async () => { calls++; throw new Error('Preview must not call the API'); };
+  const text = n => typeof n === 'string' ? n : (n.children || []).map(text).join(' ');
+  const props = { businessName: 'Venue', accountName: 'venue', draft: { format: 'feed', caption: '<b>Literal caption</b>\nSecond line', assets: [photo] } };
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Preview, props)); });
+  try {
+    assert.equal(renderer.root.findByType('img').props.src, photo.url);
+    assert.match(text(renderer.root.findByProps({ className: 'igMockCaption ' })), /<b>Literal caption<\/b>/);
+    assert.equal(renderer.root.findAllByType('b').length, 0, 'caption is not interpreted as HTML');
+    assert.match(text(renderer.root), /geen live Instagram-bericht/);
+    const button = label => renderer.root.findAllByType('button').find(b => b.props['aria-label'] === label || b.props.children === label);
+    await React.act(async () => button('Volledig bijschrift bekijken').props.onClick());
+    assert.equal(button('Minder tekst').props['aria-expanded'], true);
+    const carousel = { ...props, draft: { format: 'carousel', caption: 'Carousel text', assets: [photo, video] } };
+    await React.act(async () => renderer.update(React.createElement(Preview, carousel)));
+    assert.equal(button('Vorig beeld in voorbeeld').props.disabled, true);
+    await React.act(async () => button('Volgend beeld in voorbeeld').props.onClick());
+    assert.equal(renderer.root.findByType('video').props.src, video.url);
+    assert.equal(renderer.root.findByType('video').props.controls, true);
+    assert.equal(renderer.root.findByType('video').props.autoPlay, undefined);
+    assert.equal(button('Volgend beeld in voorbeeld').props.disabled, true);
+    await React.act(async () => renderer.update(React.createElement(Preview, { ...carousel, draft: { ...carousel.draft, caption: 'Updated live' } })));
+    assert.equal(renderer.root.findByType('video').props.src, video.url, 'typing does not restart carousel navigation');
+    assert.match(text(renderer.root), /Updated live/);
+    await React.act(async () => renderer.update(React.createElement(Preview, { ...carousel, draft: { ...carousel.draft, assets: [photo] } })));
+    assert.equal(renderer.root.findByType('img').props.src, photo.url, 'removing media resets to a valid frame');
+    for (const format of ['story', 'reel']) {
+      await React.act(async () => renderer.update(React.createElement(Preview, { ...props, draft: { format, caption: 'Only reel caption', assets: [video] } })));
+      assert.equal(renderer.root.findByProps({ className: 'igMockMedia' }).props.style.aspectRatio, '9 / 16');
+      assert.equal(text(renderer.root).includes('Only reel caption'), format === 'reel');
+      assert.equal(renderer.root.findByType('video').props.controls, true);
+    }
+    await React.act(async () => renderer.root.findByType('video').props.onError());
+    assert.match(text(renderer.root.findByProps({ role: 'status' })), /niet in het voorbeeld worden geladen/);
+    await React.act(async () => renderer.update(React.createElement(Preview, { ...props, draft: { format: 'feed', assets: [] } })));
+    assert.match(text(renderer.root), /Kies een\s+foto of video/);
+    assert.equal(calls, 0);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('publisher preview follows photo and caption edits immediately and always shows the saved draft after preparation', async () => {
+  const Component = (await load('components/instagram-event-publisher.js')).default;
+  let renderer, calls = 0;
+  global.fetch = async () => { calls++; throw new Error('Unexpected network request'); };
+  const props = { item: { id: 'c', business_id: 'b', body: 'Initial caption', media: [{ kind: 'image', url: photo.url }] }, businessName: 'Venue' };
+  const text = n => typeof n === 'string' ? n : (n.children || []).map(text).join(' ');
+  const preview = () => renderer.root.findByProps({ 'aria-label': 'Instagram-voorbeeld' });
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, props)); });
+  try {
+    assert.equal(preview().findAllByType('img').length, 0);
+    await React.act(async () => renderer.root.findAllByType('button').find(b => b.props.children === 'Deze foto gebruiken').props.onClick());
+    assert.equal(preview().findByType('img').props.src, photo.url);
+    await React.act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'Typed just now' } }));
+    assert.match(text(preview()), /Typed just now/);
+    assert.equal(preview().findAllByType('details').length, 0, 'preview is visible without expanding details');
+    await React.act(async () => renderer.unmount());
+    const saved = { status: 'ready', operation_id: 'op', account_name: 'saved_account', draft: { format: 'feed', caption: 'Exact prepared caption', assets: [{ ...photo, url: 'https://images.example.com/prepared.jpg' }] } };
+    const item = { ...props.item, media: [{ kind: 'campaign_distribution', instagram_publications: { feed: saved } }] };
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { ...props, item })); });
+    assert.equal(preview().findByType('img').props.src, saved.draft.assets[0].url);
+    assert.match(text(preview()), /Exact prepared caption/);
+    assert.match(text(preview()), /@saved_account/);
+    assert.equal(text(preview()).includes('Initial caption'), false);
+    assert.equal(renderer.root.findByProps({ type: 'checkbox' }).props.checked, false);
+    assert.equal(calls, 0, 'preview alone never fetches, prepares or publishes');
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('event media includes stored image profiles, videos and linked sources without duplicates or other venues', async () => {
   const { instagramEventMedia } = await load('lib/instagram-event-media.js');
   const item = { id: 'c', business_id: 'b', media: [{ kind: 'campaign_distribution',

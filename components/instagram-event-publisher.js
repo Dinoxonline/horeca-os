@@ -7,6 +7,7 @@ import { INSTAGRAM_FORMATS, validateInstagramDraft, instagramJobLabel } from "..
 import { instagramEventMedia } from "../lib/instagram-event-media";
 import { prepareInstagramPhoto, uploadInstagramPhoto } from "../lib/instagram-photo";
 import { waitForInstagramPreparation } from "../lib/instagram-preparation";
+import InstagramPostPreview from "./instagram-post-preview";
 
 export default function InstagramEventPublisher({ item, workspaceId, session, businessName, onPublished, linkedSources = [], mediaLoading = false }) {
   const distribution = (item.media || []).find(entry => entry?.kind === "campaign_distribution") || {};
@@ -156,6 +157,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
         </section>
       </div>
       <div>
+        <InstagramPostPreview draft={preview} accountName={account?.name} businessName={businessName} />
         <strong>Gekozen media — deze volgorde wordt gebruikt</strong>
         {assets.length === 0 && <p>Kies een foto of video bij ‘Media uit Horeca OS’.</p>}
         {assets.map((asset, index) => <div className="instagramAsset" key={index}>
@@ -199,10 +201,9 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
         const result = await request("prepare", { accountId: account.id, draft });
         await followStatus(result.job);
       })}>Voorbeeld klaarzetten — nog niet publiceren</button>}
-      {locked && preview && <details><summary>Voorbereid bericht bekijken</summary>
-        <p className="instagramCaption">{preview.caption || "Story zonder los bijschrift"}</p>
-        <div className="instagramPreview">{preview.assets.map((asset, index) => asset.type === "image" ? <img key={index} src={asset.url} alt={`Voorbereid beeld ${index + 1}`} /> : <video key={index} src={asset.url} controls preload="metadata" />)}</div>
-      </details>}
+      <div className={locked ? "instagramPreparedLayout" : undefined}>
+      {locked && preview && <InstagramPostPreview draft={preview} accountName={job.account_name || account?.name} businessName={businessName} prepared />}
+      <div className="instagramPreparedActions">
       {job?.container_id && job.status !== "published" && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Instagram-status controleren…", async () => {
         setFollowPreparation(true);
         if (job.status === "processing") await followStatus(job);
@@ -224,6 +225,8 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
         }}>Nu publiceren op Instagram</button>
       </div>}
       {job?.status === "published" && <a href={job.permalink?.startsWith("https://www.instagram.com/") ? job.permalink : profileUrl} target="_blank" rel="noopener noreferrer">Bekijk op Instagram</a>}
+      </div>
+      </div>
     </div>
     <details><summary>Overige Instagram-opties en vereisten</summary>
       <p>Foto's: JPG, maximaal 8 MB. Feedfoto's: verhouding 4:5 tot 1,91:1. Stories en Reels: bij voorkeur 9:16. Instagram controleert het definitieve formaat en de verwerking.</p>
@@ -237,11 +240,12 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       .instagramToolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.instagramComposer{display:grid;grid-template-columns:1fr 1fr;gap:16px}
       .instagramComposer>div{display:grid;gap:12px;align-content:start;min-width:0}.instagramAsset{display:grid;gap:6px}.instagramPublisher img,.instagramPublisher video{width:100%;max-height:200px;object-fit:contain;background:#f3f7f9}
       .instagramPublisher button{width:auto;justify-self:start;margin:0}.instagramPublisher .instagramCheck{display:flex;align-items:center;gap:8px}.instagramCheck input{width:auto}
-      .instagramPublishStatus,.instagramFormatHelp{display:grid;gap:10px;padding:12px;background:#eef7f9;border-radius:8px}.instagramCaption{white-space:pre-wrap;max-height:180px;overflow:auto}
+      .instagramPublishStatus,.instagramFormatHelp{display:grid;gap:10px;padding:12px;background:#eef7f9;border-radius:8px}
+      .instagramPreparedLayout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}.instagramPreparedActions{display:grid;gap:12px;align-content:start;min-width:0}.instagramAsset>img,.instagramAsset>video{max-height:64px;width:64px;justify-self:start}
       .instagramSteps{font-size:12px;color:#486576}.instagramFinalStep{display:grid;gap:10px;border-top:1px solid #bfd1dc;padding-top:12px}.instagramPublishStatus:focus{outline:2px solid #168499;outline-offset:2px}.instagramPublisher button:disabled{opacity:.6;cursor:not-allowed}
-      .instagramPreview{display:flex;gap:8px;overflow:auto}.instagramPreview img,.instagramPreview video{max-width:200px}.instagramPublisher details{padding:8px 0}.instagramPublisher summary{cursor:pointer;font-weight:700}.instagramPublisher small{color:#5c7285}.marketingLoadingSpinner{display:inline-block}
+      .instagramPublisher details{padding:8px 0}.instagramPublisher summary{cursor:pointer;font-weight:700}.instagramPublisher small{color:#5c7285}.marketingLoadingSpinner{display:inline-block}
       .instagramEventMedia{display:grid;gap:8px}.instagramMediaGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;max-height:360px;overflow:auto}.instagramMediaChoice{display:grid;gap:6px;align-content:start;border:1px solid #cbdde5;border-radius:8px;padding:8px}.instagramMediaChoice :global(img),.instagramMediaChoice video{height:110px;width:100%;object-fit:contain}.instagramMediaChoice small{overflow-wrap:anywhere}
-      @media(max-width:760px){.instagramComposer{grid-template-columns:1fr}}
+      @media(max-width:760px){.instagramComposer,.instagramPreparedLayout{grid-template-columns:1fr}}
     `}</style>
   </section>;
 }
