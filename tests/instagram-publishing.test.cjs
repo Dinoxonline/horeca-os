@@ -225,6 +225,117 @@ test('a stranded preparation can be restored with its exact photo and caption, w
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('readiness polling is bounded, checks only the same preparation and stops on errors, deadlines and aborts', async () => {
+  const { waitForInstagramPreparation: follow } = await load('lib/instagram-preparation.js');
+  const initial = { status: 'processing', container_id: 'container', operation_id: 'op' };
+  let checks = 0, clock = 0;
+  const waits = [], progress = [];
+  const result = await follow(initial, async (operation, timeout) => {
+    assert.equal(operation, 'op'); assert.ok(timeout <= 12000); checks++;
+    return initial;
+  }, { now: () => clock, wait: async delay => { waits.push(delay); clock += delay; }, onProgress: attempt => progress.push(attempt) });
+  assert.equal(result.status, 'processing'); assert.equal(checks, 6);
+  assert.deepEqual(waits, [1500, 3000, 5000, 8000, 10000]);
+  assert.deepEqual(progress, [1, 2, 3, 4, 5, 6]);
+  checks = 0; clock = 0;
+  await follow(initial, async () => { checks++; clock += 44000; return initial; }, { now: () => clock, wait: async () => assert.fail('deadline reached') });
+  assert.equal(checks, 1);
+  await assert.rejects(() => follow(initial, async () => ({ ...initial, status: 'ready', operation_id: 'different' })), /voorbereiding is gewijzigd/);
+  await assert.rejects(() => follow(initial, async () => undefined), /voorbereiding is gewijzigd/);
+  await assert.rejects(() => follow(initial, async () => { throw new Error('network failed'); }), /network failed/);
+  for (const status of ['ready', 'failed', 'unknown', 'publishing', 'published']) {
+    checks = 0;
+    assert.equal((await follow(initial, async () => { checks++; return { ...initial, status }; })).status, status);
+    assert.equal(checks, 1, `stop at ${status}`);
+  }
+  const controller = new AbortController();
+  checks = 0;
+  const pending = follow(initial, async () => { checks++; return initial; }, { signal: controller.signal, onProgress: attempt => { if (attempt === 2) queueMicrotask(() => controller.abort()); } });
+  await assert.rejects(() => pending, { name: 'AbortError' });
+  assert.equal(checks, 1, 'aborting cancels the wait before the next network request');
+});
+
+test('prepare automatically advances to confirmation, deduplicates clicks and never publishes without explicit confirmation', async () => {
+  let renderer, releaseStatus;
+  const calls = [];
+  const job = { status: 'processing', operation_id: 'op', container_id: 'container', account_name: 'venue', draft: { format: 'feed', caption: 'Text', assets: [photo] } };
+  global.fetch = async (_url, options) => {
+    const body = options.body && JSON.parse(options.body); calls.push(body?.action || 'read');
+    if (!body) return { ok: true, json: async () => ({ account: { id: 'a', name: 'venue' }, publications: {} }) };
+    if (body.action === 'status') return new Promise(resolve => { releaseStatus = () => resolve({ ok: true, json: async () => ({ job: { ...job, status: 'ready' } }) }); });
+    return { ok: true, json: async () => ({ job: body.action === 'publish' ? { ...job, status: 'published' } : job }) };
+  };
+  const Component = (await load('components/instagram-event-publisher.js')).default;
+  const item = { id: 'c', business_id: 'b', body: 'Text', media: [{ kind: 'image', url: photo.url }] };
+  const button = label => renderer.root.findAllByType('button').find(b => b.props.children === label);
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item, workspaceId: 'w' })); });
+  try {
+    await React.act(async () => button('Instagram-account controleren').props.onClick());
+    await React.act(async () => button('Deze foto gebruiken').props.onClick());
+    let pending;
+    await React.act(async () => {
+      const prepare = button('Voorbeeld klaarzetten — nog niet publiceren');
+      pending = prepare.props.onClick();
+      await prepare.props.onClick();
+    });
+    assert.deepEqual(calls, ['read', 'prepare', 'status']);
+    assert.equal(button('Nu publiceren op Instagram').props.disabled, true, 'next step visible but unavailable during processing');
+    assert.equal(renderer.root.findByProps({ type: 'checkbox' }).props.disabled, true);
+    await React.act(async () => { releaseStatus(); await pending; });
+    assert.equal(renderer.root.findByProps({ type: 'checkbox' }).props.disabled, false);
+    assert.equal(button('Nu publiceren op Instagram').props.disabled, true, 'ready is not user consent');
+    await React.act(async () => button('Nu publiceren op Instagram').props.onClick());
+    assert.deepEqual(calls, ['read', 'prepare', 'status'], 'even an invalid direct handler call cannot publish');
+    await React.act(async () => renderer.root.findByProps({ type: 'checkbox' }).props.onChange({ target: { checked: true } }));
+    assert.equal(button('Nu publiceren op Instagram').props.disabled, false);
+    await React.act(async () => button('Nu publiceren op Instagram').props.onClick());
+    assert.deepEqual(calls, ['read', 'prepare', 'status', 'publish']);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('loading an existing processing job checks readiness once; leaving aborts the request and ignores late publication responses', async () => {
+  const job = { status: 'processing', operation_id: 'op', container_id: 'container', account_name: 'venue', draft: { format: 'feed', caption: 'Text', assets: [photo] } };
+  const calls = []; let renderer, resolveStatus, signal, published = 0;
+  global.fetch = async (_url, options) => {
+    const body = options.body && JSON.parse(options.body); calls.push(body?.action || 'read');
+    if (!body) return { ok: true, json: async () => ({ account: { id: 'a', name: 'venue' }, publications: { feed: job } }) };
+    signal = options.signal;
+    return new Promise(resolve => { resolveStatus = () => resolve({ ok: true, json: async () => ({ job: { ...job, status: 'published' } }) }); });
+  };
+  const Component = (await load('components/instagram-event-publisher.js')).default;
+  const props = { item: { id: 'c', business_id: 'b', media: [] }, workspaceId: 'w', onPublished: () => published++ };
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, props)); });
+  assert.deepEqual(calls, []);
+  let pending;
+  await React.act(async () => { pending = renderer.root.findAllByType('button').find(b => b.props.children === 'Instagram-account controleren').props.onClick(); });
+  await React.act(async () => renderer.update(React.createElement(Component, props)));
+  assert.deepEqual(calls, ['read', 'status'], 'renders do not start another check or preparation');
+  await React.act(async () => renderer.unmount());
+  assert.equal(signal.aborted, true);
+  await React.act(async () => { resolveStatus(); await pending; });
+  assert.equal(published, 0, 'ignore late responses after leaving the event');
+  assert.deepEqual(calls, ['read', 'status']);
+});
+
+test('a status error is shown beside the final step and cannot enable publication', async () => {
+  const job = { status: 'processing', operation_id: 'op', container_id: 'container', account_name: 'venue', draft: { format: 'feed', caption: 'Text', assets: [photo] } };
+  const calls = []; let renderer;
+  global.fetch = async (_url, options) => {
+    const body = options.body && JSON.parse(options.body); calls.push(body?.action || 'read');
+    return body ? { ok: false, json: async () => ({ error: 'Controle mislukt. Probeer later opnieuw.' }) } : { ok: true, json: async () => ({ account: { id: 'a', name: 'venue' }, publications: { feed: job } }) };
+  };
+  const Component = (await load('components/instagram-event-publisher.js')).default;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item: { id: 'c', business_id: 'b', media: [] }, workspaceId: 'w' })); });
+  try {
+    await React.act(async () => renderer.root.findAllByType('button').find(b => b.props.children === 'Instagram-account controleren').props.onClick());
+    const panel = renderer.root.findByProps({ className: 'instagramPublishStatus' });
+    assert.match(panel.findByProps({ role: 'alert' }).props.children, /Controle mislukt/);
+    assert.equal(panel.findAllByType('button').find(b => b.props.children === 'Nu publiceren op Instagram').props.disabled, true);
+    assert.equal(panel.findAllByProps({ role: 'status' }).length, 0, 'spinner stops after error');
+    assert.deepEqual(calls, ['read', 'status']);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('event media includes stored image profiles, videos and linked sources without duplicates or other venues', async () => {
   const { instagramEventMedia } = await load('lib/instagram-event-media.js');
   const item = { id: 'c', business_id: 'b', media: [{ kind: 'campaign_distribution',
