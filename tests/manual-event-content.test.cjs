@@ -20,6 +20,44 @@ function load(file, mocks = {}) {
 const base = () => ({ kind: 'campaign_distribution', common: { title: 'Avond', description: 'Tekst\n🎵', start: '2026-10-01' }, eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, verification: { channels: { facebook: { status: 'reachable' } } } });
 const at = '2026-09-24T15:00:00.000Z';
 
+// Exercise the private date readers used by the Eventin detail response.
+function eventinDateReaders() {
+  const source = fs.readFileSync(path.join(root, 'app/api/marketing/website-events/create/route.js'), 'utf8');
+  return vm.runInNewContext(`(() => {
+    ${source.slice(source.indexOf('function eventinValue('), source.indexOf('function eventinLocation('))}
+    ${source.slice(source.indexOf('function normalizedEventinDate('), source.indexOf('function imageFromContent('))}
+    return { normalizedEventinDate, eventinDateTime };
+  })()`);
+}
+
+test('Eventin date reader preserves every day, including both digits of 26 September', () => {
+  const { normalizedEventinDate } = eventinDateReaders();
+  for (let month = 1; month <= 12; month++) {
+    const days = new Date(Date.UTC(2026, month, 0)).getUTCDate();
+    for (let day = 1; day <= days; day++) {
+      const mm = String(month).padStart(2, '0');
+      const dd = String(day).padStart(2, '0');
+      const expected = `2026-${mm}-${dd}`;
+      for (const separator of ['-', '/', '.']) {
+        for (const input of [`2026${separator}${mm}${separator}${dd}`, `2026${separator}${month}${separator}${day}`, `${dd}${separator}${mm}${separator}2026`]) {
+          assert.equal(normalizedEventinDate(input), expected, input);
+        }
+      }
+      assert.equal(normalizedEventinDate(`${expected}T19:00:00+02:00`), expected);
+      assert.equal(normalizedEventinDate(`${expected} 19:00:00`), expected);
+    }
+  }
+});
+
+test('Eventin start, end and ticket-sale dates retain their day and time', () => {
+  const { eventinDateTime, normalizedEventinDate } = eventinDateReaders();
+  assert.equal(eventinDateTime({ start_date: '2026-09-26', start_time: '7:00 PM' }, 'start'), '2026-09-26T19:00');
+  assert.equal(eventinDateTime({ end_date: '2026-09-27', end_time: '01:00' }, 'end'), '2026-09-27T01:00');
+  assert.equal(eventinDateTime({ meta: { etn_start_date: { value: '2026-09-26' }, etn_start_time: '19:00' } }, 'start'), '2026-09-26T19:00');
+  assert.equal(normalizedEventinDate(''), '');
+  assert.equal(normalizedEventinDate('not-a-date'), '');
+});
+
 for (const failure of ['', 'first', 'second', 'zero']) test(`local merge verifies both saves and never publishes: ${failure || 'success'}`, async () => {
   await swc.loadBindings();
   const { saveLocalEventMerge } = load('lib/local-event-merge.js');

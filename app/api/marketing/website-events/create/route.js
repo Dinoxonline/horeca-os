@@ -250,7 +250,8 @@ function eventinLocation(row) {
 function normalizedEventinDate(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const iso = raw.match(/^(20\d{2})[-/.](0?[1-9]|1[0-2])[-/.](0?[1-9]|[12]\d|3[01])/);
+  // Read the complete day: without the digit boundary, 26 matched only "2".
+  const iso = raw.match(/^(20\d{2})[-/.](0?[1-9]|1[0-2])[-/.]([12]\d|3[01]|0?[1-9])(?!\d)/);
   if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
   const legacy = raw.match(/^(0?[1-9]|[12]\d|3[01])[-/.](0?[1-9]|1[0-2])[-/.](20\d{2})/);
   if (legacy) return `${legacy[3]}-${legacy[2].padStart(2, "0")}-${legacy[1].padStart(2, "0")}`;
