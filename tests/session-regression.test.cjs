@@ -248,6 +248,63 @@ test('event layout starts with one workspace and keeps secondary information col
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('duplicate review stays below facts and status, identifies all rows and only merges on explicit action', async () => {
+  const { EventDetails, duplicateChannelReferences } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const event = (id, title, description, links = {}) => ({ id, business_id: 'venue', media: [{ kind: 'campaign_distribution', ...links, common: { title, description, start: '2026-09-26T19:00:00' } }] });
+  const item = event('published-11111111', 'ARABIAN NIGHT', 'Huidige tekst', { eventin_event_id: '123', facebook_event_delivery: { external_id: '456' } });
+  const first = event('draft-22222222', 'Arabian Night', 'Eerste concept', { eventin_event_id: '123', facebook_event_delivery: { external_id: '789' } });
+  const second = event('draft-33333333', 'Arabian Night', 'Tweede concept');
+  const calls = [];
+  const props = { item, matchItem: first, sameDayItems: [first, second], onClose() {}, onChooseMatch: candidate => calls.push(['choose', candidate.id]), onLinkExisting: content => calls.push(['merge', content]) };
+  const text = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(text).join('') : node?.children ? text(node.children) : '';
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props)); });
+  try {
+    const heading = renderer.root.findByProps({ className: 'marketingEventHeading' });
+    assert.equal(heading.findAllByType('input').length, 0);
+    assert.equal(heading.findAllByType('textarea').length, 0);
+    assert.equal(heading.findAllByType('button').length, 1, 'only Close in the managed-event header');
+    const review = renderer.root.findByProps({ className: 'marketingDetailFold marketingDuplicateReview' });
+    assert.equal(review.type, 'details');
+    assert.ok(!review.props.open, 'suggesting a match does not open the editor');
+    assert.match(text(review.findAllByType('summary')[0]), /3 agendapunten/);
+    assert.equal(review.findAllByProps({ className: 'marketingDuplicateIdentity' }).length, 3);
+    assert.match(text(review), /Kenmerk 11111111/);
+    assert.match(text(review), /Kenmerk 22222222/);
+    assert.match(text(review), /Kenmerk 33333333/);
+    assert.match(text(review), /dezelfde koppeling/);
+    assert.match(text(review), /andere koppeling/);
+    assert.match(text(review), /geen evenementkoppeling bekend/);
+    assert.match(text(review), /niet automatisch dubbele publicaties/);
+    const article = renderer.root.findByType('article');
+    const statusIndex = article.children.findIndex(node => node.props?.className === 'marketingChannelStatus');
+    const reviewIndex = article.children.findIndex(node => node.findAllByProps?.({ className: 'marketingDetailFold marketingDuplicateReview' }).length);
+    assert.ok(reviewIndex > statusIndex);
+    const form = () => renderer.root.findByProps({ 'aria-label': 'Samenvoegvoorstel' });
+    const choose = label => form().findAllByType('button').find(button => button.props.children === label);
+    assert.equal(form().findByType('textarea').props.rows, 5);
+    await React.act(async () => choose('Tekst van gekozen agendapunt').props.onClick());
+    assert.equal(form().findByType('textarea').props.value, 'Eerste concept');
+    assert.deepEqual(calls, [], 'choosing text only changes a preview');
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, matchItem: second })));
+    assert.equal(form().findByType('textarea').props.value, 'Huidige tekst', 'switching the candidate resets the draft');
+    await React.act(async () => choose('Teksten combineren').props.onClick());
+    assert.equal(form().findByType('textarea').props.value, 'Huidige tekst\n\nTweede concept');
+    assert.deepEqual(calls, []);
+    await React.act(async () => choose('Deze twee agendapunten samenvoegen').props.onClick());
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], 'merge');
+    assert.equal(calls[0][1].description, 'Huidige tekst\n\nTweede concept');
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, linking: true })));
+    assert.ok(form().findAllByType('button').every(button => button.props.disabled));
+    assert.equal(form().findByType('input').props.disabled, true);
+    assert.equal(form().findByType('textarea').props.disabled, true);
+    assert.ok(!renderer.root.findByProps({ className: 'marketingDetailFold marketingDuplicateReview' }).props.open, 'background changes do not expand the review');
+    assert.deepEqual(duplicateChannelReferences(event('post', 'Post', '', { provider_delivery: { facebook: { external_id: '123_456' } } })), { website: '', facebook: '' }, 'a post ID is not an event link');
+    assert.deepEqual(duplicateChannelReferences(event('imported', 'Imported', '', { source_type: 'eventin_event', external_source: 'eventin', external_id: '321' })), { website: '321', facebook: '' });
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('channel tiles open and focus their own editor without saving or publishing', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'tiles', media: [{ kind: 'campaign_distribution', common: { title: 'Avond' } }] };
