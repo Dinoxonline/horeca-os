@@ -615,6 +615,7 @@ export async function POST(request) {
   const venue = await venueForBusiness(context, body);
   if (!venue) return NextResponse.json({ error: "Voor deze vestiging is nog geen Eventin-venue ingesteld." }, { status: 400 });
   const payload = eventinPayload(body, venue);
+  if (body.seriesPublication === true) payload.description = `<p>${text(body.description).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`;
 
   const response = await fetch(`${site.origin}/wp-json/eventin/v2/events`, {
     method: "POST",
@@ -652,7 +653,7 @@ export async function PATCH(request) {
   const credentials = siteCredentials(body);
   if (credentials.error) return NextResponse.json({ error: credentials.error, configurationRequired: credentials.configurationRequired }, { status: credentials.status });
   const { site, authorization } = credentials;
-  if (body.action === "sync-content") {
+  if (body.action === "sync-content" || body.action === "sync-series") {
     if (!text(body.title) || typeof body.description !== "string") {
       return NextResponse.json({ error: "Kies eerst de titel en omschrijving." }, { status: 400 });
     }
@@ -667,6 +668,16 @@ export async function PATCH(request) {
     if (!currentEvent || String(currentEvent.id) !== id) {
       return NextResponse.json({ error: "De bestaande Eventin-gegevens konden niet veilig worden opgehaald. Er is niets gewijzigd." }, { status: 502 });
     }
+    let seriesFields = {};
+    if (body.action === 'sync-series') {
+      const start = dateParts(body.start), end = dateParts(body.end);
+      if (!start || !end || body.end <= body.start) return NextResponse.json({error:'Controleer de tijden van deze uitvoering.'},{status:400});
+      // Do not accidentally edit an Eventin-native recurrence parent and all its children.
+      if (currentEvent.recurring_event || currentEvent.etn_recurring_event || currentEvent.recurring_enabled || currentEvent.is_recurring || currentEvent.parent_id || currentEvent.post_parent) return NextResponse.json({error:'Dit website-evenement is onderdeel van een eigen Eventin-reeks. Werk die eerst afzonderlijk bij.'},{status:409});
+      const venue = await venueForBusiness(context, body);
+      if (!venue || text(body.location).toLowerCase() !== venue.toLowerCase()) return NextResponse.json({error:'Controleer de locatie van deze uitvoering. De reeks gebruikt de ingestelde vestiging; afwijkende adressen bewerk je afzonderlijk.'},{status:400});
+      seriesFields = {start_date:eventinAgendaDate(start),end_date:eventinAgendaDate(end),start_time:start.time,end_time:end.time,location_type:'venue',location:{address:venue}};
+    }
     const description = text(body.description).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
     const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
       method: "POST",
@@ -678,6 +689,7 @@ export async function PATCH(request) {
         excerpt: text(body.description, 500),
         start_date: normalizeEventinAgendaDate(currentEvent.start_date),
         end_date: normalizeEventinAgendaDate(currentEvent.end_date),
+        ...seriesFields,
       }),
       cache: "no-store",
     });
