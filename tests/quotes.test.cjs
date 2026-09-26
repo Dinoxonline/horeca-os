@@ -143,3 +143,30 @@ test('quote UI opens saved guest selection, saves a new version and shows previe
     assert.doesNotMatch(JSON.stringify(tree.toJSON()), /Niet voor gast zichtbaar/);
   } finally { if (tree) await Renderer.act(async () => tree.unmount()); global.window = previousWindow; global.document = previousDocument; }
 });
+
+test('switching guest and quote lists never renders rows from the other entity, including after editing', async () => {
+  const { validateQuote, guestSnapshot } = await load('lib/quotes.js');
+  const record = { id: ids.q, business_id: ids.b, guest_id: ids.g, guest_snapshot: guestSnapshot(guest), content: validateQuote(content()), version: 1, quote_number: 12 };
+  const C = (await load('components/quotes.js')).default;
+  const businesses = [{ id: ids.b, name: 'Testvestiging' }];
+  const request = async input => ({ rows: input.entity === 'guests' ? [guest] : [record], hasMore: false });
+  let tree;
+  const click = async name => Renderer.act(async () => tree.root.findAllByType('button').find(b => b.props.children === name).props.onClick());
+  const settle = async () => Renderer.act(async () => new Promise(done => setTimeout(done, 250)));
+  try {
+    await Renderer.act(async () => { tree = Renderer.create(React.createElement(C, { workspaceId: ids.w, businesses, request })); });
+    await settle();
+    await click('Gasten'); await settle();
+    assert.match(JSON.stringify(tree.toJSON()), /Testgast/);
+    await click('Offertes'); await settle();
+    assert.match(JSON.stringify(tree.toJSON()), /Testbijeenkomst/);
+    await click('Gasten'); await settle();
+    await click('Nieuwe offerte');
+    await click('Offertes'); await settle();
+    assert.match(JSON.stringify(tree.toJSON()), /Testbijeenkomst/);
+    // Clicking the already selected list must not leave an endless loading state.
+    await click('Offertes'); await settle();
+    assert.match(JSON.stringify(tree.toJSON()), /Testbijeenkomst/);
+    assert.doesNotMatch(JSON.stringify(tree.toJSON()), /Overzicht laden/);
+  } finally { if (tree) await Renderer.act(async () => tree.unmount()); }
+});

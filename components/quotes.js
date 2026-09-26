@@ -94,7 +94,13 @@ export default function Quotes({ workspaceId, businessId, businesses = [], sessi
     finally { busyRef.current = false; setBusy(false); }
   };
   const canReplace = changed => !changed || window.confirm("Je hebt onbewaarde wijzigingen. Wil je die verwerpen?");
-  const navigate = next => { setTab(next); setSearch(""); setPage(0); setNotice(""); setError(""); };
+  const navigate = next => {
+    // Guest and quote records have different shapes. Never render the previous
+    // list under the next tab while its replacement request is still pending.
+    setRows([]); setMore(false); setLoading(next !== "edit");
+    setTab(next); setSearch(""); setPage(0); setNotice(""); setError("");
+    setRefresh(v => v + 1);
+  };
   const newQuote = () => {
     if (!canReplace(dirty)) return;
     setDraft({ id: crypto.randomUUID(), version: null, business_id: businesses.some(b => b.id === businessId) ? businessId : businesses[0]?.id || "", guest_id: "", guest_snapshot: null, content: blankQuote() });
