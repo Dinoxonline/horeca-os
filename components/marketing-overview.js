@@ -200,6 +200,12 @@ function visibleCalendarItems(items, businessById, activeFromToday) {
   return [...grouped.values()];
 }
 
+export function marketingWorklistItems(items, businessById) {
+  // Use the same duplicate representatives as the calendar, including records whose
+  // former merge target is no longer loaded. The worklist also includes past dates.
+  return visibleCalendarItems(items, businessById, new Date(0)).filter(item => !isExternalEvent(item));
+}
+
 function suggestPotentialMatches(items) {
   return items.map((item) => {
     const match = items.find((candidate) => candidate.id !== item.id
@@ -832,7 +838,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   const renderBusinessCalendar = (business) => { const businessItems = itemsForBusiness(business.id); const businessDayItems = businessItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor)); return <article className="marketingVenueCalendar" key={business.id}><header><span className={`marketingVenueDot ${business.color}`} /><h3>{business.name}</h3></header>{view === "month" && <MonthCalendar anchor={anchor} items={businessItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "week" && <WeekCalendar anchor={anchor} items={businessItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "day" && <div className="marketingDayAgenda">{businessDayItems.length ? businessDayItems.map((item) => <CalendarEvent key={item.id} item={item} business={business} onSelectEvent={setSelectedItem} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={businessItems} onSelectEvent={setSelectedItem} />}</article>; };
 
   return <section className="panel marketingCalendarPanel"><div className="panelHead marketingCalendarHead"><div><p className="eyebrow">MARKETINGAGENDA</p><h2>{title}</h2><p>Bekijk de planning van beide vestigingen naast elkaar. Zo zie je direct wanneer evenementen op dezelfde dag vallen.</p></div><button type="button" className="secondaryButton" onClick={() => setRefreshKey((value) => value + 1)} disabled={busy}>{busy ? "Agenda laden…" : "Agenda verversen"}</button></div>
-    <MarketingWorklist items={items.filter(item => businessById.has(String(item.business_id)) && !isExternalEvent(item) && !distributionFor(item).duplicate_of)} businesses={businessById} onOpen={setSelectedItem} getStatus={channelStatus} />
+    <MarketingWorklist items={marketingWorklistItems(items, businessById)} businesses={businessById} onOpen={setSelectedItem} getStatus={channelStatus} />
     <div className="marketingCalendarToolbar"><div className="marketingCalendarViews">{Object.entries(viewLabels).map(([key, label]) => <button type="button" className={view === key ? "active" : ""} onClick={() => setView(key)} key={key}>{label}</button>)}</div><div className="marketingCalendarNav"><button type="button" onClick={() => move(-1)}>‹</button><button type="button" onClick={() => setAnchor(new Date())}>Vandaag</button><button type="button" onClick={() => move(1)}>›</button></div><div className="marketingCalendarLayout"><button type="button" className={calendarLayout === "two" ? "active" : ""} onClick={() => setCalendarLayout("two")}>Twee agenda's</button><button type="button" className={calendarLayout === "combined" ? "active" : ""} onClick={() => setCalendarLayout("combined")}>Over elkaar leggen</button></div></div>
     <div className="marketingCalendarLegend">{venueBusinesses.map((business) => <span key={business.id}><i className={business.color} />{business.name}</span>)}<span><i className="externalLegend" />Extern evenement — nog niet gekoppeld</span></div>
     {autoChecking && <div className="marketingAutoNotice">Marketingagenda geladen. Publicaties en externe evenementen worden automatisch gecontroleerd…</div>}

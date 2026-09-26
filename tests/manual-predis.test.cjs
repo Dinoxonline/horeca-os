@@ -118,4 +118,12 @@ test('search/worklist filters manual pending actions and opens the exact selecte
  let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,{items:[item,planned],businesses:new Map([['b',{name:'Venue'}]]),getStatus:()=>({label:'Niet gecontroleerd'}),onOpen:i=>opened=i.id}));});
  try{await React.act(async()=>r.root.findByType('select').props.onChange({target:{value:'todo'}}));assert.equal(r.root.findAllByType('article').length,1);await React.act(async()=>r.root.findAllByType('button')[0].props.onClick());assert.equal(opened,'p');await React.act(async()=>r.root.findByType('input').props.onChange({target:{value:'missing'}}));assert.equal(r.root.findAllByType('article').length,0);}finally{await React.act(async()=>r.unmount());}
 });
-
+test('worklist keeps the calendar representative when merge targets are absent or less complete',async()=>{
+ const {marketingWorklistItems}=await load('components/marketing-overview.js',{'../lib/supabase':{supabase:{}}});
+ const event=(id,duplicate,published)=>({id,business_id:'b',published_at:published?'2026-09-26':null,media:[{kind:'campaign_distribution',duplicate_of:duplicate,common:{title:'Arabian Night',start:'2026-09-26'}}]});
+ const orphan=event('kept','old-missing-target',true);
+ const roots=new Map([['b',{name:'Venue'}]]);
+ assert.deepEqual(marketingWorklistItems([orphan],roots).map(i=>i.id),['kept']);
+ assert.deepEqual(marketingWorklistItems([event('root',null,false),event('published','root',true)],roots).map(i=>i.id),['published']);
+ assert.equal(marketingWorklistItems([orphan],new Map()).length,0);
+});
