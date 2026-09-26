@@ -14,7 +14,7 @@ function load(file, mocks = {}) {
   });
   const module = { exports: {} };
   vm.runInThisContext('(function(require,module,exports){' + code + '\n})')(
-    name => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.startsWith('.') ? load(path.join(path.dirname(file), name) + '.js', mocks) : require(name), module, module.exports);
+    name => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.endsWith('.css') ? { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) } : name.startsWith('.') ? load(path.join(path.dirname(file), name) + '.js', mocks) : require(name), module, module.exports);
   return module.exports;
 }
 const base = () => ({ kind: 'campaign_distribution', common: { title: 'Avond', description: 'Tekst\n🎵', start: '2026-10-01' }, eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, verification: { channels: { facebook: { status: 'reachable' } } } });

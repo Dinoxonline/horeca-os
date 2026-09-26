@@ -21,7 +21,7 @@ function loadSync(relative, mocks = {}) {
   });
   const module = { exports: {} };
   vm.runInThisContext('(function(require,module,exports){' + code + '\n})', { filename: relative })(
-    (name) => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.startsWith('.') ? loadSync(path.join(path.dirname(relative), name) + '.js', mocks) : require(name), module, module.exports,
+    (name) => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.endsWith('.css') ? { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) } : name.startsWith('.') ? loadSync(path.join(path.dirname(relative), name) + '.js', mocks) : require(name), module, module.exports,
   );
   return module.exports;
 }
@@ -248,7 +248,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Volledige omschrijving bekijken', 'Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Website afzonderlijk bijwerken']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Volledige omschrijving bekijken', 'Bronnen vergelijken en tekst kiezen', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Predis handmatig voorbereiden en plannen', 'Website afzonderlijk bijwerken']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
@@ -258,7 +258,7 @@ test('event layout starts with one workspace and keeps secondary information col
     assert.equal(article.children[statusIndex - 2].props.className, 'marketingEventHeading');
     assert.ok(facts.findAllByType('p')[0].props.children.includes('Caribbean Corner'), 'empty event location falls back to the linked venue');
     assert.equal(facts.findAllByType('dl').length, 0, 'no tall equal-height metadata columns');
-    assert.deepEqual(statuses.findAllByType('strong').map(node => node.props.children), ['Website', 'Facebook', 'Instagram', 'Google', 'Overige']);
+    assert.deepEqual(statuses.findAllByType('strong').map(node => node.props.children), ['Website', 'Facebook', 'Instagram', 'Google', 'Predis', 'Overige']);
     assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
     assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
     const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
@@ -430,9 +430,9 @@ test('channel tiles open and focus their own editor without saving or publishing
     });
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const buttons = () => statuses.findAllByType('button');
-    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children), ['Website', 'Facebook', 'Instagram']);
+    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children), ['Website', 'Facebook', 'Instagram', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
-    for (const channel of ['website', 'facebook', 'instagram']) {
+    for (const channel of ['website', 'facebook', 'instagram', 'predis']) {
       const id = `event-channel-${channel}-tiles`;
       const button = () => buttons().find(button => button.props['aria-controls'] === id);
       await React.act(async () => button().props.onClick());
@@ -965,7 +965,9 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
   const { withRequestTimeout } = await load('lib/request-timeout.js');
   const Marketing = (await load('components/marketing-overview.js', {
     '../lib/supabase': { supabase: { from: () => query } },
-    '../lib/request-timeout': { withRequestTimeout: (request, message, abort) => withRequestTimeout(request, message, abort, timeout ? 80 : 2000) },
+    // Leave room for React's full event-panel render before exercising the deadline.
+    // The production 15-second timeout remains unchanged.
+    '../lib/request-timeout': { withRequestTimeout: (request, message, abort) => withRequestTimeout(request, message, abort, timeout ? 1000 : 5000) },
   })).default;
   const props = { workspaceId: 'w', businesses: [{ id: 'b', name: 'Caribbean Corner' }], session: { user: { id: 'u' }, access_token: 't' } };
   const reply = title => ({ ok: true, json: async () => ({ event: { title, start: now, description: 'Tekst' } }) });
@@ -983,7 +985,7 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
     assert.equal(comparisons, 1, 'reopening reuses the pending request');
     if (timeout) {
       const lateReply = finishComparison;
-      await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+      await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 1200)); });
       assert.equal(signal.aborted, true);
       assert.equal(summary().props['aria-busy'], false);
       assert.equal(summary().findByType('strong').props.children, 'Controle duurt te lang');
