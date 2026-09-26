@@ -8,6 +8,7 @@ import { withRequestTimeout } from "../lib/request-timeout";
 import { startBackgroundPoll } from "../lib/background-poll";
 import CentralEventCreator from "./central-event-creator";
 import MarketingOverview from "./marketing-overview";
+import MarketingAgendaNavigation from "./marketing-agenda-navigation";
 import Workboard from "./workboard";
 import ProcessTrash from "./process-trash";
 import ProcessAudit from "./process-audit";
@@ -550,9 +551,11 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} businessId={businessId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
-        {activeView === "marketing" && featureVisibility.marketing && (businessId === "all"
-          ? <MarketingOverview workspaceId={workspaceId} businesses={visibleBusinesses} session={session} />
-          : <CentralEventCreator workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />)}
+        {activeView === "marketing" && featureVisibility.marketing && <MarketingAgendaNavigation
+          businessId={businessId} businesses={visibleBusinesses}
+          renderAgenda={agendaBusinesses => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} />}
+          renderCreator={creatorBusinessId => <CentralEventCreator workspaceId={workspaceId} businessId={creatorBusinessId} businesses={visibleBusinesses} session={session} />}
+        />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
