@@ -19,6 +19,46 @@ async function load(file, mocks = {}) {
   return compile(file);
 }
 const draft = { subject:'Arabian Night',description:'Diner en muziek',start:'2026-10-03T19:00',end:'2026-10-03T23:00',location:'Caribbean Corner' };
+test('candidate selection is clickable before any form confirmation, with a separate adjacent link confirmation',async()=>{
+ const C=(await load('components/event-calendar.js')).default;
+ const h=await harness({events:[appointment({id:'one',subject:'Jamsessies',recurrence:{pattern:{type:'weekly'}}}),appointment({id:'two',subject:'Muziekavond'})]});
+ const prior=global.fetch,calls=[];let tree;
+ global.fetch=async(url,options)=>{const input=JSON.parse(options.body);calls.push(input);const data=await h.run(input.action,input);return {ok:true,json:async()=>data};};
+ const props={item:h.row,workspaceId:'w',session:{access_token:'token'},enabled:true};
+ const choose=()=>tree.root.findAllByType('button').filter(b=>b.props.children==='Deze afspraak kiezen');
+ const link=()=>tree.root.findAllByType('button').find(b=>b.props.children==='Deze bestaande afspraak koppelen');
+ const confirmation=()=>tree.root.findAllByProps({role:'region'}).find(r=>String(r.props['aria-label']).startsWith('Koppeling bevestigen:')).findByType('input');
+ try{
+  await Renderer.act(async()=>{tree=Renderer.create(React.createElement(C,props));});
+  assert.equal(calls.length,1);assert.equal(choose().length,2);assert.ok(choose().every(b=>!b.props.disabled));assert.equal(link(),undefined);
+  await Renderer.act(async()=>choose()[0].props.onClick());assert.equal(calls.length,1,'choosing never saves or changes Outlook');
+  assert.equal(link().props.disabled,true);assert.equal(choose()[0].props['aria-pressed'],true);
+  await Renderer.act(async()=>confirmation().props.onChange({target:{checked:true}}));assert.equal(link().props.disabled,false);
+  await Renderer.act(async()=>choose()[1].props.onClick());assert.equal(confirmation().props.checked,false,'a different choice needs fresh consent');
+  await Renderer.act(async()=>confirmation().props.onChange({target:{checked:true}}));
+  const submit=link().props.onClick;await Renderer.act(async()=>{await Promise.all([submit(),submit()]);});
+  assert.equal(calls.filter(c=>c.action==='link').length,1);assert.equal(calls.at(-1).eventId,'two');assert.equal(calls.at(-1).confirmed,true);
+  assert.ok(h.calls.every(c=>!c.o.method||c.o.method==='GET'),'linking does not mutate Outlook');
+  assert.equal(choose().length,0);assert.equal(h.row.media[1].calendar_channel.event_id,'two');
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prior;}
+});
+test('new-appointment checkbox cannot silently confirm linking, and a recheck clears the selected candidate',async()=>{
+ const C=(await load('components/event-calendar.js')).default,h=await harness({events:[appointment()]});
+ const prior=global.fetch;let tree;global.fetch=async(url,options)=>({ok:true,json:async()=>h.run('check')});
+ try{
+  await Renderer.act(async()=>{tree=Renderer.create(React.createElement(C,{item:h.row,workspaceId:'w',session:{access_token:'token'},enabled:true}));});
+  const buttons=()=>tree.root.findAllByType('button');
+  await Renderer.act(async()=>buttons().find(b=>b.props.children==='Deze afspraak kiezen').props.onClick());
+  const region=()=>tree.root.findAllByProps({role:'region'}).find(r=>String(r.props['aria-label']).startsWith('Koppeling bevestigen:'));
+  const form=tree.root.findByType('fieldset');
+  await Renderer.act(async()=>form.findAllByType('input').find(i=>i.props.type==='checkbox'&&!i.props.checked).props.onChange({target:{checked:true}}));
+  assert.equal(region(),undefined,'choosing to make a new appointment clears the link selection');
+  await Renderer.act(async()=>buttons().find(b=>b.props.children==='Deze afspraak kiezen').props.onClick());
+  await Renderer.act(async()=>region().findByType('input').props.onChange({target:{checked:true}}));
+  await Renderer.act(async()=>buttons().find(b=>b.props.children==='Controleren of het in de agenda staat').props.onClick());
+  assert.equal(region(),undefined,'rechecking invalidates the prior selection and its consent');
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prior;}
+});
 function appointment(patch = {}) { return {id:'remote1',subject:draft.subject,body:{content:draft.description},start:{dateTime:draft.start},end:{dateTime:draft.end},location:{displayName:draft.location},'@odata.etag':'v1',...patch}; }
 async function harness({events=[],state=null,legacy=null,hook}={}) {
   const {eventCalendarAction}=await load('lib/event-calendar-service.js');
