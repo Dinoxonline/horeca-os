@@ -16,6 +16,7 @@ import ManagerLogbook from "./manager-logbook";
 import Documents from "./documents";
 import StaffTicketForm from "./staff-ticket-form";
 import StaffTickets from "./staff-tickets";
+import Quotes from "./quotes";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
 const priorityLabel = { critical: "Kritiek", high: "Hoog", medium: "Midden", low: "Laag" };
@@ -45,6 +46,7 @@ const routeViews = {
   "/mail": "mail",
   "/agenda": "calendar",
   "/marketing": "marketing",
+  "/offertes": "quotes",
   "/ai": "assistant",
   "/gebruikers": "users",
   "/uren": "hours",
@@ -332,9 +334,10 @@ export default function HorecaOsApp() {
     social: canUseFeature("social:read"),
     mail: isOwner,
     calendar: isOwner,
+    quotes: activeWorkspace?.role === "owner",
     marketing: canUseFeature("marketing:read") || canUseFeature("marketing:manage") || canUseFeature("social:read"),
     security: true,
-  }), [canUseFeature, ticketVisibility]);
+  }), [canUseFeature, ticketVisibility, isOwner, activeWorkspace?.role]);
   const canViewRevenue = isOwner || canUseFeature("revenue:read") || canUseFeature("finance:read");
   const canViewDirectie = canViewRevenue;
   const dashboardLabel = isOwner ? "CEO Home" : canViewDirectie ? "Management Home" : "Mijn werk";
@@ -476,6 +479,7 @@ export default function HorecaOsApp() {
           {featureVisibility.mail && <NavLink href="/mail" active={activeView === "mail"}>Mail</NavLink>}
           {featureVisibility.calendar && <NavLink href="/agenda" active={activeView === "calendar"}>Agenda</NavLink>}
           {featureVisibility.marketing && <NavLink href="/marketing" active={activeView === "marketing"}>Marketing</NavLink>}
+          {featureVisibility.quotes && <NavLink href="/offertes" active={activeView === "quotes"}>Gasten & offertes</NavLink>}
           {featureVisibility.assistant && <NavLink href="/ai" active={activeView === "assistant"}>AI-assistent</NavLink>}
           {featureVisibility.users && <NavLink href="/gebruikers" active={activeView === "users"}>Gebruikers & rollen</NavLink>}
           {featureVisibility.hours && <NavLink href="/uren" active={activeView === "hours"}>Uren</NavLink>}
@@ -551,6 +555,7 @@ export default function HorecaOsApp() {
         {activeView === "social" && featureVisibility.social && <SocialInbox workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} canManage={isOwner || canUseFeature("social:manage")} />}
         {activeView === "mail" && featureVisibility.mail && <MailAgenda workspaceId={workspaceId} businessId={businessId} session={session} />}
         {activeView === "calendar" && featureVisibility.calendar && <CalendarOverview workspaceId={workspaceId} session={session} />}
+        {activeView === "quotes" && featureVisibility.quotes && <Quotes key={workspaceId} workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && <MarketingAgendaNavigation
           businessId={businessId} businesses={visibleBusinesses}
           renderAgenda={agendaBusinesses => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} />}
