@@ -173,6 +173,65 @@ test('meetings, repeated appointments and non-organizer entries cannot be modifi
   await assert.rejects(h.run('update',{etag:'v1'}),/Outlook/);assert.equal(h.calls.filter(c=>c.o.method).length,0);
  }
 });
+
+const occurrenceEvent = patch => appointment({type:'occurrence',seriesMasterId:'series',...patch});
+const occurrenceConsent = {etag:'v1',updateScope:'occurrence',targetEventId:'remote1',seriesMasterId:'series'};
+test('only the confirmed occurrence or exception is patched; master and siblings remain untouched',async()=>{
+ for(const type of ['occurrence','exception']){
+  const events=[occurrenceEvent({type}),appointment({id:'series',type:'seriesMaster',recurrence:{pattern:{type:'weekly'}}}),occurrenceEvent({id:'sibling'})];
+  const others=structuredClone(events.slice(1));
+  const h=await harness({events,legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'},hook:(p,o,row)=>{
+   if(o.method==='PATCH'){
+    assert.ok(row.media[1].calendar_channel.operation);
+    assert.equal(p,'users/info@leclubbbq.nl/calendar/events/remote1');
+    assert.equal(o.headers['If-Match'],'v1');
+    const body=JSON.parse(o.body);assert.deepEqual(Object.keys(body).sort(),['body','end','location','start','subject']);
+    events[0]={...events[0],...body,type:'exception','@odata.etag':'v2'};return events[0];
+   }
+  }});
+  const checked=await h.run('check');assert.equal(checked.saved.remote.editable,true);assert.equal(checked.saved.remote.update_scope,'occurrence');
+  const result=await h.run('update',{...occurrenceConsent,draft:{...draft,subject:'Eenmalige wijziging'}});
+  assert.equal(result.saved.remote.type,'exception');assert.equal(result.saved.remote.subject,'Eenmalige wijziging');assert.match(result.message,/Alleen deze uitvoering/);
+  assert.deepEqual(events.slice(1),others);assert.equal(h.calls.filter(c=>c.o.method).length,1);
+ }
+});
+test('occurrence updates need bound explicit consent and fresh etag before reserving or writing',async()=>{
+ for(const extra of [{},{...occurrenceConsent,confirmed:false},{...occurrenceConsent,updateScope:'series'},{...occurrenceConsent,targetEventId:'series'},{...occurrenceConsent,seriesMasterId:'other'},{...occurrenceConsent,etag:'old'}]){
+  const h=await harness({events:[occurrenceEvent()],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});await h.run('check');
+  await assert.rejects(h.run('update',extra));assert.equal(h.calls.filter(c=>c.o.method).length,0);assert.equal(h.row.media[1].calendar_channel.operation,null);
+ }
+});
+test('masters, incomplete identities and meeting safeguards cannot be bypassed by occurrence consent',async()=>{
+ for(const patch of [{type:'seriesMaster',recurrence:{}},{seriesMasterId:''},{seriesMasterId:'remote1'},{type:'singleInstance'},{type:'unknown'},{recurrence:{}},{attendees:[{}]},{isOnlineMeeting:true},{isAllDay:true},{isOrganizer:false},{isCancelled:true}]){
+  const h=await harness({events:[occurrenceEvent(patch)],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});const r=await h.run('check');assert.equal(r.saved.remote.editable,false);
+  await assert.rejects(h.run('update',occurrenceConsent));assert.equal(h.calls.filter(c=>c.o.method).length,0);
+ }
+});
+test('changed occurrence type is rejected; Microsoft refusal never retries on the master',async()=>{
+ const h=await harness({events:[occurrenceEvent()],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});await h.run('check');h.events[0]=appointment();
+ await assert.rejects(h.run('update',occurrenceConsent),/ondertussen/);assert.equal(h.calls.filter(c=>c.o.method).length,0);
+ const refused=await harness({events:[occurrenceEvent()],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'},hook:(p,o)=>{if(o.method)throw Object.assign(Error('Boundary'),{status:400});}});await refused.run('check');
+ const r=await refused.run('update',occurrenceConsent);assert.match(r.error,/geweigerd/);assert.equal(r.saved.operation,null);assert.equal(refused.calls.filter(c=>c.o.method).length,1);
+});
+test('unexpected master readback remains uncertain and never replaces the occurrence link',async()=>{
+ const h=await harness({events:[occurrenceEvent()],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'},hook:(p,o)=>o.method?appointment({id:'series',type:'seriesMaster',recurrence:{}}):undefined});await h.run('check');
+ const r=await h.run('update',occurrenceConsent);assert.ok(r.error);assert.ok(r.saved.operation);assert.equal(r.saved.event_id,'remote1');assert.equal(h.calls.filter(c=>c.o.method).length,1);
+});
+test('UI requires explicit occurrence confirmation and sends identity; changing times revokes consent',async()=>{
+ const C=(await load('components/event-calendar.js')).default,h=await harness({events:[occurrenceEvent()],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});
+ const prior=global.fetch,calls=[];let tree;
+ global.fetch=async(url,options)=>{const input=JSON.parse(options.body);calls.push(input);return {ok:true,json:async()=>input.action==='check'?h.run('check'):{saved:h.row.media[1].calendar_channel,message:'Test'}};};
+ try{
+  await Renderer.act(async()=>{tree=Renderer.create(React.createElement(C,{item:h.row,workspaceId:'w',session:{access_token:'token'},enabled:true}));});
+  const button=()=>tree.root.findAllByType('button').find(b=>b.props.children==='Alleen deze uitvoering wijzigen');
+  const consent=()=>tree.root.findByType('fieldset').findAllByProps({type:'checkbox'}).at(-1);
+  assert.equal(button().props.disabled,true);assert.match(JSON.stringify(tree.toJSON()),/niet de hele reeks/);assert.deepEqual(calls.map(c=>c.action),['check']);
+  await Renderer.act(async()=>consent().props.onChange({target:{checked:true}}));assert.equal(button().props.disabled,false);
+  await Renderer.act(async()=>tree.root.findAllByProps({type:'datetime-local'})[0].props.onChange({target:{value:'2026-10-03T18:00'}}));assert.equal(consent().props.checked,false);
+  await Renderer.act(async()=>consent().props.onChange({target:{checked:true}}));await Renderer.act(async()=>button().props.onClick());
+  assert.equal(calls.at(-1).updateScope,'occurrence');assert.equal(calls.at(-1).targetEventId,'remote1');assert.equal(calls.at(-1).seriesMasterId,'series');
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prior;}
+});
 test('network error is not missing; a missing linked ID cannot silently create another appointment',async()=>{
  const failed=await harness({hook:()=>{throw new Error('offline');}});const r=await failed.run('check');assert.equal(r.saved.status,'error');await assert.rejects(failed.run('create'));
  const gone=await harness({legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});assert.equal((await gone.run('check')).saved.status,'missing');await assert.rejects(gone.run('create'));

@@ -32,7 +32,7 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
     lock.current = true; setBusy(true); setNotice(""); setFailed(false);
     controller.current = new AbortController(); const timeout = setTimeout(() => controller.current?.abort(), 55000);
     try {
-      const response = await fetch("/api/marketing/event-calendar", { method: "POST", signal: controller.current.signal, headers: { Authorization: `Bearer ${token.current}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id, itemId: item.id, action, revision: saved?.revision || null, draft: valid, confirmed: action === "link" ? candidateConfirmed : confirmed, eventId, reviewedCandidateIds: differentAppointments ? candidates.map(c => c.id) : [], etag: saved?.remote?.etag }) });
+      const response = await fetch("/api/marketing/event-calendar", { method: "POST", signal: controller.current.signal, headers: { Authorization: `Bearer ${token.current}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id, itemId: item.id, action, revision: saved?.revision || null, draft: valid, confirmed: action === "link" ? candidateConfirmed : confirmed, eventId, reviewedCandidateIds: differentAppointments ? candidates.map(c => c.id) : [], etag: saved?.remote?.etag, updateScope: saved?.remote?.update_scope, targetEventId: saved?.remote?.id, seriesMasterId: saved?.remote?.series_master_id }) });
       const data = await response.json();
       if (!mounted.current) return;
       if (data.saved) { setSaved(data.saved); callbacks.current.onSaved?.(data.saved); }
@@ -60,6 +60,7 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
   ).map(source => ({ label: source.label === 'Eventin' ? 'Website' : 'Facebook', ...calendarEventTimes(source.item) }))];
   const formTimesValid = calendarEventTimes({ media: [{ kind: 'campaign_distribution', common: draft }] }).valid;
   const remote = saved?.remote, linked = Boolean(saved?.event_id), canCreate = loaded && (saved?.status === "missing" || (saved?.status === "candidates" && differentAppointments)) && !linked && !saved?.operation;
+  const occurrence = remote?.update_scope === "occurrence";
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label={`Agenda ${EVENT_MAILBOX}`}>
     <div className={styles.notice}><strong>Agenda {EVENT_MAILBOX}</strong><p>Plan het evenement in deze Microsoft-agenda en controleer de echte afspraak. Dit wijzigt Facebook, Instagram en de website niet. Tijden zijn Nederlandse tijd.</p></div>
@@ -92,8 +93,10 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
       <label>Locatie in agenda<input value={draft.location} maxLength={500} onChange={e => change("location",e.target.value)} /></label>
       <label>Omschrijving in agenda<textarea rows={5} maxLength={20000} value={draft.description} onChange={e => change("description",e.target.value)} /></label>
       <small>Dit zijn de gegevens voor de agenda-afspraak. De opgeslagen evenementgegevens en andere kanalen blijven ongewijzigd.</small>
-      <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik heb de afspraakgegevens gecontroleerd en wil deze actie uitvoeren in de agenda van {EVENT_MAILBOX}.</label>
-      <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!confirmed || !loaded || !formTimesValid || (linked ? !remote?.editable || saved?.status !== "present" : !canCreate)} onClick={() => run(linked ? "update" : "create")}>{linked ? "Bestaand agendapunt wijzigen" : "In agenda zetten"}</button>{dirty && <strong>Nog niet in de agenda bewaard</strong>}</div>
+      {occurrence && <p className={styles.notice}><strong>Alleen deze uitvoering wijzigen</strong>Gekoppeld: {remote.subject}, {remote.start.replace('T', ' ')}. Je wijzigt uitsluitend deze afspraak in de reeks. De overige afspraken blijven ongewijzigd.</p>}
+      {linked && !remote?.editable && <p role="status">{remote?.readonly_reason || "Deze afspraak is hier alleen te controleren. Controleer opnieuw of open de afspraak in Outlook."}</p>}
+      <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{occurrence ? `Ik heb de gegevens gecontroleerd en wil alleen deze uitvoering van ${remote.start.slice(0, 10)} wijzigen, niet de hele reeks.` : `Ik heb de afspraakgegevens gecontroleerd en wil deze actie uitvoeren in de agenda van ${EVENT_MAILBOX}.`}</label>
+      <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!confirmed || !loaded || !formTimesValid || (linked ? !remote?.editable || saved?.status !== "present" : !canCreate)} onClick={() => run(linked ? "update" : "create")}>{linked ? occurrence ? "Alleen deze uitvoering wijzigen" : "Bestaand agendapunt wijzigen" : "In agenda zetten"}</button>{dirty && <strong>Nog niet in de agenda bewaard</strong>}</div>
       {!loaded && <small>Controleer eerst de agenda voordat je iets wijzigt.</small>}
     </fieldset>
   </section>;
