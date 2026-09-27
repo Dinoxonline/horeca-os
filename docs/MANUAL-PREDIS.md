@@ -17,7 +17,9 @@ website updates, Facebook handoff and Instagram publication remain available.
 
 ## Boundaries and safety
 
-This is NOT a Predis publishing API integration. No Predis requests, jobs, email sends,
+This manual planning tab is NOT a Predis publishing API integration. The separate
+Content maken tab now supports generation (see PREDIS-CONTENT.md). In manual planning,
+no Predis requests, jobs, email sends,
 external scheduling or publication are triggered by saving/copying/opening links.
 Dates are desired times, not external scheduling guarantees. Confirmations are
 user-reported, never automatically verified or promoted to published by elapsed time.

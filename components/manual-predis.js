@@ -6,7 +6,7 @@ import { instagramEventMedia } from "../lib/instagram-event-media";
 import { PREDIS_CHANNELS, PREDIS_STATES, PREDIS_DAYS, localToday, makeManualEntries, validateManualDraft, transferText, manualDistribution, retainedConfirmations } from "../lib/manual-predis";
 import styles from "./manual-predis.module.css";
 
-export default function ManualPredis({ item, workspaceId, session, businessName, enabled, linkedSources = [], onSaved, onUnsavedChange }) {
+export default function ManualPredis({ item, workspaceId, session, businessName, enabled, linkedSources = [], onSaved, onUnsavedChange, generatedContent, onGeneratedContentApplied }) {
   const dist = manualDistribution(item) || {};
   const initial = () => ({ caption: dist.common?.description || item.body || dist.common?.title || "", assets: [], entries: [], timezone: "Europe/Amsterdam" });
   const [draft, setDraft] = useState(initial);
@@ -26,6 +26,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const [state, setState] = useState("scheduled");
   const [confirmed, setConfirmed] = useState(false);
   const mounted = useRef(true), lock = useRef(false), requests = useRef(new Set());
+  const usedContent = useRef(null);
   const tokenRef = useRef(session?.access_token); tokenRef.current = session?.access_token;
   const onSavedRef = useRef(onSaved); onSavedRef.current = onSaved;
   const assets = instagramEventMedia(item, linkedSources);
@@ -66,6 +67,13 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   }
   function load() { return run("Voorbereiding laden…", async () => { const next = await request(); accept(next); }); }
   useEffect(() => { if (enabled && hasToken && !loaded && !lock.current) load(); }, [enabled, hasToken]); // Token refresh must not discard input.
+  useEffect(() => {
+    if (!loaded || !generatedContent || usedContent.current === generatedContent.id) return;
+    usedContent.current = generatedContent.id;
+    setDraft(current => ({ ...current, caption: generatedContent.caption, assets: generatedContent.assets }));
+    setDirty(true); setConfirmed(false); setMessage("Predis-content overgenomen in je voorbereiding. Bewaar hieronder; er is nog niets ingepland of gepubliceerd.");
+    onGeneratedContentApplied?.();
+  }, [loaded, generatedContent]);
   function change(next) { setDraft(next); setDirty(true); setConfirmed(false); setMessage(""); }
   function addMoments() {
     try {
