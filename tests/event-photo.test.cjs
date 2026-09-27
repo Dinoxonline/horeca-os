@@ -127,3 +127,19 @@ test('photo UI previews before import, blocks duplicate clicks, and requires web
   assert.equal(button(publish),undefined,'a changed record must invalidate the old website preview and confirmation');
  }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prevFetch;global.window=prevWindow;}
 });
+
+test('website status reconciliation retains its fresh preview but later changes invalidate it',async()=>{
+ const Component=(await load('components/event-photo-sync.js')).default;
+ const prevFetch=global.fetch,prevWindow=global.window;
+ global.window={addEventListener(){},removeEventListener(){}};
+ const original=fixture(), current={...original,updated_at:'reconciled'};
+ global.fetch=async()=>Response.json({item:current,preview:{url:'https://website/current.jpg',version:'fresh'}});
+ let tree;
+ function Harness(){const [item,setItem]=React.useState(original);return React.createElement(Component,{item,mode:'website',onSaved:setItem});}
+ try {
+  await Renderer.act(async()=>{tree=Renderer.create(React.createElement(Harness));});
+  await Renderer.act(async()=>tree.root.findAllByType('button').find(b=>b.props.children==='Websitefoto controleren').props.onClick());
+  assert.equal(tree.root.findAllByType('img').find(i=>i.props.alt.startsWith('Oude foto')).props.src,'https://website/current.jpg');
+  assert.equal(tree.root.findByType('input').props.checked,false);
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prevFetch;global.window=prevWindow;}
+});

@@ -17,7 +17,11 @@ export default function EventPhotoSync({ workspaceId, session, item, busy, onSav
   const [confirmed, setConfirmed] = useState(false);
   const lock = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setConfirmed(false); setWebsite(null); }, [item.updated_at]);
+  useEffect(() => {
+    setConfirmed(false);
+    // A status reconciliation may return an updated item and its fresh preview together.
+    setWebsite(current => current?.itemRevision === item.updated_at ? current : null);
+  }, [item.updated_at]);
   useEffect(() => { onBusyChange?.(working); }, [working, onBusyChange]);
   useEffect(() => {
     if (!working) return;
@@ -38,7 +42,7 @@ export default function EventPhotoSync({ workspaceId, session, item, busy, onSav
       if (!mounted.current) return;
       if (data.item) onSaved?.(data.item);
       if (action === 'facebook-preview') setFacebook(data.preview);
-      if (action === 'website-preview') setWebsite(data.preview);
+      if (action === 'website-preview') setWebsite({ ...data.preview, itemRevision: data.item?.updated_at || item.updated_at });
       if (action === 'facebook-import' || action === 'website-publish') { setWebsite(null); setConfirmed(false); }
       setNotice(data.message || (action === 'facebook-preview' ? 'Dit is de huidige foto van het gekoppelde Facebook-evenement. Er is nog niets overgenomen.' : 'Huidige websitefoto opgehaald. Er is geen nieuwe foto gepubliceerd.'));
     } catch (e) {
