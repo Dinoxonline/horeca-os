@@ -1053,6 +1053,62 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
   }
 });
 
+test('Facebook status is shared by calendar, worklist and dialog before opening, across views and after retries', async () => {
+  require('styled-jsx/style');
+  const oldFetch=global.fetch,oldWindow=global.window,oldDocument=global.document;
+  global.window={addEventListener(){},removeEventListener(){}};
+  global.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}};
+  const now=new Date().toISOString();
+  const campaign={id:'fb-status',business_id:'b',created_at:now,scheduled_for:now,media:[{kind:'campaign_distribution',facebook_event_delivery:{external_id:'456'},event_content_delivery:{facebook:{status:'prepared'}},common:{title:'Testavond',start:now,description:'Tekst'}}]};
+  let finish,reads=0;
+  global.fetch=async url=>{
+    if(String(url).includes('includePast=true')) { reads++; return new Promise(resolve=>{finish=resolve;}); }
+    return {ok:true,json:async()=>({events:[],media:campaign.media})};
+  };
+  let query;query=new Proxy({},{get:(_,key)=>key==='then'?(resolve,reject)=>Promise.resolve({data:[campaign]}).then(resolve,reject):()=>query});
+  const {default:Marketing,EventDetails}=await load('components/marketing-overview.js',{'../lib/supabase':{supabase:{from:()=>query}}});
+  const reply=description=>({ok:true,json:async()=>({events:[{id:'456',title:'Testavond',startDate:now,description}]})});
+  let renderer;
+  try {
+    await React.act(async()=>{renderer=Renderer.create(React.createElement(Marketing,{workspaceId:'w',businesses:[{id:'b',name:'Caribbean Corner'}],session:{user:{id:'u'},access_token:'t'}}));});
+    await flush();
+    const buttons=()=>renderer.root.findAllByType('button');
+    const click=async text=>React.act(async()=>buttons().find(b=>b.props.children===text).props.onClick());
+    const mini=()=>renderer.root.findAllByType('i').find(n=>n.props.title?.startsWith('Facebook:'));
+    const state=(key,label)=>{
+      assert.equal(mini().props.className,key);
+      assert.equal(mini().props.title,'Facebook: '+label);
+      assert.ok(renderer.root.findAllByType('span').some(n=>n.children.join('')==='Facebook: '+label),'worklist shares the current status');
+      const tile=buttons().find(b=>b.props['aria-label']?.startsWith('Facebook openen:'));
+      if(tile){assert.equal(tile.props['aria-label'],'Facebook openen: '+label);assert.ok(tile.props.className.endsWith(' '+key));}
+    };
+    state('checking','Facebook wordt gecontroleerd…');
+    assert.equal(renderer.root.findAllByType(EventDetails).length,0);
+    await React.act(async()=>finish(reply('Tekst')));
+    state('placed','Tekst komt overeen — geen actie nodig');
+    for(const view of ['Week','Dag','Maand','Over elkaar leggen','Twee agenda\'s']) {
+      await click(view); state('placed','Tekst komt overeen — geen actie nodig');
+    }
+    await React.act(async()=>buttons().find(b=>b.props.className?.includes('marketingCalendarEvent')).props.onClick());
+    state('placed','Tekst komt overeen — geen actie nodig');
+    assert.equal(reads,1,'opening reuses background comparison');
+    const details=()=>renderer.root.findByType(EventDetails);
+    await React.act(async()=>{details().props.onCompareSources();});
+    state('checking','Facebook wordt gecontroleerd…');
+    await React.act(async()=>finish({ok:false,json:async()=>({})}));
+    state('unchecked','Facebook-controle niet afgerond');
+    await React.act(async()=>{details().props.onCompareSources();});
+    await React.act(async()=>finish(reply('Andere tekst')));
+    state('warning','Tekst verschilt — bijwerken nodig');
+    const saved={...campaign,media:[{...campaign.media[0],common:{...campaign.media[0].common,description:'Andere tekst'}}]};
+    await React.act(async()=>details().props.onSeriesSaved([saved]));
+    state('placed','Tekst komt overeen — geen actie nodig');
+    await click('Details sluiten');
+    state('placed','Tekst komt overeen — geen actie nodig');
+    assert.equal(reads,3,'view switches, opening and local edits do not add requests');
+  } finally {if(renderer)await React.act(async()=>renderer.unmount());global.fetch=oldFetch;global.window=oldWindow;global.document=oldDocument;}
+});
+
 test('confirmed website photo refreshes shared media and discards a late old source response', async () => {
   require('styled-jsx/style');
   const oldFetch=global.fetch,oldWindow=global.window,oldDocument=global.document;
