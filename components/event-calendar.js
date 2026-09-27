@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { EVENT_MAILBOX, calendarDistribution, calendarDraft, calendarWebLink, validateCalendarDraft } from "../lib/event-calendar";
+import { EVENT_MAILBOX, calendarDistribution, calendarDraft, calendarEventTimes, calendarWebLink, validateCalendarDraft } from "../lib/event-calendar";
 import styles from "./manual-predis.module.css";
 
-export default function EventCalendar({ item, workspaceId, session, enabled, onSaved, onUnsavedChange }) {
+export default function EventCalendar({ item, workspaceId, session, enabled, onSaved, onUnsavedChange, sources = [], sourcesLoading = false, onRefreshSources }) {
   const [draft, setDraft] = useState(() => calendarDraft(item));
+  const eventDraft = calendarDraft(item), eventVersion = JSON.stringify(eventDraft);
+  const receivedEvent = useRef(eventVersion);
   const [saved, setSaved] = useState(() => calendarDistribution(item).calendar_channel || null);
   const [candidates, setCandidates] = useState([]), [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false);
   const [differentAppointments, setDifferentAppointments] = useState(false);
@@ -12,6 +14,13 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
   const [notice, setNotice] = useState(""), [failed, setFailed] = useState(false), [confirmed, setConfirmed] = useState(false), [dirty, setDirty] = useState(false);
   const mounted = useRef(true), lock = useRef(false), controller = useRef(null), callbacks = useRef({ onSaved, onUnsavedChange }), token = useRef(session?.access_token);
   callbacks.current = { onSaved, onUnsavedChange }; token.current = session?.access_token;
+  useEffect(() => {
+    if (receivedEvent.current === eventVersion || busy) return;
+    receivedEvent.current = eventVersion;
+    // Fresh base data must invalidate approval, but never discard a user's draft.
+    setConfirmed(false);
+    if (!dirty) setDraft(JSON.parse(eventVersion));
+  }, [eventVersion, dirty, busy]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.abort(); }; }, []);
   useEffect(() => { onUnsavedChange?.(dirty || busy); return () => onUnsavedChange?.(false); }, [dirty, busy, onUnsavedChange]);
   useEffect(() => { if (typeof window === "undefined") return; const warn = e => { if (dirty || busy) { e.preventDefault(); e.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty,busy]);
@@ -40,6 +49,16 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
   // Load only when this panel is opened; a refreshed login must not reset edits.
   useEffect(() => { if (enabled && !loaded && !lock.current && token.current) run("check"); }, [enabled, Boolean(session?.access_token)]);
   function change(key, value) { setDraft(current => ({ ...current, [key]: value })); setDirty(true); setConfirmed(false); }
+  function useTimes(times) {
+    if (busy || saved?.operation || !times.valid) return;
+    setDraft(current => ({ ...current, start: times.start, end: times.end }));
+    setDirty(true); setConfirmed(false);
+  }
+  const baseTimes = calendarEventTimes(item);
+  const timeSources = [{ label: 'Horeca OS', ...baseTimes }, ...sources.filter(source =>
+    ['Eventin', 'Facebook'].includes(source.label) && source.item?.business_id === item.business_id
+  ).map(source => ({ label: source.label === 'Eventin' ? 'Website' : 'Facebook', ...calendarEventTimes(source.item) }))];
+  const formTimesValid = calendarEventTimes({ media: [{ kind: 'campaign_distribution', common: draft }] }).valid;
   const remote = saved?.remote, linked = Boolean(saved?.event_id), canCreate = loaded && (saved?.status === "missing" || (saved?.status === "candidates" && differentAppointments)) && !linked && !saved?.operation;
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label={`Agenda ${EVENT_MAILBOX}`}>
@@ -57,12 +76,24 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
     <fieldset className={styles.fields} disabled={busy || Boolean(saved?.operation)}><legend>{linked ? "Afspraak wijzigen" : "Evenement inplannen"}</legend>
       {candidates.length > 0 && <label className={styles.check}><input type="checkbox" checked={differentAppointments} onChange={e => { setDifferentAppointments(e.target.checked); setConfirmed(false); setSelectedCandidateId(""); setLinkConfirmed(false); }} />Ik heb alle suggesties bekeken. Dit zijn andere afspraken; mijn evenement staat er niet tussen.</label>}
       <label>Titel in agenda<input value={draft.subject} maxLength={250} onChange={e => change("subject", e.target.value)} /></label>
+      <section className={styles.notice} aria-label="Evenementtijden kiezen">
+        <strong>Tijden uit het evenement — Nederlandse tijd</strong>
+        <p>Het formulier gebruikt de opgeslagen tijden uit Horeca OS. Website en Facebook worden apart getoond; kies hieronder als je die tijden wilt gebruiken.</p>
+        {!baseTimes.valid && <p role="status">In Horeca OS ontbreekt een geldige begin- of eindtijd. Kies een complete bron of vul de tijden hieronder in; er wordt geen eindtijd verzonnen.</p>}
+        {timeSources.map(source => <div key={source.label}>
+          <b>{source.label}</b><p>{source.start.replace('T', ' ') || 'Begintijd ontbreekt'} tot {source.end.replace('T', ' ') || 'Eindtijd ontbreekt'}</p>
+          <button type="button" className="secondaryButton" disabled={!source.valid || (source.label !== 'Horeca OS' && sourcesLoading)} onClick={() => useTimes(source)}>Tijden uit {source.label} gebruiken</button>
+        </div>)}
+        {onRefreshSources && <button type="button" className="secondaryButton" disabled={sourcesLoading} onClick={onRefreshSources}>{sourcesLoading ? 'Evenementtijden ophalen…' : 'Website- en Facebooktijden opnieuw ophalen'}</button>}
+        <small>Overnemen vult alleen dit agendaformulier. Controleer en bevestig daarna. De basisgegevens in Horeca OS en de bestaande Outlook-afspraak veranderen niet door deze keuze.</small>
+      </section>
       <div className={styles.grid}><label>Begintijd (Nederland)<input type="datetime-local" value={draft.start} onChange={e => change("start",e.target.value)} /></label><label>Eindtijd (Nederland)<input type="datetime-local" value={draft.end} onChange={e => change("end",e.target.value)} /></label></div>
+      {!formTimesValid && <small role="status">Vul een geldige begin- en eindtijd in. De eindtijd moet na de begintijd liggen.</small>}
       <label>Locatie in agenda<input value={draft.location} maxLength={500} onChange={e => change("location",e.target.value)} /></label>
       <label>Omschrijving in agenda<textarea rows={5} maxLength={20000} value={draft.description} onChange={e => change("description",e.target.value)} /></label>
       <small>Dit zijn de gegevens voor de agenda-afspraak. De opgeslagen evenementgegevens en andere kanalen blijven ongewijzigd.</small>
       <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik heb de afspraakgegevens gecontroleerd en wil deze actie uitvoeren in de agenda van {EVENT_MAILBOX}.</label>
-      <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!confirmed || !loaded || (linked ? !remote?.editable || saved?.status !== "present" : !canCreate)} onClick={() => run(linked ? "update" : "create")}>{linked ? "Bestaand agendapunt wijzigen" : "In agenda zetten"}</button>{dirty && <strong>Nog niet in de agenda bewaard</strong>}</div>
+      <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!confirmed || !loaded || !formTimesValid || (linked ? !remote?.editable || saved?.status !== "present" : !canCreate)} onClick={() => run(linked ? "update" : "create")}>{linked ? "Bestaand agendapunt wijzigen" : "In agenda zetten"}</button>{dirty && <strong>Nog niet in de agenda bewaard</strong>}</div>
       {!loaded && <small>Controleer eerst de agenda voordat je iets wijzigt.</small>}
     </fieldset>
   </section>;

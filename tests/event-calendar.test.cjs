@@ -19,6 +19,61 @@ async function load(file, mocks = {}) {
   return compile(file);
 }
 const draft = { subject:'Arabian Night',description:'Diner en muziek',start:'2026-10-03T19:00',end:'2026-10-03T23:00',location:'Caribbean Corner' };
+test('event time pairs use Amsterdam time, preserve overnight dates and reject incomplete or invalid pairs',async()=>{
+ const {calendarEventTimes:t}=await load('lib/event-calendar.js');
+ const row=common=>({media:[{kind:'campaign_distribution',common}]});
+ assert.deepEqual(t(row({start:'2026-10-01T16:00:00Z',end:'2026-10-01T22:00:00Z'})),{start:'2026-10-01T18:00',end:'2026-10-02T00:00',valid:true});
+ assert.equal(t(row({start:'2026-12-01T17:00:00Z',end:'2026-12-01T22:00:00Z'})).start,'2026-12-01T18:00');
+ for(const common of [{start:'2026-10-01'}, {start:'2026-10-01T14:00',description:'Tot 23:55'}, {start:'2026-10-01T18:00',end:'2026-10-01T17:00'}, {start:'2026-02-30T18:00',end:'2026-03-01T01:00'}])assert.equal(t(row(common)).valid,false);
+});
+
+test('fresh event defaults update the clean calendar form but retain manual edits and revoke approval',async()=>{
+ const C=(await load('components/event-calendar.js')).default,h=await harness();
+ const prior=global.fetch,calls=[];let tree;
+ global.fetch=async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,json:async()=>({saved:{status:'missing'},message:'Checked'})};};
+ let props={item:structuredClone(h.row),workspaceId:'w',session:{access_token:'token'},enabled:false};
+ const times=()=>tree.root.findAllByProps({type:'datetime-local'});
+ const confirm=()=>tree.root.findByType('fieldset').findAllByProps({type:'checkbox'}).at(-1);
+ const render=async()=>Renderer.act(async()=>{if(tree)tree.update(React.createElement(C,props));else tree=Renderer.create(React.createElement(C,props));});
+ try{
+  await render();
+  const updated=structuredClone(h.row);updated.media[1].common.start='2026-10-03T18:00';updated.media[1].common.end='2026-10-04T00:30';
+  props={...props,item:updated,enabled:true};await render();assert.deepEqual(times().map(n=>n.props.value),['2026-10-03T18:00','2026-10-04T00:30']);
+  await Renderer.act(async()=>times()[0].props.onChange({target:{value:'2026-10-03T17:30'}}));
+  await Renderer.act(async()=>confirm().props.onChange({target:{checked:true}}));
+  const newer=structuredClone(updated);newer.media[1].common.end='2026-10-04T01:00';props={...props,item:newer,session:{access_token:'new'}};await render();
+  assert.deepEqual(times().map(n=>n.props.value),['2026-10-03T17:30','2026-10-04T00:30']);assert.equal(confirm().props.checked,false);
+  await Renderer.act(async()=>tree.root.findAllByType('button').find(n=>[].concat(n.props.children).join('')==='Tijden uit Horeca OS gebruiken').props.onClick());
+  assert.deepEqual(times().map(n=>n.props.value),['2026-10-03T18:00','2026-10-04T01:00']);
+  assert.deepEqual(calls.map(c=>c.action),['check']);
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prior;}
+});
+
+test('website times require an explicit choice, never mix sources or change Outlook and survive linking',async()=>{
+ const C=(await load('components/event-calendar.js')).default,h=await harness();
+ const prior=global.fetch,calls=[];let tree;
+ global.fetch=async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,json:async()=>({saved:{status:'present',event_id:'existing',remote:{subject:'Jamsessies',start:'2026-10-01T20:00',end:'2026-10-02T00:00',editable:false}},message:'Checked'})};};
+ const item=structuredClone(h.row);item.media[1].common.start='2026-10-01T14:00';item.media[1].common.end='';
+ const source=(label,business_id,start,end)=>({label,item:{business_id,media:[{kind:'campaign_distribution',common:{start,end}}]}});
+ let props={item,workspaceId:'w',session:{access_token:'token'},enabled:true,sources:[]};
+ const render=async()=>Renderer.act(async()=>{if(tree)tree.update(React.createElement(C,props));else tree=Renderer.create(React.createElement(C,props));});
+ const times=()=>tree.root.findAllByProps({type:'datetime-local'});
+ const buttons=()=>tree.root.findAllByType('button');
+ try{
+  await render();assert.deepEqual(times().map(n=>n.props.value),['2026-10-01T14:00','']);
+  props={...props,sources:[source('Eventin','b','2026-10-01T16:00:00Z','2026-10-01T21:55:00Z'),source('Facebook','other','2026-10-01T10:00','2026-10-01T11:00')]};await render();
+  assert.deepEqual(times().map(n=>n.props.value),['2026-10-01T14:00',''],'source arrival is not a user choice');
+  assert.equal(buttons().some(b=>[].concat(b.props.children).join('')==='Tijden uit Facebook gebruiken'),false);
+  await Renderer.act(async()=>buttons().find(b=>[].concat(b.props.children).join('')==='Tijden uit Website gebruiken').props.onClick());
+  assert.deepEqual(times().map(n=>n.props.value),['2026-10-01T18:00','2026-10-01T23:55']);
+  assert.equal(item.media[1].common.end,'','choice does not save the base');
+  await Renderer.act(async()=>buttons().find(b=>b.props.children==='Controleren of het in de agenda staat').props.onClick());
+  assert.deepEqual(times().map(n=>n.props.value),['2026-10-01T18:00','2026-10-01T23:55'],'Outlook read does not overwrite event draft');
+  assert.ok(calls.every(c=>c.action==='check'));
+  assert.equal(buttons().find(b=>b.props.children==='Bestaand agendapunt wijzigen').props.disabled,true,'recurring/meeting safeguards remain in force');
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prior;}
+});
+
 test('candidate selection is clickable before any form confirmation, with a separate adjacent link confirmation',async()=>{
  const C=(await load('components/event-calendar.js')).default;
  const h=await harness({events:[appointment({id:'one',subject:'Jamsessies',recurrence:{pattern:{type:'weekly'}}}),appointment({id:'two',subject:'Muziekavond'})]});

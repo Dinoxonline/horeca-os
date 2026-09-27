@@ -42,4 +42,16 @@ test('editor separates website content, copying is draft-only, failed save retai
  await Renderer.act(async()=>{btn('Wijzigingen bewaren in Horeca OS').props.onClick();btn('Wijzigingen bewaren in Horeca OS').props.onClick();});assert.equal(calls,2);await Renderer.act(async()=>resolve());assert.match(JSON.stringify(tree.toJSON()),/Opgeslagen in Horeca OS/);
  }finally{if(tree)await Renderer.act(async()=>tree.unmount());}
 });
+test('website times copy as a complete draft pair without saving or changing other fields',async()=>{
+ const C=(await load('components/event-editor.js')).default,r=row(),w=row();w.media[1].common.start='2026-10-01T16:00:00Z';w.media[1].common.end='2026-10-01T22:00:00Z';let tree,saves=0;
+ const props={item:r,sources:[{label:'Eventin',item:w}],onSave:()=>{saves++;}};
+ const button=()=>tree.root.findAllByType('button').find(b=>b.props.children==='Websitetijden overnemen als bewerking');
+ try{await Renderer.act(async()=>{tree=Renderer.create(React.createElement(C,props));});
+ await Renderer.act(async()=>button().props.onClick());
+ assert.deepEqual(tree.root.findAllByProps({type:'datetime-local'}).map(i=>i.props.value),['2026-10-01T18:00','2026-10-02T00:00']);
+ assert.equal(saves,0);assert.equal(tree.root.findAllByType('input')[0].props.value,'Avond');assert.equal(r.media[1].common.start,'2026-10-01T18:00:00Z');
+ const incomplete=structuredClone(w);incomplete.media[1].common.end='';await Renderer.act(async()=>tree.update(React.createElement(C,{...props,sources:[{label:'Eventin',item:incomplete}]})));assert.equal(button().props.disabled,true);
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());}
+});
+
 test('missing or cross-business website data is never substituted with local data',async()=>{const C=(await load('components/event-editor.js')).default;let tree;const w=row();w.business_id='other';try{await Renderer.act(async()=>{tree=Renderer.create(React.createElement(C,{item:row(),sources:[{label:'Eventin',item:w}]}));});assert.match(JSON.stringify(tree.toJSON()),/Geen websitegegevens beschikbaar/);assert.equal(tree.root.findAllByType('button').some(b=>b.props.children==='Website-tekst overnemen als bewerking'),false);}finally{if(tree)await Renderer.act(async()=>tree.unmount());}});

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { calendarDistribution } from '../lib/event-calendar';
+import { calendarDistribution, calendarEventTimes } from '../lib/event-calendar';
 import { eventEditorDraft, editorDifferences, imageRoles, safeEventUrl } from '../lib/event-editor';
 import { instagramEventMedia } from '../lib/instagram-event-media';
 import styles from './event-editor.module.css';
@@ -64,6 +64,7 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
           {safeEventUrl(webCommon.website_url) && <a href={safeEventUrl(webCommon.website_url)} target="_blank" rel="noreferrer">Evenement op website openen</a>}
           <p className={styles.notice}>{differences.length ? `Verschil met opgeslagen Horeca OS: ${differences.map(k => labels[k]).join(', ')}. Ontbrekende websitevelden zijn niet automatisch leeg in Horeca OS.` : 'De opgehaalde gegevens komen overeen met Horeca OS.'}</p>
           <button type="button" className="secondaryButton" disabled={disabled || checking} onClick={() => { change('title', web.title); change('description',web.description); }}>Website-tekst overnemen als bewerking</button>
+          <button type="button" className="secondaryButton" disabled={disabled || checking || !calendarEventTimes(website).valid} onClick={() => { change('start', web.start); change('end', web.end); }}>Websitetijden overnemen als bewerking</button>
           <button type="button" className="secondaryButton" disabled={disabled || checking || !safeEventUrl(web.image_url)} onClick={() => change(photoRole,web.image_url)}>Websitefoto als {imageRoles[photoRole].toLowerCase()} overnemen</button>
           <small>Overnemen is alleen een voorstel. Controleer het links en bewaar daarna in Horeca OS.</small>
         </> : <p className={styles.notice}>{checking ? 'De websitegegevens worden gecontroleerd.' : 'Geen websitegegevens beschikbaar. Haal de gekoppelde bron opnieuw op. Horeca OS-gegevens worden hier niet als websitegegevens getoond.'}</p>}
