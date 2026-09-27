@@ -176,6 +176,55 @@ test('meetings, repeated appointments and non-organizer entries cannot be modifi
 
 const occurrenceEvent = patch => appointment({type:'occurrence',seriesMasterId:'series',...patch});
 const occurrenceConsent = {etag:'v1',updateScope:'occurrence',targetEventId:'remote1',seriesMasterId:'series'};
+test('attended occurrence requires separate strict notification consent and retains the attendees',async()=>{
+ for(const type of ['occurrence','exception']){
+  const attendees=[{type:'required',emailAddress:{address:'guest@example.com'}}];
+  const events=[occurrenceEvent({type,isOrganizer:true,attendees}),occurrenceEvent({id:'sibling'})];
+  const sibling=structuredClone(events[1]);
+  const h=await harness({events,legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'},hook:(p,o)=>{
+   if(o.method==='PATCH'){
+    assert.equal(p,'users/info@leclubbbq.nl/calendar/events/remote1');
+    const body=JSON.parse(o.body);assert.deepEqual(Object.keys(body).sort(),['body','end','location','start','subject']);
+    events[0]={...events[0],...body,type:'exception','@odata.etag':'v2'};return events[0];
+   }
+  }});
+  const checked=await h.run('check');assert.equal(checked.saved.remote.editable,true);assert.equal(checked.saved.remote.requires_notification_confirmation,true);
+  assert.equal(JSON.stringify(checked).includes('guest@example.com'),false,'do not expose attendee addresses');
+  for(const notificationsConfirmed of [undefined,false,'true',1])await assert.rejects(h.run('update',{...occurrenceConsent,notificationsConfirmed}),/Bevestig apart/);
+  assert.equal(h.calls.filter(c=>c.o.method).length,0);assert.equal(h.row.media[1].calendar_channel.operation,null);
+  const result=await h.run('update',{...occurrenceConsent,notificationsConfirmed:true,draft:{...draft,subject:'Eenmalig'}});
+  assert.equal(result.saved.remote.subject,'Eenmalig');assert.deepEqual(events[0].attendees,attendees);assert.deepEqual(events[1],sibling);assert.equal(h.calls.filter(c=>c.o.method).length,1);
+ }
+});
+test('notification consent never bypasses ownership, series, online meeting or stale version checks',async()=>{
+ for(const patch of [{isOrganizer:false},{isOrganizer:undefined},{type:'seriesMaster',recurrence:{}},{isOnlineMeeting:true},{isAllDay:true},{isCancelled:true},{'@odata.etag':'v2'}]){
+  const h=await harness({events:[occurrenceEvent({attendees:[{}],isOrganizer:true,...patch})],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});await h.run('check');
+  await assert.rejects(h.run('update',{...occurrenceConsent,notificationsConfirmed:true}));assert.equal(h.calls.filter(c=>c.o.method).length,0);
+ }
+ const h=await harness({events:[occurrenceEvent({isOrganizer:true})],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});await h.run('check');h.events[0].attendees=[{}];
+ await assert.rejects(h.run('update',occurrenceConsent),/Bevestig apart/);assert.equal(h.calls.filter(c=>c.o.method).length,0);
+});
+test('UI needs both consents for attendees, resets on edits and recheck, and sends consent only on explicit save',async()=>{
+ const C=(await load('components/event-calendar.js')).default,h=await harness({events:[occurrenceEvent({isOrganizer:true,attendees:[{}]})],legacy:{mailbox:'info@leclubbbq.nl',event_id:'remote1'}});
+ const prior=global.fetch,calls=[];let tree;
+ global.fetch=async(url,options)=>{const input=JSON.parse(options.body);calls.push(input);return {ok:true,json:async()=>input.action==='check'?h.run('check'):{saved:h.row.media[1].calendar_channel,message:'Test'}};};
+ try{
+  await Renderer.act(async()=>{tree=Renderer.create(React.createElement(C,{item:h.row,workspaceId:'w',session:{access_token:'token'},enabled:true}));});
+  const button=()=>tree.root.findAllByType('button').find(b=>b.props.children==='Alleen deze uitvoering wijzigen');
+  const consent=()=>tree.root.findByType('fieldset').findAllByProps({type:'checkbox'}).at(-1);
+  const notifications=()=>tree.root.findByProps({'aria-label':'Uitnodigingsupdates bevestigen'}).findByType('input');
+  const check=()=>tree.root.findAllByType('button').find(b=>b.props.children==='Controleren of het in de agenda staat');
+  assert.equal(button().props.disabled,true);assert.equal(notifications().props.checked,false);
+  await Renderer.act(async()=>consent().props.onChange({target:{checked:true}}));assert.equal(button().props.disabled,true);
+  await Renderer.act(async()=>button().props.onClick());assert.deepEqual(calls.map(c=>c.action),['check'],'handler also refuses missing consent');
+  await Renderer.act(async()=>notifications().props.onChange({target:{checked:true}}));assert.equal(button().props.disabled,false);
+  await Renderer.act(async()=>tree.root.findAllByProps({type:'datetime-local'})[0].props.onChange({target:{value:'2026-10-03T18:00'}}));assert.equal(consent().props.checked,false);assert.equal(notifications().props.checked,false);
+  await Renderer.act(async()=>notifications().props.onChange({target:{checked:true}}));await Renderer.act(async()=>check().props.onClick());assert.equal(notifications().props.checked,false);
+  await Renderer.act(async()=>notifications().props.onChange({target:{checked:true}}));await Renderer.act(async()=>consent().props.onChange({target:{checked:true}}));
+  assert.equal(button().props.disabled,false);assert.ok(calls.every(c=>c.action==='check'));
+  await Renderer.act(async()=>button().props.onClick());assert.equal(calls.at(-1).action,'update');assert.equal(calls.at(-1).notificationsConfirmed,true);assert.equal(calls.at(-1).updateScope,'occurrence');assert.equal(notifications().props.checked,false);
+ }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prior;}
+});
 test('only the confirmed occurrence or exception is patched; master and siblings remain untouched',async()=>{
  for(const type of ['occurrence','exception']){
   const events=[occurrenceEvent({type}),appointment({id:'series',type:'seriesMaster',recurrence:{pattern:{type:'weekly'}}}),occurrenceEvent({id:'sibling'})];

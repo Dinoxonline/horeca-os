@@ -12,6 +12,8 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
   const [differentAppointments, setDifferentAppointments] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState(""), [linkConfirmed, setLinkConfirmed] = useState(false);
   const [notice, setNotice] = useState(""), [failed, setFailed] = useState(false), [confirmed, setConfirmed] = useState(false), [dirty, setDirty] = useState(false);
+  const [notificationsConfirmed, setNotificationsConfirmed] = useState(false);
+  useEffect(() => { setNotificationsConfirmed(false); }, [draft, saved?.revision, eventVersion]);
   const mounted = useRef(true), lock = useRef(false), controller = useRef(null), callbacks = useRef({ onSaved, onUnsavedChange }), token = useRef(session?.access_token);
   callbacks.current = { onSaved, onUnsavedChange }; token.current = session?.access_token;
   useEffect(() => {
@@ -26,13 +28,14 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
   useEffect(() => { if (typeof window === "undefined") return; const warn = e => { if (dirty || busy) { e.preventDefault(); e.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty,busy]);
   async function run(action, eventId, candidateConfirmed = false) {
     if (lock.current || !token.current) return;
+    if (action === "update" && saved?.remote?.requires_notification_confirmation && !notificationsConfirmed) { setFailed(true); setNotice("Bevestig eerst dat Microsoft uitnodigingsupdates kan versturen."); return; }
     if (action === "link" && (!candidateConfirmed || !linkConfirmed || eventId !== selectedCandidateId || !candidates.some(c => c.id === eventId))) return;
     let valid;
     if (["create", "update"].includes(action)) { try { valid = validateCalendarDraft(draft); } catch (e) { setFailed(true); setNotice(e.message); return; } }
     lock.current = true; setBusy(true); setNotice(""); setFailed(false);
     controller.current = new AbortController(); const timeout = setTimeout(() => controller.current?.abort(), 55000);
     try {
-      const response = await fetch("/api/marketing/event-calendar", { method: "POST", signal: controller.current.signal, headers: { Authorization: `Bearer ${token.current}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id, itemId: item.id, action, revision: saved?.revision || null, draft: valid, confirmed: action === "link" ? candidateConfirmed : confirmed, eventId, reviewedCandidateIds: differentAppointments ? candidates.map(c => c.id) : [], etag: saved?.remote?.etag, updateScope: saved?.remote?.update_scope, targetEventId: saved?.remote?.id, seriesMasterId: saved?.remote?.series_master_id }) });
+      const response = await fetch("/api/marketing/event-calendar", { method: "POST", signal: controller.current.signal, headers: { Authorization: `Bearer ${token.current}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id, itemId: item.id, action, revision: saved?.revision || null, draft: valid, confirmed: action === "link" ? candidateConfirmed : confirmed, notificationsConfirmed, eventId, reviewedCandidateIds: differentAppointments ? candidates.map(c => c.id) : [], etag: saved?.remote?.etag, updateScope: saved?.remote?.update_scope, targetEventId: saved?.remote?.id, seriesMasterId: saved?.remote?.series_master_id }) });
       const data = await response.json();
       if (!mounted.current) return;
       if (data.saved) { setSaved(data.saved); callbacks.current.onSaved?.(data.saved); }
@@ -44,7 +47,7 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
       if (["create", "update"].includes(action)) setDirty(false);
     } catch (e) {
       if (mounted.current) { setFailed(true); setNotice(e.name === "AbortError" ? "Geen bevestiging ontvangen. Controleer opnieuw; de afspraak kan al verwerkt zijn." : e.message); setConfirmed(false); setLinkConfirmed(false); setSelectedCandidateId(""); setLoaded(false); }
-    } finally { clearTimeout(timeout); lock.current = false; if (mounted.current) setBusy(false); }
+    } finally { clearTimeout(timeout); lock.current = false; if (mounted.current) { setBusy(false); setNotificationsConfirmed(false); } }
   }
   // Load only when this panel is opened; a refreshed login must not reset edits.
   useEffect(() => { if (enabled && !loaded && !lock.current && token.current) run("check"); }, [enabled, Boolean(session?.access_token)]);
@@ -95,8 +98,9 @@ export default function EventCalendar({ item, workspaceId, session, enabled, onS
       <small>Dit zijn de gegevens voor de agenda-afspraak. De opgeslagen evenementgegevens en andere kanalen blijven ongewijzigd.</small>
       {occurrence && <p className={styles.notice}><strong>Alleen deze uitvoering wijzigen</strong>Gekoppeld: {remote.subject}, {remote.start.replace('T', ' ')}. Je wijzigt uitsluitend deze afspraak in de reeks. De overige afspraken blijven ongewijzigd.</p>}
       {linked && !remote?.editable && <p role="status">{remote?.readonly_reason || "Deze afspraak is hier alleen te controleren. Controleer opnieuw of open de afspraak in Outlook."}</p>}
+      {remote?.requires_notification_confirmation && <div className={styles.notice} role="region" aria-label="Uitnodigingsupdates bevestigen"><strong>Let op: deze afspraak heeft deelnemers</strong><p>Microsoft kan de bestaande deelnemers een uitnodigingsupdate sturen met de gewijzigde titel, tekst en tijden van alleen deze uitvoering. De deelnemerslijst en de overige afspraken in de reeks blijven behouden.</p><label className={styles.check}><input type="checkbox" checked={notificationsConfirmed} onChange={e => setNotificationsConfirmed(e.target.checked)} />Ik ga akkoord met mogelijke uitnodigingsupdates aan de bestaande deelnemers voor alleen deze uitvoering.</label></div>}
       <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{occurrence ? `Ik heb de gegevens gecontroleerd en wil alleen deze uitvoering van ${remote.start.slice(0, 10)} wijzigen, niet de hele reeks.` : `Ik heb de afspraakgegevens gecontroleerd en wil deze actie uitvoeren in de agenda van ${EVENT_MAILBOX}.`}</label>
-      <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!confirmed || !loaded || !formTimesValid || (linked ? !remote?.editable || saved?.status !== "present" : !canCreate)} onClick={() => run(linked ? "update" : "create")}>{linked ? occurrence ? "Alleen deze uitvoering wijzigen" : "Bestaand agendapunt wijzigen" : "In agenda zetten"}</button>{dirty && <strong>Nog niet in de agenda bewaard</strong>}</div>
+      <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!confirmed || !loaded || !formTimesValid || (remote?.requires_notification_confirmation && !notificationsConfirmed) || (linked ? !remote?.editable || saved?.status !== "present" : !canCreate)} onClick={() => run(linked ? "update" : "create")}>{linked ? occurrence ? "Alleen deze uitvoering wijzigen" : "Bestaand agendapunt wijzigen" : "In agenda zetten"}</button>{dirty && <strong>Nog niet in de agenda bewaard</strong>}</div>
       {!loaded && <small>Controleer eerst de agenda voordat je iets wijzigt.</small>}
     </fieldset>
   </section>;
