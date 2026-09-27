@@ -1010,6 +1010,44 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
   }
 });
 
+test('confirmed website photo refreshes shared media and discards a late old source response', async () => {
+  require('styled-jsx/style');
+  const oldFetch=global.fetch,oldWindow=global.window,oldDocument=global.document;
+  global.window={addEventListener(){},removeEventListener(){}};
+  global.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}};
+  const now=new Date().toISOString();
+  const campaign={id:'campaign',business_id:'b',created_at:now,scheduled_for:now,media:[{kind:'campaign_distribution',eventin_event_id:'123',common:{title:'Testavond',start:now},instagram_publications:{feed:{status:'ready',draft:{caption:'Keep',assets:[]}}}}]};
+  let hold=false,resolveOld,sourceCalls=0;
+  global.fetch=async url=>{
+    if(String(url).includes('eventId=123')) {
+      sourceCalls++;
+      if(hold){hold=false;return new Promise(resolve=>{resolveOld=resolve;});}
+      return {ok:true,json:async()=>({event:{title:'Testavond',start:now,imageUrl:sourceCalls===1?'https://images.example.com/old.jpg':'https://images.example.com/new.jpg'}})};
+    }
+    return {ok:true,json:async()=>({events:[],media:campaign.media})};
+  };
+  let query;query=new Proxy({},{get:(_,key)=>key==='then'?(resolve,reject)=>Promise.resolve({data:[campaign]}).then(resolve,reject):()=>query});
+  const {default:Marketing,EventDetails}=await load('components/marketing-overview.js',{'../lib/supabase':{supabase:{from:()=>query}}});
+  let renderer;
+  try {
+    await React.act(async()=>{renderer=Renderer.create(React.createElement(Marketing,{workspaceId:'w',businesses:[{id:'b',name:'Caribbean Corner'}],session:{user:{id:'u'},access_token:'t'}}));});
+    await flush();
+    await React.act(async()=>renderer.root.findAllByType('button').find(b=>b.props.className?.includes('marketingCalendarEvent')).props.onClick());
+    const details=()=>renderer.root.findByType(EventDetails);
+    const sourceUrl=()=>details().props.sourceComparisonItems.find(s=>s.label==='Eventin')?.item.media[0].common.image_url;
+    assert.equal(sourceUrl(),'https://images.example.com/old.jpg');
+    hold=true;
+    await React.act(async()=>{details().props.onCompareSources();});
+    const saved={...campaign,media:[{...campaign.media[0],event_photo_website:{status:'updated',checked_at:now}}]};
+    await React.act(async()=>details().props.onPhotoSaved(saved));
+    await flush();
+    assert.equal(sourceUrl(),'https://images.example.com/new.jpg');
+    await React.act(async()=>resolveOld({ok:true,json:async()=>({event:{title:'Old response',imageUrl:'https://images.example.com/old.jpg'}})}));
+    assert.equal(sourceUrl(),'https://images.example.com/new.jpg');
+    assert.deepEqual(details().props.item.media[0].instagram_publications,campaign.media[0].instagram_publications);
+  } finally {if(renderer)await React.act(async()=>renderer.unmount());global.fetch=oldFetch;global.window=oldWindow;global.document=oldDocument;}
+});
+
 test('focus and visibility events do not duplicate a manual source comparison', async () => {
   const listeners = new Map();
   global.window = { addEventListener: (event, fn) => listeners.set(event, fn), removeEventListener() {} };

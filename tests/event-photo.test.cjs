@@ -56,6 +56,35 @@ test('website preview uses the actual featured attachment and never substitutes 
  assert.equal(empty.url,'');
 });
 
+test('shared Eventin reader supplies current featured photo to Instagram, never the old banner',async()=>{
+ const previous=global.fetch,oldUser=process.env.EVENTIN_USERNAME,oldPass=process.env.EVENTIN_APPLICATION_PASSWORD;
+ process.env.EVENTIN_USERNAME='test';process.env.EVENTIN_APPLICATION_PASSWORD='test';
+ const client={auth:{getUser:async()=>({data:{user:{id:'owner'}}})},from(table){return {select(){return this;},eq(){return this;},maybeSingle:async()=>({data:table==='workspace_members'?{role:'owner'}:{name:'Caribbean Corner'}})};}};
+ const {GET}=await load('app/api/marketing/website-events/create/route.js',{'lib/server-supabase.js':{createUserSupabase:()=>client}});
+ const {instagramEventMedia}=await load('lib/instagram-event-media.js');
+ try {
+  for(const scenario of ['embedded','missing-embed','wrong-embed','media-failure','no-featured','wrong-event']) {
+   let mediaReads=0;
+   global.fetch=async(url,options={})=>{
+    assert.equal(options.method,undefined,'source reader never writes');
+    if(url.includes('/wp/v2/media/')){mediaReads++;return scenario==='media-failure'?new Response('',{status:503}):Response.json({id:99,source_url:'https://website.example/new.jpg'});}
+    if(url.includes('/eventin/'))return Response.json({id:scenario==='wrong-event'?55:9440,title:'Event',description:'Keep text',event_banner_id:88,event_banner:'https://website/old.jpg'});
+    return Response.json({id:9440,featured_media:scenario==='no-featured'?0:99,_embedded:scenario==='embedded'?{'wp:featuredmedia':[{id:99,source_url:'https://website.example/new.jpg'}]}:scenario==='wrong-embed'?{'wp:featuredmedia':[{id:88,source_url:'https://website/old.jpg'}]}:{}});
+   };
+   const r=await GET(new Request('https://app/api/marketing/website-events/create?workspaceId=w&businessId=b&site=caribbeancorner.nl&eventId=9440&importEvent=1',{headers:{authorization:'Bearer test'}}));
+   if(['media-failure','wrong-event'].includes(scenario)){assert.equal(r.status,502,scenario);continue;}
+   assert.equal(r.status,200,scenario);const data=await r.json();
+   assert.equal(data.event.imageUrl,scenario==='no-featured'?'':'https://website.example/new.jpg',scenario);
+   assert.equal(data.event.description,'Keep text');
+   assert.equal(mediaReads,['missing-embed','wrong-embed'].includes(scenario)?1:0);
+   const item={business_id:'b',media:[]};
+   const media=instagramEventMedia(item,[{label:'Eventin',item:{business_id:'b',media:[{kind:'campaign_distribution',common:{image_url:data.event.imageUrl}}]}}]);
+   assert.ok(media.every(asset=>!asset.url.includes('old.jpg')));
+   assert.equal(media.length,scenario==='no-featured'?0:1);
+  }
+ } finally {global.fetch=previous;if(oldUser===undefined)delete process.env.EVENTIN_USERNAME;else process.env.EVENTIN_USERNAME=oldUser;if(oldPass===undefined)delete process.env.EVENTIN_APPLICATION_PASSWORD;else process.env.EVENTIN_APPLICATION_PASSWORD=oldPass;}
+});
+
 async function routeHarness(overrides={}) {
  let row=fixture(), version=1;const writes=[],uploads=[];
  const client={auth:{getUser:async()=>({data:{user:overrides.noUser?null:{id:'owner'}}})},from(table){let patch, filters={};const q={select(){return q;},eq(k,v){filters[k]=v;return q;},update(p){patch=p;return q;},async maybeSingle(){

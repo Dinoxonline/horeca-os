@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createUserSupabase } from "../../../../../lib/server-supabase";
+import { websitePhotoPreview } from "../../../../../lib/event-photo-server";
 
 const SITES = {
   "caribbeancorner.nl": {
@@ -314,7 +315,7 @@ function inferredEventDate(row) {
   return `${dutchMatch[3]}-${String(DUTCH_MONTHS[dutchMatch[2]]).padStart(2, "0")}-${dutchMatch[1].padStart(2, "0")}`;
 }
 
-function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
+function normalizeEventinDetail(eventinResponse, wordpressRow, site, imageUrl) {
   const row = eventinResponse?.data || eventinResponse?.event || eventinResponse || {};
   const start = eventinDateTime(row, "start");
   const end = eventinDateTime(row, "end");
@@ -322,9 +323,6 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
   const firstTicket = tickets[0] || {};
   const ticketPrice = Number(firstTicket.etn_ticket_price || 0);
   const unlimited = Boolean(firstTicket.etn_unlimited_tickets) || Number(firstTicket.etn_avaiilable_tickets) < 0;
-  const banner = typeof row.event_banner === "string"
-    ? row.event_banner
-    : row.event_banner?.url || row.event_banner?.source_url || "";
   const location = eventinLocation(row);
   const ticketVariations = tickets.map((ticket, index) => {
     const saleStart = eventinDateTime(ticket, "start");
@@ -349,7 +347,7 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site) {
     start,
     end,
     location,
-    imageUrl: String(banner || wordpressRow?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || imageFromContent(wordpressRow)),
+    imageUrl,
     url: String(wordpressRow?.link || row.link || `${site.origin}/?p=${row.id || wordpressRow?.id || ""}`),
     status: (row.visibility_status || wordpressRow?.status) === "draft" ? "draft" : "publish",
     tickets: {
@@ -562,7 +560,22 @@ export async function GET(request) {
       const detail = eventinData?.message || wordpressData?.message || "";
       return NextResponse.json({ error: `De volledige Eventin-gegevens konden niet worden geladen.${detail ? ` ${cleanHtml(detail, 500)}` : ""}` }, { status: eventinResponse.ok ? wordpressResponse.status : eventinResponse.status });
     }
-    return NextResponse.json({ event: normalizeEventinDetail(eventinData, wordpressData, site), website: site.origin, readOnly: false });
+    const eventinRow = eventinData?.data || eventinData?.event || eventinData;
+    if (String(wordpressData.id) !== requestedEventId || String(eventinRow.id) !== requestedEventId) {
+      return NextResponse.json({ error: "Het website-evenement kon niet betrouwbaar worden gecontroleerd." }, { status: 502 });
+    }
+    try {
+      // All consumers (source comparison, Instagram, Predis and the editor)
+      // must use the same actual featured photo, never the stale Eventin banner.
+      const photo = await websitePhotoPreview(async path => {
+        const response = await fetch(`${site.origin}${path}`, { headers, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error("Media unavailable");
+        return response.json();
+      }, wordpressData, eventinRow);
+      return NextResponse.json({ event: normalizeEventinDetail(eventinData, wordpressData, site, photo.url), website: site.origin, readOnly: false });
+    } catch {
+      return NextResponse.json({ error: "De actuele websitehoofdfoto kon niet worden gecontroleerd. Vergelijk de bronnen opnieuw; de oude banner wordt niet als vervanging gebruikt." }, { status: 502 });
+    }
   }
   const endpoint = new URL("/wp-json/wp/v2/etn", site.origin);
   endpoint.searchParams.set("per_page", "100");

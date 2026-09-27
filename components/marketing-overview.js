@@ -744,6 +744,17 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
     const updateSources = (sources) => (sources || []).map((source) => source.label === "Horeca OS" ? { ...source, item: updated } : source);
     setSelectedItem((current) => current?.id === updated.id ? { ...current, ...updated, sourceComparisonItems: updateSources(current.sourceComparisonItems) } : current);
     setSourceComparisons((current) => ({ ...current, [String(updated.id)]: updateSources(current[String(updated.id)]) }));
+    const oldPhoto = distributionFor(selectedItem).event_photo_website;
+    const newPhoto = distributionFor(updated).event_photo_website;
+    if (selectedItem?.id === updated.id && newPhoto?.status === "updated" && newPhoto.checked_at !== oldPhoto?.checked_at) {
+      // Invalidate even an in-flight comparison; it may still contain the old
+      // website image. Refresh shared sources without changing Instagram drafts.
+      const id = String(updated.id);
+      comparisonJobs.current.get(id)?.controller.abort();
+      comparisonJobs.current.delete(id);
+      setSourceComparisons(current => ({ ...current, [id]: (current[id] || []).filter(source => source.label !== "Eventin") }));
+      checkSourceComparison(updated, true).catch(() => {});
+    }
   }
   async function saveChosenEventContent(item, content) {
     if (!item || linkingId || contentSyncRef.current) return;
