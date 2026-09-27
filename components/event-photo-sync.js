@@ -62,15 +62,16 @@ export default function EventPhotoSync({ workspaceId, session, item, busy, onSav
       {imported && onOpenWebsite && <button className="secondaryButton" type="button" disabled={disabled} onClick={onOpenWebsite}>Verder naar website bijwerken</button>}
     </div> : <div className={styles.panel}><h4>Foto op de website bijwerken</h4>
       <button className="secondaryButton" type="button" disabled={disabled || !(d.eventin_event_id || d.external_ids?.eventin)} onClick={() => run('website-preview')}>Websitefoto controleren</button>
-      {updated && <p className={styles.notice}>Deze Facebookfoto is op de website gezet en gecontroleerd.</p>}
+      {updated && <p className={styles.notice}>De gekozen hoofdfoto staat op de website en is gecontroleerd. Opnieuw plaatsen is niet nodig.</p>}
+      {(website ? website.bannerMismatch : job?.bannerMismatch) && <p role="status" className={styles.notice}>Eventin verwijst daarnaast nog naar een andere bannerfoto. Deze controle bevestigt de hoofdfoto; de aparte banner is niet gewijzigd.</p>}
       {job?.status === 'updating' && <p role="status">Foto-update gestart; controleer de websitefoto om het resultaat te bevestigen.</p>}
       <div className={styles.columns}>
-        <div className={styles.panel}><h4>Nu op de website — wordt vervangen</h4>{website ? <EventPhoto url={website.url} label="Oude foto op de website — wordt vervangen" /> : <p>Klik op ‘Websitefoto controleren’ om de huidige foto te zien.</p>}</div>
-        <div className={styles.panel}><h4>Nieuwe foto uit Horeca OS — wordt geplaatst</h4><EventPhoto url={d.common?.image_url} label="Nieuwe foto uit Horeca OS — deze wordt op de website gezet" />
+        <div className={styles.panel}><h4>{updated ? 'Huidige hoofdfoto op de website' : 'Nu op de website — wordt vervangen'}</h4>{website ? <EventPhoto url={website.url} label={updated ? 'Gecontroleerde hoofdfoto op de website' : 'Oude foto op de website — wordt vervangen'} /> : <p>Klik op ‘Websitefoto controleren’ om de huidige foto te zien.</p>}</div>
+        <div className={styles.panel}><h4>{updated ? 'Gekozen foto in Horeca OS' : 'Nieuwe foto uit Horeca OS — wordt geplaatst'}</h4><EventPhoto url={d.common?.image_url} label="Nieuwe foto uit Horeca OS — deze wordt op de website gezet" />
           {!imported && <p>Kies eerst ‘Deze foto gebruiken’ bij de Facebook-bron.</p>}
         </div>
       </div>
-      {website && <>
+      {website && !updated && <>
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}><input style={{ width: 'auto' }} type="checkbox" checked={confirmed} disabled={disabled || !imported || job?.status === 'updating'} onChange={e => setConfirmed(e.target.checked)} />Ik wil de oude websitefoto vervangen door de hierboven getoonde nieuwe foto uit Horeca OS.</label>
         <button className="primaryButton" type="button" disabled={disabled || !imported || !confirmed || job?.status === 'updating'} onClick={() => run('website-publish')}>Nieuwe foto uit Horeca OS op de website zetten</button>
       </>}

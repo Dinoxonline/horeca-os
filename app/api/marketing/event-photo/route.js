@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { createUserSupabase } from '../../../../lib/server-supabase';
 import { facebookEventId } from '../../../../lib/manual-event-content';
-import { downloadFacebookPhoto, importedPhotoDistribution, photoDistribution, photoHash, websitePhotoId, websitePhotoSnapshot, publishWebsitePhoto } from '../../../../lib/event-photo-server';
+import { downloadFacebookPhoto, importedPhotoDistribution, photoDistribution, photoHash, websitePhotoId, websitePhotoSnapshot, websitePhotoPreview, publishWebsitePhoto } from '../../../../lib/event-photo-server';
 import { GET as facebookEvents } from '../../integrations/facebook/events/route';
 
 export const runtime = 'nodejs';
@@ -98,11 +98,11 @@ export async function POST(request) {
     if (action === 'website-preview') {
       const job = d.event_photo_website;
       if (job && job.targetId === id && ['updating', 'unconfirmed', 'updated'].includes(job.status)) {
-        const verified = job.mediaId && preview.mediaId === job.mediaId && preview.bannerId === job.mediaId;
+        const verified = Boolean(job.mediaId && preview.mediaId === Number(job.mediaId));
         // Do not release a live reservation while another request is uploading.
-        if (verified || job.status === 'updated' || Date.now() - Date.parse(job.started_at) > 120000) await persist({ ...d, event_photo_website: { ...job, status: verified ? 'updated' : 'unconfirmed', checked_at: new Date().toISOString() } });
+        if (verified || job.status === 'updated' || Date.now() - Date.parse(job.started_at) > 120000) await persist({ ...d, event_photo_website: { ...job, status: verified ? 'updated' : 'unconfirmed', bannerMismatch: preview.bannerMismatch, checked_at: new Date().toISOString() } });
       }
-      return reply({ preview, item: current, revision: current.updated_at });
+      return reply({ preview: await websitePhotoPreview(api, wp, event), item: current, revision: current.updated_at });
     }
     if (!body.websiteVersion || body.websiteVersion !== preview.version) throw fail('De website is intussen gewijzigd. Controleer de websitefoto opnieuw.', 409);
     const imported = d.event_photo_import;
@@ -113,6 +113,10 @@ export async function POST(request) {
     if (photoHash(bytes) !== imported.hash) throw fail('De opgeslagen foto is gewijzigd. Neem de Facebookfoto opnieuw over.', 409);
     const old = d.event_photo_website;
     let mediaId = old?.hash === imported.hash && old.targetId === id ? old.mediaId : null;
+    if (mediaId && preview.mediaId === Number(mediaId)) {
+      await persist({ ...d, event_photo_website: { ...old, status: 'updated', bannerMismatch: preview.bannerMismatch, checked_at: new Date().toISOString() } });
+      return reply({ item: current, message: 'Deze hoofdfoto staat al op de website. Er is niets opnieuw geplaatst.' });
+    }
     const job = { status: 'updating', operation_id: randomUUID(), started_at: new Date().toISOString(), hash: imported.hash, targetId: id, mediaId, previous: preview };
     await persist({ ...d, event_photo_website: job }); reserved = true;
     if (!mediaId) {
@@ -127,10 +131,10 @@ export async function POST(request) {
     const freshWp = await api(`/wp-json/wp/v2/etn/${id}?context=edit`), freshRaw = await api(`/wp-json/eventin/v2/events/${id}`);
     const freshEvent = freshRaw.data?.id ? freshRaw.data : freshRaw.event?.id ? freshRaw.event : freshRaw;
     if (websitePhotoSnapshot(freshWp, freshEvent).version !== preview.version) throw fail('De website is tijdens het klaarzetten gewijzigd. Controleer de foto opnieuw.', 409);
-    await publishWebsitePhoto({ api, eventId: id, mediaId });
-    await persist({ ...photoDistribution(current), event_photo_website: { ...job, status: 'updated', checked_at: new Date().toISOString() } });
+    const verifiedPhoto = await publishWebsitePhoto({ api, eventId: id, mediaId });
+    await persist({ ...photoDistribution(current), event_photo_website: { ...job, status: 'updated', bannerMismatch: verifiedPhoto.bannerMismatch, checked_at: new Date().toISOString() } });
     reserved = false;
-    return reply({ item: current, message: 'Websitefoto vervangen en gecontroleerd. Titel, tekst, datums en tickets zijn niet gewijzigd.' });
+    return reply({ item: current, message: 'Hoofdfoto op de website vervangen en gecontroleerd. Titel, tekst, datums en tickets zijn niet gewijzigd.' });
   } catch (error) {
     if (reserved && persist) {
       // The external write may have succeeded. Never claim a rollback.

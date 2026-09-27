@@ -37,11 +37,23 @@ test('import changes only the main photo and protects this series occurrence',as
  assert.deepEqual(d,before);assert.equal(next.common.image_url,'https://store/new.jpg');assert.equal(next.event_photo_import.previous_url,d.common.image_url);assert.equal(next.series.exception,true);
  assert.deepEqual(next.common.images,d.common.images);assert.deepEqual(next.common.tickets,d.common.tickets);assert.deepEqual(next.instagram_publications,d.instagram_publications);assert.equal(next.common.title,d.common.title);
 });
-test('website photo update sends ONLY featured_media and verifies both WordPress and Eventin',async()=>{
+test('website photo update verifies featured_media and reports independent banner differences',async()=>{
  const {publishWebsitePhoto}=await load('lib/event-photo-server.js');const calls=[];
  const api=async(p,o)=>{calls.push([p,o]);return p.includes('eventin')?{id:9440,event_banner_id:'99',event_banner:'https://website/new.jpg'}:{id:9440,featured_media:99};};
  await publishWebsitePhoto({api,eventId:'9440',mediaId:99});assert.deepEqual(JSON.parse(calls[0][1].body),{featured_media:99});assert.equal(calls.length,3);
- await assert.rejects(publishWebsitePhoto({api:async p=>p.includes('eventin')?{id:9440,event_banner_id:88}:{id:9440,featured_media:99},eventId:'9440',mediaId:99}),/controle is niet geslaagd/);
+ const partial=await publishWebsitePhoto({api:async p=>p.includes('eventin')?{id:9440,event_banner_id:88}:{id:9440,featured_media:99},eventId:'9440',mediaId:99});
+ assert.equal(partial.bannerMismatch,true);assert.equal(partial.url,'');
+ for(const wp of [{id:9440,featured_media:88},{id:999,featured_media:99}]) await assert.rejects(publishWebsitePhoto({api:async p=>p.includes('eventin')?{id:9440,event_banner_id:99}:wp,eventId:'9440',mediaId:99}),/controle is niet geslaagd/);
+});
+
+test('website preview uses the actual featured attachment and never substitutes an old banner',async()=>{
+ const {websitePhotoPreview}=await load('lib/event-photo-server.js');
+ const wp={id:9440,featured_media:99}, event={id:9440,event_banner_id:88,event_banner:'https://website/old.jpg'};
+ const preview=await websitePhotoPreview(async p=>{assert.equal(p,'/wp-json/wp/v2/media/99');return {id:99,source_url:'https://website/new.jpg'};},wp,event);
+ assert.equal(preview.url,'https://website/new.jpg');assert.equal(preview.bannerMismatch,true);
+ await assert.rejects(websitePhotoPreview(async()=>({id:88,source_url:event.event_banner}),wp,event));
+ const empty=await websitePhotoPreview(async()=>{throw Error('No attachment must be fetched');},{id:9440,featured_media:0},event);
+ assert.equal(empty.url,'');
 });
 
 async function routeHarness(overrides={}) {
@@ -90,14 +102,39 @@ test('website route checks remote version before writes and verifies success wit
  global.fetch=async(url,o={})=>{
   if(url.includes('fbcdn'))return new Response(jpeg,{headers:{'content-type':'image/jpeg'}});
   assert.equal(o.redirect,'error');
+  if(/\/media\/\d+$/.test(url))return Response.json({id:media,source_url:'https://website/'+media+'.jpg'});
   if(o.method==='POST'){externalWrites.push([url,o]);if(url.endsWith('/media'))return Response.json({id:99});assert.deepEqual(JSON.parse(o.body),{featured_media:99});media=99;}
-  return Response.json(url.includes('eventin')?{id:9440,event_banner_id:String(media),event_banner:'https://website/'+media+'.jpg'}:{id:9440,featured_media:media,modified_gmt:'time'});
+  return Response.json(url.includes('eventin')?{id:9440,event_banner_id:'10',event_banner:'https://website/10.jpg'}:{id:9440,featured_media:media,modified_gmt:'time'});
  };
  try{const h=await routeHarness();const {preview:fb}=await (await h.call('facebook-preview')).json();await h.call('facebook-import',{hash:fb.hash});
   assert.equal((await h.call('website-publish',{websiteVersion:'old'})).status,400);
   assert.equal((await h.call('website-publish',{websiteVersion:'old',confirmed:true})).status,409);assert.equal(externalWrites.length,0);
   const {preview}=await (await h.call('website-preview')).json();const r=await h.call('website-publish',{websiteVersion:preview.version,confirmed:true});assert.equal(r.status,200,JSON.stringify(await r.json()));assert.equal(externalWrites.length,2);assert.equal(h.row.media[1].event_photo_website.status,'updated');assert.equal(h.row.media[1].common.title,'Keep title');
+  assert.equal(h.row.media[1].event_photo_website.bannerMismatch,true);
+  h.row.media[1].event_photo_website.status='updating';
+  const checked=await (await h.call('website-preview')).json();
+  assert.equal(checked.preview.url,'https://website/99.jpg');assert.equal(checked.preview.bannerMismatch,true);
+  assert.equal(h.row.media[1].event_photo_website.status,'updated');assert.equal(externalWrites.length,2,'reconcile must not publish');
+  assert.equal((await h.call('website-publish',{websiteVersion:checked.preview.version,confirmed:true})).status,200);
+  assert.equal(externalWrites.length,2,'retry must not upload or publish an already confirmed attachment');
+  media=77;
+  await h.call('website-preview');assert.equal(h.row.media[1].event_photo_website.status,'unconfirmed','external photo change must revoke success');
  }finally{global.fetch=previous;if(oldUser===undefined)delete process.env.EVENTIN_USERNAME;else process.env.EVENTIN_USERNAME=oldUser;if(oldPass===undefined)delete process.env.EVENTIN_APPLICATION_PASSWORD;else process.env.EVENTIN_APPLICATION_PASSWORD=oldPass;}
+});
+
+test('confirmed photo UI shows the banner warning without offering another publication',async()=>{
+ const Component=(await load('components/event-photo-sync.js')).default;
+ const item=fixture(),d=item.media[1];
+ d.event_photo_import={url:d.common.image_url,hash:'hash'};
+ d.event_photo_website={status:'updated',hash:'hash',targetId:'9440',bannerMismatch:true};
+ let tree;
+ try {
+  await Renderer.act(async()=>{tree=Renderer.create(React.createElement(Component,{item,mode:'website'}));});
+  const content=JSON.stringify(tree.toJSON());
+  assert.match(content,/Opnieuw plaatsen is niet nodig/);assert.match(content,/aparte banner is niet gewijzigd/);
+  assert.equal(tree.root.findAllByType('input').length,0);
+  assert.equal(tree.root.findAllByType('button').filter(b=>b.props.children==='Nieuwe foto uit Horeca OS op de website zetten').length,0);
+ } finally {if(tree)await Renderer.act(async()=>tree.unmount());}
 });
 test('photo UI previews before import, blocks duplicate clicks, and requires website confirmation',async()=>{
  const Component=(await load('components/event-photo-sync.js')).default;
