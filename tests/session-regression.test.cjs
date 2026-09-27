@@ -188,7 +188,7 @@ test('verified matching Facebook content overrides the manual task without inven
       else renderer = Renderer.create(React.createElement(EventDetails, props));
     });
   };
-  const tile = () => renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' }).findAllByType('button').find(button => button.props['aria-controls'] === 'event-channel-facebook-matching-facebook');
+  const tile = () => renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' }).findAllByType('button').find(button => button.props['aria-controls'] === 'event-channel-sources-matching-facebook');
   const panel = () => renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
   try {
     await render({});
@@ -248,7 +248,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Foto overnemen — Facebook → Horeca OS → website', 'Bronnen vergelijken en tekst kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis handmatig voorbereiden en plannen', 'Website afzonderlijk bijwerken']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis handmatig voorbereiden en plannen', 'Website afzonderlijk bijwerken']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
@@ -433,7 +433,7 @@ test('channel tiles open and focus their own editor without saving or publishing
     assert.deepEqual(buttons().map(button => button.findByType('strong').props.children), ['Website', 'Facebook', 'Instagram', 'Agenda info@leclubbbq.nl', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
     for (const channel of ['website', 'facebook', 'instagram', 'calendar', 'predis']) {
-      const id = `event-channel-${channel}-tiles`;
+      const id = `event-channel-${channel === 'facebook' ? 'sources' : channel}-tiles`;
       const button = () => buttons().find(button => button.props['aria-controls'] === id);
       await React.act(async () => button().props.onClick());
       assert.equal(panels[id].open, true);
@@ -475,11 +475,16 @@ test('source selection previews without saving, survives rerenders and resets fo
     assert.equal(saved.length, 0);
     assert.equal(choose('Facebook').props['aria-pressed'], true);
     const preview = () => renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
-    assert.equal(preview().findByType('p').props.children, 'Chosen body');
+    assert.equal(preview().findByType('textarea').props.value, 'Chosen body');
+    const card = preview().parent;
+    assert.equal(card.props.className, 'marketingComparisonCard');
+    assert.equal(card.findAllByProps({ 'aria-label': 'Facebookfoto kiezen' }).length, 1, 'photo and text choice share the Facebook source card');
     await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonItems: [source('Facebook', 'New remote text')] })));
-    assert.equal(preview().findByType('p').props.children, 'Chosen body');
+    assert.equal(preview().findByType('textarea').props.value, 'Chosen body');
+    await React.act(async () => preview().findByType('textarea').props.onChange({ target: { value: 'Edited Facebook text' } }));
+    assert.equal(saved.length, 0, 'editing source text is draft-only');
     await React.act(async () => sync().props.onClick());
-    assert.deepEqual(saved, [{ title: 'Facebook title', description: 'Chosen body' }]);
+    assert.deepEqual(saved, [{ title: 'Facebook title', description: 'Edited Facebook text' }]);
     await React.act(async () => renderer.update(React.createElement(EventDetails, props)));
     await React.act(async () => choose('Eventin').props.onClick());
     await React.act(async () => sync().props.onClick());

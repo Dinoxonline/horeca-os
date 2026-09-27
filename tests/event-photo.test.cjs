@@ -106,10 +106,24 @@ test('photo UI previews before import, blocks duplicate clicks, and requires web
  const item=fixture();item.media[1].event_photo_import={url:item.media[1].common.image_url,hash:'hash'};
  let tree;const button=label=>tree.root.findAllByType('button').find(b=>b.props.children===label);
  try{await Renderer.act(async()=>{tree=Renderer.create(React.createElement(Component,{workspaceId:'workspace',session:{access_token:'token'},item}));});
-  assert.equal(button('Facebookfoto bewaren in Horeca OS'),undefined);
+  assert.equal(button('Deze foto gebruiken'),undefined);
   await Renderer.act(async()=>{button('Actuele Facebookfoto ophalen').props.onClick();button('Actuele Facebookfoto ophalen').props.onClick();});assert.equal(calls.length,1);
-  await Renderer.act(async()=>release());assert.ok(button('Facebookfoto bewaren in Horeca OS'));
-  await Renderer.act(async()=>button('Websitefoto controleren').props.onClick());assert.equal(button('Deze foto op de website zetten').props.disabled,true);
-  await Renderer.act(async()=>tree.root.findByType('input').props.onChange({target:{checked:true}}));assert.equal(button('Deze foto op de website zetten').props.disabled,false);
+  await Renderer.act(async()=>release());assert.ok(button('Deze foto gebruiken'));
+  assert.equal(button('Websitefoto controleren'),undefined,'Facebook choice cannot publish to the website');
+  await Renderer.act(async()=>tree.update(React.createElement(Component,{workspaceId:'workspace',session:{access_token:'token'},item,mode:'website'})));
+  assert.equal(button('Deze foto gebruiken'),undefined,'website stage cannot change the chosen source');
+  await Renderer.act(async()=>button('Websitefoto controleren').props.onClick());
+  const publish='Nieuwe foto uit Horeca OS op de website zetten';
+  assert.equal(button(publish).props.disabled,true);
+  const images=tree.root.findAllByType('img');
+  assert.equal(images.find(i=>i.props.alt.startsWith('Oude foto')).props.src,'https://website/old.jpg');
+  assert.equal(images.find(i=>i.props.alt.startsWith('Nieuwe foto')).props.src,item.media[1].common.image_url);
+  await Renderer.act(async()=>tree.root.findByType('input').props.onChange({target:{checked:true}}));assert.equal(button(publish).props.disabled,false);
+  await Renderer.act(async()=>button(publish).props.onClick());
+  assert.equal(calls.at(-1).action,'website-publish');assert.equal(calls.at(-1).confirmed,true);assert.equal(calls.at(-1).websiteVersion,'web');
+  await Renderer.act(async()=>button('Websitefoto controleren').props.onClick());
+  await Renderer.act(async()=>tree.root.findByType('input').props.onChange({target:{checked:true}}));
+  await Renderer.act(async()=>tree.update(React.createElement(Component,{workspaceId:'workspace',item:{...item,updated_at:'v2'},mode:'website'})));
+  assert.equal(button(publish),undefined,'a changed record must invalidate the old website preview and confirmation');
  }finally{if(tree)await Renderer.act(async()=>tree.unmount());global.fetch=prevFetch;global.window=prevWindow;}
 });

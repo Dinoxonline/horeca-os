@@ -3,21 +3,21 @@ import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import styles from './event-editor.module.css';
 
-function Photo({ url, label }) {
+export function EventPhoto({ url, label }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [url]);
   if (!url || !/^https:\/\//i.test(url)) return <p>Geen foto beschikbaar.</p>;
   return failed ? <p>Voorbeeld niet bereikbaar. Haal de foto opnieuw op.</p> : <Image unoptimized src={url} alt={label} width={600} height={400} className={styles.photo} onError={() => setFailed(true)} />;
 }
 
-export default function EventPhotoSync({ workspaceId, session, item, busy, onSaved, onBusyChange }) {
+export default function EventPhotoSync({ workspaceId, session, item, busy, onSaved, onBusyChange, mode = 'facebook', onOpenWebsite }) {
   const d = (item.media || []).find(m => m?.kind === 'campaign_distribution') || {};
   const [facebook, setFacebook] = useState(null), [website, setWebsite] = useState(null);
   const [working, setWorking] = useState(false), [notice, setNotice] = useState(''), [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const lock = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setConfirmed(false); }, [item.updated_at]);
+  useEffect(() => { setConfirmed(false); setWebsite(null); }, [item.updated_at]);
   useEffect(() => { onBusyChange?.(working); }, [working, onBusyChange]);
   useEffect(() => {
     if (!working) return;
@@ -49,27 +49,30 @@ export default function EventPhotoSync({ workspaceId, session, item, busy, onSav
   const imported = d.event_photo_import?.url === d.common?.image_url && Boolean(d.event_photo_import?.hash);
   const job = d.event_photo_website;
   const updated = imported && job?.status === 'updated' && job.hash === d.event_photo_import.hash && job.targetId === String(d.eventin_event_id || d.external_ids?.eventin || '');
-  return <section className={styles.editor} aria-label="Evenementfoto overnemen" aria-busy={working}>
-    <p>Tekst en foto zijn afzonderlijke keuzes. Neem hier de hoofdfoto van het gekoppelde Facebook-evenement over. Andere fotoversies en geplaatste Instagramberichten blijven ongewijzigd. Bij een reeks geldt dit alleen voor deze uitvoering.</p>
-    <div className={styles.columns}>
-      <div className={styles.panel}><h4>1. Facebookfoto kiezen</h4>
-        <button type="button" disabled={disabled} onClick={() => run('facebook-preview')}>Actuele Facebookfoto ophalen</button>
-        {facebook && <><Photo url={facebook.url} label="Actuele Facebookfoto" /><button type="button" disabled={disabled} onClick={() => run('facebook-import')}>Facebookfoto bewaren in Horeca OS</button><p>Vervangt alleen de hoofdfoto hieronder. De website verandert nog niet.</p></>}
-      </div>
-      <div className={styles.panel}><h4>Hoofdfoto in Horeca OS</h4><Photo url={d.common?.image_url} label="Bewaarde hoofdfoto in Horeca OS" />
-        <p>{imported ? 'Facebookfoto als eigen bestand bewaard.' : 'Bewaar eerst de gewenste Facebookfoto met de knop hiernaast.'}</p>
-      </div>
-    </div>
-    <div className={styles.panel}><h4>2. Websitefoto vervangen</h4>
-      <button type="button" disabled={disabled || !(d.eventin_event_id || d.external_ids?.eventin)} onClick={() => run('website-preview')}>Websitefoto controleren</button>
+  return <section className={styles.editor} aria-label={mode === 'facebook' ? 'Facebookfoto kiezen' : 'Websitefoto vervangen'} aria-busy={working}>
+    {mode === 'facebook' ? <div className={styles.panel}>
+      <h4>Foto van Facebook</h4>
+      <button className="secondaryButton" type="button" disabled={disabled} onClick={() => run('facebook-preview')}>Actuele Facebookfoto ophalen</button>
+      {facebook && <><EventPhoto url={facebook.url} label="Te kiezen Facebookfoto" /><button className="primaryButton" type="button" disabled={disabled} onClick={() => run('facebook-import')}>Deze foto gebruiken</button><p>Deze foto bewaren als hoofdfoto in Horeca OS. De website verandert nog niet.</p></>}
+      {imported && <p role="status">De gekozen Facebookfoto is bewaard in Horeca OS.</p>}
+      {imported && onOpenWebsite && <button className="secondaryButton" type="button" disabled={disabled} onClick={onOpenWebsite}>Verder naar website bijwerken</button>}
+    </div> : <div className={styles.panel}><h4>Foto op de website bijwerken</h4>
+      <button className="secondaryButton" type="button" disabled={disabled || !(d.eventin_event_id || d.external_ids?.eventin)} onClick={() => run('website-preview')}>Websitefoto controleren</button>
       {updated && <p className={styles.notice}>Deze Facebookfoto is op de website gezet en gecontroleerd.</p>}
       {job?.status === 'updating' && <p role="status">Foto-update gestart; controleer de websitefoto om het resultaat te bevestigen.</p>}
-      {website && <><Photo url={website.url} label="Huidige hoofdfoto op de website" />
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}><input style={{ width: 'auto' }} type="checkbox" checked={confirmed} disabled={disabled || !imported || job?.status === 'updating'} onChange={e => setConfirmed(e.target.checked)} />Ik wil de websitefoto van dit evenement vervangen door de hoofdfoto uit Horeca OS.</label>
-        <button type="button" disabled={disabled || !imported || !confirmed || job?.status === 'updating'} onClick={() => run('website-publish')}>Deze foto op de website zetten</button>
+      <div className={styles.columns}>
+        <div className={styles.panel}><h4>Nu op de website — wordt vervangen</h4>{website ? <EventPhoto url={website.url} label="Oude foto op de website — wordt vervangen" /> : <p>Klik op ‘Websitefoto controleren’ om de huidige foto te zien.</p>}</div>
+        <div className={styles.panel}><h4>Nieuwe foto uit Horeca OS — wordt geplaatst</h4><EventPhoto url={d.common?.image_url} label="Nieuwe foto uit Horeca OS — deze wordt op de website gezet" />
+          {!imported && <p>Kies eerst ‘Deze foto gebruiken’ bij de Facebook-bron.</p>}
+        </div>
+      </div>
+      {website && <>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}><input style={{ width: 'auto' }} type="checkbox" checked={confirmed} disabled={disabled || !imported || job?.status === 'updating'} onChange={e => setConfirmed(e.target.checked)} />Ik wil de oude websitefoto vervangen door de hierboven getoonde nieuwe foto uit Horeca OS.</label>
+        <button className="primaryButton" type="button" disabled={disabled || !imported || !confirmed || job?.status === 'updating'} onClick={() => run('website-publish')}>Nieuwe foto uit Horeca OS op de website zetten</button>
       </>}
-      <p>Dit verandert de website direct. Titel, tekst, datums en tickets blijven staan. Tekst werk je apart bij via ‘Website afzonderlijk bijwerken’.</p>
-    </div>
+      <p>Alleen de foto wordt vervangen. Gebruik de tekstknop in ditzelfde websitegedeelte om ook de tekst bij te werken. Datums en tickets blijven staan.</p>
+    </div>}
+    <small>Andere fotoversies en geplaatste Instagramberichten blijven ongewijzigd. Bij een reeks geldt dit alleen voor deze uitvoering.</small>
     {notice && <p role="status" className={styles.notice}>{notice}</p>}{error && <p role="alert" className={styles.notice}>{error}</p>}
   </section>;
 }

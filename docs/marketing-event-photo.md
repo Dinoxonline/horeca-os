@@ -1,10 +1,10 @@
 # Facebook event photo → Horeca OS → website
 
-Open a stored event in Marketing. The fold **Foto overnemen — Facebook → Horeca OS → website** is separate from text selection and text publication.
+Open a stored event in Marketing. The **Facebook** channel tile opens **Bronnen vergelijken — tekst en foto kiezen**. Text and photo choices live together on the Facebook source card; the Horeca OS card shows the saved main photo. Photo publishing lives in the website channel, alongside text publishing, not in a separate top-level fold.
 
 1. Fetch the current photo from the linked native Facebook event. This is a preview, not an import.
 2. Save the reviewed photo as the Horeca OS main image. The server re-reads the authorized Page event and verifies its bytes against the reviewed hash. It stores a separate immutable file in `marketing-assets`. Variant images, text, Instagram publication history and other events remain untouched. For a series, only this occurrence becomes an exception.
-3. Check the website's existing image. Confirm replacement, then publish the saved image. The server uploads it to WordPress Media and updates only `featured_media` on the linked `etn` post. Success requires readback of both WordPress's featured attachment and Eventin's banner attachment ID. No full Eventin-record update, ticket changes or publication-status changes are made.
+3. Open the website channel and check its existing image. The old website image and the new Horeca OS image are shown side by side with explicit replacement/destination labels. Confirm replacement, then choose **Nieuwe foto uit Horeca OS op de website zetten**. A changed local record invalidates the previous website preview and confirmation. The server uploads the saved image to WordPress Media and updates only `featured_media` on the linked `etn` post. Success requires readback of both WordPress's featured attachment and Eventin's banner attachment ID. No full Eventin-record update, ticket changes or publication-status changes are made.
 
 Access requires an authenticated workspace owner with MFA. All content reads/writes are scoped to workspace, business and row, using the user's RLS-bound client and a precise `updated_at` compare-and-swap. Existing permissions, credentials and database schema are unchanged.
 
