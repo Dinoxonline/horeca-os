@@ -31,7 +31,17 @@ export async function POST(request) {
     const { data: item, error } = await scoped().select('id,business_id,media,body,updated_at').eq('workspace_id', workspaceId).eq('business_id', businessId).eq('id', itemId).maybeSingle();
     if (error || !item || item.media?.filter(m => m?.kind === 'campaign_distribution').length !== 1) throw fail('Evenement niet gevonden in deze vestiging.', 404);
     const d = photoDistribution(item);
-    if (d.duplicate_of) throw fail('Open het samengevoegde evenement.');
+    // The existing agenda can display the most complete merged representative
+    // instead of the root. Permit it only when the root has the same verified
+    // channel identities in this workspace/business. Legacy self-links are
+    // harmless here; do not repair or remove merge metadata as a side effect.
+    if (d.duplicate_of && String(d.duplicate_of) !== String(item.id)) {
+      const { data: root, error: rootError } = await scoped().select('id,media').eq('workspace_id', workspaceId).eq('business_id', businessId).eq('id', d.duplicate_of).maybeSingle();
+      const rootD = photoDistribution(root);
+      if (rootError || !root || !facebookEventId(d) || facebookEventId(rootD) !== facebookEventId(d) || !websitePhotoId(d) || websitePhotoId(rootD) !== websitePhotoId(d)) {
+        throw fail('Open het samengevoegde evenement: de kanaalkoppelingen van deze regels zijn niet gelijk.', 409);
+      }
+    }
     if (action.endsWith('import') || action.endsWith('publish')) {
       if (!body.revision || body.revision !== item.updated_at) throw fail('Het evenement is gewijzigd. Ververs de details en bekijk de foto opnieuw.', 409);
     }

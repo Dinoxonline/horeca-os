@@ -50,7 +50,9 @@ async function routeHarness(overrides={}) {
   if(table==='workspace_members')return {data:{role:overrides.role||'owner'}};
   if(table==='businesses')return {data:{name:'Caribbean Corner'}};
   if(table==='social_content_items'){
-   assert.equal(filters.workspace_id,'workspace');assert.equal(filters.business_id,'business');assert.equal(filters.id,'item');
+   assert.equal(filters.workspace_id,'workspace');assert.equal(filters.business_id,'business');
+   if(filters.id==='root')return {data:overrides.root || null};
+   assert.equal(filters.id,'item');
    if(overrides.missing)return {data:null};
    if(patch){if(filters.updated_at!==row.updated_at)return {data:null};writes.push(patch);row={...row,...patch,updated_at:'v'+(++version)};return {data:{id:row.id,updated_at:row.updated_at}};}
    return {data:structuredClone(row)};
@@ -69,6 +71,16 @@ test('route previews read-only, imports reviewed hash, preserves content, and re
  assert.equal((await h.call('facebook-import',{hash:'wrong'})).status,409);assert.equal((await h.call('facebook-import',{hash:preview.hash,revision:'old'})).status,409);
  assert.equal((await h.call('facebook-import',{hash:preview.hash})).status,200);assert.equal(h.uploads.length,1);assert.equal(h.row.media[1].event_photo_import.hash,preview.hash);assert.deepEqual(h.row.media[1].common.images,before.media[1].common.images);assert.deepEqual(h.row.media[0],before.media[0]);assert.equal(h.row.body,before.body);
  assert.equal((await h.call('facebook-import',{hash:preview.hash})).status,200);assert.equal(h.uploads.length,1);
+ }finally{global.fetch=previous;}
+});
+test('merged representatives require matching scoped channel identities, legacy self-links remain editable',async()=>{
+ const previous=global.fetch;global.fetch=async()=>new Response(jpeg,{headers:{'content-type':'image/jpeg'}});
+ try {
+  for(const scenario of ['self','matching','missing','different-facebook','different-website']) {
+   const root=fixture();root.id='root';if(scenario==='different-facebook')root.media[1].facebook_event_delivery.external_id='999';if(scenario==='different-website')root.media[1].eventin_event_id='999';
+   const h=await routeHarness({root:scenario==='missing'?null:root});h.row.media[1].duplicate_of=scenario==='self'?'item':'root';
+   const response=await h.call('facebook-preview');assert.equal(response.status,['self','matching'].includes(scenario)?200:409,scenario);assert.equal(h.writes.length,0);
+  }
  }finally{global.fetch=previous;}
 });
 test('website route checks remote version before writes and verifies success without touching text',async()=>{
