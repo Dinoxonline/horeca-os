@@ -59,6 +59,45 @@ test('comparison summary distinguishes equal, different, incomplete and failed c
   assert.equal(sourceComparisonStatus({ media: [] }, [], 'done').key, 'unlinked');
 });
 
+test('website comparison ignores reader whitespace only; Facebook and meaningful differences remain strict', async () => {
+  const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const body = 'Donderdag. \n\n\nLive band 🎵 om 20:00. Entree €15.\nhttps://example.com/a';
+  const item = description => ({ media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title: 'Avond', description } }] });
+  const clean = body.replace('. \n\n\n', '.\n\n');
+  const check = (website, facebook = body) => sourceComparisonStatus(item(body), [{ label: 'Eventin', item: item(website) }, { label: 'Facebook', item: item(facebook) }], 'done');
+  assert.equal(check(clean).key, 'equal');
+  assert.equal(check(clean.replace(/ /g, '\u00a0').replace(/\n/g, '\r\n')).key, 'equal');
+  for (const changed of [clean.replace('band', 'DJ'), clean.replace('20:00', '21:00'), clean.replace('€15', '€25'), clean.replace('/a', '/b'), clean.replace('Live', 'LIVE'), clean.replace('🎵', ''), clean.replace('\n\n', '\n')]) {
+    assert.equal(check(changed).differences[0].source, 'Website (Eventin)');
+  }
+  assert.deepEqual(check(clean, clean).differences.map(source => source.source), ['Facebook']);
+});
+
+test('website form and tile follow fresh comparison, not a historical updated receipt', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const distribution = { kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', description: 'Tekst' }, event_content_delivery: { website: { status: 'updated', snapshot: { title: 'Avond', description: 'Tekst', event_id: '123' } } } };
+  const item = { id: 'fresh-website', media: [distribution] };
+  let renderer;
+  try {
+    for (const [check, description, expected] of [
+      ['done', 'Oude tekst', 'Websitetekst verschilt — bijwerken nodig'],
+      ['pending', 'Oude tekst', 'Websitetekst wordt gecontroleerd…'],
+      ['error', 'Oude tekst', 'Websitecontrole niet afgerond'],
+      ['done', 'Tekst', 'Websitetekst komt overeen'],
+    ]) {
+      const props = { item, onClose() {}, sourceComparisonCheck: check, sourceComparisonItems: [{ label: 'Eventin', item: { media: [{ ...distribution, common: { title: 'Avond', description } }] } }] };
+      await React.act(async () => {
+        if (renderer) renderer.update(React.createElement(EventDetails, props));
+        else renderer = Renderer.create(React.createElement(EventDetails, props));
+      });
+      assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Website openen: ' + expected }).length, 1);
+      const form = renderer.root.findByProps({ 'aria-label': 'Website afzonderlijk bijwerken' });
+      assert.equal(form.findAllByType('strong').at(-1).props.children, expected);
+      assert.equal(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findAllByProps({ id: 'event-channel-website-fresh-website' }).length, 1);
+    }
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('comparison identifies the exact source and field against the current Horeca OS record', async () => {
   const { sourceComparisonStatus, EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = (title = 'Avond', description = 'Tekst') => ({ id: 'source-diff', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });
@@ -111,10 +150,12 @@ test('difference actions follow the actual channel and saving enables navigation
   };
   const sources = (website, facebook) => [{ label: 'Eventin', item: item(website) }, { label: 'Facebook', item: item(facebook) }];
   const summary = () => renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
-  const actions = () => summary().findAllByType('button');
+  const actions = () => summary().findAllByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).flatMap(node => node.findAllByType('button'));
   try {
     await render({ sourceComparisonItems: sources('Oude website', 'Bewaar deze') });
     assert.deepEqual(actions().map(button => button.props.children), ['Website bijwerken openen']);
+    assert.equal(summary().findAllByProps({ id: 'event-channel-website-next-step' }).length, 1, 'website panel lives directly in the top comparison section');
+    assert.equal(renderer.root.findAllByProps({ id: 'event-channel-website-next-step' }).length, 1, 'no duplicate website panel at the bottom');
     assert.ok(Object.values(panels).every(panel => !panel.open));
     await React.act(async () => actions()[0].props.onClick());
     assert.equal(panels['event-channel-website-next-step'].open, true);
@@ -248,7 +289,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis handmatig voorbereiden en plannen', 'Website afzonderlijk bijwerken']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Website afzonderlijk bijwerken', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis handmatig voorbereiden en plannen']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
@@ -495,7 +536,7 @@ test('source selection previews without saving, survives rerenders and resets fo
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
-for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) test('local save and explicit website update are independent: ' + (failure || 'success'), async () => {
+for (const failure of [null, 'save', 'external', 'website_save', 'unlinked', 'readback', 'different']) test('local save and explicit website update are independent: ' + (failure || 'success'), async () => {
   global.window = { addEventListener() {}, removeEventListener() {} };
   global.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} };
   const now = new Date().toISOString();
@@ -504,14 +545,19 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
     { kind: 'image', url: 'keep-image' },
     { kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title: 'Old title', description: 'Old body', start: now, location: 'Keep location' } }
   ] };
-  const writes = [], patches = [], order = [];
+  const writes = [], patches = [], order = [], readbacks = [];
   if (failure === 'unlinked') delete campaign.media[1].eventin_event_id;
   global.fetch = async (url, options = {}) => {
     if (options.method === 'PATCH') {
       order.push('external'); patches.push(JSON.parse(options.body));
       return { ok: failure !== 'external', status: 500, json: async () => ({ error: 'Remote unavailable' }) };
     }
-    return { ok: true, json: async () => ({ events: [], media: campaign.media, event: { title: 'Selected title', description: 'Selected body', start: now } }) };
+    if (patches.length && url.includes('/website-events/create?')) {
+      readbacks.push(url);
+      assert.equal(campaign.media[1].event_content_delivery.website.status, 'updating', 'do not report success before readback');
+      if (failure === 'readback') return { ok: false, json: async () => ({}) };
+    }
+    return { ok: true, json: async () => ({ events: [], media: campaign.media, event: { title: 'Selected title', description: patches.length && failure === 'different' ? 'Still different' : 'Selected body', start: now } }) };
   };
   const supabase = { from: () => {
     const write = { filters: [] };
@@ -587,7 +633,10 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
       }
       assert.deepEqual(writes.at(-1).value.media[1].event_content_delivery.facebook, facebook, 'website action preserves manual Facebook confirmation');
       if (!['website_save', 'unlinked'].includes(failure)) {
-        assert.equal(writes.at(-1).value.media[1].event_content_delivery.website.status, failure === 'external' ? 'failed' : 'updated');
+        assert.equal(writes.at(-1).value.media[1].event_content_delivery.website.status, failure === 'external' ? 'failed' : failure === 'readback' ? 'unconfirmed' : failure === 'different' ? 'different' : 'updated');
+        assert.equal(readbacks.length, failure === 'external' ? 0 : 1, 'successful PATCH must be verified with a new website read');
+        const summary = renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
+        if (failure === 'readback') assert.equal(summary.findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, 'Controle niet afgerond');
         assert.deepEqual(order, ['save', 'save', 'save', 'external', 'save']);
       }
       if (failure === 'external') assert.match(JSON.stringify(renderer.toJSON()), /website kon niet worden bijgewerkt/);
@@ -1036,15 +1085,15 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
       await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 1200)); });
       assert.equal(signal.aborted, true);
       assert.equal(summary().props['aria-busy'], false);
-      assert.equal(summary().findByType('strong').props.children, 'Controle duurt te lang');
+      assert.equal(summary().findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, 'Controle duurt te lang');
       await React.act(async () => lateReply(reply('Te laat')));
-      assert.equal(summary().findByType('strong').props.children, 'Controle duurt te lang', 'late reply cannot report success');
+      assert.equal(summary().findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, 'Controle duurt te lang', 'late reply cannot report success');
       await React.act(async () => { buttons().find(button => button.props.children === 'Controle opnieuw proberen').props.onClick(); });
       assert.equal(comparisons, 2);
     }
     await React.act(async () => finishComparison(reply('Avond')));
     assert.equal(summary().props['aria-busy'], false);
-    assert.equal(summary().findByType('strong').props.children, 'Titel en tekst zijn gelijk');
+    assert.equal(summary().findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, 'Titel en tekst zijn gelijk');
     await React.act(async () => finishPublication({ ok: true, json: async () => ({ media: campaign.media }) }));
     await flush();
     assert.equal(comparisons, timeout ? 2 : 1, 'background batch reuses the already completed check');
