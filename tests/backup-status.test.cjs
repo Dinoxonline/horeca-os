@@ -89,6 +89,7 @@ test('UI presents real counts, coverage and unconfirmed cloud status; refresh fa
     files: { enabled: true, succeeded: 44, pending: 0, processing: 0, failed: 0, overdue: 0, wakeError: false },
   } });
   const { default: Component } = load('components/backup-overview.js', {
+    './backup-history': { default: () => null },
     '../lib/supabase': { supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'mock' } } }) } } },
     '../lib/backup-status.mjs': helpers,
     './backup-overview.module.css': { default: new Proxy({}, { get: (_, key) => key }) },

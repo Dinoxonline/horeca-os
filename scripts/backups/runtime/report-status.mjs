@@ -13,6 +13,15 @@ try {
   });
   if (!response.ok || (await response.json()).ok !== true) throw new Error('REPORT_FAILED');
   console.log(JSON.stringify({ reportDelivered: true, runId: receipt.run_id }));
+  if (receipt.ok) {
+    try {
+      execFileSync(process.execPath, [fileURLToPath(new URL('./analyze-backup.mjs', import.meta.url)), process.argv[2], process.argv[3]], { windowsHide: true, stdio: ['ignore','pipe','pipe'], timeout: 180000 });
+      console.log(JSON.stringify({ contentCheckDelivered: true }));
+    } catch {
+      // An unavailable comparison must never turn a valid backup into a failed one.
+      console.log(JSON.stringify({ contentCheckDelivered: false }));
+    }
+  }
 } catch {
   console.log(JSON.stringify({ reportDelivered: false, error: 'BACKUP_STATUS_REPORT_FAILED' }));
   process.exitCode = 1;

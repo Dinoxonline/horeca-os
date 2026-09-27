@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { databaseHealth, filesHealth } from '../lib/backup-status.mjs';
 import styles from './backup-overview.module.css';
+import BackupHistory from './backup-history';
 
 const date = value => value ? new Intl.DateTimeFormat('nl-NL', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Amsterdam' }).format(new Date(value)) : 'Nog niet beschikbaar';
 const size = value => `${(value / 1024 / 1024).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} MB`;
@@ -62,6 +63,7 @@ export default function BackupOverview({ workspaceId }) {
         {!db.recent.length ? <p>Nog geen meldingen ontvangen van de back-upcomputer.</p> : <div className={styles.tableScroll}><table><thead><tr><th>Tijd</th><th>Resultaat</th><th>Grootte</th></tr></thead><tbody>{db.recent.map(run => <tr key={run.run_id}><td>{date(run.completed_at)}</td><td>{run.ok && run.copy_verified ? 'Lokaal gecontroleerd' : 'Mislukt — controle nodig'}</td><td>{size(run.bytes)}</td></tr>)}</tbody></table></div>}
       </details>
     </>}
+    <BackupHistory workspaceId={workspaceId} />
     <section className={styles.card}><h3>Wat bewaren we?</h3><div className={styles.grid}><div><h4>Wel in deze eenvoudige back-up</h4><ul><li>Actuele bedrijfsgegevens en toepassingsschema’s: onder andere gasten, offertes en evenementen.</li><li>Bestanden uit marketing-assets en staff-ticket-attachments.</li><li>Versleutelde kopieën; bestaande kopieën worden niet automatisch verwijderd.</li></ul></div><div><h4>Niet inbegrepen</h4><ul><li>Inlogaccounts, wachtwoorden, geheime sleutels en volledige wijzigingsgeschiedenis.</li><li>Bestanden die alleen op WordPress of lokaal staan, waaronder niet-geüploade offertebestanden.</li><li>Een volledige herstelkopie van de hele Supabase-omgeving.</li></ul></div></div><p>De herstelsleutel blijft nodig om versleutelde kopieën te openen. Dit scherm is alleen een overzicht: er wordt niets teruggezet of verwijderd.</p></section>
   </section>;
 }

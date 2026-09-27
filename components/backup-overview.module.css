@@ -16,6 +16,12 @@
 .danger { background: #fff0f0; border-color: #c44242; color: #942222; }
 .card summary { cursor: pointer; font-weight: 600; }
 .tableScroll { overflow-x: auto; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.actions button[aria-pressed=true] { background: #176b80; color: white; }
+.filename { overflow-wrap: anywhere; min-width: 160px; max-width: 360px; }
+.filename small { display: block; color: #49677c; }
+.selection { margin-top: 20px; padding: 18px; background: #edf6f8; border: 1px solid #87b2c2; border-radius: 8px; }
+.selection li { overflow-wrap: anywhere; }
 .card table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 16px; }
 .card th, .card td { padding: 10px; border-bottom: 1px solid #dce6ec; }
 @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .header { align-items: flex-start; flex-direction: column; } .card { padding: 16px; } }
