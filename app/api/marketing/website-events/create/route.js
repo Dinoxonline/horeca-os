@@ -655,6 +655,27 @@ export async function POST(request) {
   });
 }
 
+// Eventin's banner can lag behind WordPress after a photo-only update. A full
+// Eventin save copies that banner back to featured_media. Preserve the current
+// WordPress photo instead, including an explicitly removed photo (ID 0).
+async function preservedWebsitePhoto(site, authorization, id, event, wordpress) {
+  const api = async path => {
+    const response = await fetch(`${site.origin}${path}`, {
+      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0" },
+      cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error("Website photo read failed");
+    return response.json();
+  };
+  const wp = wordpress || await api(`/wp-json/wp/v2/etn/${id}?context=edit&_embed=1`);
+  if (String(wp?.id) !== id || String(event?.id) !== id ||
+      !Number.isSafeInteger(wp.featured_media) || wp.featured_media < 0) {
+    throw new Error("Website photo identity missing");
+  }
+  const photo = await websitePhotoPreview(api, wp, event);
+  return { event_banner_id: photo.mediaId, event_banner: photo.url };
+}
+
 export async function PATCH(request) {
   const body = await request.json().catch(() => ({}));
   const context = await ownerContext(request, body.workspaceId);
@@ -691,12 +712,19 @@ export async function PATCH(request) {
       if (!venue || text(body.location).toLowerCase() !== venue.toLowerCase()) return NextResponse.json({error:'Controleer de locatie van deze uitvoering. De reeks gebruikt de ingestelde vestiging; afwijkende adressen bewerk je afzonderlijk.'},{status:400});
       seriesFields = {start_date:eventinAgendaDate(start),end_date:eventinAgendaDate(end),start_time:start.time,end_time:end.time,location_type:'venue',location:{address:venue}};
     }
+    let photoFields;
+    try {
+      photoFields = await preservedWebsitePhoto(site, authorization, id, currentEvent);
+    } catch {
+      return NextResponse.json({ error: "De huidige websitefoto kon niet veilig worden gecontroleerd. Er is niets gewijzigd. Probeer opnieuw." }, { status: 502 });
+    }
     const description = text(body.description).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
     const response = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
       method: "POST",
       headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
       body: JSON.stringify({
         ...currentEvent,
+        ...photoFields,
         title: text(body.title, 300),
         description: `<p>${description}</p>`,
         excerpt: text(body.description, 500),
@@ -739,6 +767,13 @@ export async function PATCH(request) {
       || currentEventinPayload
       || {};
 
+    let photoFields;
+    try {
+      photoFields = await preservedWebsitePhoto(site, authorization, id, currentEventinEvent, wordpressData);
+    } catch {
+      return NextResponse.json({ error: "De paginastatus is bijgewerkt, maar de huidige websitefoto kon niet veilig worden gecontroleerd. De Eventin-agenda is niet gewijzigd. Probeer opnieuw.", partial: true }, { status: 502 });
+    }
+
     // Eventin v4 does not reliably persist a visibility-only partial update.
     // Re-submit the complete event record so its agenda index is rebuilt too.
     const eventinResponse = await fetch(`${site.origin}/wp-json/eventin/v2/events/${id}`, {
@@ -746,6 +781,7 @@ export async function PATCH(request) {
       headers: { Authorization: authorization, "Content-Type": "application/json", "User-Agent": "HorecaOS-EventPublisher/1.0" },
       body: JSON.stringify({
         ...currentEventinEvent,
+        ...photoFields,
         start_date: normalizeEventinAgendaDate(currentEventinEvent.start_date),
         end_date: normalizeEventinAgendaDate(currentEventinEvent.end_date),
         visibility_status: visibilityStatus,

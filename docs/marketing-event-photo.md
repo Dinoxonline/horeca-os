@@ -17,3 +17,6 @@ A website update reserves its status before external writes. A timeout is not tr
 Tests: `node --test tests/event-photo.test.cjs tests/event-editor.test.cjs tests/manual-event-content.test.cjs tests/session-regression.test.cjs tests/marketing-navigation.test.cjs tests/instagram-publishing.test.cjs`.
 
 Live evidence before implementation: event 9440's WordPress `featured_media` and Eventin `event_banner_id` both equal 9382; its description contains no embedded image. Production photo replacement is left to the user's explicit confirmation.
+# Preserve the current photo during other website updates
+
+Eventin can retain an old banner after a photo-only WordPress update. Resubmitting that old banner during text/series/visibility changes can reset `featured_media`. Those actions now resolve the current WordPress featured attachment and use its ID and URL in the preserved Eventin payload. Missing or unverified photo data blocks the Eventin write; an explicit featured ID of zero preserves no photo. Ticket settings and other non-selected event fields stay unchanged. Regression tests cover stale banners, missing media/identity, no-photo records and series/status updates.

@@ -595,7 +595,7 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked']) te
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
-for (const failure of [null, 'read', 'write', 'auth']) test('Eventin text-only update preserves event settings: ' + (failure || 'success'), async () => {
+for (const failure of [null, 'read', 'write', 'auth', 'photo-read', 'photo-id', 'photo-field', 'media-read', 'no-photo']) test('Eventin text-only update preserves event settings: ' + (failure || 'success'), async () => {
   const oldUsername = process.env.EVENTIN_CARIBBEAN_USERNAME;
   const oldPassword = process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD;
   process.env.EVENTIN_CARIBBEAN_USERNAME = 'test-user';
@@ -605,8 +605,14 @@ for (const failure of [null, 'read', 'write', 'auth']) test('Eventin text-only u
     event_banner: 'keep-banner', event_banner_id: 456, location: { address: 'Keep venue' },
     ticket_variations: [{ id: 'ticket', etn_ticket_price: 25, etn_sold_tickets: 12 }], total_ticket: 100 };
   const calls = [];
-  global.fetch = async (_url, options) => {
+  const currentPhoto = 'https://website.example/new-rina.jpg';
+  global.fetch = async (url, options) => {
     calls.push(options);
+    if (url.includes('/wp/v2/etn/')) return Response.json({ id: failure === 'photo-id' ? 999 : 123,
+      ...(failure !== 'photo-field' ? { featured_media: failure === 'no-photo' ? 0 : 789 } : {}),
+      _embedded: failure === 'media-read' ? {} : { 'wp:featuredmedia': [{ id: 789, source_url: currentPhoto }] },
+    }, { status: failure === 'photo-read' ? 503 : 200 });
+    if (url.includes('/wp/v2/media/')) return Response.json({}, { status: 503 });
     return { ok: options.method === 'POST' ? failure !== 'write' : failure !== 'read', json: async () => ({ data: existing }) };
   };
   const client = { auth: { getUser: async () => ({ data: { user: { id: 'u' } } }) }, from(table) {
@@ -623,17 +629,54 @@ for (const failure of [null, 'read', 'write', 'auth']) test('Eventin text-only u
       headers: { authorization: 'Bearer fake', 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'sync-content', allowLinked: true, workspaceId: 'w', businessId: 'b', site: 'caribbeancorner.nl',
         eventId: '123', title: 'Chosen title', description: 'Chosen & safe <text>\nSecond line' }) }));
-    assert.equal(response.status, failure === 'auth' ? 403 : failure ? 502 : 200);
+    assert.equal(response.status, failure === 'auth' ? 403 : failure && failure !== 'no-photo' ? 502 : 200);
     if (failure === 'auth') assert.equal(calls.length, 0);
     else if (failure === 'read') assert.equal(calls.length, 1);
+    else if (['photo-read', 'photo-id', 'photo-field', 'media-read'].includes(failure)) {
+      assert.equal(calls.filter(call => call.method === 'POST').length, 0, 'unverified photo must block the write');
+    }
     else {
-      assert.equal(calls.length, 2);
-      const payload = JSON.parse(calls[1].body);
-      assert.deepEqual(payload, { ...existing, title: 'Chosen title',
+      assert.equal(calls.length, 3);
+      const payload = JSON.parse(calls[2].body);
+      assert.deepEqual(payload, { ...existing, event_banner_id: failure === 'no-photo' ? 0 : 789,
+        event_banner: failure === 'no-photo' ? '' : currentPhoto, title: 'Chosen title',
         description: '<p>Chosen &amp; safe &lt;text&gt;<br>Second line</p>', excerpt: 'Chosen & safe <text>\nSecond line' });
     }
   } finally {
     if (oldUsername === undefined) delete process.env.EVENTIN_CARIBBEAN_USERNAME; else process.env.EVENTIN_CARIBBEAN_USERNAME = oldUsername;
+    if (oldPassword === undefined) delete process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD; else process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD = oldPassword;
+  }
+});
+
+test('visibility update also preserves the current featured photo instead of the stale Eventin banner', async () => {
+  const oldUser = process.env.EVENTIN_CARIBBEAN_USERNAME, oldPassword = process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD;
+  const oldFetch = global.fetch;
+  process.env.EVENTIN_CARIBBEAN_USERNAME = 'test'; process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD = 'test';
+  const current = { id: 123, start_date: '2026-10-01', end_date: '2026-10-01', event_banner_id: 456,
+    event_banner: 'https://website.example/old.jpg', ticket_variations: [{ etn_sold_tickets: 12 }], visibility_status: 'publish' };
+  const client = { auth: { getUser: async () => ({ data: { user: { id: 'u' } } }) }, from(table) {
+    return { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({ data: table === 'workspace_members' ? { role: 'owner' } : { name: 'Caribbean Corner' } }) };
+  } };
+  let eventPayload;
+  try {
+    const { PATCH } = await load('app/api/marketing/website-events/create/route.js', { '../../../../../lib/server-supabase': { createUserSupabase: () => client } });
+    for (const missingPhoto of [false, true]) {
+      eventPayload = null;
+      global.fetch = async (url, options) => {
+        if (url.includes('/wp/v2/etn/')) return Response.json({ id: 123, ...(missingPhoto ? {} : { featured_media: 789 }) });
+        if (url.includes('/wp/v2/media/')) return Response.json({ id: 789, source_url: 'https://website.example/new.jpg' });
+        if (options.method === 'POST') eventPayload = JSON.parse(options.body);
+        return Response.json(current);
+      };
+      const response = await PATCH(new Request('https://test.local/api/event', { method: 'PATCH', headers: { authorization: 'Bearer fake', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish', allowLinked: true, workspaceId: 'w', businessId: 'b', site: 'caribbeancorner.nl', eventId: '123' }) }));
+      assert.equal(response.status, missingPhoto ? 502 : 200);
+      if (missingPhoto) { assert.equal(eventPayload, null); assert.equal((await response.json()).partial, true); }
+      else assert.deepEqual(eventPayload, { ...current, event_banner_id: 789, event_banner: 'https://website.example/new.jpg' });
+    }
+  } finally {
+    global.fetch = oldFetch;
+    if (oldUser === undefined) delete process.env.EVENTIN_CARIBBEAN_USERNAME; else process.env.EVENTIN_CARIBBEAN_USERNAME = oldUser;
     if (oldPassword === undefined) delete process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD; else process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD = oldPassword;
   }
 });
