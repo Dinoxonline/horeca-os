@@ -1,5 +1,5 @@
 'use client';
-import { useEffect,useState } from 'react';
+import { useEffect,useRef,useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { historySummary,restoreSummary,tableLabel } from '../lib/backup-history.mjs';
 import styles from './backup-overview.module.css';
@@ -10,6 +10,8 @@ const state={pending:'Wacht op kopie',processing:'Bezig',succeeded:'Gekopieerd',
 export default function BackupHistory({workspaceId}){
  const [kind,setKind]=useState('database'),[page,setPage]=useState(0),[refresh,setRefresh]=useState(0);
  const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState(null);
+ const selectionRef=useRef(null);
+ useEffect(()=>{if(selected){selectionRef.current?.focus?.({preventScroll:true});selectionRef.current?.scrollIntoView?.({block:'start'});}},[selected]);
  useEffect(()=>{
   let active=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
   setLoading(true);setError('');setData(null);setSelected(null);
@@ -50,7 +52,7 @@ export default function BackupHistory({workspaceId}){
    <div className={styles.actions}><button disabled={loading||page===0} onClick={()=>setPage(p=>p-1)}>Vorige pagina</button><button disabled={loading||(page+1)*25>=data.total} onClick={()=>setPage(p=>p+1)}>Volgende pagina</button></div>
    <p>De bestandsgrootte zegt niet welke gegevens zijn gewijzigd. Bestandskopieën worden afzonderlijk gemaakt; dit is geen volledige gezamenlijke momentopname.</p>
   </>}
-  {selected&&<section className={styles.selection} aria-labelledby="restore-selection-title">
+  {selected&&<section ref={selectionRef} tabIndex={-1} className={styles.selection} aria-labelledby="restore-selection-title">
    <h4 id="restore-selection-title">Gekozen back-up: {date(selected.completed_at)}</h4>
    <p>Begonnen: {date(selected.started_at)}. De precieze database-momentopname ligt binnen deze exportperiode.</p>
    <h4>Wijzigingen</h4><p>{historySummary(selected.contentCheck)}</p>

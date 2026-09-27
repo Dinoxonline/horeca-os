@@ -15,6 +15,7 @@ test('comparison notices edits without count changes and ignores row order',()=>
  const sql=rows=>`COPY public.quotes (id, title) FROM stdin;\n${rows.join('\n')}\n\\.\n`;
  const a=content.fingerprintCopy(sql(['1\tA','2\tB'])),reordered=content.fingerprintCopy(sql(['2\tB','1\tA']));
  assert.deepEqual(content.compareContent(a,reordered),[]);
+ assert.deepEqual(content.fingerprintCopy(sql(['1\tA','2\tB']).replaceAll('\n','\r\n')),a);
  const edited=content.fingerprintCopy(sql(['1\tUpdated','2\tB']));
  assert.deepEqual(content.compareContent(a,edited),[{table:'public.quotes',before:2,after:2,state:'changed'}]);
  assert.equal(content.compareContent(a,content.fingerprintCopy(sql(['1\tA','2\tB','2\tB'])))[0].after,3);
@@ -49,6 +50,16 @@ test('history endpoint refuses unauthorized callers before admin use and invalid
  authorized=true;
  for(const q of ['page=-1','page=0.5','page=10000000','kind=secrets'])assert.equal((await GET(req(q))).status,400);
  assert.equal(adminCalls,0);
+});
+for(const scenario of ['missing','expired','aal1','wrong-workspace','member','owner'])test(`history owner guard: ${scenario}`,async()=>{
+ let membershipRead=false;
+ const workspace='24dfa725-127b-40fa-a278-b744ccb4a1ba';
+ const token=`a.${Buffer.from(JSON.stringify({aal:scenario==='aal1'?'aal1':'aal2'})).toString('base64url')}.c`;
+ const query={select(){membershipRead=true;return this},eq(){return this},maybeSingle:async()=>({data:{role:scenario==='member'?'member':'owner'}})};
+ const {requireBackupOwner}=load('lib/backup-owner.js',{'./backup-status.mjs':{BACKUP_WORKSPACE:workspace},'./server-supabase':{createUserSupabase:()=>({auth:{getUser:async()=>scenario==='expired'?{error:true}:{data:{user:{id:'u'}}}},from:()=>query})}});
+ const r=await requireBackupOwner({headers:new Headers(scenario==='missing'?{}:{authorization:`Bearer ${token}`})},scenario==='wrong-workspace'?'other':workspace);
+ if(scenario==='owner')assert.equal(r.userId,'u');else assert.equal(r.status,['expired','missing'].includes(scenario)?401:403);
+ assert.equal(membershipRead,['member','owner'].includes(scenario));
 });
 test('history pagination is bounded and never returns receipt secrets',async()=>{
  let range;
