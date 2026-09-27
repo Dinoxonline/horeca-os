@@ -70,6 +70,6 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
       </div>
     </div>
     <div className={styles.actions}>{[['website','Website bijwerken openen'],['facebook','Facebook bijwerken openen'],['calendar','Agenda controleren openen']].map(([channel,label]) => <button type="button" className="secondaryButton" key={channel} disabled={disabled || dirty} onClick={() => onOpenChannel?.(channel)}>{label}</button>)}</div>
-    <small>De bronvergelijking controleert titel en tekst. Controleer gewijzigde tijden, locatie en foto’s apart; de bestaande websiteknop werkt alleen titel en tekst bij.</small>
+    <small>De bronvergelijking controleert titel en tekst. Controleer gewijzigde tijden, locatie en foto’s apart; de knop ‘Website bijwerken’ werkt alleen titel en tekst bij. Voor een Facebookfoto gebruik je ‘Foto overnemen — Facebook → Horeca OS → website’.</small>
   </section>;
 }
