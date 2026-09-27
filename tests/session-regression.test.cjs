@@ -21,7 +21,7 @@ function loadSync(relative, mocks = {}) {
   });
   const module = { exports: {} };
   vm.runInThisContext('(function(require,module,exports){' + code + '\n})', { filename: relative })(
-    (name) => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.endsWith('.css') ? { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) } : name.startsWith('.') ? loadSync(path.join(path.dirname(relative), name) + '.js', mocks) : require(name), module, module.exports,
+    (name) => Object.hasOwn(mocks, name) ? { __esModule: true, ...mocks[name] } : name.endsWith('.css') ? { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) } : name.startsWith('.') ? loadSync(path.join(path.dirname(relative), name) + (path.extname(name) ? '' : '.js'), mocks) : require(name), module, module.exports,
   );
   return module.exports;
 }

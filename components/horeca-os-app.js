@@ -17,6 +17,7 @@ import Documents from "./documents";
 import StaffTicketForm from "./staff-ticket-form";
 import StaffTickets from "./staff-tickets";
 import Quotes from "./quotes";
+import BackupOverview from "./backup-overview";
 
 const priorityRank = { critical: 0, high: 1, medium: 2, low: 3 };
 const priorityLabel = { critical: "Kritiek", high: "Hoog", medium: "Midden", low: "Laag" };
@@ -53,6 +54,7 @@ const routeViews = {
   "/rooster": "schedule",
   "/koppelingen": "integrations",
   "/beveiliging": "security",
+  "/beveiliging/backups": "backups",
 };
 
 export default function HorecaOsApp() {
@@ -485,7 +487,8 @@ export default function HorecaOsApp() {
           {featureVisibility.hours && <NavLink href="/uren" active={activeView === "hours"}>Uren</NavLink>}
           {featureVisibility.schedule && <NavLink href="/rooster" active={activeView === "schedule"}>Rooster</NavLink>}
           {featureVisibility.integrations && <NavLink href="/koppelingen" active={activeView === "integrations"}>Koppelingen</NavLink>}
-          <NavLink href="/beveiliging" active={activeView === "security"}>Beveiliging</NavLink>
+          <NavLink href="/beveiliging" active={activeView === "security" || activeView === "backups"}>Beveiliging</NavLink>
+          {activeWorkspace?.role === "owner" && <NavLink href="/beveiliging/backups" active={activeView === "backups"}>Back-ups</NavLink>}
         </nav>
         <button className="nav logout" onClick={() => supabase.auth.signOut()}>Uitloggen</button>
       </aside>
@@ -566,7 +569,9 @@ export default function HorecaOsApp() {
         {activeView === "hours" && featureVisibility.hours && <HoursOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} />}
         {activeView === "schedule" && featureVisibility.schedule && <ScheduleOverview workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} userId={session.user.id} canManage={isOwner || canUseFeature("schedule:manage")} />}
         {activeView === "integrations" && featureVisibility.integrations && <><PredisContentGenerator mode="connect" workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} /><RobuustIntegrationSettings workspaceId={workspaceId} session={session} businesses={data.businesses} /></>}
+        {(activeView === "security" || activeView === "backups") && <nav className="toolbar" aria-label="Beveiligingsonderdelen"><Link href="/beveiliging">Accountbeveiliging</Link>{activeWorkspace?.role === "owner" && <Link href="/beveiliging/backups">Back-ups bekijken</Link>}</nav>}
         {activeView === "security" && <SecuritySettings required={mfaRequired} mfaState={mfaState} onRefresh={refreshMfa} />}
+        {activeView === "backups" && (activeWorkspace?.role === "owner" ? <BackupOverview workspaceId={workspaceId} /> : <AccessDenied />)}
       </main>
     </div>
   );
