@@ -115,7 +115,7 @@ export async function POST(request) {
         if (normalized) found.set(normalized.id, normalized);
         else if (job.postIds.includes(String(post?.post_id))) {
           invalid++;
-          console.warn(JSON.stringify({ event: "predis_result_shape", mediaType: ["single_image", "carousel", "video", "image"].includes(post.media_type) ? post.media_type : "other", urlsArray: Array.isArray(post.urls), urlCount: Array.isArray(post.urls) ? post.urls.length : null, urlsType: typeof post.urls,
+          console.warn(JSON.stringify({ event: "predis_result_shape", fields: Object.keys(post).filter(k => /^[a-z_]{1,40}$/i.test(k)).slice(0, 30).map(k => ({ name: k, type: Array.isArray(post[k]) ? "array" : typeof post[k], count: Array.isArray(post[k]) ? post[k].length : undefined, entryKeys: Array.isArray(post[k]) && post[k][0] && typeof post[k][0] === "object" ? Object.keys(post[k][0]).filter(n => /^[a-z_]{1,40}$/i.test(n)).slice(0, 20) : undefined })), mediaType: ["single_image", "carousel", "video", "image"].includes(post.media_type) ? post.media_type : "other", urlsArray: Array.isArray(post.urls), urlCount: Array.isArray(post.urls) ? post.urls.length : null, urlsType: typeof post.urls,
             entries: Array.isArray(post.urls) ? post.urls.slice(0, 10).map(u => ({ type: typeof u, keys: u && typeof u === "object" ? Object.keys(u).filter(k => ["url", "type", "src", "image_url", "video_url"].includes(k)) : [], scheme: typeof u === "string" ? (/^(https?):/.exec(u)?.[1] || "other") : null })) : [] }));
         }
       }
