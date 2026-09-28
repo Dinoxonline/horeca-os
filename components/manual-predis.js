@@ -16,6 +16,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
+  const [planningFeedback, setPlanningFeedback] = useState(null);
   const [mode, setMode] = useState("single");
   const [start, setStart] = useState(localToday);
   const [end, setEnd] = useState(localToday);
@@ -64,7 +65,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   }
   function accept(next) {
     if (!mounted.current) return;
-    setSaved(next); setDraft(next?.draft || initial()); setLoaded(true); setDirty(false); setConfirmed(false); onSavedRef.current?.(next);
+    setSaved(next); setDraft(next?.draft || initial()); setLoaded(true); setDirty(false); setConfirmed(false); setPlanningFeedback(null); onSavedRef.current?.(next);
   }
   function load() { return run("Voorbereiding laden…", async () => { const next = await request(); accept(next); }); }
   useEffect(() => { if (enabled && hasToken && !loaded && !lock.current) load(); }, [enabled, hasToken]); // Token refresh must not discard input.
@@ -75,7 +76,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     setDirty(true); setConfirmed(false); setMessage("Predis-content overgenomen in je voorbereiding. Bewaar hieronder; er is nog niets ingepland of gepubliceerd.");
     onGeneratedContentApplied?.();
   }, [loaded, generatedContent]);
-  function change(next) { setDraft(next); setDirty(true); setConfirmed(false); setMessage(""); }
+  function change(next) { setDraft(next); setDirty(true); setConfirmed(false); setMessage(""); setPlanningFeedback(null); }
   let preview = [], previewError = "";
   try {
     preview = makeManualEntries({ start, end: mode === "single" ? start : end, time, weekdays: mode === "weekly" ? days : undefined, channels });
@@ -92,8 +93,8 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       const unique = new Map([...draft.entries, ...next].map(e => [e.key, e]));
       const added = unique.size - draft.entries.length;
       if (added) change(validateManualDraft({ ...draft, entries: [...unique.values()] }));
-      setFailed(false); setMessage(added ? `${added} nieuwe kanaalmomenten toegevoegd. Bewaar hieronder om ze in de Horeca OS-agenda te zien.` : "Deze momenten staan al in je planning. Er zijn geen dubbele momenten toegevoegd.");
-    } catch (e) { setFailed(true); setMessage(e.message); }
+      setPlanningFeedback({ error: false, text: added ? `${added} kanaalmomenten toegevoegd aan de lijst hieronder. Nog niet bewaard: klik op ‘Bericht bewaren’ om ze in Berichtenplanning te zien.` : "Deze momenten staan al in de lijst hieronder. Er zijn geen dubbele momenten toegevoegd." });
+    } catch (e) { setPlanningFeedback({ error: true, text: `Niet toegevoegd: ${e.message}` }); }
   }
   async function copy(value, label) {
     try { await navigator.clipboard.writeText(value); setFailed(false); setMessage(`${label} gekopieerd. Er is niets ingepland of gepubliceerd.`); }
@@ -112,7 +113,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   return <section className={styles.root} aria-label="Predis handmatig voorbereiden">
     <div className={styles.notice}><strong>Eigen foto en tekst · {businessName}</strong><p>Gebruik je eigen beeld en bericht. Geen nieuw AI-ontwerp. Uploaden en inplannen doe je daarna zelf in Predis.</p></div>
     {busy && <p role="status">{busy}</p>}
-    {message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
+    {!loaded && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
     {dirty && <small>Niet-bewaarde wijzigingen</small>}
     {!loaded && <p>Open of laad eerst de voorbereiding. Bij een laadfout blijft bewaren geblokkeerd.</p>}
     <fieldset disabled={!loaded || !!busy} className={styles.fields}>
@@ -147,15 +148,30 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
         {previewError ? <span>{previewError}</span> : <><strong>{previewDates.length} {previewDates.length === 1 ? "datum" : "datums"} · {newMoments} nieuwe kanaalmomenten</strong><span>{previewDates.slice(0, 8).map(at => `${at.slice(8,10)}-${at.slice(5,7)}-${at.slice(0,4)} ${at.slice(11)}`).join(" · ")}{previewDates.length > 8 ? ` · en nog ${previewDates.length - 8}` : ""}</span></>}
       </div>
       <button type="button" className="secondaryButton" disabled={!!previewError || !newMoments} onClick={addMoments}>Momenten toevoegen aan planning</button>
+      {planningFeedback && <p role={planningFeedback.error ? "alert" : "status"} className={planningFeedback.error ? styles.error : styles.notice}>{planningFeedback.text}</p>}
+      {!previewError && !newMoments && <small>Alle gekozen momenten staan al in je lijst. Kies een andere datum, tijd of kanaal om meer toe te voegen.</small>}
+      {!!draft.entries.length && <section aria-label="Toegevoegde publicatiemomenten" className={styles.notice}>
+        <strong>Jouw planning · {dirty ? "nog niet bewaard" : "bewaard in Horeca OS"}</strong>
+        <div className={styles.planningList}>{draft.entries.map(e => <div key={e.key} className={styles.planningRow}>
+          <span>{e.at.slice(8, 10)}-{e.at.slice(5, 7)}-{e.at.slice(0, 4)} · {e.at.slice(11)} · {PREDIS_CHANNELS[e.channel]}</span>
+          <button type="button" className="secondaryButton" aria-label={`Haal ${e.at} ${PREDIS_CHANNELS[e.channel]} uit planning`} onClick={() => change({ ...draft, entries: draft.entries.filter(x => x.key !== e.key) })}>Verwijderen</button>
+        </div>)}</div>
+        <small>Dit zijn gewenste publicatiemomenten, nog geen automatische opdrachten aan Predis.</small>
+      </section>}
       <small>{draft.entries.length} kanaalmomenten in dit bericht. {dirty ? "Bewaar hieronder om je wijzigingen in de agenda te tonen." : "Bewaarde momenten staan in de marketingagenda."} Nederlandse kloktijd blijft behouden bij zomer- en wintertijd.</small>
     </fieldset>
     <div className={styles.step}>
       <strong>3. Bericht en planning bewaren</strong>
       <p>Bewaar je foto, tekst en toegevoegde momenten in Horeca OS. Dit verstuurt niets naar Predis en publiceert niets.</p>
       <div className={styles.actions}><button type="button" className="primaryButton" disabled={!loaded || !!busy || (!dirty && !!saved)} onClick={save}>Bericht bewaren</button>{saved && !dirty && <span>Bewaard in Horeca OS</span>}</div>
+      {loaded && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
     </div>
     <div className={styles.step}>
       <strong>4. Verder in Predis</strong>
+      <div className={styles.notice}>
+        <button type="button" className="primaryButton" disabled>Direct publiceren — nog niet beschikbaar</button>
+        <small>Rechtstreeks publiceren vanuit dit formulier is nog niet aangesloten. Je kunt nu alleen bewaren in Horeca OS en daarna zelf publiceren in Predis. Er wordt niets automatisch verstuurd.</small>
+      </div>
       <p>Open Predis, kies <b>{businessName}</b> en daarna ‘Heb je al een ontwerp? Uploaden en inplannen’. Upload je bestand en plak je bericht.</p>
       {!!draft.assets.length && <div className={styles.downloads}>{draft.assets.map((a, i) => <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer">{i + 1}. {a.label} — openen / bewaren ↗</a>)}</div>}
       <div className={styles.actions}>

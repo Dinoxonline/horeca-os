@@ -27,6 +27,8 @@ The date planner is visible immediately after the message editor. Choose a singl
 
 The initially collapsed Meer opties section retains reload/reset, the detailed moment list, bulk copy and per-channel manual confirmations. Existing entries are not cleared by saving the simpler form. No scheduling, publishing or AI-generation requests have been added. Existing load-error, concurrent-edit and unsaved-input safeguards remain in place.
 
+Addition results and validation errors now appear directly below the add-moments button. A visible, scrollable list shows each date/time/channel with removal and an unsaved/saved label; it is not hidden inside More options. Save results appear beside the save action. Already-added moments have an explicit duplicate explanation. Direct publication from the Predis preparation remains unavailable: the disabled action explains this, and the manual Predis handoff remains separate. No publication is triggered by adding or saving moments.
+
 ## Publication moments in the marketing calendar
 
 The calendar opens with **Evenementen** only. **Berichtenplanning** shows saved publication moments on their own dates; **Beide** combines the two. This shared display filter applies before day/week/month/year and venue layouts. It does not delete or reschedule anything. Publication cards keep explicit preparation/manual-confirmation labels. The selected display mode is session-local and defaults to events when the calendar is reopened.

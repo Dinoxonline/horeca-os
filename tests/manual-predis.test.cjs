@@ -121,16 +121,40 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    assert.deepEqual(calls.map(c=>c.method),['GET']);
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
    assert.equal(button('Momenten toevoegen aan planning').props.disabled,true);
+   assert.match(allText(planner()),/4 kanaalmomenten toegevoegd/);
+   const visibleList=planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'});
+   assert.match(allText(visibleList),/nog niet bewaard/);
+   assert.match(allText(visibleList),/28\s*-\s*10\s*-\s*2026.*Facebook/);
+   for(let p=visibleList;p;p=p.parent)assert.notEqual(p.type,'details');
+   assert.equal(button('Direct publiceren — nog niet beschikbaar').props.disabled,true);
+   assert.equal(button('Direct publiceren — nog niet beschikbaar').props.onClick,undefined);
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
    await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
    await React.act(async()=>button('Bericht bewaren').props.onClick());
    assert.equal(saved.draft.entries.length,5);assert.equal(saved.draft.entries.at(-1).at,'2026-10-30T10:00');
+   assert.match(allText(planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'})),/bewaard in Horeca OS/);
    assert.ok(calls.every(c=>c.url.startsWith('/api/marketing/manual-predis')));
    await React.act(async()=>r.unmount());
    await React.act(async()=>{r=Renderer.create(React.createElement(Component,props));});
    assert.equal(r.root.findByType('tbody').findAllByType('tr').length,5);
    assert.match(allText(r.root),/Nog overzetten/);
+ }finally{await React.act(async()=>r.unmount());delete global.window;}
+});
+
+test('planner reports validation failure beside the add button and does not silently discard or save input',async()=>{
+ fakeWindow();const calls=[];
+ global.fetch=async(url,opts)=>{calls.push(opts.method);return Response.json({saved:{revision:'r',draft:{caption:'Keep text',assets:[{type:'image',url:'http://example.com/old.jpg',label:'Old media'}],entries:[]},confirmations:{}}});};
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true}));});
+ try{
+   const planner=()=>r.root.findByProps({'aria-label':'Publicatiemomenten kiezen'});
+   await React.act(async()=>planner().findAllByType('label').find(n=>allText(n).trim()==='Facebook').findByType('input').props.onChange());
+   await React.act(async()=>planner().findAllByType('button').find(n=>allText(n)==='Momenten toevoegen aan planning').props.onClick());
+   assert.match(allText(planner().findByProps({role:'alert'})),/Niet toegevoegd: Ongeldig mediabestand/);
+   assert.equal(r.root.findByType('textarea').props.value,'Keep text');
+   assert.equal(planner().findAllByProps({'aria-label':'Toegevoegde publicatiemomenten'}).length,0);
+   assert.deepEqual(calls,['GET']);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 test('UI loads lazily, keeps draft through token refresh and save failure, and does not double-submit',async()=>{
