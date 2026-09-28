@@ -27,6 +27,43 @@ function campaign(entries, confirmations = {}, extra = {}) {
 const entry = (at = '2026-10-07T10:00', channel = 'facebook') => ({ at, channel, key: `${at}|${channel}` });
 const text = renderer => JSON.stringify(renderer.toJSON());
 
+test('events are the default; message dates stay separate and toggling never changes saved data', async () => {
+  const { calendarContentItems: select } = await load('lib/marketing-calendar-view.js');
+  const { publicationCalendarItems: derive } = await load('lib/marketing-publications.js');
+  const parent = campaign([entry('2026-09-28T10:00')]);
+  parent.media[0].common.start = '2026-10-01T18:00';
+  const events = [parent], publications = derive(events, venues), before = JSON.stringify({ events, publications });
+  assert.deepEqual(select(events, publications), events);
+  assert.deepEqual(select(events, publications, 'events'), events);
+  assert.deepEqual(select(events, publications, 'publications'), publications);
+  assert.deepEqual(select(events, publications, 'both'), [...events, ...publications]);
+  assert.equal(select(events, publications).filter(i => i.media[0].common.start.startsWith('2026-09-28')).length, 0);
+  assert.equal(select(events, publications, 'publications')[0].media[0].common.start, '2026-09-28T10:00');
+  assert.deepEqual(select([], publications), []);
+  assert.deepEqual(select(events, [], 'publications'), []);
+  assert.equal(JSON.stringify({ events, publications }), before);
+});
+
+test('agenda selector changes each view with an accessible selected state and explanation', async () => {
+  const { CalendarContentSelector } = await calendarComponents();
+  function Harness() {
+    const [view, setView] = React.useState('events');
+    return React.createElement(CalendarContentSelector, { value: view, onChange: setView });
+  }
+  let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Harness)); });
+  try {
+    const buttons = () => renderer.root.findByProps({ 'aria-label': 'Agenda-inhoud kiezen' }).findAllByType('button');
+    assert.deepEqual(buttons().map(b => b.props.children), ['Evenementen', 'Berichtenplanning', 'Beide']);
+    assert.equal(buttons()[0].props['aria-pressed'], true);
+    for (const index of [1, 2, 0]) {
+      await React.act(async () => buttons()[index].props.onClick());
+      assert.deepEqual(buttons().map(b => b.props['aria-pressed']), [0, 1, 2].map(i => i === index));
+      assert.ok(renderer.root.findByProps({ role: 'status' }).props.children.length);
+    }
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
 test('separate channel/moment cards keep past parent events and correct venue without modifying records', async () => {
   const { publicationCalendarItems: derive } = await load('lib/marketing-publications.js');
   const parent = campaign([entry(), entry(undefined, 'instagram'), entry('2026-09-27T09:00'), entry('2026-10-08T11:00', 'google')]);

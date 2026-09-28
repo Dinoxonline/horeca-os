@@ -29,6 +29,8 @@ The initially collapsed Meer opties section retains reload/reset, the detailed m
 
 ## Publication moments in the marketing calendar
 
+The calendar opens with **Evenementen** only. **Berichtenplanning** shows saved publication moments on their own dates; **Beide** combines the two. This shared display filter applies before day/week/month/year and venue layouts. It does not delete or reschedule anything. Publication cards keep explicit preparation/manual-confirmation labels. The selected display mode is session-local and defaults to events when the calendar is reopened.
+
 Saved manual Predis draft entries appear as separate publication cards on their Dutch date/time, with channel and status. The original event date remains unchanged. Pending means “Voorbereid · nog niet verstuurd”; scheduled/published labels explicitly remain manual confirmations. Time passing never changes that status. Historical saved moments remain visible when navigating back, including plans attached to past events. Deleted entries disappear after saving. The calendar uses the same loaded campaign scope (currently the most recent 500 campaigns) and venue filter; this is not an unlimited publication archive.
 
 Day, week and month show the cards; the year view opens all items on the chosen day. Clicking a publication opens its original campaign’s own-media preparation with the planning options expanded. Calendar-only records are never written to the database or sent to publication-status checks. Neither scheduling requests to Predis nor Predis schedule imports have been added: local visibility does not imply delivery to Predis.
