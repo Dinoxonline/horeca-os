@@ -90,8 +90,49 @@ test('auth, MFA, venue scopes, storage errors, unknown entries and missing versi
  const source=fs.readFileSync(path.join(root,'app/api/marketing/manual-predis/route.js'),'utf8');assert.doesNotMatch(source,/fetch\(|integration_credentials|\.insert\(/);
 });
 const allText=node=>typeof node==='string'?node:(node.children||[]).map(allText).join(' ');
+test('weekly choices include Monday and Wednesday, Thursday boundaries and DST without shifting the time',async()=>{
+ const {makeManualEntries:make}=await load('lib/manual-predis.js');
+ const entries=make({start:'2026-10-19',end:'2026-10-28',time:'10:00',weekdays:[1,3],channels:['facebook']});
+ assert.deepEqual(entries.map(e=>e.at),['2026-10-19T10:00','2026-10-21T10:00','2026-10-26T10:00','2026-10-28T10:00']);
+ assert.deepEqual(make({start:'2026-10-01',end:'2026-10-08',time:'19:00',weekdays:[4],channels:['instagram']}).map(e=>e.at),['2026-10-01T19:00','2026-10-08T19:00']);
+ assert.equal(make({start:'2026-10-01',end:'2026-10-01',time:'10:00',weekdays:[1],channels:['facebook']}).length,0);
+ assert.throws(()=>make({start:'2026-10-01',time:'10:00',weekdays:[],channels:['facebook']}));
+});
 const item={id:'c',business_id:'b',media:[{kind:'campaign_distribution',common:{title:'Event',description:'Original'}}]};
 function fakeWindow(){global.window={addEventListener(){},removeEventListener(){},confirm:()=>true};}
+
+test('visible planner previews selected weekdays, adds nonduplicated dates, saves and reloads without sending to Predis',async()=>{
+ fakeWindow();let saved=null;const calls=[];
+ global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});if(opts.method==='POST')saved={revision:'r',draft:JSON.parse(opts.body).draft,confirmations:{}};return Response.json({saved});};
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ const props={item,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true};
+ let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,props));});
+ const button=label=>r.root.findAllByType('button').find(b=>allText(b)===label);
+ const planner=()=>r.root.findByProps({'aria-label':'Publicatiemomenten kiezen'});
+ const label=name=>planner().findAllByType('label').find(n=>allText(n).trim()===name);
+ try {
+   for(let p=planner().parent;p;p=p.parent)assert.notEqual(p.type,'details');
+   await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'weekly'}}));
+   await React.act(async()=>label('Facebook').findByType('input').props.onChange());
+   await React.act(async()=>label('Begindatum').findByType('input').props.onChange({target:{value:'2026-10-19'}}));
+   await React.act(async()=>label('Einddatum (inclusief)').findByType('input').props.onChange({target:{value:'2026-10-28'}}));
+   await React.act(async()=>label('Maandag').findByType('input').props.onChange());
+   assert.match(allText(planner()),/4\s+datums/);assert.match(allText(planner()),/28-10-2026 10:00/);
+   assert.deepEqual(calls.map(c=>c.method),['GET']);
+   await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
+   assert.equal(button('Momenten toevoegen aan planning').props.disabled,true);
+   await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
+   await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
+   await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
+   await React.act(async()=>button('Bericht bewaren').props.onClick());
+   assert.equal(saved.draft.entries.length,5);assert.equal(saved.draft.entries.at(-1).at,'2026-10-30T10:00');
+   assert.ok(calls.every(c=>c.url.startsWith('/api/marketing/manual-predis')));
+   await React.act(async()=>r.unmount());
+   await React.act(async()=>{r=Renderer.create(React.createElement(Component,props));});
+   assert.equal(r.root.findByType('tbody').findAllByType('tr').length,5);
+   assert.match(allText(r.root),/Nog overzetten/);
+ }finally{await React.act(async()=>r.unmount());delete global.window;}
+});
 test('UI loads lazily, keeps draft through token refresh and save failure, and does not double-submit',async()=>{
  fakeWindow();let calls=[],release,lastBody;
  global.fetch=async(url,opts)=>{calls.push(opts.method);if(opts.method==='GET')return {ok:true,json:async()=>({saved:null})};lastBody=JSON.parse(opts.body);return new Promise(resolve=>{release=resolve});};
@@ -103,8 +144,9 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true})));assert.deepEqual(calls,['GET']);
  const content=allText(r.root);
  assert.match(content,/Geen nieuw AI-ontwerp/);
- assert.ok(content.indexOf('1. Bericht maken') < content.indexOf('2. Klaarzetten'));
- assert.ok(content.indexOf('2. Klaarzetten') < content.indexOf('3. Verder in Predis'));
+ assert.ok(content.indexOf('1. Bericht maken') < content.indexOf('2. Wanneer wil je dit bericht plaatsen?'));
+ assert.ok(content.indexOf('2. Wanneer wil je dit bericht plaatsen?') < content.indexOf('3. Bericht en planning bewaren'));
+ assert.ok(content.indexOf('3. Bericht en planning bewaren') < content.indexOf('4. Verder in Predis'));
  assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
  assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen ↗').props.href,'https://app.predis.ai/app/new_post/create');
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));

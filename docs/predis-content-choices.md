@@ -21,9 +21,11 @@ Tests cover the neutral default, all three initial AI formats, unsaved-input con
 
 ## Simplified own-media preparation
 
-The manual screen has three primary steps: Bericht maken, Klaarzetten, Verder in Predis. Media thumbnails are immediately visible and toggle their selection with an accessible pressed state. Saved/generated assets absent from the current event sources remain available until deselected. Only one save button and one caption-copy button appear in the default view. File-opening links are grouped with the explicit manual Predis handoff.
+The manual screen has four primary steps: Bericht maken, Publicatiemomenten kiezen, Bericht en planning bewaren, Verder in Predis. Media thumbnails are immediately visible and toggle their selection with an accessible pressed state. Saved/generated assets absent from the current event sources remain available until deselected. Only one save button and one caption-copy button appear in the default view. File-opening links are grouped with the explicit manual Predis handoff.
 
-The initially collapsed Meer opties section retains reload/reset, planning, bulk copy and per-channel manual confirmations. Existing entries are not cleared by saving the simpler form. No scheduling, publishing or AI-generation requests have been added. Existing load-error, concurrent-edit and unsaved-input safeguards remain in place.
+The date planner is visible immediately after the message editor. Choose a single date (add several one by one) or weekly repetition with one or more weekdays, an inclusive start/end date and a Dutch time. A preview lists dates and counts only new channel/moment pairs; overlapping additions are deduplicated. Save the message to persist the expanded moments in the agenda. Maximum 160 channel moments per event; no unbounded recurrence or automatic provider scheduling is implied.
+
+The initially collapsed Meer opties section retains reload/reset, the detailed moment list, bulk copy and per-channel manual confirmations. Existing entries are not cleared by saving the simpler form. No scheduling, publishing or AI-generation requests have been added. Existing load-error, concurrent-edit and unsaved-input safeguards remain in place.
 
 ## Publication moments in the marketing calendar
 

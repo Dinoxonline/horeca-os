@@ -76,12 +76,23 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     onGeneratedContentApplied?.();
   }, [loaded, generatedContent]);
   function change(next) { setDraft(next); setDirty(true); setConfirmed(false); setMessage(""); }
+  let preview = [], previewError = "";
+  try {
+    preview = makeManualEntries({ start, end: mode === "single" ? start : end, time, weekdays: mode === "weekly" ? days : undefined, channels });
+    if (!preview.length) previewError = "Geen gekozen weekdagen in deze periode.";
+    if (new Set([...draft.entries, ...preview].map(e => e.key)).size > 160) previewError = "Maximaal 160 kanaalmomenten per evenement. Kies een kortere periode of minder kanalen.";
+  } catch (e) { previewError = e.message; }
+  const previewDates = [...new Set(preview.map(e => e.at))];
+  const newMoments = preview.filter(e => !draft.entries.some(old => old.key === e.key)).length;
+  const fullDays = { 1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 5: "Vrijdag", 6: "Zaterdag", 0: "Zondag" };
   function addMoments() {
     try {
       const next = makeManualEntries({ start, end: mode === "single" ? start : end, time, weekdays: mode === "weekly" ? days : undefined, channels });
       if (!next.length) throw new Error("Geen gekozen weekdagen in deze periode.");
       const unique = new Map([...draft.entries, ...next].map(e => [e.key, e]));
-      change(validateManualDraft({ ...draft, entries: [...unique.values()] })); setFailed(false); setMessage(`${next.length} kanaalacties toegevoegd aan je voorbereiding. Bewaar hieronder.`);
+      const added = unique.size - draft.entries.length;
+      if (added) change(validateManualDraft({ ...draft, entries: [...unique.values()] }));
+      setFailed(false); setMessage(added ? `${added} nieuwe kanaalmomenten toegevoegd. Bewaar hieronder om ze in de Horeca OS-agenda te zien.` : "Deze momenten staan al in je planning. Er zijn geen dubbele momenten toegevoegd.");
     } catch (e) { setFailed(true); setMessage(e.message); }
   }
   async function copy(value, label) {
@@ -121,13 +132,30 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <label>Je bericht<textarea rows={6} maxLength={10000} value={draft.caption} onChange={e => change({ ...draft, caption: e.target.value })} /></label>
       <small>Je bewerkt alleen dit bericht. Het evenement en bestaande publicaties blijven ongewijzigd.</small>
     </fieldset>
+    <fieldset disabled={!loaded || !!busy} className={styles.fields} aria-label="Publicatiemomenten kiezen">
+      <legend>2. Wanneer wil je dit bericht plaatsen?</legend>
+      <div className={styles.choices} role="group" aria-label="Kanalen">{Object.entries(PREDIS_CHANNELS).map(([key, name]) => <label key={key}><input type="checkbox" checked={channels.includes(key)} onChange={() => setChannels(channels.includes(key) ? channels.filter(c => c !== key) : [...channels, key])} />{name}</label>)}</div>
+      <div className={styles.grid}>
+        <label>Planning kiezen<select value={mode} onChange={e => setMode(e.target.value)}><option value="single">Losse datum</option><option value="weekly">Elke week op vaste dagen</option></select></label>
+        <label>{mode === "single" ? "Datum" : "Begindatum"}<input type="date" value={start} onChange={e => { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value); }} /></label>
+        {mode === "weekly" && <label>Einddatum (inclusief)<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>}
+        <label>Tijd (Nederland)<input type="time" value={time} onChange={e => setTime(e.target.value)} /></label>
+      </div>
+      {mode === "weekly" && <><div className={styles.choices} role="group" aria-label="Weekdagen">{PREDIS_DAYS.map(([day]) => <label key={day}><input type="checkbox" checked={days.includes(day)} onChange={() => setDays(days.includes(day) ? days.filter(d => d !== day) : [...days, day])} />{fullDays[day]}</label>)}</div><small>Kies één of meer dagen, bijvoorbeeld maandag én woensdag. Het gekozen tijdstip geldt voor al deze dagen.</small></>}
+      {mode === "single" && <small>Voeg een datum toe en kies daarna eventueel nog een losse datum of een ander tijdstip.</small>}
+      <div className={styles.notice} role="status" aria-label="Voorbeeld publicatiedatums">
+        {previewError ? <span>{previewError}</span> : <><strong>{previewDates.length} {previewDates.length === 1 ? "datum" : "datums"} · {newMoments} nieuwe kanaalmomenten</strong><span>{previewDates.slice(0, 8).map(at => `${at.slice(8,10)}-${at.slice(5,7)}-${at.slice(0,4)} ${at.slice(11)}`).join(" · ")}{previewDates.length > 8 ? ` · en nog ${previewDates.length - 8}` : ""}</span></>}
+      </div>
+      <button type="button" className="secondaryButton" disabled={!!previewError || !newMoments} onClick={addMoments}>Momenten toevoegen aan planning</button>
+      <small>{draft.entries.length} kanaalmomenten in dit bericht. {dirty ? "Bewaar hieronder om je wijzigingen in de agenda te tonen." : "Bewaarde momenten staan in de marketingagenda."} Nederlandse kloktijd blijft behouden bij zomer- en wintertijd.</small>
+    </fieldset>
     <div className={styles.step}>
-      <strong>2. Klaarzetten</strong>
-      <p>Bewaar je foto en tekst in Horeca OS. Dit verstuurt niets naar Predis.</p>
+      <strong>3. Bericht en planning bewaren</strong>
+      <p>Bewaar je foto, tekst en toegevoegde momenten in Horeca OS. Dit verstuurt niets naar Predis en publiceert niets.</p>
       <div className={styles.actions}><button type="button" className="primaryButton" disabled={!loaded || !!busy || (!dirty && !!saved)} onClick={save}>Bericht bewaren</button>{saved && !dirty && <span>Bewaard in Horeca OS</span>}</div>
     </div>
     <div className={styles.step}>
-      <strong>3. Verder in Predis</strong>
+      <strong>4. Verder in Predis</strong>
       <p>Open Predis, kies <b>{businessName}</b> en daarna ‘Heb je al een ontwerp? Uploaden en inplannen’. Upload je bestand en plak je bericht.</p>
       {!!draft.assets.length && <div className={styles.downloads}>{draft.assets.map((a, i) => <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer">{i + 1}. {a.label} — openen / bewaren ↗</a>)}</div>}
       <div className={styles.actions}>
@@ -140,10 +168,6 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     <div className={styles.root}>
     <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!!busy} onClick={() => { if (!dirty || window.confirm("Je hebt onbewaarde wijzigingen. Wil je de bewaarde versie laden en je invoer vervangen?")) load(); }}>Bewaarde versie laden</button><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={() => { if (window.confirm("Vervang deze berichttekst door de huidige tekst uit Horeca OS?")) change({ ...draft, caption: initial().caption }); }}>Horeca OS-tekst overnemen</button></div>
     <fieldset disabled={!loaded || !!busy} className={styles.fields}><legend>Planning en handmatige controle</legend>
-      <div className={styles.choices}>{Object.entries(PREDIS_CHANNELS).map(([key, name]) => <label key={key}><input type="checkbox" checked={channels.includes(key)} onChange={() => setChannels(channels.includes(key) ? channels.filter(c => c !== key) : [...channels, key])} />{name}</label>)}</div>
-      <div className={styles.grid}><label>Momenten toevoegen<select value={mode} onChange={e => setMode(e.target.value)}><option value="single">Losse datum</option><option value="weekly">Weekdagen binnen een periode</option></select></label><label>{mode === "single" ? "Datum" : "Begindatum"}<input type="date" value={start} onChange={e => setStart(e.target.value)} /></label>{mode === "weekly" && <label>Einddatum<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>}<label>Tijd (Nederland)<input type="time" value={time} onChange={e => setTime(e.target.value)} /></label></div>
-      {mode === "weekly" && <div className={styles.choices}>{PREDIS_DAYS.map(([day, name]) => <label key={day}><input type="checkbox" checked={days.includes(day)} onChange={() => setDays(days.includes(day) ? days.filter(d => d !== day) : [...days, day])} />{name}</label>)}</div>}
-      <button type="button" className="secondaryButton" onClick={addMoments}>Momenten toevoegen aan voorbereiding</button><small>Datums en tijden blijven Nederlandse kloktijd, ook bij zomer-/wintertijd. Controleer in Predis de tijdzone Europe/Amsterdam. Dit maakt nog geen publicatieopdracht.</small>
       <div className={styles.tableWrap}><table><caption>Planning en voortgang per kanaal</caption><thead><tr><th>Gewenst moment</th><th>Kanaal</th><th>Status</th><th>Actie</th></tr></thead><tbody>{draft.entries.map(e => { const c = saved?.confirmations?.[e.key]; return <tr key={e.key}><td>{e.at.slice(8, 10)}-{e.at.slice(5, 7)}-{e.at.slice(0, 4)} · {e.at.slice(11)}</td><td>{PREDIS_CHANNELS[e.channel]}</td><td>{PREDIS_STATES[c?.state] || PREDIS_STATES.pending}{c && <small>Bevestigd op {new Date(c.at).toLocaleString("nl-NL")}{dirty ? " · inhoud gewijzigd; controleer opnieuw" : ""}</small>}</td><td><button type="button" className="secondaryButton" onClick={() => { setEntryKey(e.key); setConfirmed(false); }}>Controleren</button><button type="button" className="secondaryButton" aria-label={`Verwijder ${e.at} ${PREDIS_CHANNELS[e.channel]}`} onClick={() => change({ ...draft, entries: draft.entries.filter(x => x.key !== e.key) })}>×</button></td></tr>; })}</tbody></table></div>
       {!draft.entries.length && <p>Voeg één datum toe, of maak in één keer de momenten voor een hele maand.</p>}
       <div className={styles.actions}><button type="button" className="secondaryButton" onClick={save}>Voorbereiding bewaren in Horeca OS</button><button type="button" className="secondaryButton" onClick={() => copy(transferText(dist.common?.title || "Evenement", draft), "Tekst, media en planning")}>Alles kopiëren</button></div>
