@@ -1,0 +1,20 @@
+.card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px dashed #6876aa;
+  border-left: 3px solid #25889b;
+  border-radius: 4px;
+  background: #f5f3fc;
+  color: #243759;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.card[data-venue="venueB"] { border-left-color: #d27928; }
+.card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.card small { font-size: 10px; overflow-wrap: anywhere; }
+.card:focus-visible { outline: 3px solid #176d7f; outline-offset: 2px; }
+.dayList { grid-column: 1 / -1; display: grid; gap: 8px; padding: 14px; border: 1px solid #c6d5df; }

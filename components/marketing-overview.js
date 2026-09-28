@@ -13,6 +13,8 @@ import { saveEventEdit } from "../lib/event-editor";
 import { calendarStatus } from "../lib/event-calendar";
 import MarketingWorklist from "./marketing-worklist";
 import { manualSummary } from "../lib/manual-predis";
+import { publicationCalendarItems, publicationCalendarSelection } from "../lib/marketing-publications";
+import publicationStyles from "./marketing-publications.module.css";
 import { withRequestTimeout } from "../lib/request-timeout";
 import { saveLocalEventMerge } from "../lib/local-event-merge";
 import { confirmFacebookContent, contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId, prepareContent, saveEventContent, withVerifiedFacebookEvent, websiteComparableText } from "../lib/manual-event-content";
@@ -312,8 +314,17 @@ function mergeSimilarManagedItems(items) {
   return result;
 }
 
-function CalendarEvent({ item, business, onSelectEvent }) {
+export function CalendarEvent({ item, business, onSelectEvent }) {
   const channelStatus = useContext(ChannelStatusContext);
+  if (item.publication) {
+    const publication = item.publication;
+    return <button type="button" className={publicationStyles.card} data-venue={business?.color || "venueA"}
+      title={`Publicatiemoment · ${publication.at.replace("T", " ")} (Nederland) · ${publication.channelLabel} · ${publication.title} · ${publication.label}`}
+      onClick={() => onSelectEvent(publicationCalendarSelection(item))}>
+      <small>Publicatie · {publication.at.slice(11)} · {publication.channelLabel}</small>
+      <strong>{publication.title}</strong><small>{publication.label}</small>
+    </button>;
+  }
   const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event";
   return <button type="button" className={`marketingCalendarEvent ${business?.color || "venueA"} ${external ? "externalFacebookEvent" : ""}`} onClick={() => onSelectEvent(item)} title={`${eventText(item)} · ${external ? externalLabel : status.label}`}><strong>{eventText(item)}</strong><span>{external ? externalLabel : status.label}</span>{item.potentialMatch && <small className="marketingCalendarDuplicate" title={`Agendapunt ${item.id}. Mogelijke overeenkomst op basis van titel, datum en vestiging; nog niet bevestigd.`}>Mogelijk dubbel · {eventReference(item)}</small>}<div className="marketingChannelMini">{["website", "facebook", "instagram", "google"].map((channel) => { const channelState = channelStatus(item, channel); return <i className={channelState.key} key={channel} title={`${channelLabels[channel]}: ${channelState.label}`}>{channel === "website" ? "W" : channel === "facebook" ? "F" : channel === "instagram" ? "I" : "G"}</i>; })}</div></button>;
 }
@@ -395,19 +406,42 @@ function SourceDifferenceActions({ state, itemId, dirty, busy, onOpen }) {
   </div>;
 }
 
-function MonthCalendar({ anchor, items, businessById, onSelectEvent }) {
+export function MonthCalendar({ anchor, items, businessById, onSelectEvent }) {
   const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1); const gridStart = startOfWeek(first);
   const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index));
   return <div className="marketingMonthCalendar"><div className="marketingWeekdayRow">{["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"].map((day) => <strong key={day}>{day}</strong>)}</div><div className="marketingMonthGrid">{days.map((day) => { const dayItems = items.filter((item) => sameDay(dateOnly(itemStart(item)), day)); return <div className={`marketingDayCell ${day.getMonth() !== anchor.getMonth() ? "outside" : ""} ${isToday(day) ? "today" : ""}`} key={day.toISOString()}><strong>{isToday(day) ? "Vandaag · " : ""}{day.getDate()}</strong><div>{dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={onSelectEvent} />)}</div></div>; })}</div></div>;
 }
 
-function WeekCalendar({ anchor, items, businessById, onSelectEvent }) {
+export function WeekCalendar({ anchor, items, businessById, onSelectEvent }) {
   const first = startOfWeek(anchor); const days = Array.from({ length: 7 }, (_, index) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
   return <div className="marketingWeekCalendar"><div className="marketingWeekHeader">{days.map((day) => <strong className={isToday(day) ? "today" : ""} key={day.toISOString()}>{isToday(day) ? "Vandaag · " : ""}{formatDate(day, { weekday: "short", day: "numeric", month: "short" })}</strong>)}</div><div className="marketingWeekColumns">{days.map((day) => { const dayItems = items.filter((item) => sameDay(dateOnly(itemStart(item)), day)); return <div className={`marketingWeekColumn ${isToday(day) ? "today" : ""}`} key={day.toISOString()}>{dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={onSelectEvent} />)}{!dayItems.length && <span className="marketingCalendarEmpty">Geen afspraken</span>}</div>; })}</div></div>;
 }
 
-function YearCalendar({ anchor, items, onSelectEvent }) {
-  return <div className="marketingYearGrid">{Array.from({ length: 12 }, (_, month) => { const monthDate = new Date(anchor.getFullYear(), month, 1); const current = monthDate.getMonth() === todayStart().getMonth() && monthDate.getFullYear() === todayStart().getFullYear(); const gridStart = startOfWeek(monthDate); const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index)); const monthItems = items.filter((item) => { const date = dateOnly(itemStart(item)); return date?.getFullYear() === anchor.getFullYear() && date.getMonth() === month; }); return <article className={`marketingMiniMonth ${current ? "currentMonth" : ""}`} key={month}><h4>{current ? "Deze maand · " : ""}{formatDate(monthDate, { month: "long" })}</h4><div className="marketingMiniWeekdays">{["M", "D", "W", "D", "V", "Z", "Z"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div><div className="marketingMiniDays">{days.map((day) => { const dayItems = monthItems.filter((item) => sameDay(dateOnly(itemStart(item)), day)); return <button type="button" className={`${day.getMonth() !== month ? "outside" : ""} ${dayItems.length ? "hasEvent" : ""} ${isToday(day) ? "today" : ""}`} onClick={() => dayItems[0] && onSelectEvent(dayItems[0])} title={dayItems.map(eventText).join(", ")} key={day.toISOString()}>{isToday(day) ? "Vandaag" : day.getDate()}</button>; })}</div><small>{monthItems.length} {monthItems.length === 1 ? "resterend item" : "resterende items"}</small></article>; })}</div>;
+export function YearCalendar({ anchor, items, onSelectEvent }) {
+  const [selectedDay, setSelectedDay] = useState(null);
+  const dayList = useRef(null);
+  useEffect(() => { setSelectedDay(null); }, [anchor.getFullYear()]);
+  useEffect(() => { dayList.current?.scrollIntoView?.({ block: "nearest" }); }, [selectedDay]);
+  return <div className="marketingYearGrid">{Array.from({ length: 12 }, (_, month) => {
+    const monthDate = new Date(anchor.getFullYear(), month, 1);
+    const current = monthDate.getMonth() === todayStart().getMonth() && monthDate.getFullYear() === todayStart().getFullYear();
+    const gridStart = startOfWeek(monthDate);
+    const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index));
+    const monthItems = items.filter(item => { const date = dateOnly(itemStart(item)); return date?.getFullYear() === anchor.getFullYear() && date.getMonth() === month; });
+    return <article className={`marketingMiniMonth ${current ? "currentMonth" : ""}`} key={month}>
+      <h4>{current ? "Deze maand · " : ""}{formatDate(monthDate, { month: "long" })}</h4>
+      <div className="marketingMiniWeekdays">{["M", "D", "W", "D", "V", "Z", "Z"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
+      <div className="marketingMiniDays">{days.map(day => {
+        const dayItems = monthItems.filter(item => sameDay(dateOnly(itemStart(item)), day));
+        return <button type="button" className={`${day.getMonth() !== month ? "outside" : ""} ${dayItems.length ? "hasEvent" : ""} ${isToday(day) ? "today" : ""}`}
+          onClick={() => dayItems.length && setSelectedDay(day)} title={dayItems.map(eventText).join(", ")}
+          aria-label={`${formatDate(day)} · ${dayItems.length} items`} key={day.toISOString()}>{isToday(day) ? "Vandaag" : day.getDate()}</button>;
+      })}</div><small>{monthItems.length} {monthItems.length === 1 ? "item" : "items"}</small>
+    </article>;
+  })}{selectedDay && <section className={publicationStyles.dayList} ref={dayList} aria-label="Gekozen dag">
+    <strong>{formatDate(selectedDay)}</strong>
+    {items.filter(item => sameDay(dateOnly(itemStart(item)), selectedDay)).map(item => <CalendarEvent key={item.id} item={item} onSelectEvent={onSelectEvent} />)}
+  </section>}</div>;
 }
 
 function eventReference(item) { return String(item.id).slice(-8); }
@@ -536,6 +570,7 @@ export function EventDetails({ workspaceId, session, onPredisSaved, onCalendarSa
     // Align its start so the opened form and confirmation button come into view.
     summary?.scrollIntoView({ block: "start", inline: "nearest" });
   }
+  useEffect(() => { if (item.requestedChannel === "predis") openChannel("predis"); }, [item.id, item.requestedChannel]);
   const [chosenContent, setChosenContent] = useState(null);
   useEffect(() => { setChosenContent(null); }, [item.id]);
   const canChoose = !external && !baseUnsaved && Boolean(onSyncContent);
@@ -573,6 +608,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   const comparisonJobs = useRef(new Map());
   const venueBusinesses = useMemo(() => (businesses || []).map((business, index) => ({ ...business, color: index % 2 ? "venueB" : "venueA" })), [businesses]);
   const businessById = useMemo(() => new Map(venueBusinesses.map((business) => [String(business.id), business])), [venueBusinesses]);
+  const publicationItems = useMemo(() => publicationCalendarItems(items, businessById), [items, businessById]);
 
   async function fetchSourceComparison(item, signal) {
     const distribution = distributionFor(item);
@@ -705,7 +741,11 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
   // Local duplicate hints must not wait for the remote publication checks.
-  const activeFromToday = todayStart(); const visibleItems = suggestPotentialMatches(visibleCalendarItems(items, businessById, activeFromToday)); const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
+  const activeFromToday = todayStart();
+  const eventItems = suggestPotentialMatches(visibleCalendarItems(items, businessById, activeFromToday));
+  const visibleItems = [...eventItems, ...publicationItems]
+    .sort((left, right) => new Date(itemStart(left)) - new Date(itemStart(right)) || String(left.id).localeCompare(String(right.id)));
+  const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
   const externalItems = visibleItems.filter(isExternalEvent).sort((left, right) => new Date(itemStart(right) || 0) - new Date(itemStart(left) || 0));
   useEffect(() => {
     if (busy || autoChecking || selectedItem || !externalItems.length) return;
@@ -909,7 +949,7 @@ export default function MarketingOverview({ workspaceId, businesses, session }) 
   return <ChannelStatusContext.Provider value={currentChannelStatus}><section className="panel marketingCalendarPanel"><div className="panelHead marketingCalendarHead"><div><p className="eyebrow">MARKETINGAGENDA</p><h2>{title}</h2><p>Bekijk de planning van beide vestigingen naast elkaar. Zo zie je direct wanneer evenementen op dezelfde dag vallen.</p></div><button type="button" className="secondaryButton" onClick={() => setRefreshKey((value) => value + 1)} disabled={busy}>{busy ? "Agenda laden…" : "Agenda verversen"}</button></div>
     <MarketingWorklist items={marketingWorklistItems(items, businessById)} businesses={businessById} onOpen={setSelectedItem} getStatus={currentChannelStatus} />
     <div className="marketingCalendarToolbar"><div className="marketingCalendarViews">{Object.entries(viewLabels).map(([key, label]) => <button type="button" className={view === key ? "active" : ""} onClick={() => setView(key)} key={key}>{label}</button>)}</div><div className="marketingCalendarNav"><button type="button" onClick={() => move(-1)}>‹</button><button type="button" onClick={() => setAnchor(new Date())}>Vandaag</button><button type="button" onClick={() => move(1)}>›</button></div><div className="marketingCalendarLayout"><button type="button" className={calendarLayout === "two" ? "active" : ""} onClick={() => setCalendarLayout("two")}>Twee agenda's</button><button type="button" className={calendarLayout === "combined" ? "active" : ""} onClick={() => setCalendarLayout("combined")}>Over elkaar leggen</button></div></div>
-    <div className="marketingCalendarLegend">{venueBusinesses.map((business) => <span key={business.id}><i className={business.color} />{business.name}</span>)}<span><i className="externalLegend" />Extern evenement — nog niet gekoppeld</span></div>
+    <div className="marketingCalendarLegend">{venueBusinesses.map((business) => <span key={business.id}><i className={business.color} />{business.name}</span>)}<span><i className="externalLegend" />Extern evenement — nog niet gekoppeld</span><span>Publicatiekaart = bewaard publicatiemoment · tijden in Nederland</span></div>
     {autoChecking && <div className="marketingAutoNotice">Marketingagenda geladen. Publicaties en externe evenementen worden automatisch gecontroleerd…</div>}
     {!autoChecking && externalItems.length > 0 && <div className="marketingExternalQueueNotice">{externalItems.length} extern {externalItems.length === 1 ? "evenement wacht" : "evenementen wachten"} op koppeling. Het nieuwste wordt automatisch geopend.</div>}
     {!selectedItem && mergeNotice && <div className={`marketingMergeNotice ${mergeNotice.kind}`} role={mergeNotice.kind === "error" ? "alert" : "status"}><strong>{mergeNotice.message}</strong></div>}{error && <div className="eventResult error"><strong>{error}</strong></div>}{calendarLayout === "two" ? <div className="marketingTwoCalendars">{venueBusinesses.map(renderBusinessCalendar)}</div> : <div className="marketingCombinedCalendar">{view === "month" && <MonthCalendar anchor={anchor} items={visibleItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "week" && <WeekCalendar anchor={anchor} items={visibleItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "day" && <div className="marketingDayAgenda"><h3>{formatDate(anchor, { weekday: "long", day: "numeric", month: "long" })}</h3>{dayItems.length ? dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={setSelectedItem} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={visibleItems} onSelectEvent={setSelectedItem} />}</div>}

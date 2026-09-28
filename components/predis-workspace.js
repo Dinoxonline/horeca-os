@@ -5,7 +5,7 @@ import ManualPredis from "./manual-predis";
 import styles from "./manual-predis.module.css";
 
 export default function PredisWorkspace(props) {
-  const [mode, setMode] = useState("choose"), [selection, setSelection] = useState(null), [dirty, setDirty] = useState(false);
+  const [mode, setMode] = useState(() => props.item?.requestedChannel === "predis" ? "manual" : "choose"), [selection, setSelection] = useState(null), [dirty, setDirty] = useState(false);
   useEffect(() => { props.onUnsavedChange?.(dirty); return () => props.onUnsavedChange?.(false); }, [dirty, props.onUnsavedChange]);
   function switchMode(next) { if (next === mode) return; if (!dirty || window.confirm("Je hebt onbewaarde invoer of een lopende aanvraag. Toch wisselen? Bewaarde aanvragen blijven behouden.")) setMode(next); }
   return <div className={styles.root}>

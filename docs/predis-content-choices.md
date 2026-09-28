@@ -24,3 +24,9 @@ Tests cover the neutral default, all three initial AI formats, unsaved-input con
 The manual screen has three primary steps: Bericht maken, Klaarzetten, Verder in Predis. Media thumbnails are immediately visible and toggle their selection with an accessible pressed state. Saved/generated assets absent from the current event sources remain available until deselected. Only one save button and one caption-copy button appear in the default view. File-opening links are grouped with the explicit manual Predis handoff.
 
 The initially collapsed Meer opties section retains reload/reset, planning, bulk copy and per-channel manual confirmations. Existing entries are not cleared by saving the simpler form. No scheduling, publishing or AI-generation requests have been added. Existing load-error, concurrent-edit and unsaved-input safeguards remain in place.
+
+## Publication moments in the marketing calendar
+
+Saved manual Predis draft entries appear as separate publication cards on their Dutch date/time, with channel and status. The original event date remains unchanged. Pending means “Voorbereid · nog niet verstuurd”; scheduled/published labels explicitly remain manual confirmations. Time passing never changes that status. Historical saved moments remain visible when navigating back, including plans attached to past events. Deleted entries disappear after saving. The calendar uses the same loaded campaign scope (currently the most recent 500 campaigns) and venue filter; this is not an unlimited publication archive.
+
+Day, week and month show the cards; the year view opens all items on the chosen day. Clicking a publication opens its original campaign’s own-media preparation with the planning options expanded. Calendar-only records are never written to the database or sent to publication-status checks. Neither scheduling requests to Predis nor Predis schedule imports have been added: local visibility does not imply delivery to Predis.

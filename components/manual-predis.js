@@ -136,7 +136,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       </div>
       <small>Foto en tekst worden niet automatisch meegestuurd. Inplannen en publiceren doe je zelf in Predis.</small>
     </div>
-    <details className={styles.moreOptions}><summary>Meer opties</summary>
+    <details className={styles.moreOptions} open={item.requestedChannel === "predis" || undefined}><summary>Meer opties</summary>
     <div className={styles.root}>
     <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!!busy} onClick={() => { if (!dirty || window.confirm("Je hebt onbewaarde wijzigingen. Wil je de bewaarde versie laden en je invoer vervangen?")) load(); }}>Bewaarde versie laden</button><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={() => { if (window.confirm("Vervang deze berichttekst door de huidige tekst uit Horeca OS?")) change({ ...draft, caption: initial().caption }); }}>Horeca OS-tekst overnemen</button></div>
     <fieldset disabled={!loaded || !!busy} className={styles.fields}><legend>Planning en handmatige controle</legend>
