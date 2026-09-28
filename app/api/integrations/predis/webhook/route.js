@@ -42,10 +42,10 @@ export async function POST(request) {
   const { data: matches, error: findError } = await admin
     .from("social_content_items")
     .select("id,media")
-    .contains("media", [{
+    .contains("media", JSON.stringify([{
       kind: "campaign_distribution",
       provider_delivery: { predis: { post_ids: [postId] } },
-    }])
+    }]))
     .limit(2);
 
   if (findError) return NextResponse.json({ error: "Predis-resultaat kon niet worden gekoppeld." }, { status: 500 });

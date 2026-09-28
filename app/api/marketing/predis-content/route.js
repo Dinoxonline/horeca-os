@@ -113,7 +113,11 @@ export async function POST(request) {
         if (job.postIds.includes(String(post?.post_id))) matching++;
         const normalized = normalizePredisPost(post, job.postIds);
         if (normalized) found.set(normalized.id, normalized);
-        else if (job.postIds.includes(String(post?.post_id))) invalid++;
+        else if (job.postIds.includes(String(post?.post_id))) {
+          invalid++;
+          console.warn(JSON.stringify({ event: "predis_result_shape", mediaType: ["single_image", "carousel", "video", "image"].includes(post.media_type) ? post.media_type : "other", urlsArray: Array.isArray(post.urls), urlCount: Array.isArray(post.urls) ? post.urls.length : null, urlsType: typeof post.urls,
+            entries: Array.isArray(post.urls) ? post.urls.slice(0, 10).map(u => ({ type: typeof u, keys: u && typeof u === "object" ? Object.keys(u).filter(k => ["url", "type", "src", "image_url", "video_url"].includes(k)) : [], scheme: typeof u === "string" ? (/^(https?):/.exec(u)?.[1] || "other") : null })) : [] }));
+        }
       }
       const pages = Math.min(10000, Math.max(1, Number(result.total_pages) || 1));
       page = page >= pages ? 1 : page + 1;

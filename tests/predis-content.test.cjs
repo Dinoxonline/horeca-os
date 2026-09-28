@@ -190,7 +190,7 @@ function webhookDb(rows, conflict = false) {
       if (conflict) { conflict = false; row.updated_at = 'concurrent'; row.media[0].calendar_channel.status = 'concurrent'; return { data: null }; }
       assert.equal(filters.updated_at, row.updated_at); writes++; row.media = patch.media; row.updated_at += '-next'; return { data: { id: row.id } };
     };
-    let q; q = new Proxy({}, { get: (_, k) => k === 'then' ? resolve => resolve(result()) : k === 'maybeSingle' ? async () => result() : k === 'contains' ? (column, value) => { assert.equal(column, 'media'); assert.equal(value[0].predis_content.jobs[0].postIds[0], 'p1'); contains = value; return q; } : k === 'eq' ? (key, value) => { filters[key] = value; return q; } : k === 'update' ? value => { patch = value; return q; } : () => q }); return q;
+    let q; q = new Proxy({}, { get: (_, k) => k === 'then' ? resolve => resolve(result()) : k === 'maybeSingle' ? async () => result() : k === 'contains' ? (column, value) => { assert.equal(column, 'media'); assert.equal(typeof value, 'string'); assert.equal(JSON.parse(value)[0].predis_content.jobs[0].postIds[0], 'p1'); contains = value; return q; } : k === 'eq' ? (key, value) => { filters[key] = value; return q; } : k === 'update' ? value => { patch = value; return q; } : () => q }); return q;
   } };
 }
 test('webhook updates reconciled copies only within identical job/tenant identity and preserves concurrent edits', async () => {
@@ -224,4 +224,17 @@ test('overdue and malformed results are uncertain, not an endless claim of gener
   assert.equal(r.jobs[0].status, 'unknown'); assert.match(r.warning, /15 minuten/); assert.equal(h.calls.length, 2);
   const malformed = await harness({ results: [{ ...post, urls: [] }] }); await malformed.send();
   const m = await malformed.send({ action: 'refresh', jobId: id }); assert.equal(m.jobs[0].status, 'unknown'); assert.match(m.warning, /niet veilig/);
+});
+
+test('real Supabase client serializes the webhook JSONB predicate as JSON, not a SQL array', async () => {
+  const { createClient } = require('@supabase/supabase-js');
+  const { savePredisWebhookJobs } = await load('lib/predis-webhook.js');
+  let predicate;
+  const client = createClient('https://test-only.supabase.co', 'test-only', { global: { fetch: async url => {
+    predicate = new URL(String(url)).searchParams.get('media');
+    return Response.json([]);
+  } } });
+  assert.equal(await savePredisWebhookJobs(client, callback), false);
+  assert.ok(predicate.startsWith('cs.['));
+  assert.deepEqual(JSON.parse(predicate.slice(3)), [{ kind: 'campaign_distribution', predis_content: { jobs: [{ postIds: ['p1'] }] } }]);
 });
