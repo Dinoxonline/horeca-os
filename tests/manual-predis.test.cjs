@@ -133,14 +133,14 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
    await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
-   await React.act(async()=>button('Bericht bewaren').props.onClick());
+   await React.act(async()=>button('Concept bewaren').props.onClick());
    assert.equal(saved.draft.entries.length,5);assert.equal(saved.draft.entries.at(-1).at,'2026-10-30T10:00');
-   assert.match(allText(planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'})),/bewaard in Horeca OS/);
+   assert.match(allText(planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'})),/bewaard bij je concept/);
    assert.ok(calls.every(c=>c.url.startsWith('/api/marketing/manual-predis')));
    await React.act(async()=>r.unmount());
    await React.act(async()=>{r=Renderer.create(React.createElement(Component,props));});
    assert.equal(r.root.findByType('tbody').findAllByType('tr').length,5);
-   assert.match(allText(r.root),/Nog overzetten/);
+   assert.match(allText(r.root.findByType('tbody')),/Concept — nog niet overgezet/);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 
@@ -170,20 +170,21 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true})));assert.deepEqual(calls,['GET']);
  const content=allText(r.root);
  assert.match(content,/Geen nieuw AI-ontwerp/);
- assert.ok(content.indexOf('1. Bericht maken') < content.indexOf('2. Wanneer wil je dit bericht plaatsen?'));
- assert.ok(content.indexOf('2. Wanneer wil je dit bericht plaatsen?') < content.indexOf('3. Bericht en planning bewaren'));
- assert.ok(content.indexOf('3. Bericht en planning bewaren') < content.indexOf('4. Verder in Predis'));
+ assert.ok(content.includes('1. Bericht voorbereiden'));
+ assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Bericht maken en publiceren in Predis'));
+ assert.ok(content.indexOf('2. Bericht maken en publiceren in Predis') < content.indexOf('3. Bevestigen na Predis'));
+ assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);
  assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
  assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen ↗').props.href,'https://app.predis.ai/app/new_post/create');
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true,session:{access_token:'two'}})));
  assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.equal(calls.length,1);
- const save=()=>r.root.findAllByType('button').find(b=>allText(b)==='Bericht bewaren').props.onClick();
+ const save=()=>r.root.findAllByType('button').find(b=>allText(b)==='Concept bewaren').props.onClick();
  let pending;await React.act(async()=>{pending=save();save();});assert.equal(calls.length,2);
  await React.act(async()=>{release({ok:false,json:async()=>({error:'Conflict'})});await pending;});assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.match(allText(r.root.findByProps({role:'alert'})),/Conflict/);
  await React.act(async()=>{pending=save();});
  await React.act(async()=>{release({ok:true,json:async()=>({saved:{revision:'new',draft:lastBody.draft,confirmations:{}}})});await pending;});
- assert.match(allText(r.root),/Bewaard in Horeca OS/);assert.doesNotMatch(allText(r.root),/Niet-bewaarde wijzigingen/);
+ assert.match(allText(r.root),/Concept bewaard in Horeca OS/);assert.doesNotMatch(allText(r.root),/Niet-bewaarde wijzigingen/);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 test('simple preparation shows selectable images immediately, keeps saved-only media and hides advanced actions',async()=>{
@@ -198,21 +199,46 @@ test('simple preparation shows selectable images immediately, keeps saved-only m
    const button=label=>r.root.findAllByType('button').find(b=>allText(b)===label);
    const options=r.root.findByType('details');assert.equal(options.props.open,undefined);assert.equal(allText(options.findByType('summary')),'Meer opties');
    assert.equal(r.root.findAllByType('img').length,2);assert.ok(r.root.findAllByType('img').every(n=>!collapsedAncestor(n)));
-   assert.ok(collapsedAncestor(r.root.findByType('table')));assert.ok(collapsedAncestor(button('Bewaarde versie laden')));
+   assert.ok(!collapsedAncestor(r.root.findByType('table')));assert.ok(collapsedAncestor(button('Bewaarde versie laden')));
    const visibleButtons=r.root.findAllByType('button').filter(n=>!collapsedAncestor(n));
    assert.equal(visibleButtons.filter(n=>/bewaren/i.test(allText(n))).length,1);
    assert.equal(visibleButtons.filter(n=>/kopiëren/i.test(allText(n))).length,1);
-   assert.equal(button('Bericht bewaren').props.disabled,true);
+   assert.equal(button('Concept bewaren').props.disabled,true);
    await React.act(async()=>r.root.findByProps({'aria-label':'Kies New photo'}).props.onClick());
    assert.equal(r.root.findByProps({'aria-label':'Deselecteer New photo'}).props['aria-pressed'],true);
    await React.act(async()=>r.root.findByProps({'aria-label':'Deselecteer Foto'}).props.onClick());
-   await React.act(async()=>button('Bericht bewaren').props.onClick());
-   assert.deepEqual(calls,['GET','POST']);assert.match(allText(r.root),/Bewaard in Horeca OS/);
+   await React.act(async()=>button('Concept bewaren').props.onClick());
+   assert.deepEqual(calls,['GET','POST']);assert.match(allText(r.root),/Concept bewaard in Horeca OS/);
    assert.match(allText(r.root.findByType('table')),/Google Business Profile/);
    assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://example.com/new.jpg').length,1);
    assert.equal(r.root.findAllByProps({'aria-label':'Kies Foto'}).length,0);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
+test('step three stays visible and requires explicit per-channel confirmation after saving a concept',async()=>{
+ fakeWindow();const {validateManualDraft}=await load('lib/manual-predis.js');
+ let saved={revision:'r1',draft:validateManualDraft(draft),confirmations:{}};const posts=[];
+ global.fetch=async(url,opts)=>{if(opts.method==='POST'){const body=JSON.parse(opts.body);posts.push(body);assert.equal(body.action,'confirm');assert.equal(body.confirmed,true);saved={...saved,revision:'r2',confirmations:{[body.entryKey]:{state:body.state,at:'2026-09-28T14:00:00Z'}}};}return Response.json({saved});};
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true}));});
+ try{
+   const step=()=>r.root.findByProps({'aria-label':'Uitkomst in Predis bevestigen'});
+   for(let p=step();p;p=p.parent)assert.notEqual(p.type,'details');
+   assert.match(allText(step().findByType('tbody')),/Concept — nog niet overgezet/);
+   assert.equal(posts.length,0);
+   await React.act(async()=>step().findAllByType('button').find(b=>allText(b)==='Controleren').props.onClick());
+   const confirmButton=()=>step().findAllByType('button').find(b=>allText(b)==='Handmatige bevestiging bewaren');
+   assert.equal(confirmButton().props.disabled,true);
+   await React.act(async()=>step().findByType('select').props.onChange({target:{value:'published'}}));
+   assert.equal(confirmButton().props.disabled,true);assert.equal(posts.length,0);
+   await React.act(async()=>step().findByProps({type:'checkbox'}).props.onChange({target:{checked:true}}));
+   assert.equal(confirmButton().props.disabled,false);
+   await React.act(async()=>confirmButton().props.onClick());
+   assert.equal(posts.length,1);assert.equal(posts[0].entryKey,saved.draft.entries[0].key);
+   assert.match(allText(step().findByType('tbody')),/Geplaatst · handmatig bevestigd/);
+   assert.match(allText(step()),/Je handmatige bevestiging is bewaard/);
+ }finally{await React.act(async()=>r.unmount());delete global.window;}
+});
+
 test('Predis starts with a neutral choice; manual and all AI formats require explicit selection',async()=>{
  fakeWindow();const calls=[];
  global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});return Response.json({saved:null,configured:true,jobs:[],photos:[]});};
