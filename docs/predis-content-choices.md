@@ -27,7 +27,9 @@ The date planner is visible immediately after the message editor. Choose a singl
 
 The initially collapsed Meer opties section retains reload/reset, the detailed moment list, bulk copy and per-channel manual confirmations. Existing entries are not cleared by saving the simpler form. No scheduling, publishing or AI-generation requests have been added. Existing load-error, concurrent-edit and unsaved-input safeguards remain in place.
 
-Addition results and validation errors now appear directly below the add-moments button. A visible, scrollable list shows each date/time/channel with removal and an unsaved/saved label; it is not hidden inside More options. Save results appear beside the save action. Already-added moments have an explicit duplicate explanation. Direct publication from the Predis preparation remains unavailable: the disabled action explains this, and the manual Predis handoff remains separate. No publication is triggered by adding or saving moments.
+Addition results and validation errors now appear directly below the add-moments button. A visible, scrollable list shows each date/time/channel with removal and an unsaved/saved label; it is not hidden inside More options. Save results appear beside the save action. Already-added moments have an explicit duplicate explanation. No publication is triggered by adding or saving moments.
+
+The user chose manual publication in Predis instead of building direct social publishing integrations. The unavailable direct-publish button is removed. Step 4 prominently opens Predis and explains how to finish there: reuse an already-prepared post, or upload the chosen original and paste the caption for a new post, then publish now or schedule. A local date is optional for publishing now. Opening Predis transfers no content and confirms no status; existing per-channel manual confirmations remain available. No new creative, external draft or social publication is created by this screen change.
 
 ## Publication moments in the marketing calendar
 

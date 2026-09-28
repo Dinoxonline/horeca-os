@@ -111,7 +111,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const chosen = draft.entries.find(e => e.key === entryKey);
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label="Predis handmatig voorbereiden">
-    <div className={styles.notice}><strong>Eigen foto en tekst · {businessName}</strong><p>Gebruik je eigen beeld en bericht. Geen nieuw AI-ontwerp. Uploaden en inplannen doe je daarna zelf in Predis.</p></div>
+    <div className={styles.notice}><strong>Eigen foto en tekst · {businessName}</strong><p>Bereid hier je eigen beeld en bericht voor. Geen nieuw AI-ontwerp. In Predis zet je het bericht zelf klaar en kies je publiceren of inplannen.</p></div>
     {busy && <p role="status">{busy}</p>}
     {!loaded && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
     {dirty && <small>Niet-bewaarde wijzigingen</small>}
@@ -135,6 +135,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     </fieldset>
     <fieldset disabled={!loaded || !!busy} className={styles.fields} aria-label="Publicatiemomenten kiezen">
       <legend>2. Wanneer wil je dit bericht plaatsen?</legend>
+      <small>Wil je meteen publiceren? Je hoeft hier geen moment toe te voegen. Bewaar je bericht en ga verder bij stap 4: publiceren in Predis.</small>
       <div className={styles.choices} role="group" aria-label="Kanalen">{Object.entries(PREDIS_CHANNELS).map(([key, name]) => <label key={key}><input type="checkbox" checked={channels.includes(key)} onChange={() => setChannels(channels.includes(key) ? channels.filter(c => c !== key) : [...channels, key])} />{name}</label>)}</div>
       <div className={styles.grid}>
         <label>Planning kiezen<select value={mode} onChange={e => setMode(e.target.value)}><option value="single">Losse datum</option><option value="weekly">Elke week op vaste dagen</option></select></label>
@@ -167,18 +168,17 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       {loaded && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
     </div>
     <div className={styles.step}>
-      <strong>4. Verder in Predis</strong>
-      <div className={styles.notice}>
-        <button type="button" className="primaryButton" disabled>Direct publiceren — nog niet beschikbaar</button>
-        <small>Rechtstreeks publiceren vanuit dit formulier is nog niet aangesloten. Je kunt nu alleen bewaren in Horeca OS en daarna zelf publiceren in Predis. Er wordt niets automatisch verstuurd.</small>
-      </div>
-      <p>Open Predis, kies <b>{businessName}</b> en daarna ‘Heb je al een ontwerp? Uploaden en inplannen’. Upload je bestand en plak je bericht.</p>
+      <strong>4. Verder in Predis — zelf publiceren of inplannen</strong>
+      <p>Open Predis en kies <b>{businessName}</b>. Staat je bericht daar al klaar? Open dat bericht en controleer de foto en tekst. Zo voorkom je een dubbel bericht.</p>
+      <p>Voor een nieuw bericht met je eigen foto: kies ‘Heb je al een ontwerp? Uploaden en inplannen’, upload het bestand hieronder en plak je tekst.</p>
       {!!draft.assets.length && <div className={styles.downloads}>{draft.assets.map((a, i) => <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer">{i + 1}. {a.label} — openen / bewaren ↗</a>)}</div>}
       <div className={styles.actions}>
         <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
-        <a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen ↗</a>
+        <a className="primaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen ↗</a>
       </div>
+      <p>Kies de juiste sociale kanalen en bevestig in Predis zelf: <b>nu publiceren</b> of <b>inplannen voor later</b>.</p>
       <small>Foto en tekst worden niet automatisch meegestuurd. Inplannen en publiceren doe je zelf in Predis.</small>
+      <small>Heb je gepubliceerd of ingepland? Leg dat hieronder bij ‘Meer opties’ → ‘Controleren’ per kanaal vast. Horeca OS verandert de status niet alleen doordat je Predis opent.</small>
     </div>
     <details className={styles.moreOptions} open={item.requestedChannel === "predis" || undefined}><summary>Meer opties</summary>
     <div className={styles.root}>

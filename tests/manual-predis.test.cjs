@@ -126,8 +126,10 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    assert.match(allText(visibleList),/nog niet bewaard/);
    assert.match(allText(visibleList),/28\s*-\s*10\s*-\s*2026.*Facebook/);
    for(let p=visibleList;p;p=p.parent)assert.notEqual(p.type,'details');
-   assert.equal(button('Direct publiceren — nog niet beschikbaar').props.disabled,true);
-   assert.equal(button('Direct publiceren — nog niet beschikbaar').props.onClick,undefined);
+   assert.equal(button('Direct publiceren — nog niet beschikbaar'),undefined);
+   assert.match(allText(r.root),/nu publiceren/);
+   assert.match(allText(r.root),/Je hoeft hier geen moment toe te voegen/);
+   assert.match(allText(r.root),/Staat je bericht daar al klaar/);
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
    await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
