@@ -101,6 +101,64 @@ test('weekly choices include Monday and Wednesday, Thursday boundaries and DST w
 const item={id:'c',business_id:'b',media:[{kind:'campaign_distribution',common:{title:'Event',description:'Original'}}]};
 function fakeWindow(){global.window={addEventListener(){},removeEventListener(){},confirm:()=>true};}
 
+test('future suggestions use Dutch time, round forward and cross midnight and DST safely',async()=>{
+ const {nextPlanningMoment:next,validateNewMoments:check,groupManualMoments:group,validateManualDraft:validate}=await load('lib/manual-predis.js');
+ assert.equal(next(Date.parse('2026-09-28T13:04:00Z')),'2026-09-28T15:30');
+ assert.equal(next(Date.parse('2026-09-28T21:50:00Z')),'2026-09-29T00:15');
+ assert.equal(next(Date.parse('2026-03-29T00:50:00Z')),'2026-03-29T03:15');
+ assert.equal(next(Date.parse('2026-10-24T23:50:00Z')),'2026-10-25T03:00');
+ const now=Date.parse('2026-09-28T13:04:30Z');
+ for(const at of ['2026-09-28T10:00','2026-09-28T15:04'])assert.throws(()=>check([{at}],now),/toekomst/);
+ assert.doesNotThrow(()=>check([{at:'2026-09-28T15:05'}],now));
+ assert.throws(()=>check([{at:'2026-03-29T02:30'}],now,true),/zomer/);
+ assert.throws(()=>check([{at:'2026-10-25T02:30'}],now),/zomer/);
+ assert.doesNotThrow(()=>check([{at:'2026-09-28T10:00'}],now,true));
+ assert.throws(()=>check([{at:'2026-09-29T10:00'}],now,true),/al geplaatste/);
+ const old=validate({...draft,entries:['facebook','instagram','google','tiktok'].map(channel=>({at:'2026-09-28T10:00',channel}))});
+ const before=JSON.stringify(old);const groups=group(old.entries,now);
+ assert.equal(groups.length,1);assert.equal(groups[0].entries.length,4);assert.equal(groups[0].elapsed,true);assert.equal(JSON.stringify(old),before);
+});
+
+test('planner groups channels, retains past records, and rejects a time that expires before clicking',async()=>{
+ fakeWindow();const originalNow=Date.now;let now=Date.parse('2026-09-28T13:04:00Z');Date.now=()=>now;
+ const {validateManualDraft}=await load('lib/manual-predis.js');
+ let saved={revision:'r1',draft:validateManualDraft({...draft,entries:['2026-09-28T10:00','2026-09-29T16:00'].flatMap(at=>['facebook','instagram','google','tiktok'].map(channel=>({at,channel})))}),confirmations:{}};
+ const originalEntries=structuredClone(saved.draft.entries),posts=[];
+ global.fetch=async(url,opts)=>{if(opts.method==='POST'){const body=JSON.parse(opts.body);posts.push(body);saved={...saved,revision:'r2',draft:body.draft};}return Response.json({saved});};
+ let r;
+ try{
+   const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+   await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true}));});
+   const planner=()=>r.root.findByProps({'aria-label':'Publicatiemomenten kiezen'});
+   const label=name=>planner().findAllByType('label').find(n=>allText(n).trim()===name);
+   const button=name=>r.root.findAllByType('button').find(n=>allText(n)===name);
+   assert.equal(label('Tijd (Nederland)').findByType('input').props.value,'15:30');
+   const list=planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'});
+   assert.equal(list.findAllByType('button').length,2); // two times, not eight channel rows
+   const past=list.findByType('details');assert.equal(past.props.open,undefined);
+   assert.match(allText(past),/Verstreken tijdstippen/);assert.match(allText(past),/Tijdstip verstreken/);
+   assert.match(allText(list),/Facebook · Google Business Profile · Instagram · TikTok/);
+   await React.act(async()=>label('Facebook').findByType('input').props.onChange());
+   assert.equal(button('Momenten toevoegen aan planning').props.disabled,false);
+   now=Date.parse('2026-09-28T13:30:01Z');
+   await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
+   assert.match(allText(planner().findByProps({role:'alert'})),/toekomst/);assert.equal(posts.length,0);
+   // Caption edits still save the existing history unchanged.
+   await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Updated caption'}}));
+   await React.act(async()=>button('Concept bewaren').props.onClick());
+   assert.deepEqual(saved.draft.entries,originalEntries);assert.deepEqual(saved.confirmations,{});
+   await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'recorded'}}));
+   await React.act(async()=>label('Tijd (Nederland)').findByType('input').props.onChange({target:{value:'15:00'}}));
+   await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
+   await React.act(async()=>button('Concept bewaren').props.onClick());
+   assert.equal(saved.draft.entries.length,9);assert.deepEqual(saved.confirmations,{});
+   // Group deletion affects only that time; individual controls still exist in step three.
+   await React.act(async()=>r.root.findByProps({'aria-label':'Verwijder tijdstip 2026-09-29T16:00 voor alle 4 kanalen'}).props.onClick());
+   await React.act(async()=>button('Concept bewaren').props.onClick());
+   assert.equal(saved.draft.entries.length,5);assert.ok(saved.draft.entries.every(e=>e.at!=='2026-09-29T16:00'));
+ }finally{if(r)await React.act(async()=>r.unmount());Date.now=originalNow;delete global.window;}
+});
+
 test('visible planner previews selected weekdays, adds nonduplicated dates, saves and reloads without sending to Predis',async()=>{
  fakeWindow();let saved=null;const calls=[];
  global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});if(opts.method==='POST')saved={revision:'r',draft:JSON.parse(opts.body).draft,confirmations:{}};return Response.json({saved});};
@@ -117,6 +175,7 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    await React.act(async()=>label('Begindatum').findByType('input').props.onChange({target:{value:'2026-10-19'}}));
    await React.act(async()=>label('Einddatum (inclusief)').findByType('input').props.onChange({target:{value:'2026-10-28'}}));
    await React.act(async()=>label('Maandag').findByType('input').props.onChange());
+   await React.act(async()=>label('Tijd (Nederland)').findByType('input').props.onChange({target:{value:'10:00'}}));
    assert.match(allText(planner()),/4\s+datums/);assert.match(allText(planner()),/28-10-2026 10:00/);
    assert.deepEqual(calls.map(c=>c.method),['GET']);
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());

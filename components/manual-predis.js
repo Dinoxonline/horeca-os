@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { instagramEventMedia } from "../lib/instagram-event-media";
-import { PREDIS_CHANNELS, PREDIS_STATES, PREDIS_DAYS, localToday, makeManualEntries, validateManualDraft, transferText, manualDistribution, retainedConfirmations } from "../lib/manual-predis";
+import { PREDIS_CHANNELS, PREDIS_STATES, PREDIS_DAYS, planningLocalTime, nextPlanningMoment, validateNewMoments, groupManualMoments, makeManualEntries, validateManualDraft, transferText, manualDistribution, retainedConfirmations } from "../lib/manual-predis";
 import styles from "./manual-predis.module.css";
 
 export default function ManualPredis({ item, workspaceId, session, businessName, enabled, linkedSources = [], onSaved, onUnsavedChange, generatedContent, onGeneratedContentApplied }) {
@@ -18,9 +18,12 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const [failed, setFailed] = useState(false);
   const [planningFeedback, setPlanningFeedback] = useState(null);
   const [mode, setMode] = useState("single");
-  const [start, setStart] = useState(localToday);
-  const [end, setEnd] = useState(localToday);
-  const [time, setTime] = useState("10:00");
+  const [suggested] = useState(nextPlanningMoment);
+  const [now, setNow] = useState(Date.now);
+  const [start, setStart] = useState(() => suggested.slice(0, 10));
+  const [end, setEnd] = useState(() => suggested.slice(0, 10));
+  const [time, setTime] = useState(() => suggested.slice(11));
+  const [showAllMoments, setShowAllMoments] = useState(false);
   const [days, setDays] = useState([3]);
   const [channels, setChannels] = useState([]);
   const [entryKey, setEntryKey] = useState("");
@@ -34,6 +37,12 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const availableAssets = [...assets, ...draft.assets.filter(a => !assets.some(x => x.url === a.url))];
   const hasToken = Boolean(session?.access_token);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; requests.current.forEach(c => c.abort()); }; }, []);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = setInterval(tick, 30000);
+    window.addEventListener("focus", tick);
+    return () => { clearInterval(timer); window.removeEventListener("focus", tick); };
+  }, []);
   useEffect(() => { onUnsavedChange?.(dirty || Boolean(busy)); return () => onUnsavedChange?.(false); }, [dirty, busy, onUnsavedChange]);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -79,7 +88,8 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   function change(next) { setDraft(next); setDirty(true); setConfirmed(false); setMessage(""); setPlanningFeedback(null); }
   let preview = [], previewError = "";
   try {
-    preview = makeManualEntries({ start, end: mode === "single" ? start : end, time, weekdays: mode === "weekly" ? days : undefined, channels });
+    preview = makeManualEntries({ start, end: mode === "weekly" ? end : start, time, weekdays: mode === "weekly" ? days : undefined, channels });
+    validateNewMoments(preview.filter(e => !draft.entries.some(old => old.key === e.key)), now, mode === "recorded");
     if (!preview.length) previewError = "Geen gekozen weekdagen in deze periode.";
     if (new Set([...draft.entries, ...preview].map(e => e.key)).size > 160) previewError = "Maximaal 160 kanaalmomenten per evenement. Kies een kortere periode of minder kanalen.";
   } catch (e) { previewError = e.message; }
@@ -88,7 +98,10 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const fullDays = { 1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 5: "Vrijdag", 6: "Zaterdag", 0: "Zondag" };
   function addMoments() {
     try {
-      const next = makeManualEntries({ start, end: mode === "single" ? start : end, time, weekdays: mode === "weekly" ? days : undefined, channels });
+      const next = makeManualEntries({ start, end: mode === "weekly" ? end : start, time, weekdays: mode === "weekly" ? days : undefined, channels });
+      // Recheck at the click, even if the form has been left open or the browser timer was paused.
+      const currentTime = Date.now(); setNow(currentTime);
+      validateNewMoments(next.filter(e => !draft.entries.some(old => old.key === e.key)), currentTime, mode === "recorded");
       if (!next.length) throw new Error("Geen gekozen weekdagen in deze periode.");
       const unique = new Map([...draft.entries, ...next].map(e => [e.key, e]));
       const added = unique.size - draft.entries.length;
@@ -109,6 +122,17 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     return run("Concept bewaren…", async () => { const next = await request("save", { draft: normalized, acceptReset: reset }); accept(next); if (mounted.current) setMessage("Concept bewaard in Horeca OS. Er is niets naar Predis verstuurd. Ga verder bij stap 2; bevestig pas daarna de uitkomst bij stap 3."); });
   }
   const chosen = draft.entries.find(e => e.key === entryKey);
+  const groups = groupManualMoments(draft.entries, now);
+  const upcoming = groups.filter(group => !group.elapsed), elapsed = groups.filter(group => group.elapsed);
+  function momentRow(group) {
+    return <div key={group.at} className={styles.planningRow}>
+      <div><strong>{group.at.slice(8, 10)}-{group.at.slice(5, 7)}-{group.at.slice(0, 4)} · {group.at.slice(11)}</strong>
+        <span className={styles.channelNames}>{group.entries.map(e => PREDIS_CHANNELS[e.channel]).join(" · ")}</span>
+        {group.elapsed && <small>Tijdstip verstreken · publicatiestatus zie stap 3</small>}
+      </div>
+      <button type="button" className="secondaryButton" aria-label={`Verwijder tijdstip ${group.at} voor alle ${group.entries.length} kanalen`} onClick={() => change({ ...draft, entries: draft.entries.filter(e => e.at !== group.at) })}>Tijdstip verwijderen</button>
+    </div>;
+  }
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label="Predis handmatig voorbereiden">
     <div className={styles.notice}><strong>Eigen foto en tekst · {businessName}</strong><p>Bereid hier je eigen beeld en bericht voor. Geen nieuw AI-ontwerp. In Predis zet je het bericht zelf klaar en kies je publiceren of inplannen.</p></div>
@@ -138,13 +162,14 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <small>Wil je meteen publiceren? Je hoeft hier geen moment toe te voegen. Ga verder bij stap 2: je bericht maken en publiceren in Predis.</small>
       <div className={styles.choices} role="group" aria-label="Kanalen">{Object.entries(PREDIS_CHANNELS).map(([key, name]) => <label key={key}><input type="checkbox" checked={channels.includes(key)} onChange={() => setChannels(channels.includes(key) ? channels.filter(c => c !== key) : [...channels, key])} />{name}</label>)}</div>
       <div className={styles.grid}>
-        <label>Planning kiezen<select value={mode} onChange={e => setMode(e.target.value)}><option value="single">Losse datum</option><option value="weekly">Elke week op vaste dagen</option></select></label>
-        <label>{mode === "single" ? "Datum" : "Begindatum"}<input type="date" value={start} onChange={e => { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value); }} /></label>
+        <label>Planning kiezen<select value={mode} onChange={e => { setMode(e.target.value); setPlanningFeedback(null); }}><option value="single">Losse datum</option><option value="weekly">Elke week op vaste dagen</option><option value="recorded">Al geplaatste post vastleggen</option></select></label>
+        <label>{mode === "weekly" ? "Begindatum" : "Datum"}<input type="date" value={start} min={mode === "recorded" ? undefined : planningLocalTime(now).slice(0, 10)} max={mode === "recorded" ? planningLocalTime(now).slice(0, 10) : undefined} onChange={e => { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value); }} /></label>
         {mode === "weekly" && <label>Einddatum (inclusief)<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>}
         <label>Tijd (Nederland)<input type="time" value={time} onChange={e => setTime(e.target.value)} /></label>
       </div>
       {mode === "weekly" && <><div className={styles.choices} role="group" aria-label="Weekdagen">{PREDIS_DAYS.map(([day]) => <label key={day}><input type="checkbox" checked={days.includes(day)} onChange={() => setDays(days.includes(day) ? days.filter(d => d !== day) : [...days, day])} />{fullDays[day]}</label>)}</div><small>Kies één of meer dagen, bijvoorbeeld maandag én woensdag. Het gekozen tijdstip geldt voor al deze dagen.</small></>}
       {mode === "single" && <small>Voeg een datum toe en kies daarna eventueel nog een losse datum of een ander tijdstip.</small>}
+      {mode === "recorded" ? <small>Alleen voor een post die al is geplaatst: voer de werkelijke publicatietijd uit Predis in. Bewaar het concept en bevestig bij stap 3 per kanaal; dit publiceert niets.</small> : <small>Nieuwe momenten moeten in de toekomst liggen. De begintijd wordt voorgesteld op minimaal 15 minuten vanaf het openen.</small>}
       <div className={styles.notice} role="status" aria-label="Voorbeeld publicatiedatums">
         {previewError ? <span>{previewError}</span> : <><strong>{previewDates.length} {previewDates.length === 1 ? "datum" : "datums"} · {newMoments} nieuwe kanaalmomenten</strong><span>{previewDates.slice(0, 8).map(at => `${at.slice(8,10)}-${at.slice(5,7)}-${at.slice(0,4)} ${at.slice(11)}`).join(" · ")}{previewDates.length > 8 ? ` · en nog ${previewDates.length - 8}` : ""}</span></>}
       </div>
@@ -153,10 +178,10 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       {!previewError && !newMoments && <small>Alle gekozen momenten staan al in je lijst. Kies een andere datum, tijd of kanaal om meer toe te voegen.</small>}
       {!!draft.entries.length && <section aria-label="Toegevoegde publicatiemomenten" className={styles.notice}>
         <strong>Gewenste datums · {dirty ? "nog niet bewaard" : "bewaard bij je concept"}</strong>
-        <div className={styles.planningList}>{draft.entries.map(e => <div key={e.key} className={styles.planningRow}>
-          <span>{e.at.slice(8, 10)}-{e.at.slice(5, 7)}-{e.at.slice(0, 4)} · {e.at.slice(11)} · {PREDIS_CHANNELS[e.channel]}</span>
-          <button type="button" className="secondaryButton" aria-label={`Haal ${e.at} ${PREDIS_CHANNELS[e.channel]} uit planning`} onClick={() => change({ ...draft, entries: draft.entries.filter(x => x.key !== e.key) })}>Verwijderen</button>
-        </div>)}</div>
+        <div className={styles.planningList}>{(showAllMoments ? upcoming : upcoming.slice(0, 5)).map(momentRow)}</div>
+        {!upcoming.length && <small>Geen toekomstige momenten toegevoegd.</small>}
+        {upcoming.length > 5 && <button type="button" className="secondaryButton" aria-expanded={showAllMoments} onClick={() => setShowAllMoments(!showAllMoments)}>{showAllMoments ? "Minder momenten tonen" : `Nog ${upcoming.length - 5} momenten tonen`}</button>}
+        {!!elapsed.length && <details className={styles.pastMoments}><summary>Verstreken tijdstippen ({elapsed.length})</summary><small>Deze datums liggen in het verleden. Er is niets verwijderd of automatisch als geplaatst aangemerkt.</small><div className={styles.planningList}>{elapsed.map(momentRow)}</div></details>}
         <small>Dit zijn gewenste publicatiemomenten, nog geen automatische opdrachten aan Predis.</small>
       </section>}
       <small>{draft.entries.length} kanaalmomenten in dit bericht. {dirty ? "Bewaar hieronder om je wijzigingen in de agenda te tonen." : "Bewaarde momenten staan in de marketingagenda."} Nederlandse kloktijd blijft behouden bij zomer- en wintertijd.</small>
@@ -185,7 +210,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     <p>Voer deze stap alleen uit nadat je het bericht zelf in Predis hebt ingepland of gepubliceerd. Zonder jouw bevestiging blijft een nieuw moment ‘Concept — nog niet overgezet’.</p>
     <fieldset disabled={!loaded || !!busy} className={styles.fields}><legend>Planning en handmatige controle</legend>
       <div className={styles.tableWrap}><table><caption>Planning en voortgang per kanaal</caption><thead><tr><th>Gewenst moment</th><th>Kanaal</th><th>Status</th><th>Actie</th></tr></thead><tbody>{draft.entries.map(e => { const c = saved?.confirmations?.[e.key]; return <tr key={e.key}><td>{e.at.slice(8, 10)}-{e.at.slice(5, 7)}-{e.at.slice(0, 4)} · {e.at.slice(11)}</td><td>{PREDIS_CHANNELS[e.channel]}</td><td>{PREDIS_STATES[c?.state] || PREDIS_STATES.pending}{c && <small>Bevestigd op {new Date(c.at).toLocaleString("nl-NL")}{dirty ? " · inhoud gewijzigd; controleer opnieuw" : ""}</small>}</td><td><button type="button" className="secondaryButton" onClick={() => { setEntryKey(e.key); setConfirmed(false); }}>Controleren</button><button type="button" className="secondaryButton" aria-label={`Verwijder ${e.at} ${PREDIS_CHANNELS[e.channel]}`} onClick={() => change({ ...draft, entries: draft.entries.filter(x => x.key !== e.key) })}>×</button></td></tr>; })}</tbody></table></div>
-      {!draft.entries.length && <p>Nog geen momenten om te bevestigen. Voeg bij je concept de werkelijke datum, tijd en kanalen uit Predis toe en bewaar het concept. Bevestig daarna per kanaal de uitkomst.</p>}
+      {!draft.entries.length && <p>Nog geen momenten om te bevestigen. Voeg bij je concept de werkelijke datum, tijd en kanalen uit Predis toe en bewaar het concept. Voor een al gepubliceerde post kies je ‘Al geplaatste post vastleggen’. Bevestig daarna per kanaal de uitkomst.</p>}
     </fieldset>
     <p>Stel je publicatiemomenten ook in Predis in. Gebruik hierboven ‘Controleren’ om per kanaal vast te leggen wat je zelf in Predis hebt gecontroleerd.</p>
     {chosen && <fieldset className={styles.fields} disabled={!!busy || dirty || !loaded}><legend>Status bevestigen</legend><strong>{chosen.at.replace("T", " ")} · {PREDIS_CHANNELS[chosen.channel]}</strong><label>Wat heb je gecontroleerd?<select value={state} onChange={e => { setState(e.target.value); setConfirmed(false); }}><option value="scheduled">Dit moment is ingepland in Predis</option><option value="published">Dit bericht is daadwerkelijk geplaatst</option><option value="pending">Terug naar ‘Nog overzetten’</option></select></label><label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik heb dit zelf gecontroleerd voor de juiste vestiging, datum en het juiste kanaal.</label><button type="button" className="secondaryButton" disabled={!confirmed || dirty} onClick={() => run("Status bewaren…", async () => { const next = await request("confirm", { entryKey: chosen.key, state, confirmed }); accept(next); if (mounted.current) setMessage("Je handmatige bevestiging is bewaard. Niet automatisch door Predis gecontroleerd."); })}>Handmatige bevestiging bewaren</button></fieldset>}
