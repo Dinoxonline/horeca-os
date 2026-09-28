@@ -5,9 +5,9 @@ import Image from "next/image";
 import { PREDIS_FORMATS, PREDIS_JOB_LABELS, predisPrompt } from "../lib/predis-content";
 import styles from "./manual-predis.module.css";
 
-export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange }) {
+export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image" }) {
   const [prompt, setPrompt] = useState(() => predisPrompt(item));
-  const [format, setFormat] = useState("single_image"), [photos, setPhotos] = useState([]), [selected, setSelected] = useState([]);
+  const [format, setFormat] = useState(() => Object.hasOwn(PREDIS_FORMATS, initialFormat) ? initialFormat : "single_image"), [photos, setPhotos] = useState([]), [selected, setSelected] = useState([]);
   const [jobs, setJobs] = useState([]), [config, setConfig] = useState(null), [loaded, setLoaded] = useState(false);
   const [confirmed, setConfirmed] = useState(false), [acknowledgePending, setAcknowledgePending] = useState(false);
   const [needsCheck, setNeedsCheck] = useState(false);

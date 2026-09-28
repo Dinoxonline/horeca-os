@@ -101,6 +101,11 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  try{
  assert.equal(calls.length,0);
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true})));assert.deepEqual(calls,['GET']);
+ const content=allText(r.root);
+ assert.match(content,/geen nieuw AI-ontwerp/);
+ assert.ok(content.indexOf('2. Eigen ontwerp overzetten') < content.indexOf('3. Gewenste publicatiemomenten'));
+ assert.match(content,/foto en tekst worden niet automatisch meegestuurd/);
+ assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen voor eigen ontwerp').props.href,'https://app.predis.ai/app/new_post/create');
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true,session:{access_token:'two'}})));
  assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.equal(calls.length,1);
@@ -110,6 +115,36 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  await React.act(async()=>{pending=save();});
  await React.act(async()=>{release({ok:true,json:async()=>({saved:{revision:'new',draft:lastBody.draft,confirmations:{}}})});await pending;});
  assert.match(allText(r.root),/Bewaard in Horeca OS/);assert.doesNotMatch(allText(r.root),/Niet-bewaarde wijzigingen/);
+ }finally{await React.act(async()=>r.unmount());delete global.window;}
+});
+test('Predis starts with a neutral choice; manual and all AI formats require explicit selection',async()=>{
+ fakeWindow();const calls=[];
+ global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});return Response.json({saved:null,configured:true,jobs:[],photos:[]});};
+ const Component=(await load('components/predis-workspace.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true}));});
+ try{
+   const button=label=>r.root.findAllByType('button').find(b=>allText(b).startsWith(label));
+   assert.equal(r.root.findByProps({'aria-label':'Predis-werkwijze kiezen'}).type,'section');
+   assert.equal(calls.length,0);
+   assert.equal(r.root.findAllByType('a').length,4);
+   assert.ok(r.root.findAllByType('a').every(a=>a.props.href==='https://app.predis.ai/app/new_post/create'));
+   await React.act(async()=>button('Eigen foto en tekst').props.onClick());
+   assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
+   assert.equal(r.root.findAllByProps({'aria-label':'Content maken met Predis'}).length,0);
+   assert.equal(calls.length,1);assert.match(calls[0].url,/\/manual-predis\?/);assert.equal(calls[0].method,'GET');
+   await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Mijn eigen bijschrift'}}));
+   global.window.confirm=()=>false;
+   await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
+   assert.equal(r.root.findByType('textarea').props.value,'Mijn eigen bijschrift');assert.equal(calls.length,1);
+   global.window.confirm=()=>true;
+   await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
+   for(const [label,format] of [['Afbeelding','single_image'],['Carrousel','carousel'],['Video','video']]){
+     await React.act(async()=>button(label).props.onClick());
+     assert.equal(r.root.findByType('select').props.value,format);
+     assert.equal(button('Content laten maken').props.disabled,true);
+     await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
+   }
+   assert.equal(calls.length,4);assert.ok(calls.slice(1).every(c=>c.url.includes('/predis-content?')));assert.ok(calls.every(c=>c.method==='GET'));
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 test('search/worklist filters manual pending actions and opens the exact selected event',async()=>{
