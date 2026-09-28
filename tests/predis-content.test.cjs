@@ -141,7 +141,7 @@ test('UI loads only on open; defaults event photo; preserves prompt on token ref
     await React.act(async () => r.root.findAllByType('input')[1].props.onChange({ target: { checked: true } }));
     let pending; await React.act(async () => { pending = button().props.onClick(); button().props.onClick(); }); assert.equal(calls.length, 2); assert.deepEqual(body.mediaUrls, [photo]);
     await React.act(async () => { release(Response.json({ jobs: [{ id, status: 'generating', createdAt: '2026-09-28T00:00:00Z', prompt: draft.prompt, mediaType: 'single_image', results: [] }] })); await pending; });
-    assert.match(text(r.root), /Predis maakt de content/); assert.doesNotMatch(text(r.root), /Nog niet aangevraagd/);
+    assert.match(text(r.root), /Aanvraag geaccepteerd/); assert.doesNotMatch(text(r.root), /Nog niet aangevraagd/);
   } finally { await React.act(async () => r.unmount()); delete global.window; }
 });
 test('generated content goes into separate manual draft, preserving dates until explicit save', async () => {
@@ -151,4 +151,77 @@ test('generated content goes into separate manual draft, preserving dates until 
   let r; await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, enabled: true, workspaceId: 'w', session: { access_token: 'one' }, generatedContent: { id: 'p1', caption: 'New generated caption', assets: [{ url: photo, type: 'image', label: 'Generated' }] } })); });
   try { assert.equal(r.root.findByType('textarea').props.value, 'New generated caption'); assert.match(text(r.root), /01\s*-\s*10\s*-\s*2026/); assert.match(text(r.root), /Niet-bewaarde wijzigingen/); }
   finally { await React.act(async () => r.unmount()); delete global.window; }
+});
+
+const acceptedJob = () => ({ id, brandId: 'brand', postIds: ['p1'], mediaType: 'single_image', status: 'generating', results: [] });
+const callback = { status: 'completed', post_id: 'p1', brand_id: 'brand', caption: 'Welkom!', generated_media: [{ url: photo }] };
+const callbackRow = () => ({ ...structuredClone(item), workspace_id: 'w', media: [{ kind: 'campaign_distribution', common: { title: 'Keep' }, predis_content: { jobs: [acceptedJob()] }, calendar_channel: { status: 'keep' } }] });
+test('new webhook stores a complete result without altering event or other channels; replay is inert', async () => {
+  const { applyPredisWebhook } = await load('lib/predis-webhook.js');
+  const row = callbackRow(), media = applyPredisWebhook(row, callback, 'now');
+  assert.equal(media[0].predis_content.jobs[0].status, 'ready');
+  assert.equal(media[0].predis_content.jobs[0].results[0].caption, 'Welkom!');
+  assert.deepEqual(media[0].common, row.media[0].common);
+  assert.deepEqual(media[0].calendar_channel, row.media[0].calendar_channel);
+  assert.equal(applyPredisWebhook({ ...row, media }, callback, 'later'), null);
+  assert.equal(applyPredisWebhook({ ...row, media }, { status: 'error', post_id: 'p1' }, 'later'), null);
+});
+test('provider failure is explicit, but a later completed result can recover it', async () => {
+  const { applyPredisWebhook } = await load('lib/predis-webhook.js');
+  const row = callbackRow();
+  row.media = applyPredisWebhook(row, { status: 'error', post_id: 'p1' }, 'now');
+  assert.equal(row.media[0].predis_content.jobs[0].status, 'generation_failed');
+  assert.equal(applyPredisWebhook(row, { status: 'error', post_id: 'p1' }, 'later'), null);
+  assert.equal(applyPredisWebhook(row, callback, 'later')[0].predis_content.jobs[0].status, 'ready');
+});
+test('webhook rejects wrong brand and incomplete or unsafe media and ignores other IDs', async () => {
+  const { applyPredisWebhook } = await load('lib/predis-webhook.js');
+  for (const patch of [{ brand_id: 'other' }, { generated_media: [] }, { generated_media: [{ url: 'https://127.0.0.1/a' }] }]) assert.throws(() => applyPredisWebhook(callbackRow(), { ...callback, ...patch }, 'now'));
+  assert.equal(applyPredisWebhook(callbackRow(), { ...callback, post_id: 'other' }, 'now'), null);
+});
+function webhookDb(rows, conflict = false) {
+  let writes = 0;
+  return { get writes() { return writes; }, from(table) {
+    assert.equal(table, 'social_content_items'); const filters = {}; let patch, contains;
+    const result = () => {
+      if (contains) return { data: structuredClone(rows) };
+      const row = rows.find(r => r.id === filters.id && r.workspace_id === filters.workspace_id && r.business_id === filters.business_id);
+      if (!patch) return { data: structuredClone(row) };
+      if (conflict) { conflict = false; row.updated_at = 'concurrent'; row.media[0].calendar_channel.status = 'concurrent'; return { data: null }; }
+      assert.equal(filters.updated_at, row.updated_at); writes++; row.media = patch.media; row.updated_at += '-next'; return { data: { id: row.id } };
+    };
+    let q; q = new Proxy({}, { get: (_, k) => k === 'then' ? resolve => resolve(result()) : k === 'maybeSingle' ? async () => result() : k === 'contains' ? (column, value) => { assert.equal(column, 'media'); assert.equal(value[0].predis_content.jobs[0].postIds[0], 'p1'); contains = value; return q; } : k === 'eq' ? (key, value) => { filters[key] = value; return q; } : k === 'update' ? value => { patch = value; return q; } : () => q }); return q;
+  } };
+}
+test('webhook updates reconciled copies only within identical job/tenant identity and preserves concurrent edits', async () => {
+  const { savePredisWebhookJobs } = await load('lib/predis-webhook.js');
+  const rows = [callbackRow(), { ...callbackRow(), id: 'copy' }], db = webhookDb(rows, true);
+  assert.equal(await savePredisWebhookJobs(db, callback), true); assert.equal(db.writes, 2);
+  assert.equal(rows[0].media[0].calendar_channel.status, 'concurrent');
+  assert.ok(rows.every(r => r.media[0].predis_content.jobs[0].status === 'ready'));
+  await savePredisWebhookJobs(db, callback); assert.equal(db.writes, 2);
+  for (const mismatch of [{ workspace_id: 'other' }, { business_id: 'other' }]) {
+    const unsafe = webhookDb([callbackRow(), { ...callbackRow(), ...mismatch, id: 'copy' }]);
+    await assert.rejects(savePredisWebhookJobs(unsafe, callback), /AMBIGUOUS_JOB/); assert.equal(unsafe.writes, 0);
+  }
+  assert.equal(await savePredisWebhookJobs(webhookDb([]), callback), false);
+});
+test('webhook requires secret before database access and stores accepted callbacks', async () => {
+  const rows = [callbackRow()], db = webhookDb(rows); let accesses = 0;
+  const route = await load('app/api/integrations/predis/webhook/route.js', { '../../../../../lib/server-supabase': { createAdminSupabase: () => { accesses++; return db; } } });
+  process.env.PREDIS_WEBHOOK_SECRET = 'test-callback-only';
+  const send = (secret, body) => route.POST({ nextUrl: new URL('https://example.test/?token=' + secret), json: async () => body });
+  assert.equal((await send('wrong', callback)).status, 401); assert.equal(accesses, 0);
+  assert.equal((await send('test-callback-only', {})).status, 400); assert.equal(accesses, 0);
+  assert.equal((await send('test-callback-only', callback)).status, 200);
+  assert.equal(rows[0].media[0].predis_content.jobs[0].status, 'ready');
+  delete process.env.PREDIS_WEBHOOK_SECRET;
+});
+test('overdue and malformed results are uncertain, not an endless claim of generation', async () => {
+  const h = await harness({ results: [] }); await h.send();
+  h.row.media[1].predis_content.jobs[0].createdAt = '2020-01-01T00:00:00Z';
+  const r = await h.send({ action: 'refresh', jobId: id });
+  assert.equal(r.jobs[0].status, 'unknown'); assert.match(r.warning, /15 minuten/); assert.equal(h.calls.length, 2);
+  const malformed = await harness({ results: [{ ...post, urls: [] }] }); await malformed.send();
+  const m = await malformed.send({ action: 'refresh', jobId: id }); assert.equal(m.jobs[0].status, 'unknown'); assert.match(m.warning, /niet veilig/);
 });

@@ -101,21 +101,30 @@ export async function POST(request) {
     if (job.status === "ready" || !job.postIds?.length) return reply({ jobs: displayJobs(jobs), warning: job.status === "ready" ? undefined : "Predis heeft geen resultaatnummer bevestigd. Controleer deze aanvraag in Predis voordat je een nieuwe start." });
     if (job.checkedAt && Date.now() - Date.parse(job.checkedAt) < 10000) return reply({ jobs: displayJobs(jobs) });
     const found = new Map((job.results || []).map(r => [r.id, r]));
-    let page = job.nextPage || 1;
+    let page = job.nextPage || 1, scanned = 0, matching = 0, invalid = 0;
     for (let n = 0; n < 3; n++) {
       const url = new URL(`${BASE}/get_posts/`);
       Object.entries({ brand_id: job.brandId, page_n: String(page), items_n: "20", media_type: job.mediaType }).forEach(([k, v]) => url.searchParams.set(k, v));
       const response = await fetch(url, { headers: { Authorization: key, Accept: "application/json" }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(12000) });
       const result = await response.json();
       if (!response.ok || result.errors?.length || !Array.isArray(result.posts)) throw fail("Resultaten ophalen bij Predis is mislukt. De aanvraag blijft bewaard; er is niets opnieuw aangemaakt.", 502);
-      for (const post of result.posts) { const normalized = normalizePredisPost(post, job.postIds); if (normalized) found.set(normalized.id, normalized); }
+      for (const post of result.posts) {
+        scanned++;
+        if (job.postIds.includes(String(post?.post_id))) matching++;
+        const normalized = normalizePredisPost(post, job.postIds);
+        if (normalized) found.set(normalized.id, normalized);
+        else if (job.postIds.includes(String(post?.post_id))) invalid++;
+      }
       const pages = Math.min(10000, Math.max(1, Number(result.total_pages) || 1));
       page = page >= pages ? 1 : page + 1;
       if (job.postIds.every(id => found.has(id)) || page === 1) break;
     }
     const complete = job.postIds.every(id => found.has(id));
-    const saved = await ctx.change(current => current.map(j => j.id === job.id && j.status !== "ready" ? { ...j, status: complete ? "ready" : j.status, results: [...found.values()], checkedAt: new Date().toISOString(), nextPage: page } : j));
-    return reply({ jobs: displayJobs(saved), ...(!complete ? { warning: "Nog geen volledig resultaat gevonden. Controleer later opnieuw; er wordt niets opnieuw gegenereerd." } : {}) });
+    const overdue = Date.now() - Date.parse(job.createdAt) > 15 * 60000;
+    console.info(JSON.stringify({ event: "predis_result_check", scanned, matching, invalid, complete, overdue }));
+    const saved = await ctx.change(current => current.map(j => j.id === job.id && j.status !== "ready" ? { ...j, status: complete ? "ready" : j.status === "generating" && (overdue || invalid) ? "unknown" : j.status, results: [...found.values()], checkedAt: new Date().toISOString(), nextPage: page } : j));
+    const savedStatus = saved.find(j => j.id === job.id)?.status;
+    return reply({ jobs: displayJobs(saved), ...(savedStatus !== "ready" ? { warning: savedStatus === "generation_failed" ? "Predis meldt dat het maken is mislukt. Er is niets opnieuw aangevraagd." : invalid ? "Predis gaf een resultaat terug dat niet veilig kon worden ingelezen. Er is niets opnieuw aangevraagd." : overdue ? "De aanvraag is geaccepteerd, maar na meer dan 15 minuten is nog geen bruikbaar resultaat ontvangen. Dit bevestigt niet dat Predis nog bezig is. Controle nodig; genereer niet opnieuw." : "Nog geen volledig resultaat gevonden. Controleer later opnieuw; er wordt niets opnieuw gegenereerd." } : {}) });
   } catch (e) {
     if (reservedId && ctx) await ctx.change(jobs => jobs.map(j => j.id === reservedId && j.status === "submitting" ? { ...j, status: "unknown" } : j)).catch(() => {});
     return reply({ error: e.status ? e.message : "Geen volledige bevestiging ontvangen. Laad de aanvragen opnieuw voordat je verdergaat." }, e.status || 500);

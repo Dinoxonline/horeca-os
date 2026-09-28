@@ -59,10 +59,10 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
       catch (e) { if (mounted.current) setNeedsCheck(true); throw e; }
       if (!mounted.current) return;
       setJobs(data.jobs); setDirty(false); setConfirmed(false); setAcknowledgePending(false); requestId.current = null;
-      setMessage(data.warning || "Aanvraag bewaard bij dit evenement. Predis maakt de content. Gebruik ‘Resultaat ophalen’ om deze hier te bekijken.");
+      setMessage(data.warning || "Predis heeft de aanvraag geaccepteerd. Gebruik ‘Resultaat ophalen’ om te controleren of de content klaar is.");
     });
   }
-  function refresh(job) { return run(async () => { const data = await request("refresh", { jobId: job.id }); if (mounted.current) { setJobs(data.jobs); setMessage(data.warning || "Resultaat bewaard bij dit evenement. Er is niets gepubliceerd."); } }); }
+  function refresh(job) { return run(async () => { const data = await request("refresh", { jobId: job.id }); if (mounted.current) { setJobs(data.jobs); const updated = data.jobs.find(j => j.id === job.id); setMessage(data.warning || (updated?.status === "ready" ? "Resultaat bewaard bij dit evenement. Er is niets gepubliceerd." : updated?.status === "generation_failed" ? "Predis meldt dat het maken is mislukt. Er is niets opnieuw aangevraagd." : "Nog geen bevestigd resultaat beschikbaar. Er is niets opnieuw aangevraagd.")); } }); }
   const pending = jobs.some(j => ["submitting", "generating", "unknown"].includes(j.status));
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label="Content maken met Predis">

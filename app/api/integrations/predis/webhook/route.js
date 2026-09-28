@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "../../../../../lib/server-supabase";
+import { savePredisWebhookJobs } from "../../../../../lib/predis-webhook";
+import { timingSafeEqual } from "node:crypto";
+
+export const runtime = "nodejs";
 
 export async function POST(request) {
   const expected = process.env.PREDIS_WEBHOOK_SECRET?.trim();
   const supplied = request.nextUrl.searchParams.get("token") || "";
-  if (!expected || supplied !== expected) return NextResponse.json({ error: "Ongeldige webhook." }, { status: 401 });
+  if (!expected || Buffer.byteLength(supplied) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) return NextResponse.json({ error: "Ongeldige webhook." }, { status: 401 });
 
   let body;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Ongeldige inhoud." }, { status: 400 }); }
 
   const status = String(body?.status || "");
   const postId = String(body?.post_id || "").trim();
-  if (!["completed", "error"].includes(status) || !postId) {
+  if (!["completed", "error"].includes(status) || !/^[a-zA-Z0-9_-]{1,200}$/.test(postId)) {
+    console.warn(JSON.stringify({ event: "predis_webhook_invalid", hasPostId: Boolean(postId), knownStatus: ["completed", "error"].includes(status) }));
     return NextResponse.json({ error: "Onbekende Predis-status." }, { status: 400 });
   }
 
@@ -24,6 +29,16 @@ export async function POST(request) {
   const caption = status === "completed" ? String(body.caption || "").slice(0, 10000) : "";
   const brandId = String(body.brand_id || "").trim();
   const admin = createAdminSupabase();
+  try {
+    if (await savePredisWebhookJobs(admin, { ...body, post_id: postId })) {
+      console.info(JSON.stringify({ event: "predis_webhook_saved", status }));
+      return NextResponse.json({ received: true, matched: true, status });
+    }
+  } catch (e) {
+    const code = ["BRAND_MISMATCH", "INVALID_MEDIA", "AMBIGUOUS_JOB", "LOOKUP_FAILED", "MISSING_VERSION", "WRITE_FAILED", "RELOAD_FAILED", "WRITE_CONFLICT"].includes(e.message) ? e.message : "SAVE_FAILED";
+    console.error(JSON.stringify({ event: "predis_webhook_failed", code }));
+    return NextResponse.json({ error: "Predis-terugmelding kon niet veilig worden verwerkt.", code }, { status: 500 });
+  }
   const { data: matches, error: findError } = await admin
     .from("social_content_items")
     .select("id,media")
