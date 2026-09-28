@@ -30,6 +30,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const tokenRef = useRef(session?.access_token); tokenRef.current = session?.access_token;
   const onSavedRef = useRef(onSaved); onSavedRef.current = onSaved;
   const assets = instagramEventMedia(item, linkedSources);
+  const availableAssets = [...assets, ...draft.assets.filter(a => !assets.some(x => x.url === a.url))];
   const hasToken = Boolean(session?.access_token);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; requests.current.forEach(c => c.abort()); }; }, []);
   useEffect(() => { onUnsavedChange?.(dirty || Boolean(busy)); return () => onUnsavedChange?.(false); }, [dirty, busy, onUnsavedChange]);
@@ -98,31 +99,47 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
   const chosen = draft.entries.find(e => e.key === entryKey);
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label="Predis handmatig voorbereiden">
-    <div className={styles.notice}><strong>Eigen foto en tekst · {businessName}</strong><p>Kies je bestaande foto en pas hieronder je bijschrift aan. Deze route maakt geen nieuw AI-ontwerp en zet geen extra tekst over je foto. Overzetten naar Predis doe je nog handmatig; Horeca OS verstuurt niets automatisch.</p></div>
+    <div className={styles.notice}><strong>Eigen foto en tekst · {businessName}</strong><p>Gebruik je eigen beeld en bericht. Geen nieuw AI-ontwerp. Uploaden en inplannen doe je daarna zelf in Predis.</p></div>
     {busy && <p role="status">{busy}</p>}
     {message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
-    <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!!busy} onClick={() => { if (!dirty || window.confirm("Je hebt onbewaarde wijzigingen. Wil je de bewaarde versie laden en je invoer vervangen?")) load(); }}>Bewaarde versie laden</button>{dirty && <strong>Niet-bewaarde wijzigingen</strong>}</div>
+    {dirty && <small>Niet-bewaarde wijzigingen</small>}
     {!loaded && <p>Open of laad eerst de voorbereiding. Bij een laadfout blijft bewaren geblokkeerd.</p>}
     <fieldset disabled={!loaded || !!busy} className={styles.fields}>
-      <legend>1. Tekst en media uit Horeca OS</legend>
-      <div className={styles.columns}>
-        <div><label>Tekst voor Predis<textarea rows={7} maxLength={10000} value={draft.caption} onChange={e => change({ ...draft, caption: e.target.value })} /></label><div className={styles.actions}><button type="button" className="secondaryButton" onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button><button type="button" className="secondaryButton" onClick={() => { if (window.confirm("Vervang deze berichttekst door de huidige tekst uit Horeca OS?")) change({ ...draft, caption: initial().caption }); }}>Horeca OS-tekst overnemen</button></div><small>Deze tekst is een aparte voorbereiding. De evenementtekst en bestaande publicaties veranderen niet.</small></div>
-        <div><strong>Gekozen media ({draft.assets.length}/10)</strong>{!draft.assets.length && <p>Kies hieronder een bestand van dit evenement.</p>}<div className={styles.media}>{draft.assets.map((a, i) => <div key={a.url}>{a.type === "image" ? <Image unoptimized src={a.url} width={240} height={150} alt={a.label} /> : <video src={a.url} controls preload="none" />}<small>{i + 1}. {a.label}</small><a href={a.url} target="_blank" rel="noopener noreferrer">Bestand openen / bewaren</a><button type="button" className="secondaryButton" onClick={() => copy(a.url, "Bestandslink")}>Link kopiëren</button><button type="button" className="secondaryButton" onClick={() => change({ ...draft, assets: draft.assets.filter(x => x.url !== a.url) })}>Verwijderen uit selectie</button></div>)}</div></div>
-      </div>
-      <details><summary>Media kiezen uit Horeca OS ({assets.length})</summary><p>Gebruik bij een geopend bestand ‘Opslaan als’ en upload het in Predis. Het originele bestand blijft behouden. Berichttype en uitsnede controleer je in Predis.</p><div className={styles.media}>{assets.map(a => <div key={a.url}>{a.type === "image" ? <Image unoptimized src={a.url} width={240} height={150} alt={a.label} /> : <video src={a.url} controls preload="none" />}<small>{a.label}</small><button type="button" className="secondaryButton" disabled={draft.assets.length >= 10 || draft.assets.some(x => x.url === a.url)} onClick={() => change({ ...draft, assets: [...draft.assets, { url: a.url, type: a.type, label: a.label }] })}>{draft.assets.some(x => x.url === a.url) ? "Gekozen" : "Dit bestand kiezen"}</button></div>)}</div>{!assets.length && <p>Nog geen media aan dit evenement gekoppeld. Voeg die toe bij het evenement.</p>}</details>
+      <legend>1. Bericht maken</legend>
+      <strong>Kies je foto of video · {draft.assets.length}/10 gekozen</strong>
+      <div className={styles.media} aria-label="Foto of video kiezen">{availableAssets.map(a => {
+        const selectedIndex = draft.assets.findIndex(x => x.url === a.url);
+        const selected = selectedIndex !== -1;
+        return <div key={a.url} className={selected ? styles.selectedMedia : undefined}>
+          <button type="button" className={styles.mediaChoice} aria-pressed={selected} aria-label={`${selected ? 'Deselecteer' : 'Kies'} ${a.label}`} disabled={!selected && draft.assets.length >= 10} onClick={() => change({ ...draft, assets: selected ? draft.assets.filter(x => x.url !== a.url) : [...draft.assets, { url: a.url, type: a.type, label: a.label }] })}>
+            {a.type === "image" ? <Image unoptimized src={a.url} width={240} height={150} alt={a.label} /> : <video src={a.url} muted preload="metadata" />}
+            <span>{selected ? `✓ Gekozen · ${selectedIndex + 1}` : "Kiezen"}</span><small>{a.label}</small>
+          </button>
+        </div>;
+      })}</div>
+      {!availableAssets.length && <p>Nog geen foto’s of video’s beschikbaar. Voeg eerst een bestand toe bij het evenement.</p>}
+      <label>Je bericht<textarea rows={6} maxLength={10000} value={draft.caption} onChange={e => change({ ...draft, caption: e.target.value })} /></label>
+      <small>Je bewerkt alleen dit bericht. Het evenement en bestaande publicaties blijven ongewijzigd.</small>
     </fieldset>
-    <div className={styles.notice}>
-      <strong>2. Eigen ontwerp overzetten naar Predis</strong>
-      <p>Bewaar je selectie hier en open Predis. Kies daar het merk <b>{businessName}</b>.</p>
-      <ol><li>Kies ‘Heb je al een ontwerp? Uploaden en inplannen’ onderaan de pagina.</li><li>Upload je gekozen bestand via ‘Upload inhoud vanaf apparaat’. Gebruik bij het bestand hierboven ‘Bestand openen / bewaren’ als je het nog niet op je computer hebt.</li><li>Plak je gekopieerde tekst als bijschrift bij het bericht. Controleer daarna de foto, tekst en gewenste kanalen.</li></ol>
-      <div className={styles.actions}>
-        <button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={save}>Foto en tekst bewaren in Horeca OS</button>
-        <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Bijschrift kopiëren</button>
-        <a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen voor eigen ontwerp</a>
-      </div>
-      <small>De knop opent alleen Predis: foto en tekst worden niet automatisch meegestuurd. Kies niet de AI-afbeeldinggenerator. Bewaren of kopiëren is geen publicatie; een gekoppeld kanaal kan verlopen zijn.</small>
+    <div className={styles.step}>
+      <strong>2. Klaarzetten</strong>
+      <p>Bewaar je foto en tekst in Horeca OS. Dit verstuurt niets naar Predis.</p>
+      <div className={styles.actions}><button type="button" className="primaryButton" disabled={!loaded || !!busy || (!dirty && !!saved)} onClick={save}>Bericht bewaren</button>{saved && !dirty && <span>Bewaard in Horeca OS</span>}</div>
     </div>
-    <fieldset disabled={!loaded || !!busy} className={styles.fields}><legend>3. Gewenste publicatiemomenten en controle</legend>
+    <div className={styles.step}>
+      <strong>3. Verder in Predis</strong>
+      <p>Open Predis, kies <b>{businessName}</b> en daarna ‘Heb je al een ontwerp? Uploaden en inplannen’. Upload je bestand en plak je bericht.</p>
+      {!!draft.assets.length && <div className={styles.downloads}>{draft.assets.map((a, i) => <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer">{i + 1}. {a.label} — openen / bewaren ↗</a>)}</div>}
+      <div className={styles.actions}>
+        <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
+        <a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen ↗</a>
+      </div>
+      <small>Foto en tekst worden niet automatisch meegestuurd. Inplannen en publiceren doe je zelf in Predis.</small>
+    </div>
+    <details className={styles.moreOptions}><summary>Meer opties</summary>
+    <div className={styles.root}>
+    <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!!busy} onClick={() => { if (!dirty || window.confirm("Je hebt onbewaarde wijzigingen. Wil je de bewaarde versie laden en je invoer vervangen?")) load(); }}>Bewaarde versie laden</button><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={() => { if (window.confirm("Vervang deze berichttekst door de huidige tekst uit Horeca OS?")) change({ ...draft, caption: initial().caption }); }}>Horeca OS-tekst overnemen</button></div>
+    <fieldset disabled={!loaded || !!busy} className={styles.fields}><legend>Planning en handmatige controle</legend>
       <div className={styles.choices}>{Object.entries(PREDIS_CHANNELS).map(([key, name]) => <label key={key}><input type="checkbox" checked={channels.includes(key)} onChange={() => setChannels(channels.includes(key) ? channels.filter(c => c !== key) : [...channels, key])} />{name}</label>)}</div>
       <div className={styles.grid}><label>Momenten toevoegen<select value={mode} onChange={e => setMode(e.target.value)}><option value="single">Losse datum</option><option value="weekly">Weekdagen binnen een periode</option></select></label><label>{mode === "single" ? "Datum" : "Begindatum"}<input type="date" value={start} onChange={e => setStart(e.target.value)} /></label>{mode === "weekly" && <label>Einddatum<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>}<label>Tijd (Nederland)<input type="time" value={time} onChange={e => setTime(e.target.value)} /></label></div>
       {mode === "weekly" && <div className={styles.choices}>{PREDIS_DAYS.map(([day, name]) => <label key={day}><input type="checkbox" checked={days.includes(day)} onChange={() => setDays(days.includes(day) ? days.filter(d => d !== day) : [...days, day])} />{name}</label>)}</div>}
@@ -135,5 +152,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     {chosen && <fieldset className={styles.fields} disabled={!!busy || dirty || !loaded}><legend>Status bevestigen</legend><strong>{chosen.at.replace("T", " ")} · {PREDIS_CHANNELS[chosen.channel]}</strong><label>Wat heb je gecontroleerd?<select value={state} onChange={e => { setState(e.target.value); setConfirmed(false); }}><option value="scheduled">Dit moment is ingepland in Predis</option><option value="published">Dit bericht is daadwerkelijk geplaatst</option><option value="pending">Terug naar ‘Nog overzetten’</option></select></label><label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik heb dit zelf gecontroleerd voor de juiste vestiging, datum en het juiste kanaal.</label><button type="button" className="secondaryButton" disabled={!confirmed || dirty} onClick={() => run("Status bewaren…", async () => { const next = await request("confirm", { entryKey: chosen.key, state, confirmed }); accept(next); if (mounted.current) setMessage("Je handmatige bevestiging is bewaard. Niet automatisch door Predis gecontroleerd."); })}>Handmatige bevestiging bewaren</button></fieldset>}
     {chosen && dirty && <p>Bewaar eerst de voorbereiding voordat je een status bevestigt.</p>}
     <small>Verwijderen of aanpassen in Horeca OS wijzigt niets in Predis. Pas een reeds ingepland bericht daar ook zelf aan. Bevestigingen worden nooit automatisch ‘Geplaatst’ wanneer de tijd verstrijkt.</small>
+    </div>
+    </details>
   </section>;
 }

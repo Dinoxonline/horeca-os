@@ -102,19 +102,47 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  assert.equal(calls.length,0);
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true})));assert.deepEqual(calls,['GET']);
  const content=allText(r.root);
- assert.match(content,/geen nieuw AI-ontwerp/);
- assert.ok(content.indexOf('2. Eigen ontwerp overzetten') < content.indexOf('3. Gewenste publicatiemomenten'));
- assert.match(content,/foto en tekst worden niet automatisch meegestuurd/);
- assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen voor eigen ontwerp').props.href,'https://app.predis.ai/app/new_post/create');
+ assert.match(content,/Geen nieuw AI-ontwerp/);
+ assert.ok(content.indexOf('1. Bericht maken') < content.indexOf('2. Klaarzetten'));
+ assert.ok(content.indexOf('2. Klaarzetten') < content.indexOf('3. Verder in Predis'));
+ assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
+ assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen ↗').props.href,'https://app.predis.ai/app/new_post/create');
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true,session:{access_token:'two'}})));
  assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.equal(calls.length,1);
- const save=()=>r.root.findAllByType('button').find(b=>allText(b)==='Voorbereiding bewaren in Horeca OS').props.onClick();
+ const save=()=>r.root.findAllByType('button').find(b=>allText(b)==='Bericht bewaren').props.onClick();
  let pending;await React.act(async()=>{pending=save();save();});assert.equal(calls.length,2);
  await React.act(async()=>{release({ok:false,json:async()=>({error:'Conflict'})});await pending;});assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.match(allText(r.root.findByProps({role:'alert'})),/Conflict/);
  await React.act(async()=>{pending=save();});
  await React.act(async()=>{release({ok:true,json:async()=>({saved:{revision:'new',draft:lastBody.draft,confirmations:{}}})});await pending;});
  assert.match(allText(r.root),/Bewaard in Horeca OS/);assert.doesNotMatch(allText(r.root),/Niet-bewaarde wijzigingen/);
+ }finally{await React.act(async()=>r.unmount());delete global.window;}
+});
+test('simple preparation shows selectable images immediately, keeps saved-only media and hides advanced actions',async()=>{
+ fakeWindow();const calls=[];
+ const original={revision:'r1',draft:{...draft,entries:[{...draft.entries[0],key:'existing'}]},confirmations:{}};
+ global.fetch=async(url,opts)=>{calls.push(opts.method);return Response.json({saved:opts.method==='GET'?original:{...original,revision:'r2',draft:JSON.parse(opts.body).draft}});};
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ const event={...item,media:[...item.media,{kind:'image',url:'https://example.com/new.jpg',label:'New photo'}]};
+ let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item:event,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true}));});
+ try{
+   const collapsedAncestor=node=>{for(let p=node.parent;p;p=p.parent)if(p.type==='details'&&!p.props.open)return true;return false;};
+   const button=label=>r.root.findAllByType('button').find(b=>allText(b)===label);
+   const options=r.root.findByType('details');assert.equal(options.props.open,undefined);assert.equal(allText(options.findByType('summary')),'Meer opties');
+   assert.equal(r.root.findAllByType('img').length,2);assert.ok(r.root.findAllByType('img').every(n=>!collapsedAncestor(n)));
+   assert.ok(collapsedAncestor(r.root.findByType('table')));assert.ok(collapsedAncestor(button('Bewaarde versie laden')));
+   const visibleButtons=r.root.findAllByType('button').filter(n=>!collapsedAncestor(n));
+   assert.equal(visibleButtons.filter(n=>/bewaren/i.test(allText(n))).length,1);
+   assert.equal(visibleButtons.filter(n=>/kopiëren/i.test(allText(n))).length,1);
+   assert.equal(button('Bericht bewaren').props.disabled,true);
+   await React.act(async()=>r.root.findByProps({'aria-label':'Kies New photo'}).props.onClick());
+   assert.equal(r.root.findByProps({'aria-label':'Deselecteer New photo'}).props['aria-pressed'],true);
+   await React.act(async()=>r.root.findByProps({'aria-label':'Deselecteer Foto'}).props.onClick());
+   await React.act(async()=>button('Bericht bewaren').props.onClick());
+   assert.deepEqual(calls,['GET','POST']);assert.match(allText(r.root),/Bewaard in Horeca OS/);
+   assert.match(allText(r.root.findByType('table')),/Google Business Profile/);
+   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://example.com/new.jpg').length,1);
+   assert.equal(r.root.findAllByProps({'aria-label':'Kies Foto'}).length,0);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 test('Predis starts with a neutral choice; manual and all AI formats require explicit selection',async()=>{

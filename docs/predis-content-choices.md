@@ -18,3 +18,9 @@ Sources:
 - https://predis.ai/developers/docs/predis-sdk/SDKPricing/
 
 Tests cover the neutral default, all three initial AI formats, unsaved-input confirmation, no paid request on choice, manual handoff order, and preservation of existing save/confirmation behaviour.
+
+## Simplified own-media preparation
+
+The manual screen has three primary steps: Bericht maken, Klaarzetten, Verder in Predis. Media thumbnails are immediately visible and toggle their selection with an accessible pressed state. Saved/generated assets absent from the current event sources remain available until deselected. Only one save button and one caption-copy button appear in the default view. File-opening links are grouped with the explicit manual Predis handoff.
+
+The initially collapsed Meer opties section retains reload/reset, planning, bulk copy and per-channel manual confirmations. Existing entries are not cleared by saving the simpler form. No scheduling, publishing or AI-generation requests have been added. Existing load-error, concurrent-edit and unsaved-input safeguards remain in place.
