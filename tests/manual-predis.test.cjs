@@ -188,7 +188,8 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    assert.equal(button('Direct publiceren — nog niet beschikbaar'),undefined);
    assert.match(allText(r.root),/nu publiceren/);
    assert.match(allText(r.root),/Je hoeft hier geen moment toe te voegen/);
-   assert.match(allText(r.root),/Staat je bericht daar al klaar/);
+   assert.match(allText(r.root),/Wil je zien wat al is ingepland/);
+   assert.match(allText(r.root),/Predis-scherm met keuzes/);
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
    await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
@@ -230,11 +231,12 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  const content=allText(r.root);
  assert.match(content,/Geen nieuw AI-ontwerp/);
  assert.ok(content.includes('1. Bericht voorbereiden'));
- assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Bericht maken en publiceren in Predis'));
- assert.ok(content.indexOf('2. Bericht maken en publiceren in Predis') < content.indexOf('3. Bevestigen na Predis'));
+ assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. In Predis bekijken, maken en plannen'));
+ assert.ok(content.indexOf('2. In Predis bekijken, maken en plannen') < content.indexOf('3. Bevestigen na Predis'));
  assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);
  assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
- assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen ↗').props.href,'https://app.predis.ai/app/new_post/create');
+ assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis-planning bekijken ↗').props.href,'https://app.predis.ai/app/content_calendar');
+ assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Nieuw bericht in Predis starten ↗').props.href,'https://app.predis.ai/app/new_post/create');
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true,session:{access_token:'two'}})));
  assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.equal(calls.length,1);
@@ -269,7 +271,7 @@ test('simple preparation shows selectable images immediately, keeps saved-only m
    await React.act(async()=>button('Concept bewaren').props.onClick());
    assert.deepEqual(calls,['GET','POST']);assert.match(allText(r.root),/Concept bewaard in Horeca OS/);
    assert.match(allText(r.root.findByType('table')),/Google Business Profile/);
-   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://example.com/new.jpg').length,1);
+   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://example.com/new.jpg').length,0);
    assert.equal(r.root.findAllByProps({'aria-label':'Kies Foto'}).length,0);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });

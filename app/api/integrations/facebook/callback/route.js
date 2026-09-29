@@ -10,6 +10,7 @@ const SUPPORTED_SCOPES = [
   "pages_manage_engagement",
   "pages_manage_posts",
   "business_management",
+  "ads_management",
 ];
 
 export async function GET(request) {

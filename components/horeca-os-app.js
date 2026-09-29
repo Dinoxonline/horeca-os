@@ -644,6 +644,9 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [dailyBudget, setDailyBudget] = useState("");
   const [campaignEnd, setCampaignEnd] = useState("");
   const [audience, setAudience] = useState("");
+  const [metaObjective, setMetaObjective] = useState("traffic");
+  const [metaLocation, setMetaLocation] = useState("");
+  const [metaRadiusKm, setMetaRadiusKm] = useState("25");
   const [spendConfirmed, setSpendConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
@@ -663,6 +666,7 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
   const [campaignImages, setCampaignImages] = useState({});
   const [uploadingImage, setUploadingImage] = useState("");
   const [draggingImageProfile, setDraggingImageProfile] = useState("");
+  const [startingMetaCampaignId, setStartingMetaCampaignId] = useState("");
 
   const campaignImageProfiles = [
     { key: "square", label: "Vierkant", channels: "Facebook, Instagram-feed en Google", width: 1080, height: 1080, ratio: "1:1" },
@@ -1160,8 +1164,8 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       setStatus("Vul de bron, campagnenaam, planning en minimaal één doelkanaal in.");
       return;
     }
-    if (metaAds && (!dailyBudget || !campaignEnd || !audience.trim() || !spendConfirmed)) {
-      setStatus("Bevestig voor Meta Ads eerst budget, einddatum en doelgroep.");
+    if (metaAds && (!dailyBudget || Number(dailyBudget) < 2 || !campaignEnd || !metaLocation.trim() || !spendConfirmed)) {
+      setStatus("Voor Meta Ads zijn minimaal € 2,00 per dag, een einddatum, plaats en controle nodig.");
       return;
     }
     setSaving(true);
@@ -1260,7 +1264,10 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
         enabled: true,
         daily_budget_eur: Number(dailyBudget),
         end_date: campaignEnd,
-        audience: audience.trim(),
+        audience_note: audience.trim(),
+        objective: metaObjective,
+        location_query: metaLocation.trim(),
+        radius_km: Math.max(1, Math.min(80, Number(metaRadiusKm) || 25)),
         spending_confirmed: true,
         state: "approval_required",
       } : { enabled: false },
@@ -1308,6 +1315,50 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       ? `Nieuwe kanalen zijn ingepland. ${duplicateChannels.length} kanaal/kanalen waren al geplaatst of gepland en zijn overgeslagen.`
       : "Campagne centraal klaargezet. Er is nog niets betaald of gepubliceerd zonder de vereiste kanaalbevestiging.");
     setSaving(false);
+  }
+
+  async function createMetaCampaign(campaign, distribution) {
+    const settings = distribution.meta_ads || {};
+    const startAt = campaign.scheduled_for;
+    const endAt = settings.end_date ? `${settings.end_date}T23:59` : "";
+    const startTime = new Date(startAt || "");
+    const endTime = new Date(endAt);
+    const dailyBudget = Number(settings.daily_budget_eur || 0);
+    if (!settings.enabled || !startAt || !settings.location_query || !Number.isFinite(dailyBudget) || dailyBudget < 2 || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
+      setStatus("Deze Meta-campagne mist een geldig budget, moment, einddatum of plaats. Bewerk eerst het campagneplan.");
+      return;
+    }
+    const days = Math.max(1, Math.ceil((endTime.getTime() - startTime.getTime()) / 86400000));
+    const maximum = dailyBudget * days;
+    if (!window.confirm(`Maak deze Meta-campagne als gepauzeerd concept aan?\n\nDagbudget: € ${dailyBudget.toFixed(2)}\nGeschatte bovengrens: € ${maximum.toFixed(2)}\nLooptijd: ${days} dag${days === 1 ? "" : "en"}\n\nDe campagne start niet automatisch. Controleer hem eerst in Meta Ads Manager.`)) return;
+    setStartingMetaCampaignId(campaign.id);
+    setStatus("");
+    try {
+      const response = await fetch("/api/integrations/facebook/ads", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId, businessId: selectedBusinessId, campaignId: campaign.id,
+          settings: {
+            campaignName: `${distribution.source_preview?.title || campaign.body || "Campagne"} · Meta`,
+            objective: settings.objective || "traffic", dailyBudget, startAt, endAt,
+            locationQuery: settings.location_query, radiusKm: Number(settings.radius_km || 25),
+            callToAction: distribution.source_type?.includes("event") ? "tickets" : "learn_more",
+            launchStatus: "paused",
+          },
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "De Meta-campagne kon niet worden aangemaakt.");
+      setCampaigns((current) => current.map((item) => item.id === campaign.id
+        ? { ...item, media: (item.media || []).map((entry) => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) }
+        : item));
+      setStatus("De Meta-campagne staat gepauzeerd klaar. Controleer hem eerst in Meta Ads Manager.");
+    } catch (error) {
+      setStatus(error.message || "De Meta-campagne kon niet worden aangemaakt.");
+    } finally {
+      setStartingMetaCampaignId("");
+    }
   }
 
   return <section className="panel formPanel" style={{ marginBottom: "22px" }}>
@@ -1546,10 +1597,14 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
       <fieldset className="full"><legend>Betaalde campagne via Meta</legend>
         <label className="checkOption"><input type="checkbox" checked={metaAds} onChange={(event) => { setMetaAds(event.target.checked); setSpendConfirmed(false); }} />Facebook en Instagram betaald promoten</label>
         {metaAds && <div className="formGrid" style={{ marginTop: "12px" }}>
-          <label>Dagbudget in euro<input type="number" min="1" step="0.01" value={dailyBudget} onChange={(event) => setDailyBudget(event.target.value)} required /></label>
+          <label>Dagbudget in euro<input type="number" min="2" step="0.01" value={dailyBudget} onChange={(event) => setDailyBudget(event.target.value)} required /></label>
           <label>Einddatum<input type="date" value={campaignEnd} onChange={(event) => setCampaignEnd(event.target.value)} required /></label>
-          <label className="full">Doelgroep<input value={audience} onChange={(event) => setAudience(event.target.value)} placeholder="Plaats, leeftijd, interesses en bestaande doelgroep" required /></label>
-          <label className="checkOption full"><input type="checkbox" checked={spendConfirmed} onChange={(event) => setSpendConfirmed(event.target.checked)} />Ik heb budget, looptijd en doelgroep gecontroleerd. Definitief activeren krijgt nog één laatste bevestiging.</label>
+          <label>Campagnedoel<select value={metaObjective} onChange={(event) => setMetaObjective(event.target.value)}><option value="traffic">Meer website- of ticketbezoeken</option><option value="engagement">Meer bereik en betrokkenheid</option></select></label>
+          <label>Plaats<input value={metaLocation} onChange={(event) => setMetaLocation(event.target.value)} placeholder="Bijvoorbeeld: Zoetermeer" required /></label>
+          <label>Straal in km<input type="number" min="1" max="80" step="1" value={metaRadiusKm} onChange={(event) => setMetaRadiusKm(event.target.value)} required /></label>
+          <label className="full">Doelgroepnotitie (alleen voor jezelf)<input value={audience} onChange={(event) => setAudience(event.target.value)} placeholder="Bijvoorbeeld: gasten uit de buurt die van live muziek houden" /></label>
+          <small className="full">Meta gebruikt hier plaats en straal. Leeftijd en interesses stel je later zelf in Meta Ads Manager in.</small>
+          <label className="checkOption full"><input type="checkbox" checked={spendConfirmed} onChange={(event) => setSpendConfirmed(event.target.checked)} />Ik heb budget, looptijd, plaats en straal gecontroleerd. De campagne wordt daarna alleen gepauzeerd aangemaakt.</label>
         </div>}
       </fieldset>
       {status && <div className="notice full">{status}</div>}
@@ -1640,7 +1695,17 @@ function CampaignDistributor({ workspaceId, businessId, businesses, session }) {
                   </div>
                 </div>;
               })}
-              {distribution.meta_ads?.enabled && <span className="pill">Meta Ads: € {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag · goedkeuring nodig</span>}
+              {distribution.meta_ads?.enabled && (() => {
+                const paidCampaign = distribution.facebook_paid_campaign || {};
+                const created = ["active", "paused"].includes(paidCampaign.status);
+                return <div className="factorRow" style={{ width: "100%", padding: "10px 12px", alignItems: "center" }}>
+                  <div><strong>Meta-campagne · Facebook en Instagram</strong><small>€ {Number(distribution.meta_ads.daily_budget_eur || 0).toFixed(2)} per dag · {distribution.meta_ads.location_query || "plaats ontbreekt"}</small></div>
+                  <div className="formActions">
+                    {created && paidCampaign.manage_url ? <a className="secondaryButton" href={paidCampaign.manage_url} target="_blank" rel="noreferrer">In Meta bekijken</a> : <button type="button" className="secondaryButton" disabled={startingMetaCampaignId === campaign.id} onClick={() => createMetaCampaign(campaign, distribution)}>{startingMetaCampaignId === campaign.id ? "Meta-campagne maken..." : "Meta-campagne als concept maken"}</button>}
+                    <span className="pill">{created ? (paidCampaign.status === "paused" ? "Gepauzeerd in Meta" : "Actief in Meta") : "Nog niet aangemaakt"}</span>
+                  </div>
+                </div>;
+              })()}
             </div>
           </div>
           <span className="status scheduled">{campaign.status === "scheduled" ? "Ingepland" : campaign.status}</span>

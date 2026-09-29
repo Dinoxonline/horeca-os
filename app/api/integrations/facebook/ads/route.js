@@ -18,7 +18,7 @@ export async function POST(request) {
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle(),
     admin.from("integration_accounts").select("external_account_id,display_name")
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook").maybeSingle(),
-    admin.from("social_content_items").select("id,media").eq("id", campaignId)
+    admin.from("social_content_items").select("id,body,media").eq("id", campaignId)
       .eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle(),
   ]);
   if (!adAccount) return jsonError("Koppel eerst het Meta-advertentieaccount van deze vestiging.", 409);
@@ -30,9 +30,8 @@ export async function POST(request) {
   if (["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) {
     return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
   }
-  if (distribution.facebook_event_delivery?.status !== "confirmed") return jsonError("Plaats en koppel eerst het Facebook-evenement.", 409);
   const link = distribution.source_url || distribution.common?.website_url;
-  if (!link) return jsonError("De Eventin-ticketlink ontbreekt.", 409);
+  if (!link) return jsonError("De link van de campagne ontbreekt.", 409);
 
   const budgetEuros = Number(settings?.dailyBudget || 0);
   const budgetType = settings?.budgetType === "lifetime" ? "lifetime" : "daily";
@@ -57,10 +56,11 @@ export async function POST(request) {
     const token = decryptMetaToken(credential);
     const adAccountId = String(adAccount.external_account_id).startsWith("act_")
       ? String(adAccount.external_account_id) : `act_${adAccount.external_account_id}`;
-    const title = distribution.common?.title || "Evenement";
+    const title = distribution.common?.title || distribution.source_preview?.title || String(campaign.body || "").slice(0, 100) || "Campagne";
     const campaignName = String(settings?.campaignName || `${title} · ${adAccount.display_name}`).trim();
-    const message = distribution.channel_payloads?.facebook?.text || distribution.common?.short_description || distribution.common?.description || title;
-    const picture = distribution.common?.images?.landscape?.url || distribution.channel_payloads?.facebook?.image_url || distribution.common?.image_url || "";
+    const message = distribution.channel_payloads?.facebook?.text || distribution.common?.short_description || distribution.common?.description || campaign.body || title;
+    const campaignAssets = Array.isArray(distribution.campaign_assets) ? distribution.campaign_assets : [];
+    const picture = distribution.common?.images?.landscape?.url || distribution.channel_payloads?.facebook?.image_url || distribution.common?.image_url || campaignAssets.find((asset) => asset?.profile === "landscape")?.url || campaignAssets.find((asset) => asset?.profile === "square")?.url || campaignAssets.find((asset) => asset?.url)?.url || distribution.source_preview?.image || "";
     const objective = settings?.objective === "engagement" ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC";
     const campaignResult = await graphPost(`${adAccountId}/campaigns`, token, {
       name: campaignName,

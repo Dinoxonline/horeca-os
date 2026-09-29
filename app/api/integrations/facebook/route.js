@@ -9,6 +9,7 @@ const SCOPES = [
   "pages_manage_engagement",
   "pages_manage_posts",
   "business_management",
+  "ads_management",
 ];
 
 export async function GET(request) {
@@ -49,6 +50,7 @@ export async function POST(request) {
     redirect_uri: redirectUri,
     response_type: "code",
     scope: SCOPES.join(","),
+    auth_type: "rerequest",
     state,
   }).toString();
   return NextResponse.json({ authorizationUrl: authorization.toString() });

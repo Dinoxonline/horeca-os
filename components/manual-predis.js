@@ -113,6 +113,27 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     try { await navigator.clipboard.writeText(value); setFailed(false); setMessage(`${label} gekopieerd. Er is niets ingepland of gepubliceerd.`); }
     catch { setFailed(true); setMessage("Kopiëren is geblokkeerd. Selecteer de tekst en gebruik Ctrl+C."); }
   }
+  async function downloadAsset(asset, index) {
+    const extension = asset.type === "video" ? "mp4" : "jpg";
+    try {
+      const response = await fetch(asset.url, { cache: "no-store" });
+      if (!response.ok) throw new Error("Bestand niet beschikbaar");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `horeca-os-${item.id || "bericht"}-${index + 1}.${extension}`;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      setFailed(false);
+      setMessage(`${asset.label} is opgeslagen. Kies dit bestand straks zelf in Predis.`);
+    } catch {
+      setFailed(true);
+      setMessage(`${asset.label} kon niet automatisch worden opgeslagen. Probeer het bestand opnieuw te openen vanuit de voorbereiding.`);
+    }
+  }
   function save() {
     let normalized;
     try { normalized = validateManualDraft(draft); } catch (e) { setFailed(true); setMessage(e.message); return; }
@@ -159,7 +180,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     </fieldset>
     <fieldset disabled={!loaded || !!busy} className={styles.fields} aria-label="Publicatiemomenten kiezen">
       <legend>Gewenste datums bij je concept (optioneel)</legend>
-      <small>Wil je meteen publiceren? Je hoeft hier geen moment toe te voegen. Ga verder bij stap 2: je bericht maken en publiceren in Predis.</small>
+      <small>Wil je meteen publiceren? Je hoeft hier geen moment toe te voegen. Ga verder bij stap 2: in Predis bekijken, maken en plannen.</small>
       <div className={styles.choices} role="group" aria-label="Kanalen">{Object.entries(PREDIS_CHANNELS).map(([key, name]) => <label key={key}><input type="checkbox" checked={channels.includes(key)} onChange={() => setChannels(channels.includes(key) ? channels.filter(c => c !== key) : [...channels, key])} />{name}</label>)}</div>
       <div className={styles.grid}>
         <label>Planning kiezen<select value={mode} onChange={e => { setMode(e.target.value); setPlanningFeedback(null); }}><option value="single">Losse datum</option><option value="weekly">Elke week op vaste dagen</option><option value="recorded">Al geplaatste post vastleggen</option></select></label>
@@ -193,13 +214,14 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       {loaded && !chosen && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
     </div>
     <div className={styles.step}>
-      <strong>2. Bericht maken en publiceren in Predis</strong>
-      <p>Open Predis en kies <b>{businessName}</b>. Staat je bericht daar al klaar? Open dat bericht en controleer de foto en tekst. Zo voorkom je een dubbel bericht.</p>
-      <p>Voor een nieuw bericht met je eigen foto: kies ‘Heb je al een ontwerp? Uploaden en inplannen’, upload het bestand hieronder en plak je tekst.</p>
-      {!!draft.assets.length && <div className={styles.downloads}>{draft.assets.map((a, i) => <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer">{i + 1}. {a.label} — openen / bewaren ↗</a>)}</div>}
+      <strong>2. In Predis bekijken, maken en plannen</strong>
+      <p>Wil je zien wat al is ingepland? Open de planning in Predis. Dat overzicht staat in Predis en wordt niet automatisch in Horeca OS ingelezen.</p>
+      <p>Wil je een nieuw bericht maken? De knop hieronder opent eerst het Predis-scherm met keuzes. Kies daar ‘Heb je al een ontwerp? Uploaden en inplannen’, upload je opgeslagen bestand en plak je tekst.</p>
+      {!!draft.assets.length && <div className={styles.downloads}><strong>Bestanden om zelf te uploaden</strong>{draft.assets.map((a, i) => <button key={a.url} type="button" className="secondaryButton" disabled={!!busy} onClick={() => downloadAsset(a, i)}>{i + 1}. {a.label} opslaan</button>)}</div>}
       <div className={styles.actions}>
         <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
-        <a className="primaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen ↗</a>
+        <a className="secondaryButton" href="https://app.predis.ai/app/content_calendar" target="_blank" rel="noopener noreferrer">Predis-planning bekijken ↗</a>
+        <a className="primaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Nieuw bericht in Predis starten ↗</a>
       </div>
       <p>Kies de juiste sociale kanalen en bevestig in Predis zelf: <b>nu publiceren</b> of <b>inplannen voor later</b>.</p>
       <small>Foto en tekst worden niet automatisch meegestuurd. Inplannen en publiceren doe je zelf in Predis.</small>
