@@ -2062,7 +2062,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const response = await fetch("/api/integrations/facebook", {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId, businessId: item.business_id || selectedBusiness?.id || businessId }),
+        body: JSON.stringify({ workspaceId, businessId: item.business_id || selectedBusiness?.id || businessId, purpose: "ads" }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Het advertentieaccount kon niet worden gekoppeld.");

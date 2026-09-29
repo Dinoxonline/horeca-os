@@ -548,6 +548,7 @@ function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMe
 function MetaCampaignEditor({ workspaceId, session, item, distribution, business, enabled, onSaved }) {
   const [adAccount, setAdAccount] = useState(undefined);
   const [loadingAccount, setLoadingAccount] = useState(false);
+  const [adsConfiguration, setAdsConfiguration] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [draft, setDraft] = useState({});
@@ -564,6 +565,8 @@ function MetaCampaignEditor({ workspaceId, session, item, distribution, business
       const response = await fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "De Meta-koppeling kon niet worden gecontroleerd.");
+      if (result.accountsWarning) throw new Error(result.accountsWarning);
+      setAdsConfiguration(result.adsConfiguration || null);
       setAdAccount((result.adAccounts || []).find((account) => String(account.business_id) === String(item.business_id)) || null);
     } catch (loadError) {
       setError(loadError.message || "De Meta-koppeling kon niet worden gecontroleerd.");
@@ -576,7 +579,7 @@ function MetaCampaignEditor({ workspaceId, session, item, distribution, business
   async function connectAdAccount() {
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/integrations/facebook", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id }) });
+      const response = await fetch("/api/integrations/facebook", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id, purpose: "ads" }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.authorizationUrl) throw new Error(result.error || "Het Meta-advertentieaccount kon niet worden gekoppeld.");
       window.location.assign(result.authorizationUrl);
@@ -621,7 +624,7 @@ function MetaCampaignEditor({ workspaceId, session, item, distribution, business
 
   if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><p><strong>{paidCampaign.status === "active" ? "Meta-campagne is actief." : "Meta-campagne staat gepauzeerd."}</strong> {paidCampaign.daily_budget ? `Dagbudget € ${Number(paidCampaign.daily_budget).toFixed(2)}.` : ""}</p>{paidCampaign.manage_url && <a className="secondaryButton" href={paidCampaign.manage_url} target="_blank" rel="noreferrer">In Meta bekijken ↗</a>}</section>;
   if (loadingAccount || adAccount === undefined) return <p className="marketingMetaCampaign"><strong>Meta-advertentieaccount wordt gecontroleerd…</strong></p>;
-  if (!adAccount) return <section className="marketingMetaCampaign"><p>Verbind eenmalig het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong>. De gewone Facebook-koppeling blijft hetzelfde.</p>{error && <p role="alert">{error}</p>}<button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></section>;
+  if (!adAccount || !adAccount.granted_scopes?.includes("ads_management")) return <section className="marketingMetaCampaign">{adsConfiguration?.ready ? <><p>Verbind het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong> met toestemming voor betaalde campagnes.</p><button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></> : <><p>{adsConfiguration?.message || "De advertentiekoppeling kon niet worden gecontroleerd. Probeer opnieuw."}</p>{adsConfiguration?.setupUrl && <a className="secondaryButton" href={adsConfiguration.setupUrl} target="_blank" rel="noreferrer">Meta-appinstellingen openen ↗</a>}<button type="button" className="secondaryButton" disabled={loadingAccount} onClick={loadAdAccount}>Koppeling opnieuw controleren</button></>}{error && <p role="alert">{error}</p>}</section>;
   return <section className="marketingMetaCampaign" aria-label="Meta-campagne instellen"><p>De advertentie komt op Facebook en Instagram. Hij wordt als gepauzeerd concept aangemaakt en start dus niet vanzelf.</p><div className="marketingMetaCampaignFields"><label>Doel<select value={draft.objective || "traffic"} disabled={busy} onChange={(event) => updateDraft("objective", event.target.value)}><option value="traffic">Meer website- en ticketbezoeken</option><option value="engagement">Meer reacties en betrokkenheid</option></select></label><label>Dagbudget (€)<input type="number" min="2" step="1" value={draft.dailyBudget || 10} disabled={busy} onChange={(event) => updateDraft("dailyBudget", event.target.value)} /></label><label>Plaats<input value={draft.locationQuery ?? distribution.common?.location ?? ""} disabled={busy} placeholder="Bijvoorbeeld Zoetermeer" onChange={(event) => updateDraft("locationQuery", event.target.value)} /></label><label>Straal (km)<input type="number" min="1" max="80" value={draft.radiusKm || 25} disabled={busy} onChange={(event) => updateDraft("radiusKm", event.target.value)} /></label><label>Start<input type="datetime-local" value={draft.startAt || defaultStart} disabled={busy} onChange={(event) => updateDraft("startAt", event.target.value)} /></label><label>Einde<input type="datetime-local" value={draft.endAt || defaultEnd} disabled={busy} onChange={(event) => updateDraft("endAt", event.target.value)} /></label></div>{error && <p className="marketingMetaCampaignError" role="alert">{error}</p>}<button type="button" className="primaryButton" disabled={busy} onClick={createCampaign}>{busy ? "Concept maken…" : "Meta-campagne als concept maken"}</button></section>;
 }
 

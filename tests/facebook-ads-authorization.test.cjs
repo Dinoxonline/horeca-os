@@ -2,17 +2,66 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
+const swc = require("next/dist/build/swc");
 
 const root = path.resolve(__dirname, "..");
 
-test("the existing Meta connection explicitly requests and retains the paid-campaign permission", () => {
-  const authorize = fs.readFileSync(path.join(root, "app/api/integrations/facebook/route.js"), "utf8");
-  const callback = fs.readFileSync(path.join(root, "app/api/integrations/facebook/callback/route.js"), "utf8");
+function compile(relative, mocks = {}) {
+  const { code } = swc.transformSync(fs.readFileSync(path.join(root, relative), "utf8"), {
+    filename: relative, jsc: { parser: { syntax: "ecmascript", jsx: true }, target: "es2022" }, module: { type: "commonjs" },
+  });
+  const module = { exports: {} };
+  vm.runInThisContext("(function(require,module,exports){" + code + "\n})", { filename: relative })((name) => mocks[name] || require(name), module, module.exports);
+  return module.exports;
+}
 
-  assert.match(authorize, /"ads_management"/);
-  assert.match(authorize, /auth_type:\s*"rerequest"/);
-  assert.match(callback, /"ads_management"/);
-  assert.match(callback, /grantedScopes\.includes\("ads_management"\)/);
+test("OAuth keeps page login working and enables advertising only after app setup and explicit selection", async () => {
+  await swc.loadBindings();
+  const envNames = ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_STATE_SECRET", "META_TOKEN_ENCRYPTION_KEY", "META_ADS_ENABLED"];
+  const original = Object.fromEntries(envNames.map(name => [name, process.env[name]]));
+  for (const name of envNames) process.env[name] = "test-only";
+  delete process.env.META_ADS_ENABLED;
+  try {
+    const oauth = compile("lib/meta-oauth.js");
+    let role = "owner";
+    const query = { select() { return this; }, eq() { return this; }, then(resolve) { return Promise.resolve({ data: [{ business_id: "venue", role: { role_key: role } }] }).then(resolve); } };
+    const route = compile("app/api/integrations/facebook/route.js", {
+      "../../../../lib/meta-oauth": oauth,
+      "../../../../lib/server-supabase": { createAdminSupabase: () => ({}), createUserSupabase: () => ({ auth: { getUser: async () => ({ data: { user: { id: "user" } } }) }, from: () => query }) },
+    });
+    const request = (purpose, token = "test-token") => new Request("https://horeca-os-le-club.vercel.app/api/integrations/facebook", {
+      method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ workspaceId: "workspace", businessId: "venue", ...(purpose ? { purpose } : {}) }),
+    });
+    const pageResponse = await route.POST(request());
+    assert.equal(pageResponse.status, 200);
+    const pageUrl = new URL((await pageResponse.json()).authorizationUrl);
+    assert.ok(pageUrl.searchParams.get("scope").includes("pages_manage_posts"));
+    assert.ok(!pageUrl.searchParams.get("scope").includes("ads_management"));
+    assert.equal(oauth.readMetaState(pageUrl.searchParams.get("state")).purpose, "pages");
+
+    const blocked = await route.POST(request("ads"));
+    assert.equal(blocked.status, 409);
+    const blockedBody = await blocked.json();
+    assert.equal(blockedBody.code, "META_ADS_SETUP_REQUIRED");
+    assert.equal(blockedBody.authorizationUrl, undefined);
+    assert.match(blockedBody.error, /Marketing API/);
+
+    process.env.META_ADS_ENABLED = "true";
+    const adsResponse = await route.POST(request("ads"));
+    assert.equal(adsResponse.status, 200);
+    const adsUrl = new URL((await adsResponse.json()).authorizationUrl);
+    assert.ok(adsUrl.searchParams.get("scope").split(",").includes("ads_management"));
+    assert.equal(oauth.readMetaState(adsUrl.searchParams.get("state")).purpose, "ads");
+    const normalAfterEnable = new URL((await (await route.POST(request())).json()).authorizationUrl);
+    assert.ok(!normalAfterEnable.searchParams.get("scope").includes("ads_management"));
+    assert.equal((await route.POST(request("ads", ""))).status, 401);
+    role = "staff";
+    assert.equal((await route.POST(request("ads"))).status, 403);
+  } finally {
+    for (const name of envNames) { if (original[name] === undefined) delete process.env[name]; else process.env[name] = original[name]; }
+  }
 });
 
 test("a saved marketing campaign can create a paused Meta draft without requiring a Facebook event", () => {

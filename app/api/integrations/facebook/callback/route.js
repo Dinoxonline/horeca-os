@@ -57,6 +57,9 @@ export async function GET(request) {
     const grantedScopes = (permissionsResult.data || [])
       .filter((item) => item.status === "granted" && SUPPORTED_SCOPES.includes(item.permission))
       .map((item) => item.permission);
+    if (state.purpose === "ads" && !grantedScopes.includes("ads_management")) {
+      throw new Error("Meta heeft de advertentietoestemming niet toegekend. Controleer eerst Marketing API en ads_management bij de Meta-appinstellingen.");
+    }
     if (!grantedScopes.includes("pages_manage_engagement")) {
       throw new Error("Facebook heeft het recht om op reacties te antwoorden nog niet toegekend.");
     }
@@ -172,7 +175,7 @@ export async function GET(request) {
     }, { onConflict: "account_id" });
     if (credentialError) throw new Error("Het Facebook-token kon niet veilig worden opgeslagen.");
 
-    if (grantedScopes.includes("ads_management")) {
+    if (state.purpose === "ads" && grantedScopes.includes("ads_management")) {
       const adsUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me/adaccounts`);
       adsUrl.search = new URLSearchParams({
         fields: "id,account_id,name,account_status,currency,timezone_name,business{id,name}",

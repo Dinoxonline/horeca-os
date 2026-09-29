@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../lib/server-supabase";
-import { createMetaState, getFacebookConfiguration, getFacebookRedirectUri, getSafeReturnOrigin } from "../../../../lib/meta-oauth";
+import { createMetaState, getFacebookConfiguration, getFacebookAdsConfiguration, getFacebookRedirectUri, getSafeReturnOrigin } from "../../../../lib/meta-oauth";
 
 const SCOPES = [
   "pages_show_list",
@@ -9,7 +9,6 @@ const SCOPES = [
   "pages_manage_engagement",
   "pages_manage_posts",
   "business_management",
-  "ads_management",
 ];
 
 export async function GET(request) {
@@ -22,6 +21,7 @@ export async function GET(request) {
     accounts: error ? [] : (data || []).filter((account) => account.provider === "facebook"),
     adAccounts: error ? [] : (data || []).filter((account) => account.provider === "facebook_ads"),
     configuration: getFacebookConfiguration(),
+    adsConfiguration: getFacebookAdsConfiguration(),
     accountsWarning: error ? "Bestaande Facebook-koppelingen konden niet worden geladen." : null,
   });
 }
@@ -34,12 +34,17 @@ export async function POST(request) {
   if (!body.businessId) return jsonError("Kies eerst een vestiging.", 400);
   const configuration = getFacebookConfiguration();
   if (!configuration.ready) return jsonError(`De Facebook-koppeling mist serverinstellingen: ${configuration.missing.join(", ")}.`, 409);
+  const includeAds = body.purpose === "ads";
+  if (includeAds) {
+    const adsConfiguration = getFacebookAdsConfiguration();
+    if (!adsConfiguration.ready) return NextResponse.json({ error: adsConfiguration.message, code: "META_ADS_SETUP_REQUIRED", setupUrl: adsConfiguration.setupUrl }, { status: 409 });
+  }
 
   const requestOrigin = new URL(request.url).origin;
   const redirectUri = getFacebookRedirectUri();
   let state;
   try {
-    state = createMetaState({ workspaceId: context.workspaceId, businessId: body.businessId, userId: context.user.id, connection: "facebook", returnOrigin: getSafeReturnOrigin(requestOrigin) });
+    state = createMetaState({ workspaceId: context.workspaceId, businessId: body.businessId, userId: context.user.id, connection: "facebook", purpose: includeAds ? "ads" : "pages", returnOrigin: getSafeReturnOrigin(requestOrigin) });
   } catch (error) {
     return jsonError(error.message, 409);
   }
@@ -49,7 +54,7 @@ export async function POST(request) {
     client_id: process.env.META_APP_ID,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: SCOPES.join(","),
+    scope: (includeAds ? [...SCOPES, "ads_management"] : SCOPES).join(","),
     auth_type: "rerequest",
     state,
   }).toString();
