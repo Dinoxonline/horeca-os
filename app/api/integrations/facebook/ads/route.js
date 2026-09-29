@@ -1,18 +1,61 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../../lib/server-supabase";
 import { decryptMetaToken } from "../../../../../lib/meta-oauth";
+import { defaultMetaCampaign, validateMetaCampaign, metaTargeting, metaStorySpec, META_OBJECTIVES } from "../../../../../lib/meta-campaign-settings";
 
 const GRAPH_VERSION = "v25.0";
+
+async function graphRead(path, token, values = {}) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
+  url.search = new URLSearchParams(values).toString();
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(20000) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error?.error_user_msg || result.error?.message || "Meta kon de gegevens niet controleren.");
+  return result;
+}
+
+async function accountCredential(admin, workspaceId, businessId, id) {
+  const { data, error } = await admin.from("integration_credentials").select("token_ciphertext,token_iv,token_tag")
+    .eq("account_id", id).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
+  if (error || !data) throw new Error("De beveiligde advertentietoegang ontbreekt. Koppel Meta opnieuw.");
+  return decryptMetaToken(data);
+}
+
+async function searchOptions(resource, q, country, token) {
+  const values = resource === "locations"
+    ? { type: "adgeolocation", location_types: JSON.stringify(["city"]), q, country_code: country, limit: "25" }
+    : { type: "adinterest", q, limit: "25" };
+  const result = await graphRead("search", token, values);
+  return (result.data || []).map(item => resource === "locations"
+    ? { key: String(item.key || ""), name: item.name, region: item.region || "", country: item.country_code || item.country || country }
+    : { id: String(item.id || ""), name: item.name })
+    .filter(item => item.name && (resource === "locations" ? item.key : /^\d+$/.test(item.id)));
+}
+
+export async function GET(request) {
+  const params = new URL(request.url).searchParams;
+  const workspaceId = params.get("workspaceId"), businessId = params.get("businessId");
+  const context = await authorizedContext(request, workspaceId, businessId);
+  if (context.error) return context.error;
+  const resource = params.get("resource"), q = String(params.get("q") || "").trim(), country = params.get("country") || "NL";
+  if (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country)) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
+  const { data: account } = await context.admin.from("integration_accounts").select("id,granted_scopes,connection_status")
+    .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle();
+  if (account?.connection_status !== "connected" || !account.granted_scopes?.includes("ads_management")) return jsonError("Koppel eerst het advertentieaccount van deze vestiging.", 409);
+  try {
+    const token = await accountCredential(context.admin, workspaceId, businessId, account.id);
+    return NextResponse.json({ options: await searchOptions(resource, q, country, token) });
+  } catch (error) { return jsonError(error.message, 502); }
+}
 
 export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return jsonError("Ongeldig verzoek.", 400); }
-  const { workspaceId, businessId, campaignId, settings } = body || {};
+  const { workspaceId, businessId, campaignId } = body || {};
   const context = await authorizedContext(request, workspaceId, businessId);
   if (context.error) return context.error;
   const { admin } = context;
   if (!campaignId) return jsonError("Het Horeca OS-campagnedossier ontbreekt.", 400);
-
   const [{ data: adAccount }, { data: pageAccount }, { data: campaign }] = await Promise.all([
     admin.from("integration_accounts").select("id,external_account_id,display_name,granted_scopes,connection_status")
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle(),
@@ -26,119 +69,95 @@ export async function POST(request) {
   if (!adAccount.granted_scopes?.includes("ads_management")) return jsonError("Koppel Meta opnieuw met toestemming voor betaalde campagnes.", 409);
   if (!pageAccount) return jsonError("De Facebookpagina van deze vestiging is niet gekoppeld.", 409);
   if (!campaign) return jsonError("Het campagneconcept is niet gevonden.", 404);
-  const distribution = (campaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
+  const distribution = (campaign.media || []).find(entry => entry?.kind === "campaign_distribution");
   if (!distribution) return jsonError("De campagnegegevens ontbreken.", 409);
-  if (["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) {
-    return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
+  if (["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
+  // Defaults keep older campaign forms compatible. v2 sends all editable fields.
+  const incoming = body.settings || {};
+  const settings = { ...defaultMetaCampaign(campaign, distribution), ...incoming };
+  if (incoming.editorVersion !== 2) {
+    settings.objective = incoming.objective === "engagement" ? "engagement" : "traffic";
+    settings.callToAction = incoming.callToAction === "tickets" ? "tickets" : "learn_more";
+    settings.placements = incoming.placements || "automatic";
+    settings.placementFormat = "automatic";
   }
-  const link = distribution.source_url || distribution.common?.website_url;
-  if (!link) return jsonError("De link van de campagne ontbreekt.", 409);
+  const validation = validateMetaCampaign(settings);
+  if (validation) return jsonError(validation, 400);
 
-  const budgetEuros = Number(settings?.dailyBudget || 0);
-  const budgetType = settings?.budgetType === "lifetime" ? "lifetime" : "daily";
-  const startTime = new Date(settings?.startAt || "");
-  const endTime = new Date(settings?.endAt || "");
-  const ageMin = Math.max(18, Number(settings?.ageMin || 18));
-  const ageMax = Math.min(65, Number(settings?.ageMax || 65));
-  const countries = Array.isArray(settings?.countries) && settings.countries.length ? settings.countries : ["NL"];
-  const gender = settings?.gender === "men" ? [1] : settings?.gender === "women" ? [2] : [];
-  const status = settings?.launchStatus === "active" ? "ACTIVE" : "PAUSED";
-  const placements = settings?.placements === "facebook" ? ["facebook"] : [];
-  if (!Number.isFinite(budgetEuros) || budgetEuros < 2) return jsonError("Kies een budget van minimaal € 2,00.", 400);
-  if (Number.isNaN(startTime.getTime()) || startTime < new Date(Date.now() - 60000)) return jsonError("Kies een geldige startdatum.", 400);
-  if (Number.isNaN(endTime.getTime()) || endTime <= startTime) return jsonError("De einddatum moet na de startdatum liggen.", 400);
-  if (ageMax < ageMin) return jsonError("De maximumleeftijd moet gelijk aan of hoger dan de minimumleeftijd zijn.", 400);
-
-  const { data: credential } = await admin.from("integration_credentials")
-    .select("token_ciphertext,token_iv,token_tag").eq("account_id", adAccount.id).maybeSingle();
-  if (!credential) return jsonError("De beveiligde toegang tot het advertentieaccount ontbreekt. Koppel Meta opnieuw.", 409);
-
+  let createdCampaignId = null;
   try {
-    const token = decryptMetaToken(credential);
-    const adAccountId = String(adAccount.external_account_id).startsWith("act_")
-      ? String(adAccount.external_account_id) : `act_${adAccount.external_account_id}`;
-    const title = distribution.common?.title || distribution.source_preview?.title || String(campaign.body || "").slice(0, 100) || "Campagne";
-    const campaignName = String(settings?.campaignName || `${title} · ${adAccount.display_name}`).trim();
-    const message = distribution.channel_payloads?.facebook?.text || distribution.common?.short_description || distribution.common?.description || campaign.body || title;
-    const campaignAssets = Array.isArray(distribution.campaign_assets) ? distribution.campaign_assets : [];
-    const picture = distribution.common?.images?.landscape?.url || distribution.channel_payloads?.facebook?.image_url || distribution.common?.image_url || campaignAssets.find((asset) => asset?.profile === "landscape")?.url || campaignAssets.find((asset) => asset?.profile === "square")?.url || campaignAssets.find((asset) => asset?.url)?.url || distribution.source_preview?.image || "";
-    const objective = settings?.objective === "engagement" ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC";
-    const campaignResult = await graphPost(`${adAccountId}/campaigns`, token, {
-      name: campaignName,
-      objective,
-      status,
-      special_ad_categories: JSON.stringify([]),
-    });
-    let geoLocations = { countries };
-    const locationQuery = String(settings?.locationQuery || "").trim();
-    if (locationQuery) {
-      const location = await graphSearchLocation(locationQuery, countries[0], token);
-      if (!location) throw new Error(`Meta kon de doelgroepplaats “${locationQuery}” niet vinden.`);
-      geoLocations = { custom_locations: [{ key: location.key, radius: Math.max(1, Math.min(80, Number(settings?.radiusKm || 25))), distance_unit: "kilometer" }] };
+    const token = await accountCredential(admin, workspaceId, businessId, adAccount.id);
+    const adAccountId = String(adAccount.external_account_id).startsWith("act_") ? String(adAccount.external_account_id) : `act_${adAccount.external_account_id}`;
+    // Resolve currency, location and Instagram identity BEFORE creating anything.
+    const [accountInfo, pageInfo, locations] = await Promise.all([
+      graphRead(adAccountId, token, { fields: "currency" }),
+      settings.placements !== "facebook" ? graphRead(pageAccount.external_account_id, token, { fields: "instagram_business_account{id,username}" }) : Promise.resolve({}),
+      settings.locationQuery?.trim() ? searchOptions("locations", settings.locationQuery.trim(), settings.countries[0], token) : Promise.resolve([]),
+    ]);
+    if (accountInfo.currency !== "EUR") throw new Error("Deze editor gebruikt euro's. Gebruik Meta Ads Manager voor een advertentieaccount met een andere valuta.");
+    const instagram = pageInfo.instagram_business_account;
+    if (["both", "instagram"].includes(settings.placements) && !instagram?.id) throw new Error("Meta geeft geen gekoppeld Instagram-profiel voor deze Facebookpagina terug. Kies alleen Facebook of controleer de paginakoppeling in Meta.");
+    let city;
+    if (settings.locationQuery?.trim()) {
+      const matches = settings.locationKey ? locations.filter(item => item.key === String(settings.locationKey))
+        : locations.filter(item => item.name.toLocaleLowerCase() === settings.locationQuery.trim().toLocaleLowerCase());
+      if (matches.length !== 1) throw new Error("Zoek de plaats opnieuw en kies de juiste stad uit de Meta-resultaten.");
+      city = matches[0];
     }
-    const targeting = { age_min: ageMin, age_max: ageMax, geo_locations: geoLocations };
-    if (gender.length) targeting.genders = gender;
-    if (placements.length) targeting.publisher_platforms = placements;
-    const adSetBudget = budgetType === "lifetime"
-      ? { lifetime_budget: String(Math.round(budgetEuros * 100)) }
-      : { daily_budget: String(Math.round(budgetEuros * 100)) };
+    const objective = META_OBJECTIVES[settings.objective];
+    // Horeca OS only prepares paused campaigns, regardless of a supplied status.
+    const status = "PAUSED";
+    const targeting = metaTargeting(settings, city);
+    const campaignResult = await graphPost(`${adAccountId}/campaigns`, token, {
+      name: settings.campaignName.trim(), objective: objective.api, status, special_ad_categories: JSON.stringify([]),
+    });
+    createdCampaignId = String(campaignResult.id);
+    const budget = { [settings.budgetType === "lifetime" ? "lifetime_budget" : "daily_budget"]: String(Math.round(Number(settings.dailyBudget) * 100)) };
     const adSetResult = await graphPost(`${adAccountId}/adsets`, token, {
-      name: `${title} · doelgroep`, campaign_id: campaignResult.id,
-      ...adSetBudget, billing_event: "IMPRESSIONS",
-      optimization_goal: objective === "OUTCOME_ENGAGEMENT" ? "POST_ENGAGEMENT" : "LINK_CLICKS",
-      bid_strategy: "LOWEST_COST_WITHOUT_CAP", start_time: startTime.toISOString(), end_time: endTime.toISOString(),
-      targeting: JSON.stringify(targeting),
-      status,
+      name: `${settings.campaignName} · doelgroep`, campaign_id: campaignResult.id, ...budget,
+      billing_event: "IMPRESSIONS", optimization_goal: objective.optimization, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+      start_time: new Date(settings.startAt).toISOString(), end_time: new Date(settings.endAt).toISOString(),
+      targeting: JSON.stringify(targeting), status,
     });
     const creativeResult = await graphPost(`${adAccountId}/adcreatives`, token, {
-      name: `${title} · advertentie`,
-      object_story_spec: JSON.stringify({ page_id: pageAccount.external_account_id, link_data: {
-        link, message, name: title, ...(picture ? { picture } : {}),
-        call_to_action: { type: settings?.callToAction === "tickets" ? "GET_TICKETS" : "LEARN_MORE", value: { link } },
-      } }),
+      name: `${settings.campaignName} · advertentie`,
+      object_story_spec: JSON.stringify(metaStorySpec(settings, pageAccount.external_account_id, instagram?.id)),
     });
     const adResult = await graphPost(`${adAccountId}/ads`, token, {
-      name: `${title} · advertentie`, adset_id: adSetResult.id,
-      creative: JSON.stringify({ creative_id: creativeResult.id }), status,
+      name: `${settings.campaignName} · advertentie`, adset_id: adSetResult.id, creative: JSON.stringify({ creative_id: creativeResult.id }), status,
     });
     const paidCampaign = {
-      status: status === "ACTIVE" ? "active" : "paused", campaign_id: String(campaignResult.id), adset_id: String(adSetResult.id), ad_id: String(adResult.id),
-      ad_account_id: adAccountId, ad_account_name: adAccount.display_name, name: campaignName, objective: settings?.objective || "tickets",
-      budget_type: budgetType, budget: budgetEuros, daily_budget: budgetType === "daily" ? budgetEuros : null,
-      start_at: startTime.toISOString(), end_at: endTime.toISOString(), age_min: ageMin, age_max: ageMax,
-      countries, location_query: locationQuery, radius_km: Number(settings?.radiusKm || 25), gender: settings?.gender || "all", placements: settings?.placements || "automatic",
-      call_to_action: settings?.callToAction || "tickets", launch_status: status.toLowerCase(),
-      started_at: new Date().toISOString(),
+      status: "paused", campaign_id: createdCampaignId, adset_id: String(adSetResult.id), ad_id: String(adResult.id),
+      ad_account_id: adAccountId, ad_account_name: adAccount.display_name, name: settings.campaignName, objective: settings.objective,
+      budget_type: settings.budgetType, budget: Number(settings.dailyBudget), daily_budget: settings.budgetType === "daily" ? Number(settings.dailyBudget) : null,
+      start_at: new Date(settings.startAt).toISOString(), end_at: new Date(settings.endAt).toISOString(),
+      age_min: Number(settings.ageMin), age_max: Number(settings.ageMax), countries: settings.countries,
+      location_query: city?.name || "", location_key: city?.key || "", radius_km: Number(settings.radiusKm), gender: settings.gender,
+      placements: settings.placements, placement_format: settings.placementFormat, interests: settings.interests,
+      call_to_action: settings.callToAction, launch_status: "paused", primary_text: settings.primaryText,
+      headline: settings.headline, description: settings.description, image_url: settings.imageUrl, destination_url: settings.destinationUrl,
+      page_id: pageAccount.external_account_id, instagram_user_id: instagram?.id || null, started_at: new Date().toISOString(),
       manage_url: `https://www.facebook.com/adsmanager/manage/campaigns?act=${adAccountId.replace(/^act_/, "")}&selected_campaign_ids=${campaignResult.id}`,
     };
-    const nextDistribution = { ...distribution, facebook_paid_campaign: paidCampaign };
-    const nextMedia = (campaign.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
+    const nextMedia = (campaign.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: paidCampaign } : entry);
     const { error: updateError } = await admin.from("social_content_items").update({ media: nextMedia })
       .eq("id", campaign.id).eq("workspace_id", workspaceId).eq("business_id", businessId);
-    if (updateError) throw new Error("De campagne is gestart, maar de bevestiging kon niet in Horeca OS worden opgeslagen.");
+    if (updateError) throw new Error("Het gepauzeerde concept is gemaakt, maar kon niet in Horeca OS worden bevestigd.");
     return NextResponse.json({ ok: true, paidCampaign });
   } catch (error) {
-    return jsonError(error.message || "Meta heeft de betaalde campagne geweigerd.", 502);
+    const suffix = createdCampaignId ? ` Er staat mogelijk een gedeeltelijk, gepauzeerd concept in Meta (campagne ${createdCampaignId}). Controleer dit vóór opnieuw proberen.` : "";
+    return jsonError((error.message || "Meta heeft het concept geweigerd.") + suffix, 502);
   }
 }
 
 async function graphPost(path, accessToken, values) {
   const response = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...values, access_token: accessToken }), cache: "no-store",
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Bearer ${accessToken}` },
+    body: new URLSearchParams(values), cache: "no-store", signal: AbortSignal.timeout(30000),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.error_user_msg || result.error?.message || "Meta heeft de advertentie geweigerd.");
   return result;
-}
-
-async function graphSearchLocation(query, countryCode, accessToken) {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/search`);
-  url.search = new URLSearchParams({ type: "adgeolocation", location_types: JSON.stringify(["city"]), q: query, country_code: countryCode, access_token: accessToken }).toString();
-  const response = await fetch(url, { cache: "no-store" });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message || "Meta kon de doelgroepplaats niet controleren.");
-  return result.data?.[0] || null;
 }
 
 async function authorizedContext(request, workspaceId, businessId) {

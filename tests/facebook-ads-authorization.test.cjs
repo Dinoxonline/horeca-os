@@ -97,7 +97,7 @@ test("a saved marketing campaign can create a paused Meta draft without requirin
   assert.match(app, /launchStatus:\s*"paused"/);
   assert.match(app, /location_query/);
   assert.match(ads, /select\("id,body,media"\)/);
-  assert.match(ads, /campaign\.body/);
+  assert.match(ads, /defaultMetaCampaign\(campaign, distribution\)/);
   assert.doesNotMatch(ads, /facebook_event_delivery\?\.status !== "confirmed"/);
 });
 
@@ -108,6 +108,6 @@ test("event details show a clickable Meta campaign card beside the social channe
   assert.match(overview, /\["meta", "calendar"\]/);
   assert.match(overview, /Facebook \+ Instagram/);
   assert.match(overview, /event-channel-meta-\$\{item\.id\}/);
-  assert.match(overview, /Meta-campagne als concept maken/);
+  assert.match(overview, /MetaCampaignComposer/);
   assert.match(overview, /launchStatus:\s*"paused"/);
 });

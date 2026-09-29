@@ -2082,7 +2082,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const endAt = draft.endAt || distribution.common?.end || "";
     const durationDays = Math.max(1, Math.ceil((new Date(endAt).getTime() - new Date(startAt).getTime()) / 86400000));
     const maximumEstimate = budgetType === "lifetime" ? dailyBudget : dailyBudget * durationDays;
-    if (!window.confirm(`Maak deze betaalde Facebookcampagne nu aan?\n\n${budgetType === "lifetime" ? "Totaalbudget" : "Dagbudget"}: € ${dailyBudget.toFixed(2)}\nGeschatte bovengrens: € ${maximumEstimate.toFixed(2)}\nStartstatus: ${draft.launchStatus === "active" ? "direct actief" : "eerst gepauzeerd"}\n\nMeta kan het werkelijke bedrag afronden volgens de advertentievoorwaarden.`)) return;
+    if (!window.confirm(`Maak deze campagne als gepauzeerd Meta-concept?\n\n${budgetType === "lifetime" ? "Totaalbudget" : "Dagbudget"}: € ${dailyBudget.toFixed(2)}\nBudgetindicatie: € ${maximumEstimate.toFixed(2)}${budgetType === "daily" ? " (geen harde limiet)" : ""}\n\nDe campagne start niet automatisch. Activeer hem zelf in Meta na controle.`)) return;
     setConceptBusyId(item.id);
     setResult(null);
     try {
@@ -2095,11 +2095,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           campaignId: item.id,
           settings: {
             campaignName: draft.campaignName || `${distribution.common?.title || "Evenement"} · betaald`,
-            objective: draft.objective || "tickets", budgetType, dailyBudget, startAt, endAt,
+            objective: draft.objective || "tickets", budgetType, dailyBudget, startAt: new Date(startAt).toISOString(), endAt: new Date(endAt).toISOString(),
             ageMin: Number(draft.ageMin || 18), ageMax: Number(draft.ageMax || 65),
             countries: draft.countries || ["NL"], locationQuery: draft.locationQuery || "Zoetermeer", radiusKm: Number(draft.radiusKm || 25), gender: draft.gender || "all",
             placements: draft.placements || "automatic", callToAction: draft.callToAction || "tickets",
-            launchStatus: draft.launchStatus || "paused",
+            launchStatus: "paused",
           },
         }),
       });
@@ -2108,7 +2108,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setEventCampaigns((current) => current.map((campaign) => campaign.id === item.id
         ? { ...campaign, media: (campaign.media || []).map((entry) => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) }
         : campaign));
-      setResult({ ok: true, message: "De betaalde Facebookcampagne is gestart en staat in dit dossier." });
+      setResult({ ok: true, message: "De campagne staat als gepauzeerd concept in Meta en in dit dossier." });
     } catch (error) {
       setResult({ ok: false, message: error.message || "De betaalde campagne kon niet worden gestart." });
     } finally {
@@ -3116,7 +3116,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                     <label>Geslacht<select value={draft.gender || "all"} onChange={(event) => updateAdDraft("gender", event.target.value)}><option value="all">Iedereen</option><option value="women">Vrouwen</option><option value="men">Mannen</option></select></label>
                     <label>Plaatsingen<select value={draft.placements || "automatic"} onChange={(event) => updateAdDraft("placements", event.target.value)}><option value="automatic">Automatische Meta-plaatsingen</option><option value="facebook">Alleen Facebook</option></select></label>
                     <label>Knop op advertentie<select value={draft.callToAction || "tickets"} onChange={(event) => updateAdDraft("callToAction", event.target.value)}><option value="tickets">Tickets kopen</option><option value="learn_more">Meer informatie</option></select></label>
-                    <label>Startstatus<select value={draft.launchStatus || "paused"} onChange={(event) => updateAdDraft("launchStatus", event.target.value)}><option value="paused">Eerst gepauzeerd controleren</option><option value="active">Direct actief na Meta-controle</option></select></label>
+                    <p>De campagne wordt gepauzeerd aangemaakt. Controleer en activeer hem zelf in Meta.</p>
                     <div className="facebookAdsSpendWarning"><b>Dit geeft echt advertentiebudget uit.</b><span>Horeca OS vraagt daarom nog één duidelijke bevestiging met de geschatte bovengrens voordat Meta de campagne start.</span></div>
                     <button type="button" className="facebookAdsStartButton" disabled={conceptBusy || !facebookEventReady || !eventinPublishedWithTicketLink} title={!facebookEventReady ? "Plaats en koppel eerst het Facebook-evenement" : !eventinPublishedWithTicketLink ? "Publiceer eerst in Eventin" : ""} onClick={() => startFacebookPaidCampaign(item, distribution)}>{conceptBusy ? "Campagne starten…" : "Betaalde campagne starten"}</button>
                   </>;
