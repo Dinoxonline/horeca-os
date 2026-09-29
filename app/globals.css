@@ -26,3 +26,30 @@
 .ticketReport{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0;padding:14px;border:1px solid #dce6ed;border-radius:10px;background:#f8fafc}.ticketReport>div{min-width:0}.ticketReport span{display:block;color:#6b7e8d;font-size:12px}.ticketReport strong{display:block;margin-top:4px;font-size:21px;color:#17324d}.ticketReport p{display:grid;gap:3px;margin:7px 0 0;color:#25485f;font-size:12px}.ticketReport p span{color:#25485f;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media(max-width:800px){.ticketReport{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:480px){.ticketReport{grid-template-columns:1fr 1fr}}
 
 .ticketRouting{margin:8px 0;padding:8px 10px;border-radius:7px;background:#fff6d9;color:#755d13;font-size:12px}.ticketRouting .textButton{margin-left:8px;color:#1f7182;font-weight:800}
+
+/* Keep all navigation links reachable independently of the page scroll. */
+.sidebar {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+.sidebarHeader, .sidebar > .logout { flex-shrink: 0; }
+.sidebar > nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #8fbdcc #15334f;
+  padding-bottom: 12px;
+}
+.sidebar > nav:focus-visible { outline: 2px solid #aad9e3; outline-offset: 2px; }
+@media (max-width: 800px) {
+  .sidebar {
+    height: auto;
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+  .sidebar > nav { max-height: none; }
+}
