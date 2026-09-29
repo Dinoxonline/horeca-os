@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import FacebookAdAccountPicker from "./facebook-ad-account-picker";
 import MetaCampaignComposer from "./meta-campaign-composer";
 import MetaAccountBudget from "./meta-account-budget";
+import MetaCampaignStatus from "./meta-campaign-status";
 import { campaignBudgetSummary } from "../lib/meta-campaign-settings";
 
 export default function MetaCampaignEditor({ workspaceId, session, item, distribution, business, enabled, onSaved, onDirty, onBeforeConnect, initialDraft, onDraftChange }) {
@@ -14,7 +15,7 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const paidCampaign = distribution.facebook_paid_campaign || {};
-  const created = ["active", "paused"].includes(paidCampaign.status);
+  const created = Boolean(paidCampaign.campaign_id) || ["active", "paused"].includes(paidCampaign.status);
   const budgetContext = { workspaceId, businessId: item.business_id, session, enabled, accountId: adAccount?.external_account_id || paidCampaign.ad_account_id };
 
   async function loadAdAccount() {
@@ -67,7 +68,7 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
     finally { setBusy(false); }
   }
 
-  if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><p><strong>{paidCampaign.status === "active" ? "Meta-campagne is actief." : "Meta-campagne staat gepauzeerd."}</strong> {paidCampaign.name}</p><p>Controleer en bewerk het bestaande concept in Meta. Er wordt geen dubbele campagne aangemaakt.</p>{paidCampaign.manage_url && <a className="secondaryButton" href={paidCampaign.manage_url} target="_blank" rel="noreferrer">In Meta bekijken ↗</a>}<MetaAccountBudget {...budgetContext} /></section>;
+  if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><MetaCampaignStatus key={`${item.id}:${paidCampaign.campaign_id}`} workspaceId={workspaceId} session={session} item={item} paidCampaign={paidCampaign} enabled={enabled} onSaved={onSaved} /><MetaAccountBudget {...budgetContext} /></section>;
   if (loadingAccount || adAccount === undefined) return <p className="marketingMetaCampaign"><strong>Meta-advertentieaccount wordt gecontroleerd…</strong></p>;
   if (adAccount?.connection_status === "pending") return <FacebookAdAccountPicker workspaceId={workspaceId} businessId={item.business_id} businessName={business?.name} session={session} account={adAccount} onSaved={loadAdAccount} />;
   if (!adAccount || adAccount.connection_status !== "connected" || !adAccount.granted_scopes?.includes("ads_management")) return <section className="marketingMetaCampaign">{adsConfiguration?.ready ? <><p>Verbind het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong> met toestemming voor betaalde campagnes.</p><button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></> : <><p>{adsConfiguration?.message || "De advertentiekoppeling kon niet worden gecontroleerd."}</p>{adsConfiguration?.setupUrl && <a className="secondaryButton" href={adsConfiguration.setupUrl} target="_blank" rel="noreferrer">Meta-appinstellingen openen ↗</a>}</>}<button type="button" className="secondaryButton" onClick={loadAdAccount}>Koppeling opnieuw controleren</button>{error && <p role="alert">{error}</p>}</section>;

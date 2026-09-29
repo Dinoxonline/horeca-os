@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { supabase } from "../lib/supabase";
 import ManualFacebookUpdate from "./manual-facebook-update";
 import MetaCampaignEditor from "./meta-campaign-editor";
+import { META_CAMPAIGN_STATUS_LABELS } from "../lib/meta-campaign-status";
 import InstagramEventPublisher from "./instagram-event-publisher";
 import ManualPredis from "./predis-workspace";
 import EventCalendar from "./event-calendar";
@@ -39,8 +40,10 @@ function channelStatus(item, channel, comparison) {
   const distribution = distributionFor(item); const targetChannels = distribution.target_channels || [];
   if (channel === "meta") {
     const paidCampaign = distribution.facebook_paid_campaign || {};
-    if (paidCampaign.status === "active") return { key: "placed", label: "Actief in Meta" };
-    if (paidCampaign.status === "paused") return { key: "scheduled", label: "Gepauzeerd concept in Meta" };
+    if (paidCampaign.campaign_id || ["active", "paused"].includes(paidCampaign.status)) {
+      const live = paidCampaign.live_status;
+      return { key: "scheduled", label: live?.checked_at ? `Laatst gecontroleerd: ${META_CAMPAIGN_STATUS_LABELS[live.state] || "Status onbekend"} (${new Date(live.checked_at).toLocaleString("nl-NL")})` : "Geregistreerd — status controleren" };
+    }
     return { key: "concept", label: "Campagne maken" };
   }
   if (channel === "predis") return { key: "concept", label: manualSummary(distribution.manual_predis) };

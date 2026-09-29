@@ -3,6 +3,7 @@ import { createAdminSupabase, createUserSupabase } from "../../../../../lib/serv
 import { decryptMetaToken } from "../../../../../lib/meta-oauth";
 import { defaultMetaCampaign, validateMetaCampaign, metaTargeting, metaStorySpec, META_OBJECTIVES } from "../../../../../lib/meta-campaign-settings";
 import { normalizeMetaAccountBudget } from "../../../../../lib/meta-account-budget";
+import { metaCampaignStatus } from "../../../../../lib/meta-campaign-status";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -81,11 +82,13 @@ export async function POST(request) {
   if (!adAccount) return jsonError("Koppel eerst het Meta-advertentieaccount van deze vestiging.", 409);
   if (adAccount.connection_status !== "connected") return jsonError("Kies en bevestig eerst het advertentieaccount bij Koppelingen.", 409);
   if (!adAccount.granted_scopes?.includes("ads_management")) return jsonError("Koppel Meta opnieuw met toestemming voor betaalde campagnes.", 409);
-  if (!pageAccount) return jsonError("De Facebookpagina van deze vestiging is niet gekoppeld.", 409);
   if (!campaign) return jsonError("Het campagneconcept is niet gevonden.", 404);
   const distribution = (campaign.media || []).find(entry => entry?.kind === "campaign_distribution");
   if (!distribution) return jsonError("De campagnegegevens ontbreken.", 409);
-  if (["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
+  if (body.action === "refresh_status") return refreshRegisteredCampaign(admin, workspaceId, businessId, campaign, distribution, adAccount);
+  if (body.action) return jsonError("Onbekende campagneactie.", 400);
+  if (distribution.facebook_paid_campaign?.campaign_id || ["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
+  if (!pageAccount) return jsonError("De Facebookpagina van deze vestiging is niet gekoppeld.", 409);
   // Defaults keep older campaign forms compatible. v2 sends all editable fields.
   const incoming = body.settings || {};
   const settings = { ...defaultMetaCampaign(campaign, distribution), ...incoming };
@@ -162,6 +165,37 @@ export async function POST(request) {
     const suffix = createdCampaignId ? ` Er staat mogelijk een gedeeltelijk, gepauzeerd concept in Meta (campagne ${createdCampaignId}). Controleer dit vóór opnieuw proberen.` : "";
     return jsonError((error.message || "Meta heeft het concept geweigerd.") + suffix, 502);
   }
+}
+
+async function refreshRegisteredCampaign(admin, workspaceId, businessId, campaign, distribution, account) {
+  const receipt = distribution.facebook_paid_campaign;
+  if (!receipt?.campaign_id) return jsonError("Er is bij dit dossier geen Meta-campagne geregistreerd.", 409);
+  const accountId = String(account.external_account_id || "").replace(/^act_/, "");
+  if (!/^\d+$/.test(accountId) || String(receipt.ad_account_id || "").replace(/^act_/, "") !== accountId) return jsonError("Deze campagne hoort bij een ander advertentieaccount. Herstel de juiste koppeling om de status te controleren.", 409);
+  if (![receipt.campaign_id, receipt.adset_id, receipt.ad_id].every(id => /^\d+$/.test(String(id || "")))) return jsonError("De geregistreerde Meta-nummers zijn onvolledig. Controleer de campagne in Meta.", 409);
+  try {
+    const token = await accountCredential(admin, workspaceId, businessId, account.id);
+    const [remoteCampaign, adset, ad] = await Promise.all([
+      graphRead(receipt.campaign_id, token, { fields: "id,account_id,status,effective_status" }),
+      graphRead(receipt.adset_id, token, { fields: "id,account_id,campaign_id,status,effective_status,start_time,end_time" }),
+      graphRead(receipt.ad_id, token, { fields: "id,account_id,campaign_id,adset_id,status,effective_status" }),
+    ]);
+    if ([remoteCampaign, adset, ad].some(node => String(node.account_id) !== accountId)
+      || String(remoteCampaign.id) !== String(receipt.campaign_id) || String(adset.id) !== String(receipt.adset_id)
+      || String(ad.id) !== String(receipt.ad_id) || String(adset.campaign_id) !== String(receipt.campaign_id)
+      || String(ad.campaign_id) !== String(receipt.campaign_id) || String(ad.adset_id) !== String(receipt.adset_id)) {
+      return jsonError("Meta geeft gegevens terug die niet bij deze geregistreerde campagne horen. Er is niets gewijzigd.", 409);
+    }
+    const paidCampaign = { ...receipt, live_status: metaCampaignStatus(remoteCampaign, adset, ad) };
+    const media = campaign.media.map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: paidCampaign } : entry);
+    // Compare-and-swap prevents overwriting event edits or a newer check made during the Meta request.
+    const { data: saved, error } = await admin.from("social_content_items").update({ media })
+      .eq("id", campaign.id).eq("workspace_id", workspaceId).eq("business_id", businessId)
+      .eq("media", JSON.stringify(campaign.media)).select("id").maybeSingle();
+    if (error) return jsonError("De status is opgehaald, maar kon niet worden opgeslagen. Probeer opnieuw.", 502);
+    if (!saved) return jsonError("Het dossier is ondertussen gewijzigd. Vernieuw het dossier en controleer opnieuw.", 409);
+    return NextResponse.json({ ok: true, paidCampaign }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return jsonError(error.message || "De actuele status kon niet bij Meta worden gecontroleerd.", 502); }
 }
 
 async function graphPost(path, accessToken, values) {
