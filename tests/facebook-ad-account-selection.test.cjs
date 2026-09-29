@@ -64,7 +64,7 @@ test("account choice lists all pages, rejects inactive/foreign accounts, and sav
     assert.deepEqual((await helper.selectFacebookAdAccount(admin, body)).candidates, []);
     saveError = { code: "23505" };
     setPages([{ data }]);
-    await assert.rejects(helper.selectFacebookAdAccount(admin, { ...body, action: "select_ad_account", adAccountId: "act_2" }), /andere vestiging/);
+    await assert.rejects(helper.selectFacebookAdAccount(admin, { ...body, action: "select_ad_account", adAccountId: "act_2" }), /Vernieuw de pagina/);
     global.fetch = async () => ({ ok: false, json: async () => ({ error: { message: "provider error" } }) });
     await assert.rejects(helper.selectFacebookAdAccount(admin, body), /Meta kon/);
   } finally { global.fetch = originalFetch; }
@@ -134,6 +134,39 @@ test("UI modules compile and pending accounts cannot create campaigns", async ()
     swc.transformSync(fs.readFileSync(path.join(root, file), "utf8"), { filename: file, jsc: { parser: { syntax: "ecmascript", jsx: true } } });
   }
   assert.match(fs.readFileSync(path.join(root, "app/api/integrations/facebook/ads/route.js"), "utf8"), /adAccount.connection_status !== "connected"/);
+});
+
+test("two venues select the same advertising account with separate credentials and record updates", async () => {
+  await swc.loadBindings();
+  const originalFetch = global.fetch;
+  const writes = [];
+  const tokens = [];
+  const admin = { from(table) {
+    const filters = {};
+    const q = { select() { return q; }, eq(key, value) { filters[key] = value; return q; },
+      maybeSingle: async () => ({ data: table === "integration_accounts"
+        ? { id: `row-${filters.business_id}`, granted_scopes: ["ads_management"] }
+        : { token_ciphertext: `token-${filters.business_id}` } }),
+      update(payload) { writes.push({ payload, filters }); return q; },
+      then(resolve) { return Promise.resolve({ error: null }).then(resolve); },
+    }; return q;
+  } };
+  const helper = compile("lib/facebook-ad-account-selection.js", { "./meta-oauth": { decryptMetaToken: record => record.token_ciphertext } });
+  global.fetch = async (_, options) => {
+    tokens.push(options.headers.Authorization);
+    return { ok: true, json: async () => ({ data: [{ id: "act_123", name: "Shared account", account_status: 1 }] }) };
+  };
+  try {
+    for (const businessId of ["caribbean", "plein"]) {
+      await helper.selectFacebookAdAccount(admin, { workspaceId: "workspace", businessId, action: "select_ad_account", adAccountId: "act_123" });
+    }
+    assert.deepEqual(tokens, ["Bearer token-caribbean", "Bearer token-plein"]);
+    assert.deepEqual(writes.map(write => write.payload.external_account_id), ["act_123", "act_123"]);
+    assert.deepEqual(writes.map(write => write.filters), [
+      { id: "row-caribbean", workspace_id: "workspace", business_id: "caribbean" },
+      { id: "row-plein", workspace_id: "workspace", business_id: "plein" },
+    ]);
+  } finally { global.fetch = originalFetch; }
 });
 
 test("picker requires explicit choice and shows no-account explanation without another OAuth redirect", async () => {
