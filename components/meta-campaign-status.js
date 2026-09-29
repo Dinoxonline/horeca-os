@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { META_CAMPAIGN_STATUS_LABELS } from "../lib/meta-campaign-status";
+import { publicWebUrl } from "../lib/meta-campaign-settings";
 
 function displayDate(value) {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("nl-NL") : "Niet beschikbaar";
@@ -51,6 +52,9 @@ export default function MetaCampaignStatus({ workspaceId, session, item, paidCam
     <p>Laatste geslaagde controle: {displayDate(snapshot?.checked_at)}</p>
     {snapshot && <p>Looptijd in Meta: {displayDate(snapshot.start_at)} — {displayDate(snapshot.end_at)}</p>}
     <p>Advertentieaccount: {paidCampaign.ad_account_name || paidCampaign.ad_account_id}. Campagnenummer: {paidCampaign.campaign_id}.</p>
+    {paidCampaign.source && <p>Gepromote bron: {paidCampaign.source.name}. {publicWebUrl(paidCampaign.source.url) && <a href={publicWebUrl(paidCampaign.source.url)} target="_blank" rel="noreferrer">Oorspronkelijk bericht of evenement ↗</a>}</p>}
+    {paidCampaign.audience_mode && <p>Doelgroep bij aanmaken: {paidCampaign.audience_mode === "saved" ? `opgeslagen Meta-doelgroep (${paidCampaign.saved_audience_id})` : paidCampaign.audience_mode === "advantage" ? "Advantage+" : "zelf samengesteld"}.</p>}
+    {paidCampaign.dsa_payor && <p>Bij aanmaken — adverteerder: {paidCampaign.dsa_beneficiary}; betaler: {paidCampaign.dsa_payor}.</p>}
     <p>Dit is de campagne en advertentie die via Horeca OS zijn aangemaakt. ‘Actief’ betekent ingeschakeld, niet dat vertoningen of uitgaven zijn bevestigd. Andere campagnes worden niet automatisch gezocht.</p>
     {error && <p role="alert">Controle niet gelukt: {error} {snapshot ? "Hierboven staat de laatst bekende status, niet een nieuwe bevestiging." : "De huidige status is onbekend."}</p>}
     <button type="button" className="secondaryButton" disabled={busy || !session?.access_token} onClick={refresh}>{busy ? "Status controleren…" : "Status bij Meta controleren"}</button>

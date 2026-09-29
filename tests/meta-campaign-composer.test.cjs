@@ -62,6 +62,7 @@ test("saved event and product panels open the same editor, use venue identity an
         const field = renderer.root.findAllByType("input").find(node => node.props.maxLength === 150);
         await React.act(async () => field.props.onChange({ target: { value: "Mijn " + type } }));
         assert.equal(draftSnapshot.campaignName, "Mijn " + type);
+        await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Betaler is dezelfde als adverteerder").props.onClick());
         const submit = () => renderer.root.findAllByType("button").find(node => node.props.children === "Controleren en concept maken");
         await React.act(async () => submit().props.onClick());
         assert.equal(requests.filter(row => row.options.method === "POST").length, 0, "cancelled confirmation does not create anything");
@@ -69,7 +70,7 @@ test("saved event and product panels open the same editor, use venue identity an
         await React.act(async () => submit().props.onClick());
         const body = JSON.parse(requests.find(row => row.options.method === "POST").options.body);
         assert.equal(body.businessId, "venue"); assert.equal(body.campaignId, "campaign");
-        assert.equal(body.settings.editorVersion, 2); assert.equal(body.settings.launchStatus, "paused");
+        assert.equal(body.settings.editorVersion, 3); assert.equal(body.settings.launchStatus, "paused");
         assert.equal(body.settings.campaignName, "Mijn " + type);
         assert.equal(saved.media[0].facebook_paid_campaign.status, "paused");
         await React.act(async () => renderer.update(React.createElement(SavedMetaCampaignEditor, { ...props, item: saved, distribution: saved.media[0] })));
@@ -117,8 +118,9 @@ test("editor edits update preview, retain step state, search real IDs and submit
   const change = (label, value) => React.act(async () => control(label).props.onChange({ target: { value } }));
   try {
     await change("Campagnenaam", "Mijn campagne");
+    await change("Betaler", "Testbedrijf BV");
     await change("Budgettype", "lifetime"); await change("Totaalbudget (€)", "85");
-    await React.act(async () => button("Advertentieset").props.onClick());
+    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
     await change("Plaats (leeg = heel land)", "Zoetermeer");
     await React.act(async () => button("Zoek plaats").props.onClick());
     await change("Kies de plaats uit Meta", "100");
@@ -131,10 +133,10 @@ test("editor edits update preview, retain step state, search real IDs and submit
     await change("Actieknop", "sign_up");
     assert.ok(JSON.stringify(renderer.toJSON()).includes("Zaterdag live"));
     assert.ok(dirty);
-    await React.act(async () => button("Campagne").props.onClick());
+    await React.act(async () => button("Campagne en bron").props.onClick());
     assert.equal(control("Campagnenaam").props.value, "Mijn campagne");
     await React.act(async () => button("Controleren en concept maken").props.onClick());
-    assert.equal(submitted.launchStatus, "paused"); assert.equal(submitted.editorVersion, 2);
+    assert.equal(submitted.launchStatus, "paused"); assert.equal(submitted.editorVersion, 3);
     assert.equal(submitted.startAt, new Date(control("Start").props.value).toISOString());
     assert.equal(submitted.endAt, new Date(control("Einde").props.value).toISOString());
     assert.equal(submitted.dailyBudget, "85"); assert.equal(submitted.budgetType, "lifetime");

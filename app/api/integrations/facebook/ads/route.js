@@ -4,11 +4,12 @@ import { decryptMetaToken } from "../../../../../lib/meta-oauth";
 import { defaultMetaCampaign, validateMetaCampaign, metaTargeting, metaStorySpec, META_OBJECTIVES } from "../../../../../lib/meta-campaign-settings";
 import { normalizeMetaAccountBudget } from "../../../../../lib/meta-account-budget";
 import { metaCampaignStatus } from "../../../../../lib/meta-campaign-status";
+import { META_CATALOG_RESOURCES, listMetaCatalog, resolveMetaSelection, promotionCreative } from "../../../../../lib/meta-promotion-catalog";
 
 const GRAPH_VERSION = "v25.0";
 
-async function graphRead(path, token, values = {}) {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
+async function graphRead(path, token, values = {}, host = "graph.facebook.com") {
+  const url = new URL(`https://${host}/${GRAPH_VERSION}/${path}`);
   url.search = new URLSearchParams(values).toString();
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(20000) });
   const result = await response.json();
@@ -21,6 +22,13 @@ async function accountCredential(admin, workspaceId, businessId, id) {
     .eq("account_id", id).eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle();
   if (error || !data) throw new Error("De beveiligde advertentietoegang ontbreekt. Koppel Meta opnieuw.");
   return decryptMetaToken(data);
+}
+
+async function instagramCredential(admin, workspaceId, businessId) {
+  const { data: account } = await admin.from("integration_accounts").select("id,external_account_id,connection_status,granted_scopes")
+    .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "meta").maybeSingle();
+  if (!account || account.connection_status !== "connected" || !account.granted_scopes?.includes("instagram_business_basic")) throw new Error("Koppel het Instagram-profiel van deze vestiging opnieuw bij Koppelingen om berichten te lezen.");
+  return { id: account.external_account_id, token: await accountCredential(admin, workspaceId, businessId, account.id), read: (path, token, values) => graphRead(path, token, values, "graph.instagram.com") };
 }
 
 async function searchOptions(resource, q, country, token) {
@@ -40,12 +48,26 @@ export async function GET(request) {
   const context = await authorizedContext(request, workspaceId, businessId);
   if (context.error) return context.error;
   const resource = params.get("resource"), q = String(params.get("q") || "").trim(), country = params.get("country") || "NL";
-  if (resource !== "budget" && (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country))) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
+  if (resource !== "budget" && !META_CATALOG_RESOURCES.includes(resource) && (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country))) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
   const { data: account } = await context.admin.from("integration_accounts").select("id,external_account_id,granted_scopes,connection_status")
     .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle();
   if (account?.connection_status !== "connected" || !account.granted_scopes?.includes("ads_management")) return jsonError("Koppel eerst het advertentieaccount van deze vestiging.", 409);
   try {
     const token = await accountCredential(context.admin, workspaceId, businessId, account.id);
+    if (META_CATALOG_RESOURCES.includes(resource)) {
+      const accountId = `act_${String(account.external_account_id || "").replace(/^act_/, "")}`;
+      if (!/^act_\d+$/.test(accountId)) return jsonError("Ongeldig gekoppeld advertentieaccount.", 409);
+      let pageId, pageToken;
+      if (!resource.endsWith("audiences")) {
+        const { data: page } = await context.admin.from("integration_accounts").select("id,external_account_id")
+          .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook").maybeSingle();
+        if (!page) return jsonError("Koppel eerst de Facebookpagina van deze vestiging.", 409);
+        pageId = page.external_account_id;
+        pageToken = await accountCredential(context.admin, workspaceId, businessId, page.id);
+      }
+      const instagramAccess = resource === "instagram_posts" ? await instagramCredential(context.admin, workspaceId, businessId) : null;
+      return NextResponse.json(await listMetaCatalog(resource, params.get("after"), { read: graphRead, token, accountId, pageId, pageToken, instagramAccess }), { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (resource === "budget") {
       const id = String(account.external_account_id || "").replace(/^act_/, "");
       if (!/^\d+$/.test(id)) return jsonError("Het gekoppelde advertentieaccount heeft geen geldig nummer.", 409);
@@ -74,7 +96,7 @@ export async function POST(request) {
   const [{ data: adAccount }, { data: pageAccount }, { data: campaign }] = await Promise.all([
     admin.from("integration_accounts").select("id,external_account_id,display_name,granted_scopes,connection_status")
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle(),
-    admin.from("integration_accounts").select("external_account_id,display_name")
+    admin.from("integration_accounts").select("id,external_account_id,display_name")
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook").maybeSingle(),
     admin.from("social_content_items").select("id,body,media").eq("id", campaignId)
       .eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle(),
@@ -92,7 +114,7 @@ export async function POST(request) {
   // Defaults keep older campaign forms compatible. v2 sends all editable fields.
   const incoming = body.settings || {};
   const settings = { ...defaultMetaCampaign(campaign, distribution), ...incoming };
-  if (incoming.editorVersion !== 2) {
+  if (![2, 3].includes(incoming.editorVersion)) {
     settings.objective = incoming.objective === "engagement" ? "engagement" : "traffic";
     settings.callToAction = incoming.callToAction === "tickets" ? "tickets" : "learn_more";
     settings.placements = incoming.placements || "automatic";
@@ -109,22 +131,26 @@ export async function POST(request) {
     const [accountInfo, pageInfo, locations] = await Promise.all([
       graphRead(adAccountId, token, { fields: "currency" }),
       settings.placements !== "facebook" ? graphRead(pageAccount.external_account_id, token, { fields: "instagram_business_account{id,username}" }) : Promise.resolve({}),
-      settings.locationQuery?.trim() ? searchOptions("locations", settings.locationQuery.trim(), settings.countries[0], token) : Promise.resolve([]),
+      settings.audienceMode !== "saved" && settings.locationQuery?.trim() ? searchOptions("locations", settings.locationQuery.trim(), settings.countries[0], token) : Promise.resolve([]),
     ]);
     if (accountInfo.currency !== "EUR") throw new Error("Deze editor gebruikt euro's. Gebruik Meta Ads Manager voor een advertentieaccount met een andere valuta.");
     const instagram = pageInfo.instagram_business_account;
     if (["both", "instagram"].includes(settings.placements) && !instagram?.id) throw new Error("Meta geeft geen gekoppeld Instagram-profiel voor deze Facebookpagina terug. Kies alleen Facebook of controleer de paginakoppeling in Meta.");
     let city;
-    if (settings.locationQuery?.trim()) {
+    if (settings.audienceMode !== "saved" && settings.locationQuery?.trim()) {
       const matches = settings.locationKey ? locations.filter(item => item.key === String(settings.locationKey))
         : locations.filter(item => item.name.toLocaleLowerCase() === settings.locationQuery.trim().toLocaleLowerCase());
       if (matches.length !== 1) throw new Error("Zoek de plaats opnieuw en kies de juiste stad uit de Meta-resultaten.");
       city = matches[0];
     }
+    const pageToken = settings.sourceKind !== "new" ? await accountCredential(admin, workspaceId, businessId, pageAccount.id) : null;
+    const instagramAccess = settings.sourceKind === "instagram_posts" ? await instagramCredential(admin, workspaceId, businessId) : null;
+    const selection = await resolveMetaSelection(settings, { read: graphRead, token, accountId: adAccountId, pageId: pageAccount.external_account_id, pageToken, instagramId: instagram?.id, instagramAccess });
+    if (selection.source?.kind === "facebook_events") settings.destinationUrl = selection.source.url;
     const objective = META_OBJECTIVES[settings.objective];
     // Horeca OS only prepares paused campaigns, regardless of a supplied status.
     const status = "PAUSED";
-    const targeting = metaTargeting(settings, city);
+    const targeting = metaTargeting(settings, city, selection.savedTargeting);
     const campaignResult = await graphPost(`${adAccountId}/campaigns`, token, {
       name: settings.campaignName.trim(), objective: objective.api, status, special_ad_categories: JSON.stringify([]),
     });
@@ -135,16 +161,20 @@ export async function POST(request) {
       billing_event: "IMPRESSIONS", optimization_goal: objective.optimization, bid_strategy: "LOWEST_COST_WITHOUT_CAP",
       start_time: new Date(settings.startAt).toISOString(), end_time: new Date(settings.endAt).toISOString(),
       targeting: JSON.stringify(targeting), status,
+      ...(settings.beneficiary?.trim() ? { dsa_beneficiary: settings.beneficiary.trim() } : {}),
+      ...(settings.payer?.trim() ? { dsa_payor: settings.payer.trim() } : {}),
     });
     const creativeResult = await graphPost(`${adAccountId}/adcreatives`, token, {
       name: `${settings.campaignName} · advertentie`,
-      object_story_spec: JSON.stringify(metaStorySpec(settings, pageAccount.external_account_id, instagram?.id)),
+      ...(promotionCreative(settings, pageAccount.external_account_id, instagram?.id) || { object_story_spec: JSON.stringify(metaStorySpec(settings, pageAccount.external_account_id, instagram?.id)) }),
     });
     const adResult = await graphPost(`${adAccountId}/ads`, token, {
       name: `${settings.campaignName} · advertentie`, adset_id: adSetResult.id, creative: JSON.stringify({ creative_id: creativeResult.id }), status,
     });
     const paidCampaign = {
       status: "paused", campaign_id: createdCampaignId, adset_id: String(adSetResult.id), ad_id: String(adResult.id),
+      source: selection.source, audience_mode: settings.audienceMode, saved_audience_id: settings.audienceMode === "saved" ? settings.savedAudienceId : null,
+      targeting, dsa_beneficiary: settings.beneficiary || null, dsa_payor: settings.payer || null,
       ad_account_id: adAccountId, ad_account_name: adAccount.display_name, name: settings.campaignName, objective: settings.objective,
       budget_type: settings.budgetType, budget: Number(settings.dailyBudget), daily_budget: settings.budgetType === "daily" ? Number(settings.dailyBudget) : null,
       start_at: new Date(settings.startAt).toISOString(), end_at: new Date(settings.endAt).toISOString(),

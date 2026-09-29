@@ -50,6 +50,13 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
     if (!response.ok) throw new Error(result.error || "Meta kon geen zoekresultaten ophalen.");
     return result.options || [];
   }
+  async function loadCatalog(resource, after = "") {
+    const params = new URLSearchParams({ workspaceId, businessId: item.business_id, resource, ...(after ? { after } : {}) });
+    const response = await fetch(`/api/integrations/facebook/ads?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Meta kon de keuzelijst niet ophalen.");
+    return result;
+  }
   async function createCampaign(settings) {
     const budget = campaignBudgetSummary(settings);
     const budgetText = settings.budgetType === "lifetime" ? `Totaalbudget: € ${budget.amount.toFixed(2)}` : `Dagbudget: € ${budget.amount.toFixed(2)}\nBudgetindicatie looptijd: € ${budget.estimate?.toFixed(2)} (geen harde limiet)`;
@@ -72,7 +79,7 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   if (loadingAccount || adAccount === undefined) return <p className="marketingMetaCampaign"><strong>Meta-advertentieaccount wordt gecontroleerd…</strong></p>;
   if (adAccount?.connection_status === "pending") return <FacebookAdAccountPicker workspaceId={workspaceId} businessId={item.business_id} businessName={business?.name} session={session} account={adAccount} onSaved={loadAdAccount} />;
   if (!adAccount || adAccount.connection_status !== "connected" || !adAccount.granted_scopes?.includes("ads_management")) return <section className="marketingMetaCampaign">{adsConfiguration?.ready ? <><p>Verbind het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong> met toestemming voor betaalde campagnes.</p><button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></> : <><p>{adsConfiguration?.message || "De advertentiekoppeling kon niet worden gecontroleerd."}</p>{adsConfiguration?.setupUrl && <a className="secondaryButton" href={adsConfiguration.setupUrl} target="_blank" rel="noreferrer">Meta-appinstellingen openen ↗</a>}</>}<button type="button" className="secondaryButton" onClick={loadAdAccount}>Koppeling opnieuw controleren</button>{error && <p role="alert">{error}</p>}</section>;
-  return <MetaCampaignComposer key={item.id} item={item} distribution={distribution} businessName={business?.name || "Deze vestiging"} pageName={pageAccount?.display_name} adAccountName={adAccount.display_name} onCreate={createCampaign} onSearch={searchMeta} onDirty={onDirty} busy={busy} error={error} initialDraft={initialDraft} onDraftChange={onDraftChange} budgetContext={budgetContext} />;
+  return <MetaCampaignComposer key={item.id} item={item} distribution={distribution} businessName={business?.name || "Deze vestiging"} pageName={pageAccount?.display_name} adAccountName={adAccount.display_name} onCreate={createCampaign} onSearch={searchMeta} onCatalog={loadCatalog} onDirty={onDirty} busy={busy} error={error} initialDraft={initialDraft} onDraftChange={onDraftChange} budgetContext={budgetContext} />;
 }
 
 export function SavedMetaCampaignEditor(props) {
