@@ -14,7 +14,7 @@ export async function POST(request) {
   if (!campaignId) return jsonError("Het Horeca OS-campagnedossier ontbreekt.", 400);
 
   const [{ data: adAccount }, { data: pageAccount }, { data: campaign }] = await Promise.all([
-    admin.from("integration_accounts").select("id,external_account_id,display_name,granted_scopes")
+    admin.from("integration_accounts").select("id,external_account_id,display_name,granted_scopes,connection_status")
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle(),
     admin.from("integration_accounts").select("external_account_id,display_name")
       .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook").maybeSingle(),
@@ -22,6 +22,7 @@ export async function POST(request) {
       .eq("workspace_id", workspaceId).eq("business_id", businessId).maybeSingle(),
   ]);
   if (!adAccount) return jsonError("Koppel eerst het Meta-advertentieaccount van deze vestiging.", 409);
+  if (adAccount.connection_status !== "connected") return jsonError("Kies en bevestig eerst het advertentieaccount bij Koppelingen.", 409);
   if (!adAccount.granted_scopes?.includes("ads_management")) return jsonError("Koppel Meta opnieuw met toestemming voor betaalde campagnes.", 409);
   if (!pageAccount) return jsonError("De Facebookpagina van deze vestiging is niet gekoppeld.", 409);
   if (!campaign) return jsonError("Het campagneconcept is niet gevonden.", 404);

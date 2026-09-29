@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../lib/server-supabase";
 import { createMetaState, getFacebookConfiguration, getFacebookAdsConfiguration, getFacebookRedirectUri, getSafeReturnOrigin } from "../../../../lib/meta-oauth";
+import { selectFacebookAdAccount } from "../../../../lib/facebook-ad-account-selection";
 
 const SCOPES = [
   "pages_show_list",
@@ -32,6 +33,10 @@ export async function POST(request) {
   const context = await authorizedContext(request, body.workspaceId, body.businessId);
   if (context.error) return context.error;
   if (!body.businessId) return jsonError("Kies eerst een vestiging.", 400);
+  if (["list_ad_accounts", "select_ad_account"].includes(body.action)) {
+    try { return NextResponse.json(await selectFacebookAdAccount(context.admin, body)); }
+    catch (error) { return jsonError(error.message || "Het advertentieaccount kon niet worden gecontroleerd.", 409); }
+  }
   const configuration = getFacebookConfiguration();
   if (!configuration.ready) return jsonError(`De Facebook-koppeling mist serverinstellingen: ${configuration.missing.join(", ")}.`, 409);
   const includeAds = body.purpose === "ads";

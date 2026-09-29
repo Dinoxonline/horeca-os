@@ -8,6 +8,7 @@ import { withRequestTimeout } from "../lib/request-timeout";
 import { startBackgroundPoll } from "../lib/background-poll";
 import CentralEventCreator from "./central-event-creator";
 import MarketingOverview from "./marketing-overview";
+import FacebookAdAccountPicker from "./facebook-ad-account-picker";
 import MarketingAgendaNavigation from "./marketing-agenda-navigation";
 import Workboard from "./workboard";
 import ProcessTrash from "./process-trash";
@@ -3931,6 +3932,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [metaAccounts, setMetaAccounts] = useState([]);
   const [metaConfiguration, setMetaConfiguration] = useState({ ready: false, missing: [] });
   const [facebookAccounts, setFacebookAccounts] = useState([]);
+  const [facebookAdAccounts, setFacebookAdAccounts] = useState([]);
   const [facebookConfiguration, setFacebookConfiguration] = useState({ ready: false, missing: [] });
   const [whatsappAccounts, setWhatsappAccounts] = useState([]);
   const [whatsappConfiguration, setWhatsappConfiguration] = useState({ ready: false, missing: [], webhookUrl: "" });
@@ -3962,6 +3964,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     }
     if (facebookResponse.ok) {
       setFacebookAccounts(facebookResult.accounts || []);
+      setFacebookAdAccounts(facebookResult.adAccounts || []);
       setFacebookConfiguration(facebookResult.configuration || { ready: false, missing: [] });
     }
     if (microsoftResponse.ok) { setMicrosoftConnection((microsoftResult.connections || [])[0] || null); setMicrosoftConfiguration(microsoftResult.configuration || { ready: false, missing: [] }); }
@@ -4025,6 +4028,22 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       params.delete("microsoft"); params.delete("account"); params.delete("message");
       const query = params.toString();
       window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("facebook");
+    if (status === "connected") setIntegrationMessage(`Facebookpagina gekoppeld: ${params.get("account") || "de gekozen pagina"}. Dit bevestigt nog geen advertentieaccount.`);
+    if (status === "choose_ad_account") {
+      setIntegrationMessage("Meta-toestemming ontvangen. Kies hieronder bij Meta-advertentieaccounts het account van de juiste vestiging.");
+      document.getElementById("meta-advertentieaccounts")?.scrollIntoView({ block: "start" });
+    }
+    if (status === "error") setIntegrationError(params.get("message") || "De Facebook-koppeling kon niet worden afgerond.");
+    if (status) {
+      for (const key of ["facebook", "account", "message", "businessId"]) params.delete(key);
+      const query = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
     }
   }, []);
 
@@ -4120,6 +4139,11 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     <section className="pageIntro"><p className="eyebrow">Databronnen</p><h2>Koppelingen</h2><p>Verbind externe systemen via gecontroleerde, traceerbare gegevensstromen.</p></section>
     {integrationMessage && <div className="notice successNotice">{integrationMessage}</div>}
     {integrationError && <div className="notice">{integrationError}</div>}
+    <section className="panel" id="meta-advertentieaccounts">
+      <h2>Meta-advertentieaccounts</h2>
+      <p>Betaalde campagnes op Facebook en Instagram. Een gekoppelde Facebookpagina is niet automatisch een gekoppeld advertentieaccount.</p>
+      {businesses.map(business => <FacebookAdAccountPicker key={business.id} workspaceId={workspaceId} businessId={business.id} businessName={business.name} session={session} account={facebookAdAccounts.find(account => account.business_id === business.id)} onSaved={loadAccounts} />)}
+    </section>
     <section className="integrationGrid">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">M365</div><div><h2>Persoonlijke Microsoft-agenda</h2><p>Eigen Outlook-agenda en gedelegeerde agenda&apos;s</p></div></div>

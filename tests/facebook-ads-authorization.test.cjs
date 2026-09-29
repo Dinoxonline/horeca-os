@@ -26,8 +26,10 @@ test("OAuth keeps page login working and enables advertising only after app setu
     const oauth = compile("lib/meta-oauth.js");
     let role = "owner";
     const query = { select() { return this; }, eq() { return this; }, then(resolve) { return Promise.resolve({ data: [{ business_id: "venue", role: { role_key: role } }] }).then(resolve); } };
+    let selectionCalls = 0;
     const route = compile("app/api/integrations/facebook/route.js", {
       "../../../../lib/meta-oauth": oauth,
+      "../../../../lib/facebook-ad-account-selection": { selectFacebookAdAccount: async () => { selectionCalls++; return { candidates: [] }; } },
       "../../../../lib/server-supabase": { createAdminSupabase: () => ({}), createUserSupabase: () => ({ auth: { getUser: async () => ({ data: { user: { id: "user" } } }) }, from: () => query }) },
     });
     const request = (purpose, token = "test-token") => new Request("https://horeca-os-le-club.vercel.app/api/integrations/facebook", {
@@ -59,8 +61,17 @@ test("OAuth keeps page login working and enables advertising only after app setu
     assert.equal((await route.POST(request("ads", ""))).status, 401);
     role = "staff";
     assert.equal((await route.POST(request("ads"))).status, 403);
+    const selectionRequest = token => new Request("https://horeca-os-le-club.vercel.app/api/integrations/facebook", {
+      method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ workspaceId: "workspace", businessId: "venue", action: "select_ad_account", adAccountId: "act_1" }),
+    });
+    assert.equal((await route.POST(selectionRequest("test"))).status, 403);
+    assert.equal((await route.POST(selectionRequest(""))).status, 401);
+    assert.equal(selectionCalls, 0);
 
     role = "owner";
+    assert.equal((await route.POST(selectionRequest("test"))).status, 200);
+    assert.equal(selectionCalls, 1);
     delete process.env.META_ADS_ENABLED;
     process.env.META_APP_ID = "2231952860937833";
     const confirmedAppResponse = await route.POST(request("ads"));
