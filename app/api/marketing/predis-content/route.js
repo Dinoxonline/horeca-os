@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../lib/server-supabase";
 import { manualDistribution } from "../../../../lib/manual-predis";
 import { instagramEventMedia } from "../../../../lib/instagram-event-media";
-import { predisForm, validatePredisInput, normalizePredisPost } from "../../../../lib/predis-content";
+import { predisForm, validatePredisInput, normalizePredisPost, predisSourceMedia } from "../../../../lib/predis-content";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -54,7 +54,7 @@ export async function GET(request) {
   try {
     const ctx = await contextFor(request, Object.fromEntries(new URL(request.url).searchParams));
     const row = await ctx.read(), brand = await ctx.connection();
-    return reply({ jobs: displayJobs(manualDistribution(row).predis_content?.jobs || []), configured: Boolean(process.env.PREDIS_API_KEY?.trim() && brand), hasBrand: Boolean(brand), photos: instagramEventMedia(row).filter(a => a.type === "image" && !a.issue) });
+    return reply({ jobs: displayJobs(manualDistribution(row).predis_content?.jobs || []), configured: Boolean(process.env.PREDIS_API_KEY?.trim() && brand), hasBrand: Boolean(brand), photos: instagramEventMedia(row).filter(a => a.type === "image" && !a.issue), assets: predisSourceMedia(row) });
   } catch (e) { return reply({ error: e.status ? e.message : "Laden van Predis is mislukt." }, e.status || 500); }
 }
 export async function POST(request) {
@@ -87,7 +87,10 @@ export async function POST(request) {
         response = await fetch(`${BASE}/create_content/`, { method: "POST", headers: { Authorization: key }, body: predisForm(draft, brandId), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(25000) });
         result = await response.json();
       } catch { throw fail("Geen volledige bevestiging van Predis. De aanvraag is bewaard; niet automatisch opnieuw verstuurd.", 502); }
-      const ids = Array.isArray(result.post_ids) ? result.post_ids.filter(id => typeof id === "string" && id.length > 0 && id.length <= 200) : [];
+      // The custom-assets example documents a singular ID; the reference uses post_ids.
+      // Never replace a present malformed plural field with the legacy fallback.
+      const returnedIds = result.post_ids === undefined ? [result.post_id] : result.post_ids;
+      const ids = Array.isArray(returnedIds) ? returnedIds.filter(id => typeof id === "string" && id.trim().length > 0 && id.length <= 200) : [];
       const accepted = response.ok && !result.errors?.length && ids.length === 1;
       const definiteRejection = !ids.length && response.status >= 400 && response.status < 500;
       const status = accepted ? "generating" : definiteRejection ? "failed" : "unknown";

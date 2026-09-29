@@ -222,6 +222,7 @@ async function harness(options = {}) {
       if (options.timeout) throw new Error('hidden token network failure');
       if (options.reject) return Response.json({ errors: [{ detail: 'private upstream details' }] }, { status: 429 });
       if (options.malformed) return Response.json({ post_status: 'inProgress' });
+      if (options.creationReply) return Response.json(options.creationReply);
       return Response.json({ post_ids: ['p1'], post_status: 'inProgress', errors: [] });
     }
     if (options.readError) return Response.json({ errors: [{}] }, { status: 500 });
@@ -391,4 +392,105 @@ test('real Supabase client serializes the webhook JSONB predicate as JSON, not a
   assert.equal(await savePredisWebhookJobs(client, callback), false);
   assert.ok(predicate.startsWith('cs.['));
   assert.deepEqual(JSON.parse(predicate.slice(3)), [{ kind: 'campaign_distribution', predis_content: { jobs: [{ postIds: ['p1'] }] } }]);
+});
+
+test('own-media trial requires own assets and prevents video URLs being ignored for images/carousels', async () => {
+  const lib = await load('lib/predis-content.js');
+  const video = 'https://images.example.com/clip.mp4';
+  const withVideo = { ...item, media: [...item.media, { kind: 'video', url: video }] };
+  for (const mediaType of ['single_image', 'carousel', 'video']) {
+    assert.throws(() => lib.validatePredisInput({ ...draft, sourceMode: 'own', mediaType, mediaUrls: [] }, withVideo), /minimaal één eigen bestand/);
+  }
+  for (const mediaType of ['single_image', 'carousel']) {
+    assert.throws(() => lib.validatePredisInput({ ...draft, sourceMode: 'own', mediaType, mediaUrls: [video] }, withVideo), /alleen voor video/);
+  }
+  const input = lib.validatePredisInput({ ...draft, sourceMode: 'own', mediaType: 'video', mediaUrls: [video, photo] }, withVideo);
+  assert.deepEqual(input.sourceAssets.map(a => a.type), ['video', 'image']);
+  const form = lib.predisForm(input, 'brand');
+  assert.equal(form.get('model_version'), '2');
+  assert.equal(form.get('media_urls'), JSON.stringify([video, photo]));
+  assert.equal(form.get('n_posts'), '1');
+  assert.match(lib.predisOwnMediaPrompt(item), /geen extra tekst/);
+  assert.match(lib.predisOwnMediaPrompt(item), /Live muziek op donderdagavond\./);
+  assert.throws(() => lib.validatePredisInput({ ...draft, sourceMode: 'unknown' }, item));
+});
+
+test('own-media server trial stores original inputs, uses model 2, and handles both documented response shapes without retry', async () => {
+  for (const creationReply of [{ post_id: 'p1', status: 'inProgress' }, { post_ids: ['p1'], post_status: 'inProgress', errors: [] }]) {
+    const h = await harness({ creationReply });
+    const first = await h.send({ sourceMode: 'own' });
+    assert.equal(first.jobs[0].status, 'generating');
+    assert.equal(first.jobs[0].sourceMode, 'own');
+    assert.deepEqual(first.jobs[0].sourceAssets.map(a => a.url), [photo]);
+    assert.equal(h.calls[0].init.body.get('model_version'), '2');
+    assert.equal(h.calls[0].init.body.get('media_urls'), JSON.stringify([photo]));
+    assert.equal(h.calls[0].init.headers.Authorization, 'TEST-ONLY');
+    await h.send({ sourceMode: 'own' });
+    assert.equal(h.calls.length, 1);
+    const refreshed = await h.send({ action: 'refresh', jobId: id });
+    assert.equal(refreshed.jobs[0].status, 'ready');
+    assert.deepEqual(refreshed.jobs[0].sourceAssets, first.jobs[0].sourceAssets);
+  }
+  const empty = await harness();
+  assert.equal((await empty.send({ sourceMode: 'own', mediaUrls: [] })).status, 400);
+  assert.equal(empty.calls.length, 0);
+  assert.equal(empty.row.media[1].predis_content, undefined);
+  const invalid = await harness({ creationReply: { post_id: 'p1', post_ids: null } });
+  assert.equal((await invalid.send({ sourceMode: 'own' })).jobs[0].status, 'unknown');
+  await invalid.send({ sourceMode: 'own' });
+  assert.equal(invalid.calls.length, 1);
+});
+
+test('own-media choice is visible, separate from unchanged uploads and never generates on opening', async () => {
+  const oldWindow = global.window, oldFetch = global.fetch;
+  global.window = { confirm: () => true };
+  global.fetch = async () => { throw new Error('Choice must not call provider'); };
+  const Component = (await load('components/predis-workspace.js', {
+    './predis-content': { default: props => React.createElement('predis-generator', props) },
+    './manual-predis': { default: () => null }, './predis-library': { default: () => null },
+  })).default;
+  let r;
+  try {
+    await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, businessName: 'Caribbean Corner' })); });
+    assert.equal(r.root.findAllByType('predis-generator').length, 0);
+    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eigen beeld gebruiken — proef voorbereiden').props.onClick());
+    assert.equal(r.root.findByType('predis-generator').props.sourceMode, 'own');
+    assert.match(text(r.root), /geen ongewijzigde upload/);
+  } finally { if (r) await React.act(async () => r.unmount()); global.window = oldWindow; global.fetch = oldFetch; }
+});
+
+test('own-media UI requires selected source and credit consent and sends the reviewed text once', async () => {
+  const oldWindow = global.window, oldFetch = global.fetch;
+  global.window = { addEventListener() {}, removeEventListener() {}, confirm: () => true };
+  const video = 'https://images.example.com/clip.mp4';
+  const calls = [];
+  global.fetch = async (_, init) => {
+    if (init.method === 'GET') return Response.json({ configured: true, jobs: [], assets: [{ url: photo, type: 'image', label: 'Eigen flyer' }, { url: video, type: 'video', label: 'Video' }] });
+    const body = JSON.parse(init.body); calls.push(body);
+    return Response.json({ jobs: [{ id, createdAt: new Date().toISOString(), status: 'unknown', mediaType: body.mediaType, sourceMode: body.sourceMode, prompt: body.prompt, sourceAssets: [{ url: photo, type: 'image' }] }] });
+  };
+  const Component = (await load('components/predis-content.js', { 'next/image': { default: p => React.createElement('img', p) } })).default;
+  let r;
+  try {
+    await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, enabled: true, sourceMode: 'own', workspaceId: 'w', session: { access_token: 'one' } })); });
+    const start = () => r.root.findAllByType('button').find(b => text(b) === 'Proef met eigen beeld starten');
+    assert.match(r.root.findByType('textarea').props.value, /Neem het onderstaande bijschrift letterlijk over/);
+    assert.equal(start().props.disabled, true);
+    assert.equal(r.root.findAllByType('video').length, 0);
+    await React.act(async () => r.root.findAllByType('input')[0].props.onChange()); // deselect photo
+    await React.act(async () => r.root.findAllByType('input')[1].props.onChange({ target: { checked: true } }));
+    assert.equal(start().props.disabled, true);
+    await React.act(async () => start().props.onClick());
+    assert.equal(calls.length, 0);
+    await React.act(async () => r.root.findAllByType('input')[0].props.onChange());
+    await React.act(async () => r.root.findByType('textarea').props.onChange({ target: { value: draft.prompt } }));
+    assert.equal(start().props.disabled, true); // changing input revokes consent
+    await React.act(async () => r.root.findAllByType('input')[1].props.onChange({ target: { checked: true } }));
+    await React.act(async () => { const pending = start().props.onClick(); start().props.onClick(); await pending; });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].sourceMode, 'own'); assert.equal(calls[0].prompt, draft.prompt);
+    assert.deepEqual(calls[0].mediaUrls, [photo]);
+    assert.equal(r.root.findAllByProps({ 'aria-label': 'Origineel vergelijken met Predis' }).length, 1);
+    assert.match(text(r.root), /bewijst niet dat het resultaat ongewijzigd is/);
+  } finally { if (r) await React.act(async () => r.unmount()); global.window = oldWindow; global.fetch = oldFetch; }
 });
