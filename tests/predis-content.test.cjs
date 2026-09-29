@@ -89,13 +89,29 @@ test('saved campaign panel keeps checking disabled while collapsed', async () =>
   let r;
   try {
     await React.act(async () => { r = Renderer.create(React.createElement(SavedPredisWorkspace, { item, businessName: 'Caribbean Corner' })); });
-    await React.act(async () => r.root.findAllByType('button').find(b => text(b).startsWith('Afbeelding')).props.onClick());
+    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eerdere AI-resultaten bekijken').props.onClick());
     assert.equal(r.root.findByType('predis-generator').props.enabled, false);
     await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: true } }));
     assert.equal(r.root.findByType('predis-generator').props.enabled, true);
     await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: false } }));
     assert.equal(r.root.findByType('predis-generator').props.enabled, false);
   } finally { if (r) await React.act(async () => r.unmount()); }
+});
+
+test('AI history can retrieve old requests but exposes no generation or transfer controls', async () => {
+  const Component = (await load('components/predis-content.js', { 'next/image': { default: 'img' } })).default;
+  const oldWindow = global.window, oldFetch = global.fetch, calls = [];
+  global.window = { addEventListener() {}, removeEventListener() {} };
+  global.fetch = async (url, init) => { calls.push(init.method); return Response.json({ jobs: [{ id: 'old', status: 'unknown', mediaType: 'single_image', createdAt: '2026-09-29T10:00:00Z', results: [] }], photos: [], configured: true }); };
+  let r;
+  try {
+    await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, session: { access_token: 'one' }, workspaceId: 'w', enabled: true, historyOnly: true })); });
+    assert.equal(r.root.findAllByType('textarea').length, 0);
+    assert.equal(r.root.findAllByType('input').length, 0);
+    assert.ok(r.root.findAllByType('button').some(b => text(b) === 'Resultaat ophalen'));
+    assert.ok(r.root.findAllByType('button').every(b => !/Content laten maken|Kopie gebruiken/.test(text(b))));
+    assert.deepEqual(calls, ['GET']);
+  } finally { if(r) await React.act(async () => r.unmount()); global.window=oldWindow; global.fetch=oldFetch; }
 });
 
 test('automatic polling selects only recent accepted jobs and checks least-recently checked first', async () => {

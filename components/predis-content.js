@@ -6,7 +6,7 @@ import { PREDIS_FORMATS, PREDIS_JOB_LABELS, predisPrompt } from "../lib/predis-c
 import { nextPredisPoll, PREDIS_POLL_INTERVAL } from "../lib/predis-polling";
 import styles from "./manual-predis.module.css";
 
-export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image" }) {
+export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image", historyOnly = false }) {
   const [prompt, setPrompt] = useState(() => predisPrompt(item));
   const [format, setFormat] = useState(() => Object.hasOwn(PREDIS_FORMATS, initialFormat) ? initialFormat : "single_image"), [photos, setPhotos] = useState([]), [selected, setSelected] = useState([]);
   const [jobs, setJobs] = useState([]), [config, setConfig] = useState(null), [loaded, setLoaded] = useState(false);
@@ -56,7 +56,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
   useEffect(() => { if (enabled && hasToken && !loaded && !lock.current) load(); }, [enabled, hasToken]);
   function edit(fn) { fn(); setDirty(true); setConfirmed(false); }
   function generate() {
-    if (!confirmed || !loaded || !config?.configured) return;
+    if (historyOnly || !confirmed || !loaded || !config?.configured) return;
     return run(async () => {
       requestId.current ||= crypto.randomUUID();
       let data;
@@ -90,7 +90,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
   const pending = jobs.some(j => ["submitting", "generating", "unknown"].includes(j.status));
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label="Content maken met Predis">
-    <div className={styles.notice}><strong>Content maken met Predis · {businessName}</strong><p>Predis maakt een nieuw ontwerp op basis van je tekst en gekozen foto’s. De opdracht gaat automatisch naar het gekoppelde merk van deze vestiging. Eerst het ontwerp bekijken, daarna pas inplannen.</p></div>
+    {historyOnly ? <div className={styles.notice}><strong>Eerdere AI-aanvragen · {businessName}</strong><p>Alleen eerder aangevraagde resultaten controleren. Dit zijn AI-ontwerpen, geen ongewijzigde uploads. Hier wordt geen nieuwe maakopdracht verstuurd.</p></div> : <div className={styles.notice}><strong>Content maken met Predis · {businessName}</strong><p>Predis maakt een nieuw ontwerp op basis van je tekst en gekozen foto’s. De opdracht gaat automatisch naar het gekoppelde merk van deze vestiging. Eerst het ontwerp bekijken, daarna pas inplannen.</p></div>}
     {busy && <p role="status">Predis-aanvragen verwerken…</p>}
     {autoChecking && <p role="status">Resultaat automatisch controleren…</p>}
     {autoFailures >= 3 && <p className={styles.notice}>Automatisch controleren is gepauzeerd na drie mislukte controles. Gebruik ‘Resultaat ophalen’ om opnieuw te controleren; er wordt geen nieuwe maakopdracht verstuurd.</p>}
@@ -98,7 +98,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
     {message && <p role="status" className={styles.notice}>{message}</p>}
     <button type="button" className="secondaryButton" disabled={busy || autoChecking} onClick={load}>Bewaarde aanvragen laden</button>
     {loaded && !config?.configured && <div className={styles.notice}><strong>Predis-koppeling nog niet klaar</strong><p>{!config?.hasBrand ? "Koppel het Predis-merk van deze vestiging onder Koppelingen. Voor genereren is daarnaast een API-sleutel op de server nodig." : "Het merk is gekoppeld, maar de Predis API-sleutel moet nog veilig op de server worden ingesteld."}</p><a href="/koppelingen">Naar Koppelingen</a><small>Deel de API-sleutel niet in de chat.</small></div>}
-    <fieldset className={styles.fields} disabled={busy || autoChecking || !loaded}><legend>1. Bronmateriaal en maakopdracht</legend>
+    {!historyOnly && <fieldset className={styles.fields} disabled={busy || autoChecking || !loaded}><legend>1. Bronmateriaal en maakopdracht</legend>
       <label>Opdracht voor Predis<textarea rows={7} maxLength={10000} value={prompt} onChange={e => edit(() => setPrompt(e.target.value))} /></label>
       <button type="button" className="secondaryButton" onClick={() => { if (window.confirm("Je opdracht vervangen door de actuele evenementgegevens?")) edit(() => setPrompt(predisPrompt(item))); }}>Evenementgegevens opnieuw overnemen</button>
       <label>Soort content<select value={format} onChange={e => edit(() => setFormat(e.target.value))}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -110,8 +110,8 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
       <button type="button" className="secondaryButton" disabled={!config?.configured || !confirmed || (pending && !acknowledgePending) || needsCheck} onClick={generate}>Content laten maken</button>
       {needsCheck && <small>Laad eerst de bewaarde aanvragen om de vorige poging te controleren.</small>}
       {dirty && <small>Opdracht aangepast — nog niet aangevraagd.</small>}
-    </fieldset>
-    <h4>2. Aanvragen en resultaten bij dit evenement</h4>
+    </fieldset>}
+    <h4>{historyOnly ? "Bewaarde aanvragen en resultaten" : "2. Aanvragen en resultaten bij dit evenement"}</h4>
     {pending && <small>Geaccepteerde aanvragen worden maximaal 15 minuten automatisch gecontroleerd terwijl dit onderdeel openstaat. Daarna kun je zelf ‘Resultaat ophalen’ kiezen. Een onzekere aanvraag wordt nooit automatisch opnieuw gemaakt.</small>}
     {!jobs.length && <p>Nog geen content aangevraagd vanuit dit scherm.</p>}
     {[...jobs].reverse().map(job => <article key={job.id} className={styles.fields}>
@@ -125,7 +125,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
         <a className="secondaryButton" href="https://app.predis.ai/app/content_library" target="_blank" rel="noopener noreferrer">Ontwerp in de inhoudsbibliotheek bekijken ↗</a>
         {job.status === "ready" && <button type="button" className="secondaryButton" disabled={busy || autoChecking} onClick={() => setReviewedResult(result.id)}>Ontwerp bekeken — verder naar inplannen</button>}
         {job.status === "ready" && reviewedResult === result.id && <section className={styles.step} aria-label="Gemaakte content inplannen"><strong>3. Het bestaande ontwerp inplannen</strong><p>Open de inhoudsbibliotheek, kies daar het merk {businessName} en open het gemaakte ontwerp. Kies vervolgens de kanalen, datum en tijd in Predis. Maak of upload het ontwerp niet opnieuw.</p><a className="secondaryButton" href="https://app.predis.ai/app/content_library" target="_blank" rel="noopener noreferrer">Bestaand ontwerp openen om in te plannen ↗</a><small>Deze knop opent de bibliotheek; hij plant nog niets in en selecteert niet automatisch een merk of ontwerp. Horeca OS bevestigt geen publicatie door alleen deze link te openen.</small></section>}
-        {onUse && <button type="button" className="secondaryButton" disabled={busy || autoChecking} onClick={() => { if (window.confirm("Dit resultaat kopiëren naar de handmatige voorbereiding?")) onUse(result); }}>Kopie gebruiken in handmatige voorbereiding</button>}
+        {!historyOnly && onUse && <button type="button" className="secondaryButton" disabled={busy || autoChecking} onClick={() => { if (window.confirm("Dit resultaat kopiëren naar de handmatige voorbereiding?")) onUse(result); }}>Kopie gebruiken in handmatige voorbereiding</button>}
       </div>)}
     </article>)}
     <small>Tekst en resultaatlinks blijven bij dit evenement bewaard. Mediabestanden staan bij Predis; download ze voor een eigen bestandskopie. ‘Klaar’ betekent alleen dat de content is gemaakt, niet ingepland of gepubliceerd.</small>

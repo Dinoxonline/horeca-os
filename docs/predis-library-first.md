@@ -1,6 +1,21 @@
 # Predis: eerst maken, daarna inplannen
 
-De standaardroute op de evenementdetailpagina, bij publicatiemomenten en bij opgeslagen dossiers onder ‘Nieuw evenement of campagne’ is nu:
+## Correctie: bestaand ontwerp heeft voorrang
+
+De gebruiker heeft verduidelijkt dat ‘maken’ voor de hoofdroute betekent: een bestaand kant-en-klaar ontwerp importeren, NIET via de AI-generatie-API laten veranderen. De onderstaande eerdere AI-route is daarom nu alleen optioneel.
+
+- De drie hoofdkeuzes ‘Enkele afbeelding’, ‘Carrousel’ en ‘Video’s’ openen de ongewijzigde-bestandsvoorbereiding. Zij roepen nooit de AI-generatie-API aan.
+- Originele downloads behouden hun bytes en bestandstype; geen canvas, beeldbewerking of nieuwe generatie. Carrouselbestanden behouden de selectievolgorde.
+- De UI verwijst uitdrukkelijk naar ‘Heb je al een ontwerp? Uploaden en inplannen’ → ‘Upload inhoud vanaf apparaat’. De link opent het algemene Predis-keuzescherm, niet rechtstreeks een uploadformulier, en draagt geen bestanden over.
+- Rechtstreekse automatische upload naar de Predis-inhoudsbibliotheek is **nog niet aangesloten**. In de geraadpleegde officiële API-documentatie is hiervoor geen ongewijzigde-importendpoint gevonden. De gedocumenteerde create_content-route is generatie en mag niet als bestandsupload worden ingezet.
+- ‘Nieuw ontwerp met AI maken (optioneel)’ blijft apart en standaard ingeklapt beschikbaar, met de waarschuwing dat beeld/opmaak veranderen en tegoed kan worden verbruikt.
+- Eerdere AI-aanvragen blijven apart leesbaar en controleerbaar; onzekere aanvragen worden niet opnieuw verzonden.
+
+De uploadstap in Predis blijft dus voorlopig handmatig. Geen automatische upload of voltooid extern bibliotheekitem claimen op basis van alleen de link.
+
+## Optionele AI-route (eerdere implementatie)
+
+De afzonderlijke AI-route op de evenementdetailpagina, bij publicatiemomenten en bij opgeslagen dossiers onder ‘Nieuw evenement of campagne’ werkt als volgt:
 
 1. Afbeelding, carrousel of video kiezen.
 2. De overgenomen opdracht en bronfoto's controleren en expliciet toestemming geven voor Predis-tegoed.

@@ -187,9 +187,9 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    for(let p=visibleList;p;p=p.parent)assert.notEqual(p.type,'details');
    assert.equal(button('Direct publiceren — nog niet beschikbaar'),undefined);
    assert.match(allText(r.root),/nu publiceren/);
-   assert.match(allText(r.root),/Je hoeft hier geen moment toe te voegen/);
+   assert.match(allText(r.root),/Je hoeft hier nog geen moment toe te voegen/);
    assert.match(allText(r.root),/Wil je zien wat al is ingepland/);
-   assert.match(allText(r.root),/Predis-scherm met keuzes/);
+   assert.match(allText(r.root),/Predis-keuzescherm/);
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
    await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
    await React.act(async()=>button('Momenten toevoegen aan planning').props.onClick());
@@ -229,14 +229,14 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  assert.equal(calls.length,0);
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true})));assert.deepEqual(calls,['GET']);
  const content=allText(r.root);
- assert.match(content,/Geen nieuw AI-ontwerp/);
+ assert.match(content,/Er wordt geen AI-ontwerp aangevraagd/);
  assert.ok(content.includes('1. Bericht voorbereiden'));
- assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. In Predis bekijken, maken en plannen'));
- assert.ok(content.indexOf('2. In Predis bekijken, maken en plannen') < content.indexOf('3. Bevestigen na Predis'));
+ assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Bestaand ontwerp uploaden, daarna inplannen'));
+ assert.ok(content.indexOf('2. Bestaand ontwerp uploaden, daarna inplannen') < content.indexOf('3. Bevestigen na Predis'));
  assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);
  assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
  assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis-planning bekijken ↗').props.href,'https://app.predis.ai/app/content_calendar');
- assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Nieuw bericht in Predis starten ↗').props.href,'https://app.predis.ai/app/new_post/create');
+ assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen voor bestaand ontwerp ↗').props.href,'https://app.predis.ai/app/new_post/create');
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true,session:{access_token:'two'}})));
  assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.equal(calls.length,1);
@@ -300,7 +300,7 @@ test('step three stays visible and requires explicit per-channel confirmation af
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 
-test('Predis starts with a neutral choice; manual and all AI formats require explicit selection',async()=>{
+test('all three Predis choices prepare unchanged uploads, never AI generation',async()=>{
  fakeWindow();const calls=[];
  global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});return Response.json({saved:null,configured:true,jobs:[],photos:[]});};
  const Component=(await load('components/predis-workspace.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
@@ -309,8 +309,8 @@ test('Predis starts with a neutral choice; manual and all AI formats require exp
    const button=label=>r.root.findAllByType('button').find(b=>allText(b).startsWith(label));
    assert.equal(r.root.findByProps({'aria-label':'Predis-werkwijze kiezen'}).type,'section');
    assert.equal(calls.length,0);
-   assert.equal(r.root.findAllByType('a').length,6);
-   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,4);
+   assert.equal(r.root.findAllByType('a').length,2);
+   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,0);
    assert.ok(r.root.findAllByType('a').some(a=>a.props.href==='https://app.predis.ai/app/content_library'));
    await React.act(async()=>button('Eigen foto en tekst').props.onClick());
    assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
@@ -322,15 +322,53 @@ test('Predis starts with a neutral choice; manual and all AI formats require exp
    assert.equal(r.root.findByType('textarea').props.value,'Mijn eigen bijschrift');assert.equal(calls.length,1);
    global.window.confirm=()=>true;
    await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
-   for(const [label,format] of [['Afbeelding','single_image'],['Carrousel','carousel'],['Video','video']]){
+   for(const label of ['Enkele afbeelding','Carrousel','Video’s']){
      await React.act(async()=>button(label).props.onClick());
+     assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
+     assert.match(allText(r.root),/Upload inhoud vanaf apparaat/);
+     assert.match(allText(r.root),/Je ontwerp blijft ongewijzigd/);
+     assert.equal(button('Content laten maken'),undefined);
+     await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
+   }
+   assert.equal(calls.length,4);assert.ok(calls.every(c=>c.url.includes('/manual-predis?')));assert.ok(calls.every(c=>c.method==='GET'));
+   for(const [label,format] of [['AI-afbeelding','single_image'],['AI-carrousel','carousel'],['AI-video','video']]){
+     const choice=button(label);
+     let container=choice.parent;while(container&&container.type!=='details')container=container.parent;
+     assert.equal(container.type,'details');assert.equal(container.props.open,undefined,'AI options are collapsed by default');
+     await React.act(async()=>choice.props.onClick());
      assert.equal(r.root.findByType('select').props.value,format);
+     assert.match(allText(r.root),/bewust de aparte AI-route gekozen/);
      assert.equal(button('Content laten maken').props.disabled,true);
      await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
    }
-   assert.equal(calls.length,4);assert.ok(calls.slice(1).every(c=>c.url.includes('/predis-content?')));assert.ok(calls.every(c=>c.method==='GET'));
+   assert.ok(calls.slice(4).every(c=>c.url.includes('/predis-content?')&&c.method==='GET'));
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
+test('original image and video downloads preserve bytes and MIME extension without generation',async(t)=>{
+ fakeWindow();const oldDocument=global.document;const oldFetch=global.fetch;
+ const original=Uint8Array.from([0,17,255,96,42]);let downloaded,link,clicks=0;
+ t.mock.method(URL,'createObjectURL',blob=>{downloaded=blob;return 'blob:original';});
+ t.mock.method(URL,'revokeObjectURL',()=>{});
+ global.document={createElement:()=>{link={style:{},click(){clicks++},remove(){}};return link;},body:{appendChild(){}}};
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ try{
+   for(const [type,mime,extension] of [['image','image/png','png'],['video','video/webm','webm']]){
+     const asset={url:'https://example.com/original',type,label:'Origineel'};const calls=[];
+     global.fetch=async(url,opts)=>{calls.push(url);return url===asset.url?new Response(original,{headers:{'Content-Type':mime}}):Response.json({saved:{draft:{caption:'Original caption',assets:[asset],entries:[]},confirmations:{},revision:'r'}});};
+     let r;
+     try{
+       await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},enabled:true,uploadType:type==='video'?'video':'single_image'}));});
+       await React.act(async()=>r.root.findAllByType('button').find(b=>/Origineel\s+opslaan/.test(allText(b))).props.onClick());
+       assert.deepEqual(new Uint8Array(await downloaded.arrayBuffer()),original);
+       assert.equal(downloaded.type,mime);assert.ok(link.download.endsWith('.'+extension));
+       assert.equal(calls.length,2);assert.equal(calls[1],asset.url);
+       assert.ok(calls.every(url=>url===asset.url||url.startsWith('/api/marketing/manual-predis?')));
+     }finally{if(r)await React.act(async()=>r.unmount());}
+   }
+   assert.equal(clicks,2);
+ }finally{global.document=oldDocument;global.fetch=oldFetch;delete global.window;}
+});
+
 test('search/worklist filters manual pending actions and opens the exact selected event',async()=>{
  const Component=(await load('components/marketing-worklist.js')).default;let opened;
  const planned={...item,id:'p',media:[{kind:'campaign_distribution',common:{title:'Arabian night',start:'2026-09-26'},manual_predis:{draft:{entries:[{key:'k'}]},confirmations:{}}}]};
