@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import NextImage from "next/image";
 import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
+import { SavedPredisWorkspace } from "./predis-workspace";
+import { saveCampaignDraft } from "../lib/save-campaign-draft";
 import WhatsappShare from "./whatsapp-share";
 import { supabase } from "../lib/supabase";
 
@@ -89,7 +91,7 @@ const emptyForm = {
   staggerEnabled: true, staggerMinMinutes: "15", staggerMaxMinutes: "45",
   tiktokCaption: "", tiktokPrivacy: "PUBLIC_TO_EVERYONE", tiktokComments: true,
   whatsappTemplate: "", whatsappMessage: "",
-  googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek", predisGenerate: false,
+  googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek",
   editorialTargets: emptyEditorialTargets,
   regularPrice: "", campaignPrice: "", discountCode: "", validFrom: "", validUntil: "",
   groupSize: "", pricePerPerson: "", reviewerName: "", reviewScore: "5", reviewSource: "",
@@ -465,9 +467,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [facebookAccount, setFacebookAccount] = useState(null);
   const [facebookAdDrafts, setFacebookAdDrafts] = useState({});
   const [facebookAccountLoading, setFacebookAccountLoading] = useState(false);
-  const [predisBrandId, setPredisBrandId] = useState("");
   const [predisConnected, setPredisConnected] = useState(false);
-  const [pendingPredisGeneration, setPendingPredisGeneration] = useState(null);
   const [copiedChannelKey, setCopiedChannelKey] = useState("");
   const [restoredDraftKey, setRestoredDraftKey] = useState("");
   const selectedBusiness = useMemo(() => businesses.find((item) => item.id === businessId) || businesses[0], [businessId, businesses]);
@@ -575,7 +575,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   };
   const update = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
-    if (key === "predisGenerate" && !value) setPendingPredisGeneration(null);
     setPreview(false); setPreviewChannel(""); setResult(null);
   };
   const updateTicketVariation = (id, key, value) => setForm((current) => ({
@@ -640,7 +639,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingBrevoDraftId(null);
     setSelectedBrevoListIds([]);
     setSelectedFacebookGroupIds([]);
-    setPendingPredisGeneration(null);
     setEventWorkspaceView("new");
     setPreview(false);
     setResult({ ok: true, message: "Er staat een leeg nieuw campagneformulier klaar. Het bestaande evenement is niet gewijzigd." });
@@ -669,7 +667,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }));
     setSelectedBrevoListIds([]);
     setSelectedFacebookGroupIds([]);
-    setEditingCampaignId(null); setEditingWebsiteEvent(null); setEditingBrevoDraftId(null); setPendingPredisGeneration(null); setPreview(false); setResult(null);
+    setEditingCampaignId(null); setEditingWebsiteEvent(null); setEditingBrevoDraftId(null); setPreview(false); setResult(null);
     setEventWorkspaceView(campaignType === "event" ? "" : "new");
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
@@ -735,9 +733,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     ...(form.channels.facebook && !(form.facebookPlacements || []).length ? ["Facebook: kies Feed, Verhaal of Reel."] : []),
     ...(enabledChannels.length === 0 ? ["Kies minimaal één promotiekanaal."] : []),
     ...channelImagePreviews.flatMap((item) => {
+      if (item.channel === "predis") return []; // Source photos are optional; the result is created after saving.
       const videoRequired = item.channel === "tiktok"
-        || (item.channel === "instagram" && form.instagramFormat === "reel")
-        || (item.channel === "predis" && form.predisType === "video");
+        || (item.channel === "instagram" && form.instagramFormat === "reel");
       if (videoRequired && !form.videoUrl.trim()) {
         return [`${item.label}: voeg een videolink toe.`];
       }
@@ -1184,7 +1182,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setEditingBrevoDraftId(null);
       setSelectedBrevoListIds([]);
       setSelectedFacebookGroupIds([]);
-      setPendingPredisGeneration(null);
       setEventWorkspaceView("new");
       setPreview(false);
       setResult({
@@ -1277,7 +1274,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       tiktokCaption: payloads.tiktok?.caption || "", tiktokPrivacy: payloads.tiktok?.privacy || emptyForm.tiktokPrivacy, tiktokComments: payloads.tiktok?.comments_enabled ?? true,
       whatsappTemplate: payloads.whatsapp?.template_name || "", whatsappMessage: payloads.whatsapp?.message || "",
       googleTopic: payloads.google?.topic_type || (storedType === "event" ? "EVENT" : storedType === "offer" ? "OFFER" : "STANDARD"),
-      predisType: payloads.predis?.content_type || "afbeelding", predisTone: payloads.predis?.tone || emptyForm.predisTone, predisGenerate: false,
+      predisType: payloads.predis?.content_type || "afbeelding", predisTone: payloads.predis?.tone || emptyForm.predisTone,
       staggerEnabled: distribution.schedule_settings?.stagger_enabled ?? true,
       staggerMinMinutes: String(distribution.schedule_settings?.min_minutes ?? 15), staggerMaxMinutes: String(distribution.schedule_settings?.max_minutes ?? 45),
       regularPrice: commercial.regular_price || "", campaignPrice: commercial.campaign_price || "", discountCode: commercial.discount_code || "",
@@ -1290,7 +1287,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
     setSelectedFacebookGroupIds((payloads.facebook?.group_sharing?.groups || []).map((group) => String(group.id)));
-    setPendingPredisGeneration(null);
     setPreview(false);
     setResult({ ok: true, message: isWebsiteEvent ? "Het website-evenement is geopend voor bewerking. Opslaan werkt hetzelfde Eventin-evenement en het bestaande marketingdossier bij." : "Het campagneconcept is geopend en kan nu op dezelfde plek worden bijgewerkt." });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1301,7 +1297,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
     setEditingBrevoDraftId(null);
-    setPendingPredisGeneration(null);
     setResult({ ok: true, message: "Het concept is als kopie geopend. Pas eventueel de naam of inhoud aan en sla het op als nieuw concept." });
   }
 
@@ -1567,7 +1562,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
     setEditingBrevoDraftId(null);
-    setPendingPredisGeneration(null);
     setManagedWebsiteEvents([]);
     setManagedEventSearch("");
     setImportingEventId("");
@@ -1621,23 +1615,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
     if (!workspaceId || !selectedBusinessId) {
-      setPredisBrandId("");
       setPredisConnected(false);
       return;
     }
     let active = true;
     const storageKey = `horeca-os:predis:${workspaceId}:${selectedBusinessId}`;
-    setPredisBrandId("");
     setPredisConnected(false);
-    setForm((current) => ({ ...current, predisGenerate: false }));
-    setPendingPredisGeneration(null);
     const query = new URLSearchParams({ workspaceId, businessId: selectedBusinessId, config: "1" });
     fetch(`/api/integrations/predis?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       .then(async (response) => ({ response, result: await response.json().catch(() => ({})) }))
       .then(({ response, result }) => {
         if (!active || !response.ok) return;
         const savedBrandId = result.connected ? result.brandId || "" : "";
-        setPredisBrandId(savedBrandId);
         setPredisConnected(Boolean(savedBrandId));
         if (savedBrandId) {
           setForm((current) => formHasCampaignContent(current)
@@ -1826,8 +1815,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     if (form.preparePromotion && form.channels.whatsapp && !form.whatsappTemplate.trim()) return "WhatsApp heeft voor geplande verzending een goedgekeurde templatenaam nodig.";
     if (form.preparePromotion && form.channels.google && !form.shortDescription.trim()) return "Google heeft een korte promotietekst nodig.";
     if (form.preparePromotion && form.channels.google && !isEvent && !form.ctaUrl.trim()) return "Google heeft een knoplink nodig.";
-    if (form.preparePromotion && form.channels.predis && form.predisGenerate && (!predisConnected || !predisBrandId)) return "Koppel voor deze vestiging eerst een Predis-merk onder Koppelingen.";
-    if (form.preparePromotion && form.channels.predis && form.predisGenerate && (form.description.trim().length < 20 || form.description.trim().split(/\s+/).length < 3)) return "Beschrijf voor Predis de campagne met minimaal 20 tekens en 3 woorden.";
     if (form.preparePromotion && form.staggerEnabled && (Number(form.staggerMinMinutes) < 1 || Number(form.staggerMaxMinutes) < 1)) return "Vul voor de spreiding minimaal 1 minuut in.";
     if (form.preparePromotion && form.staggerEnabled && Number(form.staggerMinMinutes) > Number(form.staggerMaxMinutes)) return "De minimale spreiding kan niet hoger zijn dan de maximale spreiding.";
     if (!mediaReady) return `Vul eerst alle kanaalmedia in: ${channelMediaIssues.join(" ")}`;
@@ -1888,9 +1875,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const payload = channel_payloads[channel] || {};
         const media = channelImagePreviews.find((item) => item.channel === channel);
         const videoRequired = channel === "tiktok"
-          || (channel === "instagram" && form.instagramFormat === "reel")
-          || (channel === "predis" && form.predisType === "video");
-        const mediaMissing = videoRequired ? !common.video_url : !media?.imageUrl;
+          || (channel === "instagram" && form.instagramFormat === "reel");
+        const mediaMissing = channel !== "predis" && (videoRequired ? !common.video_url : !media?.imageUrl);
         const detailsMissing = (channel === "brevo" && (!payload.subject || !payload.audience || !common.organizer))
           || (channel === "facebook" && !(payload.placements || []).length)
           || (channel === "whatsapp" && !payload.template_name)
@@ -1910,9 +1896,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
         media: [distribution], status: "draft", workflow_status: "new", scheduled_for: null, created_by: session.user.id,
       };
-      const { error } = editingCampaignId
-        ? await supabase.from("social_content_items").update(record).eq("id", editingCampaignId).eq("workspace_id", workspaceId)
-        : await supabase.from("social_content_items").insert({ ...record, workspace_id: workspaceId });
+      const { error } = await saveCampaignDraft(supabase, workspaceId, editingCampaignId, record);
       if (error) throw error;
       setResult({ ok: true, message: `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.` });
       setEditingCampaignId(null);
@@ -1953,7 +1937,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       tiktok: { caption: form.tiktokCaption.trim() || form.shortDescription.trim(), privacy: form.tiktokPrivacy, comments_enabled: form.tiktokComments, image_url: imageFor("vertical", ["portrait"]) },
       whatsapp: { template_name: form.whatsappTemplate.trim(), message: form.whatsappMessage.trim() || form.shortDescription.trim(), image_url: imageFor("vertical", ["landscape", "square"]) },
       google: { topic_type: form.googleTopic, summary: form.shortDescription.trim(), event: { title: form.title.trim(), start: form.start, end: form.end }, call_to_action: common.cta, image_url: imageFor("landscape", ["square"]) },
-      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images, generate_requested: form.predisGenerate && predisConnected, brand_id: form.predisGenerate && predisConnected ? predisBrandId : "" },
+      predis: { content_type: form.predisType, tone: form.predisTone.trim(), prompt: form.description.trim(), images: form.images, generate_requested: false, brand_id: "" },
     };
     const channel_status = Object.fromEntries(enabledChannels.map((channel) => {
       const payload = channel_payloads[channel] || {};
@@ -1983,31 +1967,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       brevoDraft = brevoResult.draft;
       setEditingBrevoDraftId(brevoDraft.id);
     }
-    let predisGeneration = form.preparePromotion && form.channels.predis && form.predisGenerate && predisConnected ? pendingPredisGeneration : null;
-    if (form.preparePromotion && form.channels.predis && form.predisGenerate && predisConnected && !predisGeneration) {
-      const predisResponse = await fetch("/api/integrations/predis", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          businessId: selectedBusiness?.id || businessId,
-          brandId: predisBrandId,
-          prompt: `${form.description.trim()}\n\nToon: ${form.predisTone.trim()}`,
-          mediaType: form.predisType === "video" ? "video" : form.predisType === "carousel" ? "carousel" : "single_image",
-        }),
-      }).catch(() => null);
-      const predisResult = predisResponse ? await predisResponse.json().catch(() => ({})) : {};
-      if (!predisResponse?.ok) return { warning: predisResult.error || "Het Predis-concept kon niet worden gestart." };
-      predisGeneration = { post_ids: (predisResult.postIds || []).map(String), status: predisResult.status || "inProgress" };
-      setPendingPredisGeneration(predisGeneration);
-    }
     const providerDelivery = Object.fromEntries(enabledChannels.map((channel) => [
       channel,
       channel === "brevo" && brevoDraft
         ? { status: "draft_saved", draft_id: brevoDraft.id, recipient_count: brevoDraft.recipient_count }
-        : channel === "predis" && predisGeneration
-          ? { status: "generating", post_ids: predisGeneration.post_ids, provider_status: predisGeneration.status }
-          : { status: "not_submitted" },
+        : { status: "not_submitted" },
     ]));
     const distribution = { kind: "campaign_distribution", source_type: isEvent ? "website_event" : form.campaignType, source_url: websiteEvent.url,
       eventin_event_id: websiteEvent.id, website_event_status: websiteEvent.status || "draft", common, target_channels: enabledChannels, channel_payloads, channel_status,
@@ -2019,10 +1983,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
       media: [distribution], status: "draft", workflow_status: "new", scheduled_for: null, created_by: session.user.id,
     };
-    const { error } = editingCampaignId
-      ? await supabase.from("social_content_items").update(record).eq("id", editingCampaignId).eq("workspace_id", workspaceId)
-      : await supabase.from("social_content_items").insert({ ...record, workspace_id: workspaceId });
-    return error ? { warning: "Het evenement staat op de website, maar het promotieconcept kon niet worden opgeslagen." } : { ok: true };
+    const { error } = await saveCampaignDraft(supabase, workspaceId, editingCampaignId, record);
+    return error ? { warning: error.message || "Het promotieconcept kon niet worden opgeslagen." } : { ok: true };
   }
 
   async function publishFacebookCampaign(item) {
@@ -2776,8 +2738,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label>
         <div className="predisGenerationChoice">
           <strong>{predisConnected ? "Predis-merk gevonden voor deze vestiging" : "Predis is nog niet gekoppeld voor deze vestiging"}</strong>
-          <label className="check"><input type="checkbox" checked={Boolean(form.predisGenerate)} disabled={!predisConnected} onChange={(e) => update("predisGenerate", e.target.checked)} /> Predis-concept laten maken bij opslaan</label>
-          <small>Standaard uit. Ook wanneer dit aanstaat, wordt het resultaat alleen als concept gemaakt en nooit automatisch gepubliceerd.</small>
+          <p>Sla eerst dit evenement of deze campagne als concept op. Open daarna hieronder bij het bewaarde dossier ‘Predis — eerst content maken, daarna inplannen’.</p>
+          <small>Daar worden je tekst en bronfoto’s automatisch naar Predis gestuurd na je maakopdracht. Bekijk eerst het nieuwe ontwerp in de inhoudsbibliotheek en plan het daarna pas in. Alleen opslaan kost geen Predis-tegoed.</small>
         </div>
       </fieldset>}
       <fieldset className="wide"><legend>Spreiding per kanaal</legend><label className="check"><input type="checkbox" checked={Boolean(form.staggerEnabled)} onChange={(event) => update("staggerEnabled", event.target.checked)} /> Willekeurige wachttijd tussen de kanalen</label>{form.staggerEnabled && <div className="staggerFields"><label>Minimaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMinMinutes} onChange={(event) => update("staggerMinMinutes", event.target.value)} /></label><label>Maximaal aantal minuten<input type="number" min="0" max="1440" value={form.staggerMaxMinutes} onChange={(event) => update("staggerMaxMinutes", event.target.value)} /></label></div>}<p>Horeca OS toont vooraf het interne tijdschema. Een kanaal krijgt pas de status ‘geplaatst’ nadat de aanbieder dit heeft bevestigd.</p></fieldset>
@@ -3025,6 +2987,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                 </div>}
             </div>}
             {!websiteEventCancelled && <WhatsappShare key={`whatsapp:${item.id}`} item={item} distribution={distribution} />}
+            {!websiteEventCancelled && <section className="savedChannelPanel">
+              <SavedPredisWorkspace key={`predis:${item.id}`} workspaceId={workspaceId} session={session} item={item}
+                businessName={(businesses.find(business => business.id === item.business_id) || selectedBusiness)?.name || "Deze vestiging"}
+                onSaved={saved => setEventCampaigns(current => current.map(campaign => campaign.id === item.id ? { ...campaign, media: campaign.media.map(entry => entry?.kind === "campaign_distribution" ? { ...entry, manual_predis: saved } : entry) } : campaign))} />
+            </section>}
             {!websiteEventCancelled && <section className="savedChannelPanel savedFacebookAdsPanel">
               <SavedMetaCampaignEditor key={item.id} workspaceId={workspaceId} session={session} item={item} distribution={distribution}
                 business={businesses.find(business => business.id === item.business_id) || selectedBusiness}

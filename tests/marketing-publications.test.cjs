@@ -135,12 +135,18 @@ test('year view lets the user open every publication on a day, not only the firs
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
-test('publication opens saved own-media preparation while normal event keeps the neutral chooser', async () => {
+test('both publication and event open creation choices; old manual preparation stays explicitly available', async () => {
   const Workspace = (await load('components/predis-workspace.js', { './manual-predis': { default: props => React.createElement('div', { 'data-preparation': props.item.id }) }, './predis-content': { default: () => null } })).default;
   for (const fromCalendar of [true, false]) {
     let renderer;
     await React.act(async () => { renderer = Renderer.create(React.createElement(Workspace, { item: { id: 'event-1', requestedChannel: fromCalendar ? 'predis' : undefined } })); });
-    try { assert.equal(renderer.root.findAllByProps({ 'data-preparation': 'event-1' }).length, fromCalendar ? 1 : 0); }
+    try {
+      assert.equal(renderer.root.findAllByProps({ 'data-preparation': 'event-1' }).length, 0);
+      assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Predis-werkwijze kiezen' }).length, 1);
+      const manual = renderer.root.findAllByType('button').find(button => button.props.children === 'Eigen foto en tekst / eerdere planning');
+      await React.act(async () => manual.props.onClick());
+      assert.equal(renderer.root.findAllByProps({ 'data-preparation': 'event-1' }).length, 1);
+    }
     finally { await React.act(async () => renderer.unmount()); }
   }
 });

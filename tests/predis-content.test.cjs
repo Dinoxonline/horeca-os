@@ -23,6 +23,144 @@ const item = { id: 'c', business_id: 'b', body: 'Live muziek op donderdagavond.'
 const id = '11111111-1111-4111-8111-111111111111';
 const draft = { prompt: 'Maak een mooi promotiebericht voor ons evenement.', mediaType: 'single_image', mediaUrls: [photo], confirmed: true, requestId: id };
 const post = { post_id: 'p1', caption: 'Kom gezellig langs!', media_type: 'single_image', urls: ['https://cdn.example.com/result.jpg'] };
+test('campaign edits preserve Predis jobs, legacy history and attachments with a scoped concurrency check', async () => {
+  const { saveCampaignDraft } = await load('lib/save-campaign-draft.js');
+  const previous = { media: [{ kind: 'image', url: photo }, { kind: 'campaign_distribution', common: { title: 'old' }, predis_content: { jobs: [{ id: 'job' }] }, manual_predis: { revision: 'old' }, provider_delivery: { predis: { post_ids: ['legacy'] } } }], updated_at: 'v2' };
+  const record = { business_id: 'b', media: [{ kind: 'campaign_distribution', common: { title: 'new' }, provider_delivery: { brevo: { status: 'draft_saved' } } }] };
+  let write, inserted, filters = [], collision = false, unavailable = false;
+  const client = { from(table) {
+    assert.equal(table, 'social_content_items');
+    let updating = false;
+    const q = { select() { return q; }, eq(k, v) { filters.push([k, v]); return q; },
+      update(value) { updating = true; write = value; return q; },
+      insert(value) { inserted = value; return { error: null }; },
+      maybeSingle() { return { data: updating ? collision ? null : { id: 'c' } : unavailable ? null : previous, error: null }; } };
+    return q;
+  } };
+  assert.equal((await saveCampaignDraft(client, 'w', 'c', record)).data.id, 'c');
+  assert.deepEqual(write.media[1].predis_content, previous.media[1].predis_content);
+  assert.deepEqual(write.media[1].manual_predis, previous.media[1].manual_predis);
+  assert.deepEqual(write.media[0], previous.media[0]);
+  assert.equal(write.media[1].common.title, 'new');
+  assert.deepEqual(write.media[1].provider_delivery, { brevo: { status: 'draft_saved' }, predis: { post_ids: ['legacy'] } });
+  for (const pair of [['id', 'c'], ['workspace_id', 'w'], ['business_id', 'b'], ['updated_at', 'v2']]) assert.ok(filters.some(f => f[0] === pair[0] && f[1] === pair[1]));
+  assert.equal(record.media[0].predis_content, undefined, 'caller record is not mutated');
+  collision = true;
+  assert.match((await saveCampaignDraft(client, 'w', 'c', record)).error.message, /ondertussen gewijzigd/);
+  unavailable = true; write = null;
+  assert.match((await saveCampaignDraft(client, 'w', 'c', record)).error.message, /niet meer beschikbaar/);
+  assert.equal(write, null, 'no write after scoped read returns no row');
+  await saveCampaignDraft(client, 'w', null, record);
+  assert.equal(inserted.workspace_id, 'w');
+});
+
+test('new event/campaign uses the shared library-first flow without generation during save', async () => {
+  await load('components/central-event-creator.js', { '../lib/supabase': { supabase: {} }, 'next/image': { default: 'img' } });
+  const source = fs.readFileSync(path.join(root, 'components/central-event-creator.js'), 'utf8');
+  assert.match(source, /<SavedPredisWorkspace/);
+  assert.equal((source.match(/await saveCampaignDraft\(/g) || []).length, 2);
+  assert.doesNotMatch(source, /\b(predisGenerate|pendingPredisGeneration|predisGeneration)\b|fetch\("\/api\/integrations\/predis"/);
+  assert.match(source, /Alleen opslaan kost geen Predis-tegoed/);
+  assert.match(source, /if \(item.channel === "predis"\) return \[\]/, 'Predis must not require the video/image it is supposed to create');
+});
+
+test('real Supabase client sends a version-guarded update and requests confirmation', async () => {
+  const { saveCampaignDraft } = await load('lib/save-campaign-draft.js');
+  const { createClient } = require('@supabase/supabase-js');
+  const calls = [];
+  const client = createClient('https://example.supabase.co', 'test-key', { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: async (url, init) => {
+    calls.push({ url: new URL(url), method: init.method, headers: new Headers(init.headers), body: init.body ? JSON.parse(init.body) : null });
+    return Response.json(init.method === 'GET' ? [{ media: [{ kind: 'campaign_distribution', predis_content: { jobs: [{ id: 'keep' }] } }], updated_at: '2026-09-29T20:00:00+00:00' }] : [{ id: 'c' }]);
+  } } });
+  const result = await saveCampaignDraft(client, 'w', 'c', { business_id: 'b', media: [{ kind: 'campaign_distribution', common: { title: 'Updated' } }] });
+  assert.equal(result.data.id, 'c');
+  assert.deepEqual(calls.map(c => c.method), ['GET', 'PATCH']);
+  const update = calls[1];
+  for (const [key, value] of [['id', 'eq.c'], ['workspace_id', 'eq.w'], ['business_id', 'eq.b'], ['updated_at', 'eq.2026-09-29T20:00:00+00:00'], ['select', 'id']]) assert.equal(update.url.searchParams.get(key), value);
+  assert.match(update.headers.get('prefer'), /return=representation/);
+  assert.equal(update.body.media[0].predis_content.jobs[0].id, 'keep');
+});
+
+test('saved campaign panel keeps checking disabled while collapsed', async () => {
+  const { SavedPredisWorkspace } = await load('components/predis-workspace.js', {
+    './predis-content': { default: props => React.createElement('predis-generator', { enabled: props.enabled }) },
+    './manual-predis': { default: () => null },
+  });
+  let r;
+  try {
+    await React.act(async () => { r = Renderer.create(React.createElement(SavedPredisWorkspace, { item, businessName: 'Caribbean Corner' })); });
+    await React.act(async () => r.root.findAllByType('button').find(b => text(b).startsWith('Afbeelding')).props.onClick());
+    assert.equal(r.root.findByType('predis-generator').props.enabled, false);
+    await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: true } }));
+    assert.equal(r.root.findByType('predis-generator').props.enabled, true);
+    await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: false } }));
+    assert.equal(r.root.findByType('predis-generator').props.enabled, false);
+  } finally { if (r) await React.act(async () => r.unmount()); }
+});
+
+test('automatic polling selects only recent accepted jobs and checks least-recently checked first', async () => {
+  const { nextPredisPoll, PREDIS_POLL_WINDOW } = await load('lib/predis-polling.js');
+  const now = Date.now(), fresh = { id: 'fresh', status: 'generating', postIds: ['p1'], createdAt: new Date(now - 1000).toISOString() };
+  for (const patch of [{ status: 'unknown' }, { status: 'failed' }, { status: 'generation_failed' }, { status: 'ready' }, { postIds: [] }, { createdAt: 'invalid' }, { createdAt: new Date(now - PREDIS_POLL_WINDOW).toISOString() }]) assert.equal(nextPredisPoll([{ ...fresh, ...patch }], now), null);
+  assert.equal(nextPredisPoll([{ ...fresh, id: 'checked', checkedAt: new Date(now).toISOString() }, fresh], now).id, 'fresh');
+});
+
+test('accepted generation automatically retrieves the result and reveals planning only after review', async t => {
+  const Component = (await load('components/predis-content.js', { 'next/image': { default: p => React.createElement('img', p) } })).default;
+  const oldWindow = global.window, oldFetch = global.fetch;
+  global.window = { addEventListener() {}, removeEventListener() {}, confirm: () => true };
+  const calls = [], job = { id, status: 'generating', postIds: ['p1'], createdAt: new Date().toISOString(), prompt: draft.prompt, mediaType: 'single_image', results: [] };
+  global.fetch = async (_, init) => {
+    if (init.method === 'GET') return Response.json({ configured: true, hasBrand: true, jobs: [], photos: [] });
+    const body = JSON.parse(init.body); calls.push(body.action);
+    return Response.json({ jobs: [{ ...job, ...(body.action === 'refresh' ? { status: 'ready', results: [{ id: 'p1', caption: 'Welkom', assets: [], mediaType: 'single_image' }] } : {}) }] });
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let r;
+  try {
+    await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, enabled: true, workspaceId: 'w', session: { access_token: 'one' }, businessName: 'Caribbean Corner' })); });
+    const button = label => r.root.findAllByType('button').find(b => text(b) === label);
+    await React.act(async () => r.root.findByType('input').props.onChange({ target: { checked: true } }));
+    await React.act(async () => button('Content laten maken').props.onClick());
+    assert.deepEqual(calls, ['generate']);
+    assert.equal(r.root.findAllByProps({ 'aria-label': 'Gemaakte content inplannen' }).length, 0);
+    await React.act(async () => t.mock.timers.tick(20000));
+    assert.deepEqual(calls, ['generate', 'refresh']);
+    assert.match(text(r.root), /Content klaar bij Predis/);
+    assert.equal(r.root.findAllByProps({ 'aria-label': 'Gemaakte content inplannen' }).length, 0);
+    await React.act(async () => button('Ontwerp bekeken — verder naar inplannen').props.onClick());
+    assert.equal(r.root.findAllByProps({ 'aria-label': 'Gemaakte content inplannen' }).length, 1);
+    assert.ok(r.root.findAllByType('a').every(a => a.props.href === 'https://app.predis.ai/app/content_library'));
+    await React.act(async () => t.mock.timers.tick(60000));
+    assert.deepEqual(calls, ['generate', 'refresh']);
+  } finally { if (r) await React.act(async () => r.unmount()); t.mock.timers.reset(); global.window = oldWindow; global.fetch = oldFetch; }
+});
+
+test('automatic result checks pause after repeated errors and stop when the panel closes', async t => {
+  const Component = (await load('components/predis-content.js', { 'next/image': { default: p => React.createElement('img', p) } })).default;
+  const oldWindow = global.window, oldFetch = global.fetch;
+  global.window = { addEventListener() {}, removeEventListener() {} };
+  const calls = [], job = { id, status: 'generating', postIds: ['p1'], createdAt: new Date().toISOString(), prompt: draft.prompt, mediaType: 'single_image', results: [] };
+  global.fetch = async (_, init) => {
+    if (init.method === 'GET') return Response.json({ configured: true, jobs: [job], photos: [] });
+    calls.push(JSON.parse(init.body).action); throw new Error('Predis tijdelijk niet bereikbaar');
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const props = { item, enabled: true, workspaceId: 'w', session: { access_token: 'one' } };
+  let r;
+  try {
+    await React.act(async () => { r = Renderer.create(React.createElement(Component, props)); });
+    await React.act(async () => r.update(React.createElement(Component, { ...props, enabled: false })));
+    await React.act(async () => t.mock.timers.tick(60000));
+    assert.equal(calls.length, 0);
+    await React.act(async () => r.update(React.createElement(Component, props)));
+    for (const delay of [20000, 40000, 60000]) await React.act(async () => t.mock.timers.tick(delay));
+    assert.deepEqual(calls, ['refresh', 'refresh', 'refresh']);
+    assert.match(text(r.root), /gepauzeerd na drie mislukte controles/);
+    await React.act(async () => t.mock.timers.tick(120000));
+    assert.equal(calls.length, 3);
+  } finally { if (r) await React.act(async () => r.unmount()); t.mock.timers.reset(); global.window = oldWindow; global.fetch = oldFetch; }
+});
 test('input uses only event photos, limits payloads and selects the custom-asset-capable model', async () => {
   const lib = await load('lib/predis-content.js');
   const input = lib.validatePredisInput(draft, item), form = lib.predisForm(input, 'brand');

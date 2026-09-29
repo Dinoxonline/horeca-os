@@ -309,8 +309,9 @@ test('Predis starts with a neutral choice; manual and all AI formats require exp
    const button=label=>r.root.findAllByType('button').find(b=>allText(b).startsWith(label));
    assert.equal(r.root.findByProps({'aria-label':'Predis-werkwijze kiezen'}).type,'section');
    assert.equal(calls.length,0);
-   assert.equal(r.root.findAllByType('a').length,4);
-   assert.ok(r.root.findAllByType('a').every(a=>a.props.href==='https://app.predis.ai/app/new_post/create'));
+   assert.equal(r.root.findAllByType('a').length,6);
+   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,4);
+   assert.ok(r.root.findAllByType('a').some(a=>a.props.href==='https://app.predis.ai/app/content_library'));
    await React.act(async()=>button('Eigen foto en tekst').props.onClick());
    assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
    assert.equal(r.root.findAllByProps({'aria-label':'Content maken met Predis'}).length,0);
