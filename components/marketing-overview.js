@@ -3,9 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import ManualFacebookUpdate from "./manual-facebook-update";
-import FacebookAdAccountPicker from "./facebook-ad-account-picker";
-import MetaCampaignComposer from "./meta-campaign-composer";
-import { campaignBudgetSummary } from "../lib/meta-campaign-settings";
+import MetaCampaignEditor from "./meta-campaign-editor";
 import InstagramEventPublisher from "./instagram-event-publisher";
 import ManualPredis from "./predis-workspace";
 import EventCalendar from "./event-calendar";
@@ -548,71 +546,6 @@ function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMe
   </details>;
 }
 
-function MetaCampaignEditor({ workspaceId, session, item, distribution, business, enabled, onSaved, onDirty }) {
-  const [adAccount, setAdAccount] = useState(undefined);
-  const [pageAccount, setPageAccount] = useState(null);
-  const [loadingAccount, setLoadingAccount] = useState(false);
-  const [adsConfiguration, setAdsConfiguration] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const paidCampaign = distribution.facebook_paid_campaign || {};
-  const created = ["active", "paused"].includes(paidCampaign.status);
-
-  async function loadAdAccount() {
-    if (!session?.access_token) return;
-    setLoadingAccount(true); setError("");
-    try {
-      const response = await fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
-      const result = await response.json();
-      if (!response.ok || result.accountsWarning) throw new Error(result.error || result.accountsWarning || "De Meta-koppeling kon niet worden gecontroleerd.");
-      setAdsConfiguration(result.adsConfiguration || null);
-      setAdAccount((result.adAccounts || []).find(account => String(account.business_id) === String(item.business_id)) || null);
-      setPageAccount((result.accounts || []).find(account => String(account.business_id) === String(item.business_id)) || null);
-    } catch (failure) { setError(failure.message); setAdAccount(null); }
-    finally { setLoadingAccount(false); }
-  }
-  useEffect(() => { if (enabled && adAccount === undefined) loadAdAccount(); }, [enabled, adAccount]);
-
-  async function connectAdAccount() {
-    setBusy(true); setError("");
-    try {
-      const response = await fetch("/api/integrations/facebook", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, businessId: item.business_id, purpose: "ads" }) });
-      const result = await response.json();
-      if (!response.ok || !result.authorizationUrl) throw new Error(result.error || "Het Meta-advertentieaccount kon niet worden gekoppeld.");
-      window.location.assign(result.authorizationUrl);
-    } catch (failure) { setError(failure.message); setBusy(false); }
-  }
-  async function searchMeta(resource, q, country) {
-    const params = new URLSearchParams({ workspaceId, businessId: item.business_id, resource, q, country });
-    const response = await fetch(`/api/integrations/facebook/ads?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Meta kon geen zoekresultaten ophalen.");
-    return result.options || [];
-  }
-  async function createCampaign(settings) {
-    const budget = campaignBudgetSummary(settings);
-    const budgetText = settings.budgetType === "lifetime" ? `Totaalbudget: € ${budget.amount.toFixed(2)}` : `Dagbudget: € ${budget.amount.toFixed(2)}\nBudgetindicatie looptijd: € ${budget.estimate?.toFixed(2)} (geen harde limiet)`;
-    if (!window.confirm(`Maak “${settings.campaignName}” als gepauzeerd concept aan?\n\n${budgetText}\nAfzender: ${pageAccount?.display_name || business?.name}\n\nEr wordt nog niets gestart. Controleer en activeer het concept zelf in Meta.`)) return;
-    setBusy(true); setError(""); onDirty?.(true);
-    try {
-      const response = await fetch("/api/integrations/facebook/ads", {
-        method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId, businessId: item.business_id, campaignId: item.id, settings: { ...settings, launchStatus: "paused" } }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.paidCampaign) throw new Error(result.error || "Meta heeft geen campagnebevestiging teruggegeven.");
-      onSaved({ ...item, media: (item.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) });
-      onDirty?.(false);
-    } catch (failure) { setError(failure.message || "Meta kon het concept niet maken."); }
-    finally { setBusy(false); }
-  }
-
-  if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><p><strong>{paidCampaign.status === "active" ? "Meta-campagne is actief." : "Meta-campagne staat gepauzeerd."}</strong> {paidCampaign.name}</p><p>Controleer en bewerk het bestaande concept in Meta. Er wordt geen dubbele campagne aangemaakt.</p>{paidCampaign.manage_url && <a className="secondaryButton" href={paidCampaign.manage_url} target="_blank" rel="noreferrer">In Meta bekijken ↗</a>}</section>;
-  if (loadingAccount || adAccount === undefined) return <p className="marketingMetaCampaign"><strong>Meta-advertentieaccount wordt gecontroleerd…</strong></p>;
-  if (adAccount?.connection_status === "pending") return <FacebookAdAccountPicker workspaceId={workspaceId} businessId={item.business_id} businessName={business?.name} session={session} account={adAccount} onSaved={loadAdAccount} />;
-  if (!adAccount || adAccount.connection_status !== "connected" || !adAccount.granted_scopes?.includes("ads_management")) return <section className="marketingMetaCampaign">{adsConfiguration?.ready ? <><p>Verbind het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong> met toestemming voor betaalde campagnes.</p><button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></> : <><p>{adsConfiguration?.message || "De advertentiekoppeling kon niet worden gecontroleerd."}</p>{adsConfiguration?.setupUrl && <a className="secondaryButton" href={adsConfiguration.setupUrl} target="_blank" rel="noreferrer">Meta-appinstellingen openen ↗</a>}</>}<button type="button" className="secondaryButton" onClick={loadAdAccount}>Koppeling opnieuw controleren</button>{error && <p role="alert">{error}</p>}</section>;
-  return <MetaCampaignComposer key={item.id} item={item} distribution={distribution} businessName={business?.name || "Deze vestiging"} pageName={pageAccount?.display_name} adAccountName={adAccount.display_name} onCreate={createCampaign} onSearch={searchMeta} onDirty={onDirty} busy={busy} error={error} />;
-}
 
 export function EventDetails({ workspaceId, session, onPredisSaved, onCalendarSaved, onSeriesSaved, onPhotoSaved, onSeriesOpen, onInstagramPublished, item, matchItem, sameDayItems = [], sourceComparisonItems = [], sourceComparisonCheck = "idle", business, onClose, onLink, onLinkExisting, onChooseMatch, onSyncContent, onUpdateWebsite, facebookLinkCheck, onConfirmFacebook, onCompareSources, comparing, linking, syncError, mergeNotice, contentSaveNotice }) {
   const distribution = withVerifiedFacebookEvent(distributionFor(item), sourceComparisonItems); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event"; const start = itemStart(item); const end = distribution.common?.end;
@@ -673,7 +606,7 @@ export function EventDetails({ workspaceId, session, onPredisSaved, onCalendarSa
 {source.label === "Horeca OS" && <section aria-label="Bewaarde hoofdfoto"><h4>Hoofdfoto in Horeca OS</h4><EventPhoto url={distribution.common?.image_url} label="Bewaarde hoofdfoto in Horeca OS" /></section>}
 </ComparisonCard>)}</section>}{chosenContent && !sources.some(source => source.label === chosenContent.label) && chosenEditor}
 {!external && !sources.some(source => source.label === "Facebook") && <EventPhotoSync mode="facebook" workspaceId={workspaceId} session={session} item={item} busy={linking || photoBusy || comparing || baseUnsaved || calendarUnsaved || predisUnsaved || seriesUnsaved || contentDirty} onBusyChange={setPhotoBusy} onSaved={onPhotoSaved} onOpenWebsite={() => openChannel("website")} />}
-</details>{!external && <details className="marketingDetailFold" onToggle={event => trackChannel("series", event.currentTarget.open)}><summary>{distribution.series ? "Reeks bekijken en wijzigen" : "Dit evenement herhalen — reeks maken"}</summary><EventSeries key={item.id} enabled={Boolean(openChannels.series)} item={item} workspaceId={workspaceId} session={session} onSaved={onSeriesSaved} onOpen={openSeriesOccurrence} onUnsavedChange={setSeriesUnsaved} /></details>}{!external && <details key={`facebook-edit:${item.id}`} className="marketingDetailFold" data-facebook-editor id={`event-channel-facebook-${item.id}`} ref={node => { channelPanels.current.facebook = node; }} onToggle={event => trackChannel("facebook", event.currentTarget.open)}><summary>Facebook handmatig bijwerken</summary><button type="button" className="secondaryButton" onClick={() => openChannel("sources")}>Tekst en foto van Facebook kiezen</button><ManualFacebookUpdate textMatches={Boolean(comparisonState.matchingSources?.includes("Facebook"))} key={item.id} distribution={distribution} dirty={contentDirty} busy={(linking || photoBusy) || comparing} onConfirm={onConfirmFacebook} linkCheck={comparing ? "pending" : facebookLinkCheck} draftContent={chosenContent} sources={canChoose ? sources : []} onChooseSource={chooseSource} onSave={onSyncContent} saveNotice={visibleSaveNotice} /></details>}{!external && <details key={`instagram-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-instagram-${item.id}`} ref={node => { channelPanels.current.instagram = node; }} onToggle={event => trackChannel("instagram", event.currentTarget.open)}><summary>Instagram plaatsen</summary><InstagramEventPublisher key={item.id} linkedSources={sourceComparisonItems} mediaLoading={["queued", "pending"].includes(sourceComparisonCheck) || comparing} item={item} workspaceId={workspaceId} session={session} businessName={business?.name} onPublished={onInstagramPublished} /></details>}{!external && <details key={`meta-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-meta-${item.id}`} ref={node => { channelPanels.current.meta = node; }} onToggle={event => trackChannel("meta", event.currentTarget.open)}><summary>Meta-campagne — Facebook en Instagram</summary><MetaCampaignEditor key={item.id} onDirty={setMetaUnsaved} key={item.id} enabled={Boolean(openChannels.meta)} workspaceId={workspaceId} session={session} item={item} distribution={distribution} business={business} onSaved={(saved) => onSeriesSaved?.([saved])} /></details>}{!external && <details key={`calendar-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-calendar-${item.id}`} ref={node => { channelPanels.current.calendar = node; }} onToggle={event => trackChannel("calendar", event.currentTarget.open)}><summary>Agenda info@leclubbbq.nl — inplannen en controleren</summary><EventCalendar sources={sourceComparisonItems} sourcesLoading={comparing || ["queued", "pending"].includes(sourceComparisonCheck)} onRefreshSources={onCompareSources} key={item.id} enabled={Boolean(openChannels.calendar)} item={item} workspaceId={workspaceId} session={session} onSaved={onCalendarSaved} onUnsavedChange={setCalendarUnsaved} /></details>}{!external && <details key={`predis-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-predis-${item.id}`} ref={node => { channelPanels.current.predis = node; }} onToggle={event => trackChannel("predis", event.currentTarget.open)}><summary>Predis — content maken en planning</summary><ManualPredis key={item.id} enabled={Boolean(openChannels.predis)} item={item} linkedSources={sourceComparisonItems} workspaceId={workspaceId} session={session} businessName={business?.name} onSaved={onPredisSaved} onUnsavedChange={setPredisUnsaved} /></details>}{syncError && <p role="alert">{syncError}</p>}</article></div>;
+</details>{!external && <details className="marketingDetailFold" onToggle={event => trackChannel("series", event.currentTarget.open)}><summary>{distribution.series ? "Reeks bekijken en wijzigen" : "Dit evenement herhalen — reeks maken"}</summary><EventSeries key={item.id} enabled={Boolean(openChannels.series)} item={item} workspaceId={workspaceId} session={session} onSaved={onSeriesSaved} onOpen={openSeriesOccurrence} onUnsavedChange={setSeriesUnsaved} /></details>}{!external && <details key={`facebook-edit:${item.id}`} className="marketingDetailFold" data-facebook-editor id={`event-channel-facebook-${item.id}`} ref={node => { channelPanels.current.facebook = node; }} onToggle={event => trackChannel("facebook", event.currentTarget.open)}><summary>Facebook handmatig bijwerken</summary><button type="button" className="secondaryButton" onClick={() => openChannel("sources")}>Tekst en foto van Facebook kiezen</button><ManualFacebookUpdate textMatches={Boolean(comparisonState.matchingSources?.includes("Facebook"))} key={item.id} distribution={distribution} dirty={contentDirty} busy={(linking || photoBusy) || comparing} onConfirm={onConfirmFacebook} linkCheck={comparing ? "pending" : facebookLinkCheck} draftContent={chosenContent} sources={canChoose ? sources : []} onChooseSource={chooseSource} onSave={onSyncContent} saveNotice={visibleSaveNotice} /></details>}{!external && <details key={`instagram-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-instagram-${item.id}`} ref={node => { channelPanels.current.instagram = node; }} onToggle={event => trackChannel("instagram", event.currentTarget.open)}><summary>Instagram plaatsen</summary><InstagramEventPublisher key={item.id} linkedSources={sourceComparisonItems} mediaLoading={["queued", "pending"].includes(sourceComparisonCheck) || comparing} item={item} workspaceId={workspaceId} session={session} businessName={business?.name} onPublished={onInstagramPublished} /></details>}{!external && <details key={`meta-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-meta-${item.id}`} ref={node => { channelPanels.current.meta = node; }} onToggle={event => trackChannel("meta", event.currentTarget.open)}><summary>Meta-campagne — Facebook en Instagram</summary><MetaCampaignEditor key={item.id} onDirty={setMetaUnsaved} enabled={Boolean(openChannels.meta)} workspaceId={workspaceId} session={session} item={item} distribution={distribution} business={business} onSaved={(saved) => onSeriesSaved?.([saved])} /></details>}{!external && <details key={`calendar-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-calendar-${item.id}`} ref={node => { channelPanels.current.calendar = node; }} onToggle={event => trackChannel("calendar", event.currentTarget.open)}><summary>Agenda info@leclubbbq.nl — inplannen en controleren</summary><EventCalendar sources={sourceComparisonItems} sourcesLoading={comparing || ["queued", "pending"].includes(sourceComparisonCheck)} onRefreshSources={onCompareSources} key={item.id} enabled={Boolean(openChannels.calendar)} item={item} workspaceId={workspaceId} session={session} onSaved={onCalendarSaved} onUnsavedChange={setCalendarUnsaved} /></details>}{!external && <details key={`predis-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-predis-${item.id}`} ref={node => { channelPanels.current.predis = node; }} onToggle={event => trackChannel("predis", event.currentTarget.open)}><summary>Predis — content maken en planning</summary><ManualPredis key={item.id} enabled={Boolean(openChannels.predis)} item={item} linkedSources={sourceComparisonItems} workspaceId={workspaceId} session={session} businessName={business?.name} onSaved={onPredisSaved} onUnsavedChange={setPredisUnsaved} /></details>}{syncError && <p role="alert">{syncError}</p>}</article></div>;
 }
 
 export function CalendarContentSelector({ value, onChange }) {

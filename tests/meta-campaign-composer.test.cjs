@@ -16,6 +16,69 @@ function load(file, mocks = {}) {
 const distribution = { kind: "campaign_distribution", common: { title: "Live muziek", description: "Een avond vol muziek.", image_url: "https://example.com/poster.jpg", website_url: "https://example.com/tickets" } };
 const item = { id: "campaign", body: "Tekst", business_id: "venue", media: [distribution] };
 
+test("both entry points reuse the shared editor and new campaigns are not gated on a Facebook event", async () => {
+  await swc.loadBindings();
+  for (const file of ["components/central-event-creator.js", "components/marketing-overview.js", "components/meta-campaign-editor.js"]) {
+    const source = fs.readFileSync(path.join(root, file), "utf8");
+    swc.transformSync(source, { filename: file, jsc: { parser: { syntax: "ecmascript", jsx: true } } });
+    if (file.includes("central-event")) {
+      assert.match(source, /import { SavedMetaCampaignEditor } from "\.\/meta-campaign-editor"/);
+      assert.match(source, /!websiteEventCancelled && <section className="savedChannelPanel savedFacebookAdsPanel"/);
+      assert.match(source, /initialDraft={facebookAdDrafts\[item.id\]}/);
+      assert.doesNotMatch(source, /async function startFacebookPaidCampaign|facebookAdsSpendWarning|Betaalde campagne starten/);
+    }
+  }
+});
+
+test("saved event and product panels open the same editor, use venue identity and create only after confirmation", async () => {
+  await swc.loadBindings();
+  const React = require("react"), Renderer = require("react-test-renderer");
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const originalFetch = global.fetch, originalWindow = global.window;
+  let allowed = false, requests = [], saved, draftSnapshot;
+  global.window = { confirm: () => allowed, addEventListener() {}, removeEventListener() {} };
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url, options });
+    if (options.method === "POST") return { ok: true, json: async () => ({ paidCampaign: { status: "paused", campaign_id: "meta-123", manage_url: "https://www.facebook.com/adsmanager/" } }) };
+    return { ok: true, json: async () => ({
+      accounts: [{ business_id: "other", display_name: "Andere vestiging" }, { business_id: "venue", display_name: "Pagina Het Plein" }],
+      adAccounts: [{ business_id: "venue", display_name: "Gedeeld advertentieaccount", connection_status: "connected", granted_scopes: ["ads_management"] }],
+    }) };
+  };
+  const { SavedMetaCampaignEditor } = load("components/meta-campaign-editor.js", { "next/image": { __esModule: true, default: props => React.createElement("img", { src: props.src, alt: props.alt }) } });
+  try {
+    for (const type of ["website_event", "product"]) {
+      requests = []; saved = undefined; allowed = false;
+      const currentDistribution = { ...distribution, source_type: type, target_channels: [] };
+      const currentItem = { ...item, media: [currentDistribution] };
+      const props = { workspaceId: "workspace", session: { access_token: "test-session" }, item: currentItem, distribution: currentDistribution, business: { name: "Grandcafé Het Plein" }, onSaved: value => { saved = value; }, onDraftChange: value => { draftSnapshot = value; } };
+      let renderer;
+      try {
+        await React.act(async () => { renderer = Renderer.create(React.createElement(SavedMetaCampaignEditor, props)); });
+        assert.equal(requests.length, 0, "closed editors do not load accounts");
+        await React.act(async () => renderer.root.findByProps({ className: "savedMetaCampaignEditor" }).props.onToggle({ currentTarget: { open: true } }));
+        const preview = renderer.root.findByProps({ "aria-label": "Advertentievoorbeeld" });
+        assert.ok(preview.findAllByType("strong").some(node => node.props.children === "Pagina Het Plein"));
+        const field = renderer.root.findAllByType("input").find(node => node.props.maxLength === 150);
+        await React.act(async () => field.props.onChange({ target: { value: "Mijn " + type } }));
+        assert.equal(draftSnapshot.campaignName, "Mijn " + type);
+        const submit = () => renderer.root.findAllByType("button").find(node => node.props.children === "Controleren en concept maken");
+        await React.act(async () => submit().props.onClick());
+        assert.equal(requests.filter(row => row.options.method === "POST").length, 0, "cancelled confirmation does not create anything");
+        allowed = true;
+        await React.act(async () => submit().props.onClick());
+        const body = JSON.parse(requests.find(row => row.options.method === "POST").options.body);
+        assert.equal(body.businessId, "venue"); assert.equal(body.campaignId, "campaign");
+        assert.equal(body.settings.editorVersion, 2); assert.equal(body.settings.launchStatus, "paused");
+        assert.equal(body.settings.campaignName, "Mijn " + type);
+        assert.equal(saved.media[0].facebook_paid_campaign.status, "paused");
+        await React.act(async () => renderer.update(React.createElement(SavedMetaCampaignEditor, { ...props, item: saved, distribution: saved.media[0] })));
+        assert.equal(renderer.root.findAllByProps({ "aria-label": "Meta-campagne instellen" }).length, 0, "saved receipt replaces the creation form");
+      } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+    }
+  } finally { global.fetch = originalFetch; global.window = originalWindow; }
+});
+
 test("settings have stable future dates, safe URLs and real budget/placement mappings", async () => {
   await swc.loadBindings();
   const settings = load("lib/meta-campaign-settings.js");

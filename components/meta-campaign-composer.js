@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { META_OBJECTIVES, META_CTA, defaultMetaCampaign, campaignImages, campaignBudgetSummary, validateMetaCampaign, publicWebUrl } from "../lib/meta-campaign-settings";
 import styles from "./meta-campaign-composer.module.css";
@@ -8,8 +8,11 @@ import styles from "./meta-campaign-composer.module.css";
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", GB: "Verenigd Koninkrijk" };
 
-export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onDirty, busy, error }) {
-  const [draft, setDraft] = useState(() => defaultMetaCampaign(item, distribution));
+export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onDirty, busy, error, initialDraft, onDraftChange }) {
+  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), ...initialDraft }));
+  const draftListener = useRef(onDraftChange);
+  useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
+  useEffect(() => { draftListener.current?.(draft); }, [draft]);
   const [step, setStep] = useState("campaign");
   const [previewPlatform, setPreviewPlatform] = useState("facebook");
   const [previewStory, setPreviewStory] = useState(false);

@@ -108,6 +108,8 @@ test("event details show a clickable Meta campaign card beside the social channe
   assert.match(overview, /\["meta", "calendar"\]/);
   assert.match(overview, /Facebook \+ Instagram/);
   assert.match(overview, /event-channel-meta-\$\{item\.id\}/);
-  assert.match(overview, /MetaCampaignComposer/);
-  assert.match(overview, /launchStatus:\s*"paused"/);
+  assert.match(overview, /import MetaCampaignEditor from "\.\/meta-campaign-editor"/);
+  const editor = fs.readFileSync(path.join(root, "components/meta-campaign-editor.js"), "utf8");
+  assert.match(editor, /MetaCampaignComposer/);
+  assert.match(editor, /launchStatus:\s*"paused"/);
 });

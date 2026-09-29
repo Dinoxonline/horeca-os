@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import NextImage from "next/image";
+import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
 import { supabase } from "../lib/supabase";
 
 const channelDefaults = {
@@ -461,7 +462,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [facebookEventOrganizerChecks, setFacebookEventOrganizerChecks] = useState({});
   const [facebookEventManualLinkIds, setFacebookEventManualLinkIds] = useState([]);
   const [facebookAccount, setFacebookAccount] = useState(null);
-  const [facebookAdsAccount, setFacebookAdsAccount] = useState(null);
   const [facebookAdDrafts, setFacebookAdDrafts] = useState({});
   const [facebookAccountLoading, setFacebookAccountLoading] = useState(false);
   const [predisBrandId, setPredisBrandId] = useState("");
@@ -1732,7 +1732,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const selectedBusinessId = selectedBusiness?.id || businessId;
     if (!workspaceId || !selectedBusinessId) {
       setFacebookAccount(null);
-      setFacebookAdsAccount(null);
       return;
     }
     let active = true;
@@ -1745,9 +1744,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         if (!active) return;
         if (!ok) throw new Error(result.error || "De Facebookpagina kon niet worden gecontroleerd.");
         setFacebookAccount((result.accounts || []).find((account) => account.business_id === selectedBusinessId) || null);
-        setFacebookAdsAccount((result.adAccounts || []).find((account) => account.business_id === selectedBusinessId) || null);
       })
-      .catch(() => { if (active) { setFacebookAccount(null); setFacebookAdsAccount(null); } })
+      .catch(() => { if (active) setFacebookAccount(null); })
       .finally(() => { if (active) setFacebookAccountLoading(false); });
     return () => { active = false; };
   }, [workspaceId, selectedBusiness?.id, businessId, session.access_token]);
@@ -2054,67 +2052,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }
   }
 
-  async function connectFacebookAds(item) {
-    setConceptBusyId(item.id);
-    setResult(null);
-    try {
-      saveCurrentUiState();
-      const response = await fetch("/api/integrations/facebook", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId, businessId: item.business_id || selectedBusiness?.id || businessId, purpose: "ads" }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Het advertentieaccount kon niet worden gekoppeld.");
-      window.location.assign(result.authorizationUrl);
-    } catch (error) {
-      setResult({ ok: false, message: error.message || "Het advertentieaccount kon niet worden gekoppeld." });
-      setConceptBusyId(null);
-    }
-  }
-
-  async function startFacebookPaidCampaign(item, distribution) {
-    const key = String(item.id);
-    const draft = facebookAdDrafts[key] || {};
-    const dailyBudget = Number(draft.dailyBudget || 10);
-    const budgetType = draft.budgetType || "daily";
-    const startAt = draft.startAt || toLocalDateTimeInput(new Date(Date.now() + 10 * 60 * 1000));
-    const endAt = draft.endAt || distribution.common?.end || "";
-    const durationDays = Math.max(1, Math.ceil((new Date(endAt).getTime() - new Date(startAt).getTime()) / 86400000));
-    const maximumEstimate = budgetType === "lifetime" ? dailyBudget : dailyBudget * durationDays;
-    if (!window.confirm(`Maak deze campagne als gepauzeerd Meta-concept?\n\n${budgetType === "lifetime" ? "Totaalbudget" : "Dagbudget"}: € ${dailyBudget.toFixed(2)}\nBudgetindicatie: € ${maximumEstimate.toFixed(2)}${budgetType === "daily" ? " (geen harde limiet)" : ""}\n\nDe campagne start niet automatisch. Activeer hem zelf in Meta na controle.`)) return;
-    setConceptBusyId(item.id);
-    setResult(null);
-    try {
-      const response = await fetch("/api/integrations/facebook/ads", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          businessId: item.business_id || selectedBusiness?.id || businessId,
-          campaignId: item.id,
-          settings: {
-            campaignName: draft.campaignName || `${distribution.common?.title || "Evenement"} · betaald`,
-            objective: draft.objective || "tickets", budgetType, dailyBudget, startAt: new Date(startAt).toISOString(), endAt: new Date(endAt).toISOString(),
-            ageMin: Number(draft.ageMin || 18), ageMax: Number(draft.ageMax || 65),
-            countries: draft.countries || ["NL"], locationQuery: draft.locationQuery || "Zoetermeer", radiusKm: Number(draft.radiusKm || 25), gender: draft.gender || "all",
-            placements: draft.placements || "automatic", callToAction: draft.callToAction || "tickets",
-            launchStatus: "paused",
-          },
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "De betaalde campagne kon niet worden gestart.");
-      setEventCampaigns((current) => current.map((campaign) => campaign.id === item.id
-        ? { ...campaign, media: (campaign.media || []).map((entry) => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) }
-        : campaign));
-      setResult({ ok: true, message: "De campagne staat als gepauzeerd concept in Meta en in dit dossier." });
-    } catch (error) {
-      setResult({ ok: false, message: error.message || "De betaalde campagne kon niet worden gestart." });
-    } finally {
-      setConceptBusyId(null);
-    }
-  }
 
   async function saveFacebookGroup() {
     const selectedBusinessId = selectedBusiness?.id || businessId;
@@ -2585,6 +2522,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   return <section className="panel" style={{ marginBottom: 24 }}>
     <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
+    <p>Ook betaald promoten? Sla eerst je evenement of campagne op. Open daarna bij het opgeslagen dossier <b>Meta-campagne — Facebook en Instagram</b> voor doelgroep, budget, advertentie en voorbeeld. Er wordt niets automatisch gestart.</p>
     {editingCampaignId && <div className="editingNotice"><strong>{editingWebsiteEvent ? "Website-evenement bewerken" : "Concept bewerken"}</strong><span>{editingWebsiteEvent ? "Je wijzigingen worden na bevestiging in hetzelfde Eventin-evenement en marketingdossier opgeslagen." : "Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat."}</span><button type="button" onClick={startNewCampaign}>Nieuw evenement</button></div>}
     <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
     {isEvent && <div className="eventWorkspaceChooser">
@@ -2948,8 +2886,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         const groupRoundWaitSeconds = groupRoundWaiting ? Math.ceil((groupShareState.waitUntil - facebookGroupShareClock) / 1000) : 0;
         const facebookGroupImage = distribution.channel_payloads?.facebook?.image_url || distribution.common?.image_url || "";
         const facebookEventDelivery = distribution.facebook_event_delivery || {};
-        const facebookPaidCampaign = distribution.facebook_paid_campaign || {};
-        const facebookPaidCampaignCreated = ["active", "paused"].includes(facebookPaidCampaign.status);
         const facebookDestination = distribution.channel_payloads?.facebook?.destination || (facebookAccount ? { page_id: facebookAccount.external_account_id, page_name: facebookAccount.display_name } : null);
         const facebookEnabled = (distribution.target_channels || []).includes("facebook");
         const eventinPublishedWithTicketLink = !isWebsiteEvent || (websiteEventStatus === "publish" && Boolean(distribution.source_url));
@@ -3087,41 +3023,16 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                   </div>}
                 </div>}
             </div>}
-            {isWebsiteEvent && campaignWorkflowStep >= 2 && (distribution.target_channels || []).includes("facebook") && <section className={`savedChannelPanel savedFacebookAdsPanel ${facebookPaidCampaignCreated ? "active" : ""}`}>
-              <div className="savedChannelPanelHead"><div><h4>Facebook betaalde campagne</h4><p>Promoot dit evenement betaald vanuit de Facebookpagina van deze vestiging</p></div><span>{facebookPaidCampaign.status === "active" ? "Actief" : facebookPaidCampaign.status === "paused" ? "Gepauzeerd in Meta" : facebookAdsAccount ? "Klaar om in te stellen" : "Advertentieaccount koppelen"}</span></div>
-              {facebookPaidCampaignCreated ? <div className="facebookPaidCampaignSummary">
-                <p><b>Campagne aangemaakt.</b> {facebookPaidCampaign.budget_type === "lifetime" ? "Totaalbudget" : "Dagbudget"} € {Number(facebookPaidCampaign.budget || 0).toFixed(2)} · leeftijd {facebookPaidCampaign.age_min}–{facebookPaidCampaign.age_max} jaar.</p>
-                <p>Loopt tot {facebookPaidCampaign.end_at ? new Date(facebookPaidCampaign.end_at).toLocaleString("nl-NL") : "de ingestelde einddatum"}.</p>
-                {facebookPaidCampaign.manage_url && <a className="savedChannelLink" href={facebookPaidCampaign.manage_url} target="_blank" rel="noopener noreferrer" onClick={() => saveCurrentUiState()}>Campagne in Meta bekijken</a>}
-              </div> : !facebookAdsAccount ? <div className="facebookAdsConnect">
-                <p>Verbind eenmalig het Meta-advertentieaccount van <b>{selectedBusiness?.name || "deze vestiging"}</b>. Daarna gebruikt Horeca OS automatisch dit account; je kiest hier nooit opnieuw een andere bedrijfspagina.</p>
-                <button type="button" disabled={conceptBusy} onClick={() => connectFacebookAds(item)}>{conceptBusy ? "Koppelen…" : "Advertentieaccount koppelen"}</button>
-              </div> : <div className="facebookAdsForm">
-                {(() => {
-                  const key = String(item.id);
-                  const draft = facebookAdDrafts[key] || {};
-                  const updateAdDraft = (field, value) => setFacebookAdDrafts((current) => ({ ...current, [key]: { ...(current[key] || {}), [field]: value } }));
-                  return <>
-                    <label className="facebookAdsWide">Campagnenaam<input type="text" value={draft.campaignName || `${distribution.common?.title || "Evenement"} · betaald`} onChange={(event) => updateAdDraft("campaignName", event.target.value)} /></label>
-                    <label>Campagnedoel<select value={draft.objective || "tickets"} onChange={(event) => updateAdDraft("objective", event.target.value)}><option value="tickets">Meer ticket- en websitebezoeken</option><option value="engagement">Meer reacties en betrokkenheid</option></select></label>
-                    <label>Budgetsoort<select value={draft.budgetType || "daily"} onChange={(event) => updateAdDraft("budgetType", event.target.value)}><option value="daily">Dagbudget</option><option value="lifetime">Totaalbudget voor hele looptijd</option></select></label>
-                    <label>{draft.budgetType === "lifetime" ? "Totaalbudget" : "Dagbudget"} (€)<input type="number" min="2" step="1" value={draft.dailyBudget || 10} onChange={(event) => updateAdDraft("dailyBudget", event.target.value)} /></label>
-                    <label>Start<input type="datetime-local" value={draft.startAt || toLocalDateTimeInput(new Date(Date.now() + 10 * 60 * 1000))} onChange={(event) => updateAdDraft("startAt", event.target.value)} /></label>
-                    <label>Einde<input type="datetime-local" value={draft.endAt || distribution.common?.end || ""} onChange={(event) => updateAdDraft("endAt", event.target.value)} /></label>
-                    <label>Land<select value={(draft.countries || ["NL"])[0]} onChange={(event) => updateAdDraft("countries", [event.target.value])}><option value="NL">Nederland</option><option value="BE">België</option><option value="DE">Duitsland</option></select></label>
-                    <label>Doelgroepplaats<input type="text" value={draft.locationQuery ?? "Zoetermeer"} onChange={(event) => updateAdDraft("locationQuery", event.target.value)} placeholder="Bijvoorbeeld Zoetermeer" /></label>
-                    <label>Straal rond plaats (km)<input type="number" min="1" max="80" value={draft.radiusKm || 25} onChange={(event) => updateAdDraft("radiusKm", event.target.value)} /></label>
-                    <label>Minimumleeftijd<input type="number" min="18" max="65" value={draft.ageMin || 18} onChange={(event) => updateAdDraft("ageMin", event.target.value)} /></label>
-                    <label>Maximumleeftijd<input type="number" min="18" max="65" value={draft.ageMax || 65} onChange={(event) => updateAdDraft("ageMax", event.target.value)} /></label>
-                    <label>Geslacht<select value={draft.gender || "all"} onChange={(event) => updateAdDraft("gender", event.target.value)}><option value="all">Iedereen</option><option value="women">Vrouwen</option><option value="men">Mannen</option></select></label>
-                    <label>Plaatsingen<select value={draft.placements || "automatic"} onChange={(event) => updateAdDraft("placements", event.target.value)}><option value="automatic">Automatische Meta-plaatsingen</option><option value="facebook">Alleen Facebook</option></select></label>
-                    <label>Knop op advertentie<select value={draft.callToAction || "tickets"} onChange={(event) => updateAdDraft("callToAction", event.target.value)}><option value="tickets">Tickets kopen</option><option value="learn_more">Meer informatie</option></select></label>
-                    <p>De campagne wordt gepauzeerd aangemaakt. Controleer en activeer hem zelf in Meta.</p>
-                    <div className="facebookAdsSpendWarning"><b>Dit geeft echt advertentiebudget uit.</b><span>Horeca OS vraagt daarom nog één duidelijke bevestiging met de geschatte bovengrens voordat Meta de campagne start.</span></div>
-                    <button type="button" className="facebookAdsStartButton" disabled={conceptBusy || !facebookEventReady || !eventinPublishedWithTicketLink} title={!facebookEventReady ? "Plaats en koppel eerst het Facebook-evenement" : !eventinPublishedWithTicketLink ? "Publiceer eerst in Eventin" : ""} onClick={() => startFacebookPaidCampaign(item, distribution)}>{conceptBusy ? "Campagne starten…" : "Betaalde campagne starten"}</button>
-                  </>;
-                })()}
-              </div>}
+            {!websiteEventCancelled && <section className="savedChannelPanel savedFacebookAdsPanel">
+              <SavedMetaCampaignEditor key={item.id} workspaceId={workspaceId} session={session} item={item} distribution={distribution}
+                business={businesses.find(business => business.id === item.business_id) || selectedBusiness}
+                onBeforeConnect={saveCurrentUiState}
+                initialDraft={facebookAdDrafts[item.id]}
+                onDraftChange={draft => setFacebookAdDrafts(current => current[item.id] === draft ? current : { ...current, [item.id]: draft })}
+                onSaved={saved => {
+                  setEventCampaigns(current => current.map(campaign => campaign.id === saved.id ? saved : campaign));
+                  setResult({ ok: true, message: "De Meta-campagne staat als gepauzeerd concept in dit dossier. Er is niets gestart." });
+                }} />
             </section>}
             {selectedGroupTargets.length > 0 && (!isWebsiteEvent || campaignWorkflowStep >= 3) && <div className="facebookGroupShareActions">
               <strong>Facebookgroepen · ronde {groupShareState.round || 1}</strong>
@@ -3301,7 +3212,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .savedManagementPanel{margin-top:12px;padding:14px;border:2px solid #173b5c;border-radius:12px;background:#f6f9fb}.savedManagementHeading{margin-bottom:12px}.savedManagementHeading h4{margin:0}.savedManagementHeading p{margin:4px 0 0;color:#4f6675;font-size:13px}.savedManagementPanel .conceptActions{margin-top:0}
       .facebookEventLinkActions{margin-top:12px!important;padding:14px!important;border:1px solid #b8cbea!important;border-left:4px solid #1877f2!important;border-radius:12px!important;background:#eef5ff!important}
       .savedFacebookPrimaryAction{margin-bottom:10px}.savedFacebookPrimaryAction button{border:1px solid #1877f2;border-radius:8px;padding:9px 12px;background:#1877f2;color:#fff;font:inherit;font-weight:800;cursor:pointer}
-      .savedFacebookAdsPanel{border-left:4px solid #1877f2;background:#f7faff}.savedFacebookAdsPanel.active{border-color:#2f9e63;background:#f2fbf6}.facebookAdsConnect{display:grid;gap:10px}.facebookAdsConnect p,.facebookPaidCampaignSummary p{margin:0}.facebookAdsConnect button,.facebookAdsStartButton{justify-self:start;border:1px solid #1877f2;border-radius:8px;padding:10px 13px;background:#1877f2;color:#fff;font:inherit;font-weight:800;cursor:pointer}.facebookAdsForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.facebookAdsForm label{display:grid;gap:5px;font-weight:800}.facebookAdsForm input,.facebookAdsForm select{min-width:0}.facebookAdsWide{grid-column:span 2}.facebookAdsSpendWarning{grid-column:1/-1;display:grid;gap:3px;padding:10px;border-left:4px solid #d99b16;border-radius:8px;background:#fff4d6;color:#6e4d00}.facebookAdsStartButton{grid-column:1/-1}.facebookPaidCampaignSummary{display:grid;gap:7px}
+      .savedFacebookAdsPanel{border-left:4px solid #1877f2;background:#f7faff}
       .savedEventinPreview{margin:10px 0 4px;padding:14px;border:2px solid #25889b;border-radius:12px;background:#eef7f9}
       .savedEventinPreviewHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
       .savedEventinPreviewHead button{border:1px solid #25889b;border-radius:8px;padding:7px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}
