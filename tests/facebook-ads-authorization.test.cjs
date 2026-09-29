@@ -59,6 +59,20 @@ test("OAuth keeps page login working and enables advertising only after app setu
     assert.equal((await route.POST(request("ads", ""))).status, 401);
     role = "staff";
     assert.equal((await route.POST(request("ads"))).status, 403);
+
+    role = "owner";
+    delete process.env.META_ADS_ENABLED;
+    process.env.META_APP_ID = "2231952860937833";
+    const confirmedAppResponse = await route.POST(request("ads"));
+    assert.equal(confirmedAppResponse.status, 200);
+    const confirmedUrl = new URL((await confirmedAppResponse.json()).authorizationUrl);
+    assert.equal(confirmedUrl.searchParams.get("client_id"), "2231952860937833");
+    assert.ok(confirmedUrl.searchParams.get("scope").split(",").includes("ads_management"));
+    process.env.META_ADS_ENABLED = "false";
+    assert.equal((await route.POST(request("ads"))).status, 409, "explicitly disabling the confirmed app still wins");
+    delete process.env.META_ADS_ENABLED;
+    process.env.META_APP_ID = "another-app";
+    assert.equal((await route.POST(request("ads"))).status, 409, "other apps still need their own setup");
   } finally {
     for (const name of envNames) { if (original[name] === undefined) delete process.env[name]; else process.env[name] = original[name]; }
   }
