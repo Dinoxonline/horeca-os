@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createUserSupabase } from "../../../../lib/server-supabase";
+import { canManageWhatsapp, whatsappConfiguration } from "../../../../lib/whatsapp-business";
 
 export async function GET(request) {
   const url = new URL(request.url);
@@ -18,33 +19,15 @@ export async function GET(request) {
     .order("display_name");
 
   if (error) return jsonError("WhatsApp-koppelingen konden niet worden geladen.", 500);
-  const missing = [];
-  if (!process.env.WHATSAPP_VERIFY_TOKEN) missing.push("WHATSAPP_VERIFY_TOKEN");
-  if (!(process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET)) missing.push("WHATSAPP_APP_SECRET");
-  const embeddedSignupMissing = [];
-  if (!process.env.META_APP_ID) embeddedSignupMissing.push("META_APP_ID");
-  if (!process.env.META_APP_SECRET) embeddedSignupMissing.push("META_APP_SECRET");
-  if (!process.env.WHATSAPP_CONFIG_ID) embeddedSignupMissing.push("WHATSAPP_CONFIG_ID");
-  if (!process.env.META_TOKEN_ENCRYPTION_KEY) embeddedSignupMissing.push("META_TOKEN_ENCRYPTION_KEY");
-
+  const { data: assignments } = await client.from("user_role_assignments")
+    .select("business_id,location_id,assignment_permissions(permission),role:roles!inner(role_key,role_permissions(permission))")
+    .eq("workspace_id", workspaceId).eq("user_id", authData.user.id);
+  const manageableBusinessIds = [...new Set((assignments || []).map(a => a.business_id).filter(Boolean))]
+    .filter(id => canManageWhatsapp(assignments, id));
   return NextResponse.json({
     accounts: accounts || [],
-    configuration: {
-      ready: missing.length === 0,
-      missing,
-      webhookUrl: `${url.origin}/api/integrations/whatsapp/webhook`,
-      embeddedSignup: {
-        ready: embeddedSignupMissing.length === 0,
-        missing: embeddedSignupMissing,
-        appId: process.env.META_APP_ID || null,
-        configId: process.env.WHATSAPP_CONFIG_ID || null,
-        redirectUri: process.env.WHATSAPP_REDIRECT_URI || `${url.origin}/koppelingen`,
-        connectEndpoint: "/api/integrations/whatsapp/connect",
-        featureType: "whatsapp_business_app_onboarding",
-        sessionInfoVersion: "3",
-      },
-    },
-  });
+    configuration: { ...whatsappConfiguration(process.env, url.origin), canManageShared: canManageWhatsapp(assignments), manageableBusinessIds },
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 function jsonError(error, status) {
