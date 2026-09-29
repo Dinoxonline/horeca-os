@@ -1903,6 +1903,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setEditingWebsiteEvent(null);
       setPreview(false);
       await loadEventCampaigns();
+      if (form.channels.predis && isEvent) setEventWorkspaceView("saved");
     } catch (error) {
       setResult({ ok: false, message: error.message || "Het vroege concept kon niet worden opgeslagen." });
     } finally {
@@ -2257,6 +2258,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusinessId));
       }
       setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : website.event.status === "draft" ? "Het evenement is als Eventin-concept opgeslagen. Publiceer het hieronder wanneer alles klopt." : "Het evenement is verwerkt.", steps, url: website.event.status === "publish" ? website.event.url : "" }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
+      if (form.channels.predis) setEventWorkspaceView("saved");
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
 
@@ -2738,7 +2740,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <label>Toon<input value={form.predisTone} onChange={(e) => update("predisTone", e.target.value)} /></label>
         <div className="predisGenerationChoice">
           <strong>{predisConnected ? "Predis-merk gevonden voor deze vestiging" : "Predis is nog niet gekoppeld voor deze vestiging"}</strong>
-          <p>Sla eerst dit evenement of deze campagne als concept op. Open daarna hieronder bij het bewaarde dossier ‘Predis — eerst content maken, daarna inplannen’.</p>
+          <p>Sla eerst dit evenement of deze campagne als concept op. Open daarna bij ‘Opgeslagen evenementen’ of de opgeslagen campagnes het onderdeel ‘Predis — eerst content maken, daarna inplannen’.</p>
           <small>Daar worden je tekst en bronfoto’s automatisch naar Predis gestuurd na je maakopdracht. Bekijk eerst het nieuwe ontwerp in de inhoudsbibliotheek en plan het daarna pas in. Alleen opslaan kost geen Predis-tegoed.</small>
         </div>
       </fieldset>}
