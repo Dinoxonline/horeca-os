@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../../lib/server-supabase";
 import { decryptMetaToken } from "../../../../../lib/meta-oauth";
 import { defaultMetaCampaign, validateMetaCampaign, metaTargeting, metaStorySpec, META_OBJECTIVES } from "../../../../../lib/meta-campaign-settings";
+import { normalizeMetaAccountBudget } from "../../../../../lib/meta-account-budget";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -38,12 +39,25 @@ export async function GET(request) {
   const context = await authorizedContext(request, workspaceId, businessId);
   if (context.error) return context.error;
   const resource = params.get("resource"), q = String(params.get("q") || "").trim(), country = params.get("country") || "NL";
-  if (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country)) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
-  const { data: account } = await context.admin.from("integration_accounts").select("id,granted_scopes,connection_status")
+  if (resource !== "budget" && (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country))) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
+  const { data: account } = await context.admin.from("integration_accounts").select("id,external_account_id,granted_scopes,connection_status")
     .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle();
   if (account?.connection_status !== "connected" || !account.granted_scopes?.includes("ads_management")) return jsonError("Koppel eerst het advertentieaccount van deze vestiging.", 409);
   try {
     const token = await accountCredential(context.admin, workspaceId, businessId, account.id);
+    if (resource === "budget") {
+      const id = String(account.external_account_id || "").replace(/^act_/, "");
+      if (!/^\d+$/.test(id)) return jsonError("Het gekoppelde advertentieaccount heeft geen geldig nummer.", 409);
+      const [accountResult, paymentResult] = await Promise.allSettled([
+        graphRead("act_" + id, token, { fields: "name,currency,account_status,spend_cap,amount_spent,balance,timezone_name,is_prepay_account" }),
+        graphRead("act_" + id, token, { fields: "funding_source_details,business_name" }),
+      ]);
+      if (accountResult.status !== "fulfilled") throw accountResult.reason;
+      return NextResponse.json({
+        budget: normalizeMetaAccountBudget(accountResult.value, paymentResult.status === "fulfilled" ? paymentResult.value : {}, id),
+        paymentWarning: paymentResult.status === "rejected" ? "Meta geeft de betaalmethode en bedrijfsnaam niet vrij via deze koppeling. Bekijk deze in Meta." : null,
+      }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     return NextResponse.json({ options: await searchOptions(resource, q, country, token) });
   } catch (error) { return jsonError(error.message, 502); }
 }

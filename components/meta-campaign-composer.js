@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import MetaAccountBudget from "./meta-account-budget";
 import { META_OBJECTIVES, META_CTA, defaultMetaCampaign, campaignImages, campaignBudgetSummary, validateMetaCampaign, publicWebUrl } from "../lib/meta-campaign-settings";
 import styles from "./meta-campaign-composer.module.css";
 
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", GB: "Verenigd Koninkrijk" };
 
-export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onDirty, busy, error, initialDraft, onDraftChange }) {
+export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onDirty, busy, error, initialDraft, onDraftChange, budgetContext }) {
   const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), ...initialDraft }));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
@@ -64,6 +65,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             {field("Campagnenaam", "campaignName", { maxLength: 150 })}
             <fieldset className={styles.objectives}><legend>Campagnedoel</legend>{Object.entries(META_OBJECTIVES).map(([key, value]) => <label key={key} className={draft.objective === key ? styles.selectedObjective : ""}><input type="radio" name={`meta-objective-${item.id}`} checked={draft.objective === key} disabled={busy} onChange={() => update("objective", key)} /><span><strong>{value.label}</strong><small>{value.detail}</small></span></label>)}</fieldset>
             <div className={styles.sectionHeading}><h4>Budget en looptijd</h4><p>Het budget geldt voor deze campagne, niet voor de hele vestiging.</p></div>
+            {budgetContext && <MetaAccountBudget {...budgetContext} plannedBudget={budget.estimate} />}
             <div className={styles.fields}>
               <label className={styles.field}>Budgettype<select value={draft.budgetType} disabled={busy} onChange={event => update("budgetType", event.target.value)}><option value="daily">Dagbudget</option><option value="lifetime">Totaalbudget voor de looptijd</option></select></label>
               {field(draft.budgetType === "daily" ? "Dagbudget (€)" : "Totaalbudget (€)", "dailyBudget", { type: "number", min: 2, step: "0.01" })}

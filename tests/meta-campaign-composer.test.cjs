@@ -147,7 +147,7 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
   await swc.loadBindings();
   const originalFetch = global.fetch;
   const calls = [], writes = [], lookups = [];
-  let currency = "EUR", allowedBusiness = "venue", ig = true;
+  let currency = "EUR", allowedBusiness = "venue", ig = true, paymentDenied = false;
   const user = { auth: { getUser: async () => ({ data: { user: { id: "user" } } }) }, from: () => { const q = { select() { return q; }, eq() { return q; }, then(resolve) { return Promise.resolve({ data: [{ business_id: allowedBusiness, role: { role_key: "owner" } }] }).then(resolve); } }; return q; } };
   const admin = { from(table) {
     const filters = {}; let payload;
@@ -162,8 +162,9 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
   } };
   global.fetch = async (input, options = {}) => {
     const url = new URL(input);
+    if (url.searchParams.get("fields") === "funding_source_details,business_name") return { ok: !paymentDenied, json: async () => paymentDenied ? { error: { message: "No billing access" } } : { business_name: "Le Club", funding_source_details: { display_string: "Visa •••• 1234", id: "private-funding-id" } } };
     if (options.method === "POST") { calls.push({ path: url.pathname, body: Object.fromEntries(options.body) }); return { ok: true, json: async () => ({ id: `result-${calls.length}` }) }; }
-    let result = url.pathname.endsWith("/act_123") ? { currency } : url.pathname.endsWith("/page-venue") ? { instagram_business_account: ig ? { id: "ig-venue" } : undefined }
+    let result = url.pathname.endsWith("/act_123") ? { currency, spend_cap: "50000", amount_spent: "12000", balance: "1000", is_prepay_account: false } : url.pathname.endsWith("/page-venue") ? { instagram_business_account: ig ? { id: "ig-venue" } : undefined }
       : { data: url.searchParams.get("type") === "adinterest" ? [{ id: "123", name: "Music" }] : [{ key: "100", name: "Zoetermeer", country_code: "NL" }] };
     return { ok: true, json: async () => result };
   };
@@ -194,7 +195,73 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
     assert.equal((await route.POST(request({ ageMin: 12 }))).status, 400); assert.equal(calls.length, count);
     const searchRequest = () => new Request("https://example.com/api/integrations/facebook/ads?workspaceId=workspace&businessId=venue&resource=interests&q=music", { headers: { Authorization: "Bearer session" } });
     assert.equal((await (await route.GET(searchRequest())).json()).options[0].id, "123");
+    const budgetRequest = () => new Request("https://example.com/api/integrations/facebook/ads?workspaceId=workspace&businessId=venue&resource=budget&accountId=act_999", { headers: { Authorization: "Bearer session" } });
+    const budgetResponse = await route.GET(budgetRequest());
+    assert.equal(budgetResponse.headers.get("cache-control"), "private, no-store");
+    const budgetResult = await budgetResponse.json();
+    assert.equal(budgetResult.budget.accountId, "123", "account is resolved server-side, not from the request");
+    assert.equal(budgetResult.budget.remaining, 380); assert.equal(budgetResult.budget.outstanding, 10);
+    assert.equal(budgetResult.budget.paymentMethod, "Visa •••• 1234");
+    assert.ok(!JSON.stringify(budgetResult).includes("private-funding-id"));
+    paymentDenied = true;
+    const partial = await (await route.GET(budgetRequest())).json();
+    assert.equal(partial.budget.remaining, 380); assert.ok(partial.paymentWarning);
+    assert.equal(calls.length, count, "reading finance never calls a Meta mutation");
+    assert.equal(writes.length, 1, "reading finance never writes to Supabase");
+    assert.ok(lookups.every(call => call.filters.workspace_id === "workspace" && call.filters.business_id === "venue"));
     allowedBusiness = "other-venue"; assert.equal((await route.GET(searchRequest())).status, 403); assert.equal((await route.POST(request())).status, 403);
+    assert.equal((await route.GET(budgetRequest())).status, 403);
+    assert.equal((await route.GET(new Request(budgetRequest().url))).status, 401);
     assert.equal((await route.GET(new Request(searchRequest().url))).status, 401);
   } finally { global.fetch = originalFetch; }
+});
+
+test("account budget distinguishes cap headroom, debt, prepaid and missing data", async () => {
+  await swc.loadBindings();
+  const { normalizeMetaAccountBudget: normalize } = load("lib/meta-account-budget.js");
+  const account = { currency: "EUR", spend_cap: "10000", amount_spent: "2500", balance: "700", is_prepay_account: false };
+  const result = normalize(account, {}, "act_123");
+  assert.equal(result.remaining, 75); assert.equal(result.outstanding, 7);
+  assert.equal(normalize({ ...account, balance: "0" }, {}, "123").outstanding, 0);
+  assert.equal(normalize({ ...account, balance: undefined }, {}, "123").outstanding, null);
+  assert.equal(normalize({ ...account, spend_cap: "0" }).hasLimit, false);
+  assert.equal(normalize({ ...account, spend_cap: "0" }).remaining, null);
+  assert.equal(normalize({ ...account, amount_spent: "20000" }).remaining, 0);
+  assert.equal(normalize({ ...account, spend_cap: null }).remaining, null);
+  assert.equal(normalize({ ...account, amount_spent: "" }).remaining, null);
+  assert.equal(normalize({ ...account, currency: "JPY" }).remaining, null);
+  assert.equal(normalize({ ...account, is_prepay_account: true }).outstanding, null);
+  assert.equal(normalize({ ...account, is_prepay_account: undefined }).outstanding, null);
+  const privateData = normalize(account, { funding_source_details: { id: "secret-id", display_string: "Card 4111 1111 1111 1111" }, tax_id: "secret-tax-id" }, "123");
+  assert.equal(privateData.paymentMethod, "Card ••••");
+  assert.ok(!JSON.stringify(privateData).includes("secret"));
+});
+
+test("budget panel refreshes read-only data, warns on over-budget and clears stale amounts on failure", async () => {
+  await swc.loadBindings();
+  const React = require("react"), Renderer = require("react-test-renderer");
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const originalFetch = global.fetch;
+  const Budget = load("components/meta-account-budget.js").default;
+  const normalize = load("lib/meta-account-budget.js").normalizeMetaAccountBudget;
+  let fail = false, calls = [], renderer;
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: !fail, json: async () => fail ? { error: "Meta tijdelijk niet bereikbaar" } : { budget: normalize({ name: "Gedeeld account", currency: "EUR", account_status: 1, spend_cap: "10000", amount_spent: "2500", balance: "0", is_prepay_account: false }, { funding_source_details: { display_string: "Visa •••• 1234" } }, "123") } };
+  };
+  try {
+    const props = { workspaceId: "workspace", businessId: "venue", session: { access_token: "test" }, plannedBudget: 90 };
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Budget, props)); });
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("hoger dan"));
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("Visa •••• 1234"));
+    assert.ok(renderer.root.findAllByType("a")[0].props.href.endsWith("act=123"));
+    await React.act(async () => renderer.update(React.createElement(Budget, { ...props, plannedBudget: 50 })));
+    assert.ok(!JSON.stringify(renderer.toJSON()).includes("hoger dan"));
+    assert.equal(calls.length, 1, "editing campaign budget does not refetch or change account limits");
+    fail = true;
+    await React.act(async () => renderer.root.findByType("button").props.onClick());
+    const output = JSON.stringify(renderer.toJSON());
+    assert.ok(output.includes("Meta tijdelijk niet bereikbaar")); assert.ok(!output.includes("Visa")); assert.ok(!output.includes("75"));
+    assert.ok(calls.every(call => !call.options.method && call.options.cache === "no-store"));
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); global.fetch = originalFetch; }
 });
