@@ -2991,6 +2991,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             {!websiteEventCancelled && <WhatsappShare key={`whatsapp:${item.id}`} item={item} distribution={distribution} />}
             {!websiteEventCancelled && <section className="savedChannelPanel">
               <SavedPredisWorkspace key={`predis:${item.id}`} workspaceId={workspaceId} session={session} item={item}
+                onLibrarySaved={saved => setEventCampaigns(current => current.map(campaign => campaign.id === item.id ? { ...campaign, media: campaign.media.map(entry => entry?.kind === "campaign_distribution" ? { ...entry, predis_library: saved } : entry) } : campaign))}
                 businessName={(businesses.find(business => business.id === item.business_id) || selectedBusiness)?.name || "Deze vestiging"}
                 onSaved={saved => setEventCampaigns(current => current.map(campaign => campaign.id === item.id ? { ...campaign, media: campaign.media.map(entry => entry?.kind === "campaign_distribution" ? { ...entry, manual_predis: saved } : entry) } : campaign))} />
             </section>}

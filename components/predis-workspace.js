@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import PredisContent from "./predis-content";
 import ManualPredis from "./manual-predis";
+import PredisLibrary from "./predis-library";
 import styles from "./manual-predis.module.css";
 
 export function SavedPredisWorkspace(props) {
@@ -24,12 +25,13 @@ export default function PredisWorkspace(props) {
       <div className={styles.grid}>
         {[['single_image', 'Enkele afbeelding', 'Je bestaande ontwerp behouden.'], ['carousel', 'Carrousel', 'Je bestaande afbeeldingen in de gekozen volgorde.'], ['video', 'Video’s', 'Je bestaande videobestand behouden.']].map(([value, label, help]) => <button type="button" key={value} className={styles.choiceCard} onClick={() => switchMode(value)}><strong>{label}</strong><span>{help}</span><small>Upload voorbereiden · geen AI-bewerking</small></button>)}
       </div>
+      <div className={styles.notice}><strong>Staat je ontwerp al in Predis?</strong><p>Haal de beschikbare posts op en koppel de juiste post aan dit evenement. Handmatige uploads zijn alleen zichtbaar als Predis ze via de API teruggeeft.</p><button type="button" className="primaryButton" onClick={() => switchMode("library")}>Bestaande post uit Predis ophalen</button></div>
       <details className={styles.moreOptions}><summary>Bestaande handmatige voorbereiding en bevestigingen</summary><p>Voor eerder bewaarde publicatiemomenten of een bestaand bestand dat je zonder AI wilt gebruiken. Deze route is handmatig en maakt geen nieuw ontwerp.</p><button type="button" className="secondaryButton" onClick={() => switchMode("manual")}>Eigen foto en tekst / eerdere planning</button></details>
       <details className={styles.moreOptions}><summary>Nieuw ontwerp met AI maken (optioneel)</summary><p>Alleen gebruiken als je bewust een ander ontwerp wilt. Predis gebruikt je bestanden als bronmateriaal en kan tekst, beeld en opmaak veranderen. Dit is geen ongewijzigde upload en kan Predis-tegoed kosten.</p><div className={styles.grid}>{[['single_image', 'AI-afbeelding'], ['carousel', 'AI-carrousel'], ['video', 'AI-video']].map(([value, label]) => <button type="button" key={value} className={styles.choiceCard} onClick={() => switchMode(`ai_${value}`)}><strong>{label}</strong><small>Nieuw ontwerp laten maken · bestaand beeld kan veranderen</small></button>)}</div></details>
       <details className={styles.moreOptions}><summary>Eerdere AI-aanvragen controleren</summary><p>Deze eerdere opdrachten kunnen je beeld hebben aangepast. Ze worden niet verwijderd of opnieuw verstuurd. Controleer ze los van het uploaden van je oorspronkelijke ontwerp.</p><button type="button" className="secondaryButton" onClick={() => switchMode("history")}>Eerdere AI-resultaten bekijken</button></details>
     </section> : <>
       <button type="button" className="secondaryButton" onClick={() => switchMode("choose")}>Andere werkwijze kiezen</button>
-      {mode === "history" || mode.startsWith("ai_") ? <PredisContent key={mode} {...props} historyOnly={mode === "history"} initialFormat={mode.startsWith("ai_") ? mode.slice(3) : "single_image"} onUnsavedChange={setDirty} /> : <ManualPredis key={mode} {...props} uploadType={mode === "manual" ? undefined : mode} onUnsavedChange={setDirty} />}
+      {mode === "library" ? <PredisLibrary key={`${props.workspaceId}:${props.item?.business_id}:${props.item?.id}`} {...props} onUnsavedChange={setDirty} /> : mode === "history" || mode.startsWith("ai_") ? <PredisContent key={mode} {...props} historyOnly={mode === "history"} initialFormat={mode.startsWith("ai_") ? mode.slice(3) : "single_image"} onUnsavedChange={setDirty} /> : <ManualPredis key={mode} {...props} uploadType={mode === "manual" ? undefined : mode} onUnsavedChange={setDirty} />}
     </>}
   </div>;
 }
