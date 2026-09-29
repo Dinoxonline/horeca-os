@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import NextImage from "next/image";
 import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
+import WhatsappShare from "./whatsapp-share";
 import { supabase } from "../lib/supabase";
 
 const channelDefaults = {
@@ -3023,6 +3024,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
                   </div>}
                 </div>}
             </div>}
+            {!websiteEventCancelled && <WhatsappShare key={`whatsapp:${item.id}`} item={item} distribution={distribution} />}
             {!websiteEventCancelled && <section className="savedChannelPanel savedFacebookAdsPanel">
               <SavedMetaCampaignEditor key={item.id} workspaceId={workspaceId} session={session} item={item} distribution={distribution}
                 business={businesses.find(business => business.id === item.business_id) || selectedBusiness}
