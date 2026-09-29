@@ -8,6 +8,7 @@ export default function PredisLibrary({ item, workspaceId, session, enabled, onU
   const [linked, setLinked] = useState([]), [listing, setListing] = useState(null), [selection, setSelection] = useState(null);
   const [format, setFormat] = useState("single_image"), [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [configured, setConfigured] = useState(null);
+  const [diagnostics, setDiagnostics] = useState(null);
   const token = useRef(session?.access_token); token.current = session?.access_token;
   const active = useRef(null), sequence = useRef(0);
   const hasToken = Boolean(session?.access_token);
@@ -15,7 +16,8 @@ export default function PredisLibrary({ item, workspaceId, session, enabled, onU
   async function request(extra = {}, write = false) {
     if (!enabled || !token.current || active.current) return;
     const c = new AbortController(), version = ++sequence.current;
-    active.current = c; setBusy(true); setError(""); setMessage("");
+    active.current = c; setBusy(true); setError(""); setMessage(""); setDiagnostics(null);
+    if (extra.list === "1") { setListing(null); setSelection(null); }
     const timer = setTimeout(() => c.abort(), 25000);
     const scope = { workspaceId, businessId: item.business_id, itemId: item.id };
     try {
@@ -26,6 +28,7 @@ export default function PredisLibrary({ item, workspaceId, session, enabled, onU
       });
       const data = await response.json();
       if (version !== sequence.current) return;
+      if (data.diagnostics) setDiagnostics(data.diagnostics);
       if (!response.ok) throw new Error(data.error || "Predis-posts zijn niet bereikbaar.");
       setLinked(data.linked || []);
       if (typeof data.configured === "boolean") setConfigured(data.configured);
@@ -42,7 +45,7 @@ export default function PredisLibrary({ item, workspaceId, session, enabled, onU
     }
   }
   useEffect(() => {
-    setLinked([]); setListing(null); setSelection(null); setConfigured(null); setError(""); setMessage(""); setBusy(false);
+    setLinked([]); setListing(null); setSelection(null); setConfigured(null); setError(""); setMessage(""); setBusy(false); setDiagnostics(null);
     if (enabled && hasToken) void request();
     return () => { sequence.current++; active.current?.abort(); active.current = null; };
   }, [enabled, hasToken, workspaceId, item.business_id, item.id]);
@@ -57,9 +60,30 @@ export default function PredisLibrary({ item, workspaceId, session, enabled, onU
     <div className={styles.notice}><strong>2. Bestaande post ophalen en koppelen</strong><p>Upload eerst je eigen ontwerp en tekst in de Predis-inhoudsbibliotheek. Hier haal je uitsluitend bestaande posts op: geen AI-aanvraag, geen nieuwe opmaak en geen publicatie.</p><p>Predis bevestigt nog niet of handmatige uploads via deze API beschikbaar zijn. Ontbreekt jouw post, controleer dan het merk, het inhoudstype en de volgende pagina. Laat hem niet opnieuw door AI maken.</p></div>
     {configured === false && <p className={styles.error}>De Predis-koppeling voor deze vestiging is niet compleet. Controleer Koppelingen.</p>}
     {!hasToken && <p>Log in om bestaande posts op te halen.</p>}
-    <label>Inhoudstype<select value={format} disabled={disabled} onChange={e => { setFormat(e.target.value); setListing(null); setSelection(null); }}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Inhoudstype<select value={format} disabled={disabled} onChange={e => { setFormat(e.target.value); setListing(null); setSelection(null); setDiagnostics(null); setError(""); }}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <div className={styles.actions}><button type="button" className="primaryButton" disabled={disabled || configured !== true} onClick={() => fetchPage()}>Posts ophalen uit Predis</button><button type="button" className="secondaryButton" disabled={disabled} onClick={() => request()}>Bewaarde koppelingen controleren</button></div>
+    <div className={styles.actions}><button type="button" className="secondaryButton" disabled={disabled || configured !== true} onClick={() => request({ list: "1", diagnose: "1", mediaType: format, page: String(listing?.page || 1) })}>Ophaaldiagnose uitvoeren</button><small>Controleert alleen het gekozen inhoudstype en de huidige pagina. Geen contentgeneratie of publicatie.</small></div>
     {busy && <p role="status">Bezig met ophalen of koppelen…</p>}{error && <p role="alert" className={styles.error}>{error}</p>}{message && <p role="status" className={styles.notice}>{message}</p>}
+    {diagnostics && <section className={styles.notice} aria-label="Uitslag ophaaldiagnose">
+      <strong>Uitslag ophaaldiagnose</strong><p role="status">{diagnostics.message}</p>
+      <small>Controle: {diagnostics.checkedAt} · Merk-ID: {diagnostics.brandId}</small>
+      <p>{PREDIS_FORMATS[diagnostics.mediaType]} · aangevraagde pagina {diagnostics.page} · maximaal {diagnostics.requestedItems} posts</p>
+      <div className={styles.tableWrap}><table><caption>Antwoord van Predis</caption><tbody>
+        <tr><th scope="row">Antwoordcode (HTTP)</th><td>{diagnostics.httpStatus ?? "Geen antwoord"}</td></tr>
+        <tr><th scope="row">Leesbaar JSON-antwoord</th><td>{diagnostics.validJson ? "Ja" : "Nee"}</td></tr>
+        <tr><th scope="row">Posts ontvangen</th><td>{diagnostics.received ?? "Onbekend — geen geldige posts-lijst"}</td></tr>
+        <tr><th scope="row">Posts gecontroleerd</th><td>{diagnostics.inspected ?? "Niet gecontroleerd"}</td></tr>
+        <tr><th scope="row">Bruikbaar volgens formaatcontrole</th><td>{diagnostics.usable}</td></tr>
+        <tr><th scope="row">Overgeslagen</th><td>{diagnostics.skipped}</td></tr>
+        <tr><th scope="row">Dubbele posts</th><td>{diagnostics.duplicates}</td></tr>
+        <tr><th scope="row">Buiten paginalimiet van 20</th><td>{diagnostics.overflow}</td></tr>
+        <tr><th scope="row">Aantal pagina’s gemeld door Predis</th><td>{diagnostics.reportedPages ?? "Ontbreekt of onverwacht formaat"}</td></tr>
+      </tbody></table></div>
+      {Object.entries(diagnostics.reasons).map(([reason, count]) => <p key={reason}>{count} × {reason}</p>)}
+      {diagnostics.nestedPostsCount !== null && <p>Posts op een andere plaats in het antwoord (data.posts): {diagnostics.nestedPostsCount}. Deze worden niet automatisch overgenomen.</p>}
+      {diagnostics.providerErrors.map((message, i) => <p key={i}>{message}</p>)}
+      <small>Veilige samenvatting, geen ruwe fouttekst of API-sleutel. Je kunt hiervan een screenshot delen. Dit controleert niet je volledige Predis-bibliotheek.</small>
+    </section>}
     {listing && !selection && <section className={styles.root} aria-label="Beschikbare Predis-posts">
       <p>Pagina {listing.page} van {listing.totalPages} · alleen posts die Predis via de API teruggeeft.</p>
       {!listing.posts.length && <p>Geen bruikbare posts op deze pagina. Dit betekent niet dat je inhoudsbibliotheek leeg is. Je kunt voorlopig verder in Predis zelf.</p>}

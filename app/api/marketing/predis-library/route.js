@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createUserSupabase } from "../../../../lib/server-supabase";
 import { manualDistribution } from "../../../../lib/manual-predis";
-import { normalizePredisPost, PREDIS_FORMATS } from "../../../../lib/predis-content";
+import { PREDIS_FORMATS } from "../../../../lib/predis-content";
+import { inspectPredisPosts, predisLibraryDiagnostic } from "../../../../lib/predis-library-diagnostics";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -44,24 +45,20 @@ async function listPosts(brandId, input) {
   if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || !Object.hasOwn(PREDIS_FORMATS, mediaType)) throw fail("Ongeldige pagina of inhoudstype.");
   const url = new URL("https://brain.predis.ai/predis_api/v1/get_posts/");
   url.search = new URLSearchParams({ brand_id: brandId, page_n: String(page), items_n: "20", media_type: mediaType }).toString();
-  let response, result;
+  let response, result, validJson = false, transportError = false;
   try {
     response = await fetch(url, { method: "GET", headers: { Authorization: key, Accept: "application/json" }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(12000) });
-    result = await response.json();
-  } catch { throw fail("Predis reageert niet. Probeer later opnieuw; er is geen content aangemaakt.", 502); }
-  if (response.status === 429) throw fail("Predis vraagt om even te wachten. Probeer later opnieuw.", 429);
-  if (!response.ok || result?.errors?.length || !Array.isArray(result?.posts)) throw fail("Predis kon de posts niet teruggeven. Controleer de API-toegang en het gekoppelde merk.", 502);
-  const posts = [], seen = new Set();
-  let skipped = 0;
-  for (const raw of result.posts.slice(0, 20)) {
-    const id = typeof raw?.post_id === "string" && raw.post_id.length <= 200 ? raw.post_id : "";
-    const post = id && raw.media_type === mediaType && normalizePredisPost(raw, [id]);
-    if (!post || typeof raw.caption !== "string" || raw.caption.length > 10000) { skipped++; continue; }
-    if (seen.has(id)) continue;
-    seen.add(id);
-    posts.push({ ...post, key: hash([brandId, id]), fingerprint: hash([brandId, post]) });
+    try { result = await response.json(); validJson = true; } catch { /* Never echo a raw response body. */ }
+  } catch { transportError = true; }
+  const report = inspectPredisPosts(result, mediaType);
+  const diagnosis = predisLibraryDiagnostic({ result, report, brandId, mediaType, page, httpStatus: response?.status ?? null, validJson, transportError });
+  if (!["empty", "available", "unusable"].includes(diagnosis.outcome)) {
+    const error = fail(diagnosis.message, response?.status === 429 ? 429 : 502);
+    if (input.diagnose === "1") error.diagnostics = diagnosis;
+    throw error;
   }
-  return { posts, skipped, page, mediaType, totalPages: Math.min(10000, Math.max(1, Number.isSafeInteger(result.total_pages) ? result.total_pages : 1)) };
+  const posts = report.posts.map(post => ({ ...post, key: hash([brandId, post.id]), fingerprint: hash([brandId, post]) }));
+  return { posts, skipped: report.skipped, page, mediaType, totalPages: Math.min(10000, Math.max(1, Number.isSafeInteger(result.total_pages) ? result.total_pages : 1)), ...(input.diagnose === "1" ? { diagnostics: diagnosis } : {}) };
 }
 
 export async function GET(request) {
@@ -69,7 +66,7 @@ export async function GET(request) {
     const input = Object.fromEntries(new URL(request.url).searchParams), ctx = await contextFor(request, input);
     const linked = publicLinks(manualDistribution(await ctx.read()).predis_library?.posts || []);
     return reply({ linked, configured: Boolean(ctx.brandId && process.env.PREDIS_API_KEY?.trim()), ...(input.list === "1" ? await listPosts(ctx.brandId, input) : {}) });
-  } catch (e) { return reply({ error: e.status ? e.message : "Ophalen van Predis-posts is mislukt." }, e.status || 500); }
+  } catch (e) { return reply({ error: e.status ? e.message : "Ophalen van Predis-posts is mislukt.", ...(e.diagnostics ? { diagnostics: e.diagnostics } : {}) }, e.status || 500); }
 }
 
 export async function POST(request) {

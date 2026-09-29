@@ -45,6 +45,29 @@ publish a replacement for this test. Live confirmation is still outstanding.
 
 ## Verification
 
+### Read-only retrieval diagnosis
+
+The **Ophaaldiagnose uitvoeren** button makes one ordinary `get_posts` request
+for the selected format and currently shown page (otherwise page 1). It uses
+the existing authenticated, MFA- and business-scoped GET endpoint with
+`list=1&diagnose=1`; it neither writes records nor generates content.
+
+The report shows configured brand ID, request type/page, response status, JSON
+readability, received/inspected/usable/skipped/duplicate/overflow counts,
+provider-reported page count, and fixed rejection reasons. A missing posts
+array or network failure is **unknown**, not zero. A known `data.posts` array
+is reported by count only to identify a changed response shape. No unsupported
+shape is silently imported. Error responses keep their HTTP error status and
+also provide the sanitized diagnostic panel. Normal retrieval does not expose
+the panel. Changing format, closing the panel or starting a new request clears
+stale diagnostic data.
+
+Provider free-form error messages, response bodies, field names, headers,
+captions, media URLs and API keys are never copied into the report. Only known
+provider codes 001/002 receive fixed descriptions; other errors get a generic
+safe description. A successful but empty response still does not explain why
+Predis returns no posts.
+
 `node --test tests/predis-library.test.cjs tests/predis-content.test.cjs tests/manual-predis.test.cjs tests/marketing-publications.test.cjs`
 
 Additional targeted event-panel regressions:

@@ -54,6 +54,7 @@ async function harness(t, options = {}) {
     assert.equal(new URL(url).pathname, '/predis_api/v1/get_posts/');
     assert.equal(new URL(url).searchParams.get('brand_id'), options.brand || 'private-brand');
     if (options.timeout) throw new Error('secret provider failure');
+    if (options.invalidJson) return new Response('<html>secret upstream error</html>', { status: options.status || 200 });
     return Response.json(options.response || { posts: options.posts || [providerPost], total_pages: 3 }, { status: options.status || 200 });
   };
   const scope = { workspaceId: 'w', businessId: 'b', itemId: 'c' };
@@ -184,4 +185,69 @@ test('draft save preserves linked posts and both event entry points receive libr
   assert.equal(patch.media[0].predis_library.posts[0].id, 'keep');
   assert.match(fs.readFileSync(path.join(root, 'components/central-event-creator.js'), 'utf8'), /onLibrarySaved=/);
   assert.match(fs.readFileSync(path.join(root, 'components/marketing-overview.js'), 'utf8'), /onLibrarySaved=\{onPredisLibrarySaved\}/);
+});
+
+test('diagnosis distinguishes a truly empty response from discarded posts and is strictly read-only', async t => {
+  const options = { posts: [] }, h = await harness(t, options);
+  const empty = await h.get({ list: '1', diagnose: '1' });
+  assert.equal(empty.diagnostics.outcome, 'empty'); assert.equal(empty.diagnostics.httpStatus, 200);
+  assert.equal(empty.diagnostics.received, 0); assert.equal(empty.diagnostics.skipped, 0);
+  assert.equal(empty.diagnostics.brandId, 'private-brand');
+  options.posts = [{ ...providerPost, urls: [] }, { ...providerPost, post_id: 'bad-type', media_type: 'video' }];
+  const discarded = await h.get({ list: '1', diagnose: '1' });
+  assert.equal(discarded.diagnostics.outcome, 'unusable'); assert.equal(discarded.diagnostics.received, 2);
+  assert.equal(discarded.diagnostics.skipped, 2); assert.equal(Object.keys(discarded.diagnostics.reasons).length, 2);
+  assert.equal(h.writes.length, 0); assert.equal(h.calls.length, 2);
+  assert.equal((await h.get({ list: '1' })).diagnostics, undefined, 'explicit diagnostics only');
+});
+test('diagnosis accounts for duplicates, overflow and each rejection without exposing media or text', async t => {
+  const posts = [providerPost, providerPost,
+    { ...providerPost, post_id: null },
+    { ...providerPost, post_id: 'unknown', media_type: 'secret-type' },
+    { ...providerPost, post_id: 'caption', caption: { secret: 'SECRET' } },
+    { ...providerPost, post_id: 'url', urls: ['https://private:SECRET@example.com/a'] },
+    ...Array.from({ length: 15 }, (_, i) => ({ ...providerPost, post_id: 'valid' + i }))];
+  const h = await harness(t, { posts }), r = await h.get({ list: '1', diagnose: '1' });
+  const d = r.diagnostics;
+  assert.equal(d.received, 21); assert.equal(d.inspected, 20); assert.equal(d.overflow, 1);
+  assert.equal(d.duplicates, 1); assert.equal(d.skipped, 4); assert.equal(d.usable, 15);
+  assert.equal(d.received, d.usable + d.skipped + d.duplicates + d.overflow);
+  assert.doesNotMatch(JSON.stringify(d), /SECRET|secret-type|cdn\.example|Patricia|Authorization|TEST-ONLY/);
+});
+test('diagnosis preserves HTTP and parse failures instead of misreporting zero posts', async t => {
+  for (const [options, outcome, http] of [[{ timeout: true }, 'connection_error', null], [{ invalidJson: true }, 'invalid_json', 200], [{ status: 401, invalidJson: true }, 'access_error', 401], [{ status: 403 }, 'access_error', 403], [{ status: 429 }, 'rate_limited', 429], [{ status: 500 }, 'provider_error', 500], [{ response: { data: { posts: [providerPost] } } }, 'unexpected_shape', 200]]) {
+    const h = await harness(t, options), r = await h.get({ list: '1', diagnose: '1' });
+    assert.ok(r.status >= 400); assert.equal(r.diagnostics.outcome, outcome); assert.equal(r.diagnostics.httpStatus, http);
+    if (options.timeout || options.invalidJson || options.response) assert.equal(r.diagnostics.received, null);
+    if (options.response) assert.equal(r.diagnostics.nestedPostsCount, 1);
+    assert.doesNotMatch(JSON.stringify(r), /secret|TEST-ONLY/); assert.equal(h.writes.length, 0);
+  }
+});
+test('provider diagnostic error text is mapped, never echoed, and still requires scoped authentication', async t => {
+  const h = await harness(t, { response: { posts: [], errors: [{ code: '002', detail: 'SECRET' }, { code: 'TEST-ONLY', detail: 'SECRET' }] } });
+  const r = await h.get({ list: '1', diagnose: '1' });
+  assert.equal(r.diagnostics.outcome, 'provider_error'); assert.match(r.diagnostics.providerErrors[0], /ongeldig merk-ID/);
+  assert.doesNotMatch(JSON.stringify(r), /SECRET|TEST-ONLY/);
+  const denied = await harness(t, { roles: [] }), rejected = await denied.get({ list: '1', diagnose: '1' });
+  assert.equal(rejected.status, 403); assert.equal(rejected.diagnostics, undefined); assert.equal(denied.calls.length, 0);
+});
+test('diagnosis UI retains error diagnostics, clears stale results and needs an explicit click', async t => {
+  const Component = (await load('components/predis-library.js')).default;
+  const oldFetch = global.fetch, calls = [];
+  const diagnostics = { message: 'Predis weigert toegang.', checkedAt: '2026-09-30T12:00:00Z', brandId: 'brand', mediaType: 'single_image', page: 1, requestedItems: 20, httpStatus: 403, validJson: false, received: null, inspected: null, usable: 0, skipped: 0, duplicates: 0, overflow: 0, reportedPages: null, nestedPostsCount: null, reasons: {}, providerErrors: [] };
+  global.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init.method });
+    return String(url).includes('diagnose=1') ? Response.json({ error: diagnostics.message, diagnostics }, { status: 502 }) : Response.json({ configured: true, linked: [] });
+  };
+  let r;
+  t.after(async () => { if (r) await React.act(async () => r.unmount()); global.fetch = oldFetch; });
+  await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, workspaceId: 'w', session: { access_token: 'one' }, enabled: true })); });
+  assert.equal(calls.length, 1); assert.equal(r.root.findAllByProps({ 'aria-label': 'Uitslag ophaaldiagnose' }).length, 0);
+  await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Ophaaldiagnose uitvoeren').props.onClick());
+  const panel = r.root.findByProps({ 'aria-label': 'Uitslag ophaaldiagnose' });
+  assert.match(text(panel), /403/); assert.match(text(panel), /Onbekend — geen geldige posts-lijst/);
+  assert.equal(r.root.findAllByProps({ 'aria-label': 'Beschikbare Predis-posts' }).length, 0);
+  assert.ok(calls.every(c => c.method === 'GET')); assert.equal(calls.length, 2);
+  await React.act(async () => r.root.findByType('select').props.onChange({ target: { value: 'carousel' } }));
+  assert.equal(r.root.findAllByProps({ 'aria-label': 'Uitslag ophaaldiagnose' }).length, 0);
 });
