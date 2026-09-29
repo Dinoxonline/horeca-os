@@ -153,6 +153,22 @@ test('connection UI offers shared and two individual numbers and accepts both ca
     await React.act(async () => { listener(finish); }); assert.equal(posted.length, 1);
     await React.act(async () => { loginCallback({ authResponse: { code: 'next-code' } }); }); assert.equal(posted[1].businessId, 'plein'); assert.equal(refreshed, 2);
     await React.act(async () => renderer.update(React.createElement(Component, { ...props, configuration: { ready: false, missing: ['WHATSAPP_CONFIG_ID'] } })));
-    assert.equal(button('Verbinden via Meta').props.disabled, true);
+    assert.equal(button('Koppelen nog niet beschikbaar').props.disabled, true);
+    assert.equal(button('Koppelen nog niet beschikbaar').props['aria-describedby'], 'whatsapp-setup-reason');
+    assert.match(JSON.stringify(renderer.toJSON()), /Dit is niet je telefoonnummer/);
+    await React.act(async () => button('Koppelstatus opnieuw controleren').props.onClick());
+    assert.equal(refreshed, 3);
+    assert.match(JSON.stringify(renderer.root.findByProps({ role: 'status' }).props.children), /Koppelstatus bijgewerkt/);
+    let finishRefresh;
+    await React.act(async () => renderer.update(React.createElement(Component, { ...props, onConnected: () => new Promise(resolve => { finishRefresh = resolve; }) })));
+    let pendingRefresh;
+    await React.act(async () => { pendingRefresh = button('Koppelstatus opnieuw controleren').props.onClick(); });
+    assert.equal(button('Koppelstatus controleren…').props.disabled, true);
+    await React.act(async () => { finishRefresh(false); await pendingRefresh; });
+    assert.match(JSON.stringify(renderer.toJSON()), /koppelstatus kon niet worden opgehaald/);
+    await React.act(async () => renderer.update(React.createElement(Component, { ...props, onConnected: async () => { throw new Error('offline'); } })));
+    await React.act(async () => button('Koppelstatus opnieuw controleren').props.onClick());
+    assert.equal(button('Koppelstatus opnieuw controleren').props.disabled, false);
+    assert.match(JSON.stringify(renderer.toJSON()), /Controleer je verbinding/);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); global.window = oldWindow; global.fetch = oldFetch; }
 });

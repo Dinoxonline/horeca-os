@@ -3954,13 +3954,15 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   const [syncingFacebookBusinessId, setSyncingFacebookBusinessId] = useState("");
 
   const loadAccounts = useCallback(async () => {
+    setIntegrationError("");
+    try {
     const headers = { Authorization: `Bearer ${session.access_token}` };
     const [robuustResponse, metaResponse, facebookResponse, microsoftResponse, whatsappResponse] = await Promise.all([
-      fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
-      fetch(`/api/integrations/meta?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
-      fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
-      fetch(`/api/integrations/microsoft?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
-      fetch(`/api/integrations/whatsapp?workspaceId=${encodeURIComponent(workspaceId)}`, { headers }),
+      fetch(`/api/integrations/robuust?workspaceId=${encodeURIComponent(workspaceId)}`, { headers, signal: AbortSignal.timeout(20000) }),
+      fetch(`/api/integrations/meta?workspaceId=${encodeURIComponent(workspaceId)}`, { headers, signal: AbortSignal.timeout(20000) }),
+      fetch(`/api/integrations/facebook?workspaceId=${encodeURIComponent(workspaceId)}`, { headers, signal: AbortSignal.timeout(20000) }),
+      fetch(`/api/integrations/microsoft?workspaceId=${encodeURIComponent(workspaceId)}`, { headers, signal: AbortSignal.timeout(20000) }),
+      fetch(`/api/integrations/whatsapp?workspaceId=${encodeURIComponent(workspaceId)}`, { headers, signal: AbortSignal.timeout(20000) }),
     ]);
     const [robuustResult, metaResult, facebookResult, microsoftResult, whatsappResult] = await Promise.all([robuustResponse.json(), metaResponse.json(), facebookResponse.json(), microsoftResponse.json(), whatsappResponse.json()]);
     if (robuustResponse.ok) setAccounts(robuustResult.accounts || []);
@@ -3976,6 +3978,11 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
     if (microsoftResponse.ok) { setMicrosoftConnection((microsoftResult.connections || [])[0] || null); setMicrosoftConfiguration(microsoftResult.configuration || { ready: false, missing: [] }); }
     if (whatsappResponse.ok) { setWhatsappAccounts(whatsappResult.accounts || []); setWhatsappConfiguration(whatsappResult.configuration || { ready: false, missing: [], webhookUrl: "" }); }
     if (!robuustResponse.ok || !metaResponse.ok || !facebookResponse.ok || !microsoftResponse.ok || !whatsappResponse.ok) setIntegrationError(robuustResult.error || metaResult.error || facebookResult.error || microsoftResult.error || whatsappResult.error || "Koppelingen konden niet worden geladen.");
+    return whatsappResponse.ok;
+    } catch {
+      setIntegrationError("Koppelingen konden niet worden opgehaald. Controleer je verbinding en probeer opnieuw.");
+      return false;
+    }
   }, [session.access_token, workspaceId]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
@@ -4141,16 +4148,19 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
   }
 
   const statusLabel = { connected: "Verbonden", pending: "Controleren", degraded: "Aandacht nodig", not_configured: "Niet ingesteld", revoked: "Ingetrokken" };
-  return <>
-    <section className="pageIntro"><p className="eyebrow">Databronnen</p><h2>Koppelingen</h2><p>Verbind externe systemen via gecontroleerde, traceerbare gegevensstromen.</p></section>
+  return <div className="integrationsPage">
+    <section className="pageIntro"><p className="eyebrow">Instellingen</p><h2>Koppelingen</h2><p>Beheer je verbindingen en bekijk per vestiging wat al is gekoppeld.</p></section>
+    <nav className="integrationJumpNav" aria-label="Kies een koppeling">
+      <a href="#meta-advertentieaccounts">Meta-campagnes</a><a href="#microsoft-agenda">Microsoft-agenda</a><a href="#robuust-koppeling">Robuust</a><a href="#instagram-koppeling">Instagram</a><a href="#facebook-koppeling">Facebook</a><a href="#whatsapp-business">WhatsApp Business</a><a href="#brevo-koppeling">Brevo</a>
+    </nav>
     {integrationMessage && <div className="notice successNotice">{integrationMessage}</div>}
     {integrationError && <div className="notice">{integrationError}</div>}
     <section className="panel" id="meta-advertentieaccounts">
       <h2>Meta-advertentieaccounts</h2>
       <p>Betaalde campagnes op Facebook en Instagram. Een gekoppelde Facebookpagina is niet automatisch een gekoppeld advertentieaccount.</p>
-      {businesses.map(business => <FacebookAdAccountPicker key={business.id} workspaceId={workspaceId} businessId={business.id} businessName={business.name} session={session} account={facebookAdAccounts.find(account => account.business_id === business.id)} onSaved={loadAccounts} />)}
+      <div className="adAccountGrid">{businesses.map(business => <FacebookAdAccountPicker key={business.id} workspaceId={workspaceId} businessId={business.id} businessName={business.name} session={session} account={facebookAdAccounts.find(account => account.business_id === business.id)} onSaved={loadAccounts} />)}</div>
     </section>
-    <section className="integrationGrid">
+    <section className="integrationGrid" id="microsoft-agenda" aria-label="Microsoft-agenda">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">M365</div><div><h2>Persoonlijke Microsoft-agenda</h2><p>Eigen Outlook-agenda en gedelegeerde agenda&apos;s</p></div></div>
         <div className="scopeBanner"><strong>Alleen lezen</strong><span>Iedere medewerker koppelt het eigen @leclubbbq.nl-account. Gedeelde agenda&apos;s zijn alleen zichtbaar wanneer Microsoft daar al toegang voor heeft verleend.</span></div>
@@ -4163,7 +4173,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="apiScopeList"><h3>Gedeelde agenda&apos;s</h3><span>admin@leclubbbq.nl</span><span>info@leclubbbq.nl</span><span>verhuur@leclubbbq.nl</span><small>Zichtbaar zodra deze agenda&apos;s in Microsoft met jou zijn gedeeld.</small></div>
       </article>
     </section>
-    <section className="integrationGrid">
+    <section className="integrationGrid" id="robuust-koppeling" aria-label="Robuust">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">R</div><div><h2>Robuust</h2><p>Kassa, reserveringen en operationele data</p></div></div>
         <div className="scopeBanner"><strong>Eerste fase: alleen lezen</strong><span>Horeca OS valideert nu het partnerbedrijf. We schrijven nog niets terug naar Robuust.</span></div>
@@ -4182,7 +4192,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         <div className="apiScopeList"><h3>Beschikbaar via de publieke API</h3><span>✓ Partnerbedrijf herkennen</span><span>✓ Beschikbaarheid van reserveringen controleren</span><span>– Omzet, producten en medewerkers: aanvullende toegang van Robuust nodig</span></div>
       </article>
     </section>
-    <section className="integrationGrid">
+    <section className="integrationGrid" id="instagram-koppeling" aria-label="Instagram">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">IG</div><div><h2>Instagram</h2><p>Publicaties, reacties en berichten per vestiging</p></div></div>
         <div className="scopeBanner"><strong>Strikt per bedrijf gescheiden</strong><span>Kies eerst de Horeca OS-vestiging en log daarna uitsluitend in op het bijbehorende Instagram-profiel.</span></div>
@@ -4199,7 +4209,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         {businesses.map((business) => { const account = metaAccounts.find((item) => item.business_id === business.id); return <div className="connectionRow" key={business.id}><div><strong>{business.name}</strong><span>{account ? `@${account.display_name}` : "Geen profiel gekoppeld"}</span><small>{account?.last_synced_at ? `Laatst gecontroleerd ${formatDate(account.last_synced_at)}` : account?.token_expires_at ? `Token geldig tot ${formatDate(account.token_expires_at)}` : "Koppel het juiste Instagram-profiel"}</small></div>{account && <div><button className="secondaryButton" type="button" disabled={testingMetaBusinessId === business.id || syncingMetaBusinessId === business.id} onClick={() => verifyMeta(business.id)}>{testingMetaBusinessId === business.id ? "Testen…" : "Verbinding testen"}</button><button className="secondaryButton" type="button" disabled={syncingMetaBusinessId === business.id || testingMetaBusinessId === business.id} onClick={() => syncMeta(business.id)}>{syncingMetaBusinessId === business.id ? "Ophalen…" : "Reacties ophalen"}</button></div>}<span className={`status ${account?.connection_status || "not_configured"}`}>{account ? statusLabel[account.connection_status] || account.connection_status : "Niet ingesteld"}</span></div>; })}
       </article>
     </section>
-    <section className="integrationGrid">
+    <section className="integrationGrid" id="facebook-koppeling" aria-label="Facebook">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">FB</div><div><h2>Facebook & campagnes</h2><p>Pagina's, reacties en advertentieprestaties per vestiging</p></div></div>
         <div className="scopeBanner"><strong>Eerste fase: alleen lezen</strong><span>De juiste Facebookpagina wordt automatisch herkend via het gekoppelde Instagram-profiel. Horeca OS plaatst of wijzigt nog niets.</span></div>
@@ -4217,7 +4227,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
       </article>
     </section>
     <WhatsappBusinessConnection workspaceId={workspaceId} session={session} configuration={whatsappConfiguration} accounts={whatsappAccounts} businesses={businesses} onConnected={loadAccounts} />
-    <section className="integrationGrid">
+    <section className="integrationGrid" id="brevo-koppeling" aria-label="Brevo">
       <article className="panel integrationSetup">
         <div className="integrationBrand"><div className="integrationLogo">BR</div><div><h2>Brevo</h2><p>Contactlijsten, nieuwsbrieven en campagneprestaties</p></div></div>
         <div className="scopeBanner"><strong>Alleen lezen</strong><span>Horeca OS haalt gegevens op uit Brevo, maar verstuurt of wijzigt nog niets.</span></div>
@@ -4277,7 +4287,7 @@ function RobuustIntegrationSettings({ workspaceId, session, businesses }) {
         })}
       </article>
     </section>
-  </>;
+  </div>;
 }
 
 function UsersAdmin({ workspaceId, session }) {

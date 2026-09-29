@@ -9,11 +9,24 @@ export default function WhatsappBusinessConnection({ workspaceId, session, confi
   const [sdkRequested, setSdkRequested] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState("");
   const attempt = useRef(null);
   const signup = configuration.embeddedSignup || {};
   const canManage = scope === "shared" ? configuration.canManageShared : configuration.canManageShared || configuration.manageableBusinessIds?.includes(scope);
   const ready = configuration.ready && signup.ready && canManage;
+  const missing = [...new Set([...(configuration.missing || []), ...(signup.missing || [])])];
+
+  async function refresh() {
+    setRefreshing(true);
+    setNotice("Koppelstatus ophalen…");
+    try {
+      const result = await onConnected();
+      setNotice(result === false ? "De koppelstatus kon niet worden opgehaald. Probeer opnieuw." : "Koppelstatus bijgewerkt. Hieronder zie je de huidige instellingen en verbonden nummers.");
+    } catch {
+      setNotice("De koppelstatus kon niet worden opgehaald. Controleer je verbinding en probeer opnieuw.");
+    } finally { setRefreshing(false); }
+  }
 
   function stop(message) {
     clearTimeout(attempt.current?.timer);
@@ -64,7 +77,7 @@ export default function WhatsappBusinessConnection({ workspaceId, session, confi
   }
 
   function connect() {
-    if (!ready || busy) return;
+    if (!ready || busy || refreshing) return;
     if (!sdkReady) {
       setSdkRequested(true);
       setNotice("Meta wordt geladen. Klik daarna op ‘Verbinden via Meta’.");
@@ -97,14 +110,18 @@ export default function WhatsappBusinessConnection({ workspaceId, session, confi
       <div className="integrationBrand"><div className="integrationLogo">WA</div><div><h2>WhatsApp Business koppelen</h2><p>Klantberichten ontvangen en beantwoorden in Horeca OS</p></div></div>
       <div className="scopeBanner"><strong>Samen of per vestiging</strong><span>Nu één gezamenlijk nummer; later een eigen nummer per vestiging. Bestaande koppelingen en berichten worden niet automatisch vervangen.</span></div>
       <label>Nummer koppelen voor<select value={scope} disabled={busy} onChange={event => setScope(event.target.value)}><option value="shared">Gezamenlijk — beide vestigingen</option>{businesses.map(business => <option key={business.id} value={business.id}>{business.name} — eigen nummer</option>)}</select></label>
-      {!canManage && <p className="notice">Voor deze koppeling zijn beheerrechten nodig. De gezamenlijke inbox vereist rechten voor de hele organisatie.</p>}
-      {!configuration.ready && <div className="notice"><strong>Meta-inrichting nog niet compleet.</strong><p>De koppelknop wordt beschikbaar zodra de ontbrekende serverinstellingen zijn ingevuld.</p><details><summary>Wat ontbreekt?</summary>{(configuration.missing || []).join(", ") || "De configuratie wordt nog opgehaald."}</details></div>}
-      <button type="button" className="primary" disabled={!ready || busy} onClick={connect}>{busy ? "Koppelen…" : sdkReady ? "Verbinden via Meta" : "WhatsApp Business-koppeling openen"}</button>
+      {!ready && <div className="notice" id="whatsapp-setup-reason">
+        {!configuration.ready || !signup.ready ? <><strong>WhatsApp is nog niet klaar om te koppelen.</strong>
+          <p>{missing.includes("WHATSAPP_CONFIG_ID") ? "De configuratie-ID voor de WhatsApp-aanmelding bij Meta ontbreekt. Een beheerder moet deze als WHATSAPP_CONFIG_ID in de serverinstellingen opslaan. Dit is niet je telefoonnummer of de Meta-app-ID." : "De Meta-instellingen moeten eerst worden gecontroleerd en aangevuld."}</p>
+          <details><summary>Technische details voor de beheerder</summary><p>{missing.join(", ") || "Configuratie nog niet beschikbaar. Controleer de koppelstatus opnieuw."}</p></details>
+        </> : <><strong>Beheerrechten nodig</strong><p>Voor deze koppeling zijn beheerrechten nodig. De gezamenlijke inbox vereist rechten voor de hele organisatie.</p></>}
+      </div>}
+      <button type="button" className="primary" aria-describedby={!ready ? "whatsapp-setup-reason" : undefined} disabled={!ready || busy || refreshing} onClick={connect}>{busy ? "Koppelen…" : !ready ? "Koppelen nog niet beschikbaar" : sdkReady ? "Verbinden via Meta" : "WhatsApp Business-koppeling openen"}</button>
       {busy && !attempt.current?.saving && <button type="button" className="secondaryButton" onClick={() => stop("Koppelvenster losgelaten. Er is geen verbinding bevestigd.")}>Annuleren</button>}
       <p>Gebruik je bestaande WhatsApp Business-app naast Horeca OS, als Meta dit voor jouw nummer toestaat. Horeca OS registreert of migreert je nummer niet.</p>
       <p>Deze koppeling is voor individuele klantgesprekken. Bestaande groepen en oude chatgeschiedenis worden hiermee niet geïmporteerd.</p>
       {notice && <div className="notice" role="status">{notice}</div>}
-      <button type="button" className="secondaryButton" disabled={busy} onClick={onConnected}>Koppelstatus opnieuw controleren</button>
+      <button type="button" className="secondaryButton" disabled={busy || refreshing} onClick={refresh}>{refreshing ? "Koppelstatus controleren…" : "Koppelstatus opnieuw controleren"}</button>
     </article>
     <article className="panel">
       <h2>Verbonden nummers</h2>

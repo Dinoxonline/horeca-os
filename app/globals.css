@@ -45,6 +45,67 @@
   padding-bottom: 12px;
 }
 .sidebar > nav:focus-visible { outline: 2px solid #aad9e3; outline-offset: 2px; }
+/* Connection settings: keep each provider and venue in its own readable block. */
+.integrationsPage { display: grid; gap: 24px; min-width: 0; }
+.integrationsPage > section { scroll-margin-top: 24px; }
+.integrationsPage .pageIntro { margin: 0; }
+.integrationJumpNav { display: flex; flex-wrap: wrap; gap: 8px; }
+.integrationJumpNav a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 10px 14px;
+  border: 1px solid #c9dbe3; border-radius: 9px; background: #fff;
+  color: #176778; text-decoration: none; font-weight: 700;
+}
+.integrationJumpNav a:hover { background: #eaf5f7; border-color: #1f7a8c; }
+.integrationsPage .integrationGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0;
+  border: 1px solid #dce6ed; border-radius: 14px; background: #fff;
+  align-items: stretch;
+}
+.integrationsPage .integrationGrid > .panel {
+  min-width: 0; margin: 0; box-shadow: none; border: 0; background: transparent;
+  padding: 24px;
+}
+.integrationsPage .integrationGrid > .panel + .panel { border-left: 1px solid #e2eaf0; }
+.integrationsPage .integrationSetup { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+.integrationsPage .integrationSetup > * { margin-top: 0; margin-bottom: 0; }
+.integrationsPage .integrationBrand { align-items: flex-start; }
+.integrationsPage .integrationLogo { flex-shrink: 0; }
+.integrationsPage p { line-height: 1.55; overflow-wrap: anywhere; }
+.integrationsPage label, .adAccountCard label { display: grid; gap: 8px; min-width: 0; }
+.integrationsPage select, .adAccountCard select {
+  width: 100%; max-width: 100%; min-width: 0; min-height: 44px;
+  padding: 10px 12px; border: 1px solid #c5d5e0; border-radius: 8px;
+  background: #fff; color: #17324d; font: inherit;
+}
+.integrationsPage .connectionRow { flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 16px; }
+.integrationsPage .connectionRow > div:first-child { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.integrationsPage .connectionRow > div:not(:first-child) { display: flex; flex-wrap: wrap; gap: 8px; }
+.integrationsPage .secondaryButton, .adAccountCard .secondaryButton {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; max-width: 100%; white-space: normal; text-align: center;
+  text-decoration: none; line-height: 1.4;
+}
+.integrationsPage button:disabled {
+  background: #e8edf1; border-color: #cbd5dd; color: #526574;
+  cursor: not-allowed; box-shadow: none; opacity: 1;
+}
+.integrationsPage :is(button, a, select, summary):focus-visible { outline: 3px solid #207f94; outline-offset: 3px; }
+.integrationsPage summary { cursor: pointer; padding: 8px 0; }
+.adAccountGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.adAccountCard {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+  min-width: 0; padding: 20px; border: 1px solid #dce6ed; border-radius: 12px; background: #f8fafc;
+}
+.adAccountCard > :is(h3, p) { margin: 0; overflow-wrap: anywhere; }
+.adAccountCard > label { width: 100%; }
+@media (max-width: 1100px) {
+  .integrationsPage .integrationGrid, .adAccountGrid { grid-template-columns: minmax(0, 1fr); }
+  .integrationsPage .integrationGrid > .panel + .panel { border-left: 0; border-top: 1px solid #e2eaf0; }
+}
+@media (max-width: 600px) {
+  .integrationsPage .integrationGrid > .panel, .adAccountCard { padding: 16px; }
+  .integrationJumpNav a { flex: 1 1 140px; justify-content: center; }
+}
 @media (max-width: 800px) {
   .sidebar {
     height: auto;

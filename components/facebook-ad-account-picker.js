@@ -48,8 +48,12 @@ export default function FacebookAdAccountPicker({ workspaceId, businessId, busin
     finally { setBusy(false); }
   }
 
-  if (account?.connection_status === "connected") return <div><strong>{businessName}</strong><p>Advertentieaccount verbonden: {account.display_name}.</p><a className="secondaryButton" href="/marketing">Naar campagnes</a></div>;
-  return <section aria-label={`Advertentieaccount ${businessName || "vestiging"}`}>
+  if (account?.connection_status === "connected") return <section className="adAccountCard" aria-label={`Advertentieaccount ${businessName || "vestiging"}`}>
+    <h3>{businessName}</h3><span className="status connected">Verbonden</span>
+    <p>Advertentieaccount: {account.display_name}.</p>
+    <a className="secondaryButton" href="/marketing">Naar campagnes</a>
+  </section>;
+  return <section className="adAccountCard" aria-label={`Advertentieaccount ${businessName || "vestiging"}`}>
     {businessName && <h3>{businessName}</h3>}
     {pending ? <>
       <p>Meta-toestemming ontvangen. Kies nu het advertentieaccount voor deze vestiging. Hiermee start je geen campagne.</p>
