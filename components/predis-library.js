@@ -57,7 +57,7 @@ export default function PredisLibrary({ item, workspaceId, session, enabled, onU
   }
   const disabled = busy || !enabled || !hasToken;
   return <section className={styles.root} aria-label="Bestaande Predis-post koppelen">
-    <div className={styles.notice}><strong>2. Bestaande post ophalen en koppelen</strong><p>Upload eerst je eigen ontwerp en tekst in de Predis-inhoudsbibliotheek. Hier haal je uitsluitend bestaande posts op: geen AI-aanvraag, geen nieuwe opmaak en geen publicatie.</p><p>Predis bevestigt nog niet of handmatige uploads via deze API beschikbaar zijn. Ontbreekt jouw post, controleer dan het merk, het inhoudstype en de volgende pagina. Laat hem niet opnieuw door AI maken.</p></div>
+    <div className={styles.notice}><strong>Via de API gemaakte posts ophalen en koppelen</strong><p>Deze ophaalroute geeft alleen posts terug die via de API zijn gemaakt: geen nieuwe AI-aanvraag en geen publicatie.</p><p>Handmatige uploads en posts uit de Predis-webapp worden met het huidige filter niet teruggegeven. Gebruik voor eigen ontwerpen de handmatige voorbereiding en bevestig daar zelf de uitkomst. Laat een ontbrekende post niet opnieuw door AI maken.</p></div>
     {configured === false && <p className={styles.error}>De Predis-koppeling voor deze vestiging is niet compleet. Controleer Koppelingen.</p>}
     {!hasToken && <p>Log in om bestaande posts op te halen.</p>}
     <label>Inhoudstype<select value={format} disabled={disabled} onChange={e => { setFormat(e.target.value); setListing(null); setSelection(null); setDiagnostics(null); setError(""); }}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

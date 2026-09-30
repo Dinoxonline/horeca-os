@@ -159,7 +159,7 @@ test('planner groups channels, retains past records, and rejects a time that exp
  }finally{if(r)await React.act(async()=>r.unmount());Date.now=originalNow;delete global.window;}
 });
 
-test('visible planner previews selected weekdays, adds nonduplicated dates, saves and reloads without sending to Predis',async()=>{
+test('optional planner previews selected weekdays, adds nonduplicated dates, saves and reloads without sending to Predis',async()=>{
  fakeWindow();let saved=null;const calls=[];
  global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});if(opts.method==='POST')saved={revision:'r',draft:JSON.parse(opts.body).draft,confirmations:{}};return Response.json({saved});};
  const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
@@ -169,7 +169,8 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
  const planner=()=>r.root.findByProps({'aria-label':'Publicatiemomenten kiezen'});
  const label=name=>planner().findAllByType('label').find(n=>allText(n).trim()===name);
  try {
-   for(let p=planner().parent;p;p=p.parent)assert.notEqual(p.type,'details');
+   assert.equal(planner().parent.type,'details');
+   assert.equal(planner().parent.props.open,undefined);
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'weekly'}}));
    await React.act(async()=>label('Facebook').findByType('input').props.onChange());
    await React.act(async()=>label('Begindatum').findByType('input').props.onChange({target:{value:'2026-10-19'}}));
@@ -184,7 +185,7 @@ test('visible planner previews selected weekdays, adds nonduplicated dates, save
    const visibleList=planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'});
    assert.match(allText(visibleList),/nog niet bewaard/);
    assert.match(allText(visibleList),/28\s*-\s*10\s*-\s*2026.*Facebook/);
-   for(let p=visibleList;p;p=p.parent)assert.notEqual(p.type,'details');
+   assert.ok(allText(r.root).indexOf('2. Bestaand ontwerp') < allText(r.root).indexOf('Gewenste datums bij je concept'));
    assert.equal(button('Direct publiceren — nog niet beschikbaar'),undefined);
    assert.match(allText(r.root),/nu publiceren/);
    assert.match(allText(r.root),/Je hoeft hier nog geen moment toe te voegen/);
@@ -258,12 +259,12 @@ test('simple preparation shows selectable images immediately, keeps saved-only m
  try{
    const collapsedAncestor=node=>{for(let p=node.parent;p;p=p.parent)if(p.type==='details'&&!p.props.open)return true;return false;};
    const button=label=>r.root.findAllByType('button').find(b=>allText(b)===label);
-   const options=r.root.findByType('details');assert.equal(options.props.open,undefined);assert.equal(allText(options.findByType('summary')),'Meer opties');
+   const options=r.root.findAllByType('details').find(n=>allText(n.findByType('summary'))==='Meer opties');assert.equal(options.props.open,undefined);
    assert.equal(r.root.findAllByType('img').length,2);assert.ok(r.root.findAllByType('img').every(n=>!collapsedAncestor(n)));
    assert.ok(!collapsedAncestor(r.root.findByType('table')));assert.ok(collapsedAncestor(button('Bewaarde versie laden')));
    const visibleButtons=r.root.findAllByType('button').filter(n=>!collapsedAncestor(n));
-   assert.equal(visibleButtons.filter(n=>/bewaren/i.test(allText(n))).length,1);
-   assert.equal(visibleButtons.filter(n=>/kopiëren/i.test(allText(n))).length,1);
+   assert.equal(visibleButtons.filter(n=>/bewaren/i.test(allText(n))).length,2);
+   assert.equal(visibleButtons.filter(n=>/kopiëren/i.test(allText(n))).length,2);
    assert.equal(button('Concept bewaren').props.disabled,true);
    await React.act(async()=>r.root.findByProps({'aria-label':'Kies New photo'}).props.onClick());
    assert.equal(r.root.findByProps({'aria-label':'Deselecteer New photo'}).props['aria-pressed'],true);
@@ -307,12 +308,10 @@ test('all three Predis choices prepare unchanged uploads, never AI generation',a
  let r;await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Venue',enabled:true}));});
  try{
    const button=label=>r.root.findAllByType('button').find(b=>allText(b).startsWith(label));
-   assert.equal(r.root.findByProps({'aria-label':'Predis-werkwijze kiezen'}).type,'section');
-   assert.equal(calls.length,0);
-   assert.equal(r.root.findAllByType('a').length,2);
-   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,0);
+   assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
+   assert.equal(calls.length,1);
+   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,1);
    assert.ok(r.root.findAllByType('a').some(a=>a.props.href==='https://app.predis.ai/app/content_library'));
-   await React.act(async()=>button('Eigen foto en tekst').props.onClick());
    assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
    assert.equal(r.root.findAllByProps({'aria-label':'Content maken met Predis'}).length,0);
    assert.equal(calls.length,1);assert.match(calls[0].url,/\/manual-predis\?/);assert.equal(calls[0].method,'GET');
@@ -367,6 +366,72 @@ test('original image and video downloads preserve bytes and MIME extension witho
    }
    assert.equal(clicks,2);
  }finally{global.document=oldDocument;global.fetch=oldFetch;delete global.window;}
+});
+
+test('manual handoff validation preserves every caption character and accepts images, carousel and video without dates',async()=>{
+ const {validateManualHandoff:validate}=await load('lib/manual-predis.js');
+ const caption='  🌴 Mijn originele tekst\r\n\r\n#CaribbeanCorner  \n';
+ for(const assets of [draft.assets,[...draft.assets,{...draft.assets[0],url:'https://example.com/two.png'}],[{type:'video',url:'https://example.com/a.mp4'}]]){
+   const result=validate({caption,assets,entries:[]});assert.equal(result.caption,caption);assert.equal(result.entries.length,0);assert.deepEqual(result.assets.map(a=>a.url),assets.map(a=>a.url));
+ }
+ assert.throws(()=>validate({...draft,caption:'  '}),/berichttekst/);
+ assert.throws(()=>validate({...draft,assets:[]}),/originele/);
+ assert.throws(()=>validate({...draft,assets:[...draft.assets,{type:'video',url:'https://example.com/a.mp4'}]}),/niet beide/);
+});
+
+test('one-click handoff saves exact text, handles copy/popup/save failures and never creates or schedules a Predis post',async(t)=>{
+ const oldFetch=global.fetch,oldWindow=global.window,oldNavigator=Object.getOwnPropertyDescriptor(global,'navigator');
+ t.after(()=>{global.fetch=oldFetch;global.window=oldWindow;if(oldNavigator)Object.defineProperty(global,'navigator',oldNavigator);else delete global.navigator;});
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ for(const scenario of ['success','copy-blocked','popup-blocked','save-failed','unchanged','reset-cancelled']){
+   fakeWindow();const calls=[],copied=[],opened=[],destinations=[];let closed=0,r;
+   const initial={revision:'r1',draft:{...draft,entries:[]},confirmations:{}};
+   if(scenario==='reset-cancelled')initial.confirmations={old:{state:'scheduled'}};
+   window.confirm=()=>scenario!=='reset-cancelled';
+   window.open=(...args)=>{opened.push(args);return scenario==='popup-blocked'?null:{opener:{},closed:false,close(){closed++},location:{replace(url){destinations.push(url)}}};};
+   Object.defineProperty(global,'navigator',{configurable:true,value:{clipboard:{writeText:async value=>{copied.push(value);if(scenario==='copy-blocked')throw new Error('Denied');}}}});
+   global.fetch=async(url,opts)=>{
+     calls.push({url,opts});if(opts.method==='GET')return Response.json({saved:initial});
+     if(scenario==='save-failed')return Response.json({error:'Bewaren mislukt'},{status:409});
+     return Response.json({saved:{revision:'r2',draft:JSON.parse(opts.body).draft,confirmations:{}}});
+   };
+   try{
+     await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Caribbean Corner',enabled:true}));});
+     const caption=scenario==='unchanged'?draft.caption:'  Exact 🌴\n\n#hashtag  \n';
+     if(scenario!=='unchanged')await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:caption}}));
+     const button=r.root.findAllByType('button').find(b=>allText(b)==='Bewaren, tekst kopiëren en Predis openen');
+     assert.equal(button.props.disabled,false);
+     let pending;await React.act(async()=>{pending=button.props.onClick();button.props.onClick();await pending;});
+     assert.ok(calls.every(c=>c.url.startsWith('/api/marketing/manual-predis')));
+     if(scenario==='reset-cancelled'){assert.equal(calls.length,1);assert.equal(opened.length,0);assert.equal(copied.length,0);continue;}
+     assert.deepEqual(copied,[caption]);assert.equal(opened.length,1);
+     assert.equal(calls.length,scenario==='unchanged'?1:2);
+     if(scenario!=='unchanged'){const body=JSON.parse(calls[1].opts.body);assert.equal(body.action,'save');assert.equal(body.draft.caption,caption);}
+     assert.equal(r.root.findByType('textarea').props.value,caption);
+     if(scenario==='save-failed'){assert.equal(closed,1);assert.equal(destinations.length,0);assert.match(allText(r.root),/Bewaren mislukt/);assert.match(allText(r.root),/Niet-bewaarde wijzigingen/);}
+     else {
+       assert.equal(destinations.length,scenario==='popup-blocked'?0:1);
+       if(destinations.length)assert.equal(destinations[0],'https://app.predis.ai/app/new_post/create');
+       assert.match(allText(r.root),/Er is niets ingepland of gepubliceerd/);
+       if(scenario==='copy-blocked')assert.match(allText(r.root),/Kopiëren is geblokkeerd/);
+       if(scenario==='popup-blocked')assert.match(allText(r.root),/tabblad is geblokkeerd/);
+     }
+   }finally{if(r)await React.act(async()=>r.unmount());}
+ }
+});
+
+test('carousel ordering is explicit and preserved when saving without touching the event',async()=>{
+ fakeWindow();const oldFetch=global.fetch;let r,saved;
+ const assets=[...draft.assets,{type:'image',url:'https://example.com/second.png',label:'Second'}];
+ global.fetch=async(url,opts)=>{if(opts.method==='POST')saved=JSON.parse(opts.body).draft;return Response.json({saved:{revision:'r',draft:saved||{...draft,assets,entries:[]},confirmations:{}}});};
+ const Component=(await load('components/manual-predis.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
+ try{
+   await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},enabled:true}));});
+   assert.equal(r.root.findByProps({'aria-label':'Verplaats bestand 1 naar voren'}).props.disabled,true);
+   await React.act(async()=>r.root.findByProps({'aria-label':'Verplaats bestand 2 naar voren'}).props.onClick());
+   await React.act(async()=>r.root.findAllByType('button').find(b=>allText(b)==='Concept bewaren').props.onClick());
+   assert.deepEqual(saved.assets.map(a=>a.url),[assets[1].url,assets[0].url]);assert.equal(item.media[0].common.description,'Original');
+ }finally{if(r)await React.act(async()=>r.unmount());global.fetch=oldFetch;delete global.window;}
 });
 
 test('search/worklist filters manual pending actions and opens the exact selected event',async()=>{

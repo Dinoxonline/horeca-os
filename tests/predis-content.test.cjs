@@ -89,6 +89,7 @@ test('saved campaign panel keeps checking disabled while collapsed', async () =>
   let r;
   try {
     await React.act(async () => { r = Renderer.create(React.createElement(SavedPredisWorkspace, { item, businessName: 'Caribbean Corner' })); });
+    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Andere werkwijze kiezen').props.onClick());
     await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eerdere AI-resultaten bekijken').props.onClick());
     assert.equal(r.root.findByType('predis-generator').props.enabled, false);
     await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: true } }));
@@ -453,6 +454,7 @@ test('own-media choice is visible, separate from unchanged uploads and never gen
   try {
     await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, businessName: 'Caribbean Corner' })); });
     assert.equal(r.root.findAllByType('predis-generator').length, 0);
+    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Andere werkwijze kiezen').props.onClick());
     await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eigen beeld gebruiken — proef voorbereiden').props.onClick());
     assert.equal(r.root.findByType('predis-generator').props.sourceMode, 'own');
     assert.match(text(r.root), /geen ongewijzigde upload/);
