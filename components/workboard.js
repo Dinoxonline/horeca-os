@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 
 const TEMPLATE_HINTS = {
   event: "Evenement lanceren en promoten",
+  event_promotion: "Evenement promotiechecklist",
   dish: "Nieuw gerecht of drankje",
   menu: "Nieuwe menukaart",
   newsletter: "Nieuwsbrief",
@@ -549,7 +550,7 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
   ];
   const statusIndex = statuses.findIndex((item) => item.value === task.status);
   return <div className={"task " + (task.priority || "medium") + (belongsToOther ? " taskAssignedElsewhere" : "")} style={belongsToOther ? { background: "#fff7ed", borderLeft: "4px solid #f59e0b" } : undefined}>
-    <div style={task.parent_task_id ? { paddingLeft: 18, borderLeft: "3px solid #cbd5e1" } : undefined}><strong>{task.parent_task_id ? "↳ " : ""}{task.title}</strong>{task.description && <small>{task.description}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}{task.requires_evidence && " · Bewijs verplicht"}{task.parent_task_id && " · Opvolging"}{!task.template_step_id && " · Aangepaste taak"}</span></div>
+    <div style={task.parent_task_id ? { paddingLeft: 18, borderLeft: "3px solid #cbd5e1" } : undefined}><strong>{task.parent_task_id ? "↳ " : ""}{task.title}</strong>{task.description && <small>{renderTaskDescription(task.description)}</small>}<span>{task.process_runs?.name || "Proces"} · deadline {task.due_date || "geen"} · {belongsToOther ? `Door ${assignedMember?.full_name || "een andere medewerker"}` : task.assigned_to ? "Aan jou toegewezen" : "nog toe te wijzen"} · {task.priority || "medium"}{task.requires_evidence && " · Bewijs verplicht"}{task.parent_task_id && " · Opvolging"}{!task.template_step_id && " · Aangepaste taak"}</span></div>
     <select value={task.assigned_to || ""} disabled={!canManage} onChange={(event) => onUpdate({ assigned_to: event.target.value || null })}>
       <option value="">Niet toegewezen</option>{members.map((member) => <option key={member.id} value={member.id}>{member.full_name || member.id}</option>)}
     </select>
@@ -574,6 +575,16 @@ function ProcessTaskRow({ task, members, currentUserId, canManage, canAct, onCre
     {showSubtaskForm && canManage && <form className="toolbar" onSubmit={(event) => { event.preventDefault(); onCreateSubtask(task, subtaskTitle); setSubtaskTitle(""); setShowSubtaskForm(false); }}><input required value={subtaskTitle} onChange={(event) => setSubtaskTitle(event.target.value)} placeholder="Naam van de kleine stap" /><button type="submit" className="primary">Toevoegen</button></form>}
     {task.status === "blocked" && <input defaultValue={task.blocker_note || ""} placeholder="Waarom geblokkeerd?" disabled={!canAct} onBlur={(event) => onUpdate({ blocker_note: event.target.value.trim() || null })} />}
   </div>;
+}
+
+function renderTaskDescription(description) {
+  const pieces = String(description || "").split(/(https?:\/\/[^\s<]+)/g);
+  return pieces.map((piece, index) => {
+    if (!/^https?:\/\//.test(piece)) return piece;
+    const href = piece.replace(/[.,;:!?]+$/, "");
+    const punctuation = piece.slice(href.length);
+    return <span key={index}><a href={href} target="_blank" rel="noreferrer">{href}</a>{punctuation}</span>;
+  });
 }
 
 function xmlEscape(value) {
