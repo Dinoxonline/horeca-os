@@ -90,7 +90,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
         signal: controller.signal,
         onProgress: (attempt, total) => setBusy(`Stap 2 van 3: Instagram verwerkt je media — controle ${attempt} van ${total}…`),
       });
-      if (mounted.current && result?.status === "processing") setMessage("Instagram heeft meer tijd nodig. De automatische controle is gestopt. Je voorbereiding blijft bewaard. Kies ‘Verwerking / publicatiestatus controleren’ om verder te gaan; zet het voorbeeld niet opnieuw klaar.");
+      if (mounted.current && result?.status === "processing") setMessage("Instagram verwerkt nog. Ververs later de pagina om de status opnieuw te laden.");
     } finally { controllers.current.delete(controller); }
   }
   function loadStatus() {
@@ -203,25 +203,18 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       <div className={locked ? "instagramPreparedLayout" : undefined}>
       {locked && preview && <InstagramPostPreview draft={preview} accountName={job.account_name || account?.name} businessName={businessName} prepared />}
       <div className="instagramPreparedActions">
-      {job?.container_id && job.status !== "published" && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Instagram-status controleren…", async () => {
-        setFollowPreparation(true);
-        if (job.status === "processing") await followStatus(job);
-        else await request("status", { operationId: job.operation_id });
-      })}>Verwerking / publicatiestatus controleren</button>}
       {locked && ["preparing", "processing", "ready"].includes(job.status) && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Voorbereiding vrijgeven…", async () => {
         await request("discard", { operationId: job.operation_id });
         setCaption(job.draft.caption); setAssets(job.draft.assets); setShareToFeed(job.draft.shareToFeed);
         setFollowPreparation(false);
         setMessage("Voorbereiding hersteld. Je foto en tekst staan hierboven klaar. Controleer het voorbeeld en kies opnieuw ‘Voorbeeld klaarzetten’. Er is niets gepubliceerd.");
-      })}>{job.status === "preparing" && !job.container_id ? "Voorbereiding herstellen — niet publiceren" : "Voorbereiding aanpassen — niet publiceren"}</button>}
+      })}>Bewerken</button>}
       {["preparing", "processing", "ready"].includes(job?.status) && <div className="instagramFinalStep">
-        <strong>3. Bevestigen en publiceren</strong>
-        <p>{job.status === "ready" ? "Je voorbeeld staat klaar. Bekijk het voorbereide bericht, vink hieronder je bevestiging aan en klik op publiceren." : "Zodra Instagram je media heeft verwerkt, kun je hieronder bevestigen en publiceren. Er is nog niets geplaatst."}</p>
         <label className="instagramCheck"><input type="checkbox" checked={confirmed} disabled={!!busy || job.status !== "ready" || !loaded || !!warning} onChange={event => setConfirmed(event.target.checked)} />Ik wil dit voorbereide bericht nu plaatsen op @{job.account_name}.</label>
         <button type="button" className="primaryButton" disabled={!!busy || job.status !== "ready" || !confirmed || !loaded || !!warning || !account} onClick={() => {
           if (job.status !== "ready" || !confirmed || !loaded || warning || !account) return;
           return run("Publiceren op Instagram…", () => request("publish", { confirm: true, operationId: job.operation_id }));
-        }}>Nu publiceren op Instagram</button>
+        }}>Publiceren</button>
       </div>}
       {job?.status === "published" && <a href={job.permalink?.startsWith("https://www.instagram.com/") ? job.permalink : profileUrl} target="_blank" rel="noopener noreferrer">Bekijk op Instagram</a>}
       </div>

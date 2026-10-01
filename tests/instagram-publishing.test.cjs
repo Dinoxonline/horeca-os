@@ -207,7 +207,7 @@ test('a stranded preparation can be restored with its exact photo and caption, w
   const button = label => renderer.root.findAllByType('button').find(b => b.props.children === label);
   await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item, workspaceId: 'w' })); });
   try {
-    const label = 'Voorbereiding herstellen — niet publiceren';
+    const label = 'Bewerken';
     assert.equal(button(label).props.disabled, true, 'check the destination first');
     await React.act(async () => button('Instagram-account controleren').props.onClick());
     assert.equal(button(label).props.disabled, false);
@@ -279,16 +279,16 @@ test('prepare automatically advances to confirmation, deduplicates clicks and ne
       await prepare.props.onClick();
     });
     assert.deepEqual(calls, ['read', 'prepare', 'status']);
-    assert.equal(button('Nu publiceren op Instagram').props.disabled, true, 'next step visible but unavailable during processing');
+    assert.equal(button('Publiceren').props.disabled, true, 'next step visible but unavailable during processing');
     assert.equal(renderer.root.findByProps({ type: 'checkbox' }).props.disabled, true);
     await React.act(async () => { releaseStatus(); await pending; });
     assert.equal(renderer.root.findByProps({ type: 'checkbox' }).props.disabled, false);
-    assert.equal(button('Nu publiceren op Instagram').props.disabled, true, 'ready is not user consent');
-    await React.act(async () => button('Nu publiceren op Instagram').props.onClick());
+    assert.equal(button('Publiceren').props.disabled, true, 'ready is not user consent');
+    await React.act(async () => button('Publiceren').props.onClick());
     assert.deepEqual(calls, ['read', 'prepare', 'status'], 'even an invalid direct handler call cannot publish');
     await React.act(async () => renderer.root.findByProps({ type: 'checkbox' }).props.onChange({ target: { checked: true } }));
-    assert.equal(button('Nu publiceren op Instagram').props.disabled, false);
-    await React.act(async () => button('Nu publiceren op Instagram').props.onClick());
+    assert.equal(button('Publiceren').props.disabled, false);
+    await React.act(async () => button('Publiceren').props.onClick());
     assert.deepEqual(calls, ['read', 'prepare', 'status', 'publish']);
   } finally { await React.act(async () => renderer.unmount()); }
 });
@@ -330,7 +330,7 @@ test('a status error is shown beside the final step and cannot enable publicatio
     await React.act(async () => renderer.root.findAllByType('button').find(b => b.props.children === 'Instagram-account controleren').props.onClick());
     const panel = renderer.root.findByProps({ className: 'instagramPublishStatus' });
     assert.match(panel.findByProps({ role: 'alert' }).props.children, /Controle mislukt/);
-    assert.equal(panel.findAllByType('button').find(b => b.props.children === 'Nu publiceren op Instagram').props.disabled, true);
+    assert.equal(panel.findAllByType('button').find(b => b.props.children === 'Publiceren').props.disabled, true);
     assert.equal(panel.findAllByProps({ role: 'status' }).length, 0, 'spinner stops after error');
     assert.deepEqual(calls, ['read', 'status']);
   } finally { await React.act(async () => renderer.unmount()); }
