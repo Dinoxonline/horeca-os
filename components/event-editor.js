@@ -37,9 +37,10 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
     <p className={styles.notice}>Horeca OS is je basis. Bewerk en bewaar hier het evenement. De website, Facebook, Instagram en agenda worden pas via hun eigen acties bijgewerkt. Alle tijden zijn Nederlandse tijd.</p>
     {busy && <p role="status">Rond eerst de lopende actie of niet-opgeslagen kanaalvoorbereiding af. Daarna kun je de basis bewerken.</p>}
     {calendarDistribution(item).series && <p className={styles.notice}>Dit is een uitvoering van een reeks. Opslaan hier wijzigt alleen deze uitvoering en bewaart die als uitzondering. Gebruik ‘Reeks bekijken en wijzigen’ voor meerdere uitvoeringen.</p>}
-    <div className={styles.columns}>
+    <>
       <div className={styles.panel}>
         <h4>Horeca OS — mijn evenement</h4>
+        <div className={styles.horecaPreview}><strong>Foto in Horeca OS</strong><Photo url={draft.image_url} label="Foto in Horeca OS" /></div>
         <label>Titel<input value={draft.title} maxLength={300} disabled={disabled} onChange={e => change('title', e.target.value)} /></label>
         <label>Volledige omschrijving<textarea rows={9} value={draft.description} maxLength={30000} disabled={disabled} onChange={e => change('description', e.target.value)} /></label>
         <div className={styles.times}>{['start','end'].map(key => <label key={key}>{labels[key]} (Nederland)<input type={draft[key]?.length === 10 ? 'date' : 'datetime-local'} value={draft[key]} disabled={disabled} onChange={e => change(key,e.target.value)} />{draft[key]?.length === 10 && <button type="button" className="secondaryButton" disabled={disabled} onClick={() => change(key, draft[key] + 'T00:00')}>Tijd toevoegen</button>}</label>)}</div>
@@ -69,7 +70,7 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
           <small>Overnemen is alleen een voorstel. Controleer het links en bewaar daarna in Horeca OS.</small>
         </> : <p className={styles.notice}>{checking ? 'De websitegegevens worden gecontroleerd.' : 'Geen websitegegevens beschikbaar. Haal de gekoppelde bron opnieuw op. Horeca OS-gegevens worden hier niet als websitegegevens getoond.'}</p>}
       </div>
-    </div>
+    </>
     <div className={styles.actions}>{[['website','Website bijwerken openen'],['facebook','Facebook bijwerken openen'],['calendar','Agenda controleren openen']].map(([channel,label]) => <button type="button" className="secondaryButton" key={channel} disabled={disabled || dirty} onClick={() => onOpenChannel?.(channel)}>{label}</button>)}</div>
     <small>De bronvergelijking controleert titel en tekst. Controleer gewijzigde tijden, locatie en foto’s apart; de knop ‘Website bijwerken’ werkt alleen titel en tekst bij. Voor een Facebookfoto gebruik je ‘Foto overnemen — Facebook → Horeca OS → website’.</small>
   </section>;
