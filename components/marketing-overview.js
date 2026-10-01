@@ -762,7 +762,9 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
       });
       mapWithConcurrency(managedItems.slice(0, 100), 4, async (item) => {
         if (!active || comparisonTargetRef.current === String(item.id)) return;
-        await checkSourceComparison(item).catch(() => {});
+        // A reload after saving must not reuse the previous finished result.
+        // Eventin may have accepted the new content after that first check.
+        await checkSourceComparison(item, true).catch(() => {});
       });
     }
     load();
@@ -776,8 +778,8 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
   useEffect(() => {
     if (busy || !selectedItem || isExternalEvent(selectedItem) || !sessionRef.current?.access_token) return;
     // Do not make the open event wait for every publication/import request.
-    checkSourceComparison(selectedItem).catch(() => {});
-  }, [selectedItem?.id, workspaceId, refreshKey, busy]);
+    checkSourceComparison(selectedItem, refreshToken > 0).catch(() => {});
+  }, [selectedItem?.id, workspaceId, refreshKey, refreshToken, busy]);
 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
   const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
