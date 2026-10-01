@@ -344,7 +344,7 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
     global.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
     await React.act(async () => button('Titel kopiëren').props.onClick());
     assert.match(JSON.stringify(renderer.toJSON()), /Kopiëren is geblokkeerd/);
-    assert.equal(renderer.root.findAllByType('textarea').length, 5);
+    assert.equal(renderer.root.findAllByType('textarea').length, 4);
   } finally {
     await React.act(async () => renderer.unmount());
     if (originalNavigator) Object.defineProperty(global, 'navigator', originalNavigator); else delete global.navigator;
