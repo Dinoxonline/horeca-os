@@ -392,6 +392,10 @@ test('event workspace opens a secure compact window only on click, with fallback
     await React.act(async () => renderer.update(React.createElement(Panel, { ...props, draftContent: { label: 'Horeca OS', title: 'Bewaard', description: 'Bewaarde tekst' } })));
     assert.equal(button('Tekst bewaren in Horeca OS'), undefined, 'the Horeca OS source is already stored');
     assert.match(JSON.stringify(renderer.toJSON()), /Dit zijn al de bewaarde gegevens in Horeca OS/);
+    const unlinked = { ...distribution, facebook_event_delivery: undefined };
+    await React.act(async () => renderer.update(React.createElement(Panel, { ...props, distribution: unlinked, sources: [], linkCheck: 'done' })));
+    const createEvent = renderer.root.findAllByType('a').find(link => link.props.children === 'Facebook-event maken');
+    assert.equal(createEvent.props.href, 'https://www.facebook.com/events/create/');
   } finally {
     if (renderer) await React.act(async () => renderer.unmount());
     if (originalWindow === undefined) delete global.window; else global.window = originalWindow;
