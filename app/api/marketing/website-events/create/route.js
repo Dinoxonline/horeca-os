@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createUserSupabase } from "../../../../../lib/server-supabase";
-import { websitePhotoPreview } from "../../../../../lib/event-photo-server";
+import { publishWebsitePhoto, websitePhotoPreview } from "../../../../../lib/event-photo-server";
 
 const SITES = {
   "caribbeancorner.nl": {
@@ -645,13 +645,25 @@ export async function POST(request) {
     const detail = data?.message ? ` ${String(data.message).replace(/<[^>]*>/g, "")}` : "";
     return NextResponse.json({ error: `Eventin heeft het evenement niet geaccepteerd.${detail}` }, { status: response.status });
   }
+  const id = eventId(data.id);
+  let bannerWarning = "";
+  if (id && storedEventinImage(body)) {
+    try {
+      await attachStoredImageAsEventinBanner({ client: context.client, body, site, authorization, eventId: id });
+    } catch (error) {
+      // The event itself was saved. Do not create it again when only the
+      // separate Eventin banner needs attention.
+      bannerWarning = error.message || "De Eventin-banner kon nog niet worden gekoppeld.";
+    }
+  }
   return NextResponse.json({
     event: {
-      id: String(data.id || ""),
-      url: data.link || `${site.origin}/?p=${data.id}`,
+      id,
+      url: data.link || `${site.origin}/?p=${id}`,
       status: data.visibility_status || payload.visibility_status,
       website: site.origin,
     },
+    ...(bannerWarning ? { warning: `Het evenement is opgeslagen, maar de banner ontbreekt nog: ${bannerWarning}` } : {}),
   });
 }
 
@@ -674,6 +686,60 @@ async function preservedWebsitePhoto(site, authorization, id, event, wordpress) 
   }
   const photo = await websitePhotoPreview(api, wp, event);
   return { event_banner_id: photo.mediaId, event_banner: photo.url };
+}
+
+function storedEventinImage(body) {
+  const path = text(body?.eventinImage?.path, 500);
+  const workspaceId = text(body?.workspaceId, 100);
+  const businessId = text(body?.businessId, 100);
+  const match = path.match(/\.(jpe?g|png|webp)$/i);
+  if (!workspaceId || !businessId || !match || path.includes("..") || !path.startsWith(`${workspaceId}/${businessId}/eventin-`)) return null;
+  return { path, ext: match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase() };
+}
+
+function storedImageDetails(bytes, mime, ext) {
+  const type = String(mime || "").split(";", 1)[0].toLowerCase();
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const isPng = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const isWebp = bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  if ((ext === "jpg" && type === "image/jpeg" && isJpeg) ||
+      (ext === "png" && type === "image/png" && isPng) ||
+      (ext === "webp" && type === "image/webp" && isWebp)) return { mime: type };
+  return null;
+}
+
+async function attachStoredImageAsEventinBanner({ client, body, site, authorization, eventId }) {
+  const image = storedEventinImage(body);
+  if (!image) return { skipped: true };
+  const { data: blob, error } = await client.storage.from("marketing-assets").download(image.path);
+  if (error || !blob || blob.size <= 0 || blob.size > 10 * 1024 * 1024) throw new Error("De opgeslagen evenementfoto kon niet veilig worden gelezen.");
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const details = storedImageDetails(bytes, blob.type, image.ext);
+  if (!details) throw new Error("De opgeslagen evenementfoto is geen geldige JPG-, PNG- of WebP-afbeelding.");
+  const api = async (path, options = {}) => {
+    const response = await fetch(`${site.origin}${path}`, {
+      ...options,
+      headers: { Authorization: authorization, "User-Agent": "HorecaOS-EventPublisher/1.0", ...options.headers },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(15000),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error("Eventin kon de banner niet verwerken.");
+    return result;
+  };
+  const upload = await api("/wp-json/wp/v2/media", {
+    method: "POST",
+    headers: {
+      "Content-Type": details.mime,
+      "Content-Disposition": `attachment; filename="horeca-os-event-${eventId}.${image.ext}"`,
+    },
+    body: bytes,
+  });
+  const mediaId = Number(upload?.id);
+  if (!Number.isSafeInteger(mediaId) || mediaId <= 0) throw new Error("De website gaf geen geldige banner terug.");
+  await publishWebsitePhoto({ api, eventId, mediaId });
+  return { mediaId };
 }
 
 export async function PATCH(request) {

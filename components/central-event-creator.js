@@ -2282,6 +2282,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const response = await fetch("/api/marketing/website-events/create", { method: updatingWebsiteEvent ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, site, ...form, imageUrl: form.eventinImage?.url || form.imageUrl, eventId: editingWebsiteEvent?.eventId, campaignId: editingWebsiteEvent?.campaignId, businessId: selectedBusiness?.id || businessId || null }) });
       const website = await response.json(); if (!response.ok) throw new Error(website.error || (updatingWebsiteEvent ? "Het website-evenement kon niet worden gewijzigd." : "Het website-evenement kon niet worden aangemaakt."));
       steps.push({ label: updatingWebsiteEvent ? "Website en Eventin bijgewerkt" : "Website en Eventin", ok: true, detail: website.event.url });
+      if (website.warning) steps.push({ label: "Eventin-banner", ok: false, detail: website.warning });
       let calendarDelivery = editingWebsiteEvent?.calendarDelivery || null;
       if (form.addToCalendar) {
         const updatingCalendar = Boolean(updatingWebsiteEvent && calendarDelivery?.event_id);

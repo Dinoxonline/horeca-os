@@ -63,7 +63,7 @@ export default function EventPhotoSync({ workspaceId, session, item, busy, onSav
     </div> : <div className={styles.panel}><h4>Foto op de website bijwerken</h4>
       <button className="secondaryButton" type="button" disabled={disabled || !(d.eventin_event_id || d.external_ids?.eventin)} onClick={() => run('website-preview')}>Websitefoto controleren</button>
       {updated && <p className={styles.notice}>De gekozen hoofdfoto staat op de website en is gecontroleerd. Opnieuw plaatsen is niet nodig.</p>}
-      {(website ? website.bannerMismatch : job?.bannerMismatch) && <p role="status" className={styles.notice}>Eventin verwijst daarnaast nog naar een andere bannerfoto. Deze controle bevestigt de hoofdfoto; de aparte banner is niet gewijzigd.</p>}
+      {(website ? website.bannerMismatch : job?.bannerMismatch) && <p role="status" className={styles.notice}>De hoofdfoto en de Eventin-banner zijn nog niet gelijk. Controleer de websitefoto opnieuw voordat je verdergaat.</p>}
       {job?.status === 'updating' && <p role="status">Foto-update gestart; controleer de websitefoto om het resultaat te bevestigen.</p>}
       <div className={styles.columns}>
         <div className={styles.panel}><h4>{updated ? 'Huidige hoofdfoto op de website' : 'Nu op de website — wordt vervangen'}</h4>{website ? <EventPhoto url={website.url} label={updated ? 'Gecontroleerde hoofdfoto op de website' : 'Oude foto op de website — wordt vervangen'} /> : <p>Klik op ‘Websitefoto controleren’ om de huidige foto te zien.</p>}</div>

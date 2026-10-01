@@ -37,13 +37,11 @@ test('import changes only the main photo and protects this series occurrence',as
  assert.deepEqual(d,before);assert.equal(next.common.image_url,'https://store/new.jpg');assert.equal(next.event_photo_import.previous_url,d.common.image_url);assert.equal(next.series.exception,true);
  assert.deepEqual(next.common.images,d.common.images);assert.deepEqual(next.common.tickets,d.common.tickets);assert.deepEqual(next.instagram_publications,d.instagram_publications);assert.equal(next.common.title,d.common.title);
 });
-test('website photo update verifies featured_media and reports independent banner differences',async()=>{
- const {publishWebsitePhoto}=await load('lib/event-photo-server.js');const calls=[];
- const api=async(p,o)=>{calls.push([p,o]);return p.includes('eventin')?{id:9440,event_banner_id:'99',event_banner:'https://website/new.jpg'}:{id:9440,featured_media:99};};
- await publishWebsitePhoto({api,eventId:'9440',mediaId:99});assert.deepEqual(JSON.parse(calls[0][1].body),{featured_media:99});assert.equal(calls.length,3);
- const partial=await publishWebsitePhoto({api:async p=>p.includes('eventin')?{id:9440,event_banner_id:88}:{id:9440,featured_media:99},eventId:'9440',mediaId:99});
- assert.equal(partial.bannerMismatch,true);assert.equal(partial.url,'');
- for(const wp of [{id:9440,featured_media:88},{id:999,featured_media:99}]) await assert.rejects(publishWebsitePhoto({api:async p=>p.includes('eventin')?{id:9440,event_banner_id:99}:wp,eventId:'9440',mediaId:99}),/controle is niet geslaagd/);
+test('website photo update keeps the featured image and Eventin banner on the same attachment',async()=>{
+ const {publishWebsitePhoto}=await load('lib/event-photo-server.js');const calls=[];let bannerId=10;
+ const api=async(p,o)=>{calls.push([p,o]);if(p.includes('/media/'))return {id:99,source_url:'https://website/new.jpg'};if(p.includes('eventin')){if(o?.method==='POST')bannerId=JSON.parse(o.body).event_banner_id;return {id:9440,event_banner_id:bannerId,event_banner:'https://website/new.jpg'};}return {id:9440,featured_media:99};};
+ const result=await publishWebsitePhoto({api,eventId:'9440',mediaId:99});assert.deepEqual(JSON.parse(calls[0][1].body),{featured_media:99});assert.equal(JSON.parse(calls[3][1].body).event_banner_id,99);assert.equal(calls.length,6);assert.equal(result.bannerMismatch,false);
+ for(const wp of [{id:9440,featured_media:88},{id:999,featured_media:99}]) await assert.rejects(publishWebsitePhoto({api:async p=>p.includes('/media/')?{id:99,source_url:'https://website/new.jpg'}:p.includes('eventin')?{id:9440,event_banner_id:99}:wp,eventId:'9440',mediaId:99}),/controle is niet geslaagd/);
 });
 
 test('website preview uses the actual featured attachment and never substitutes an old banner',async()=>{
@@ -83,6 +81,27 @@ test('shared Eventin reader supplies current featured photo to Instagram, never 
    assert.equal(media.length,scenario==='no-featured'?0:1);
   }
  } finally {global.fetch=previous;if(oldUser===undefined)delete process.env.EVENTIN_USERNAME;else process.env.EVENTIN_USERNAME=oldUser;if(oldPass===undefined)delete process.env.EVENTIN_APPLICATION_PASSWORD;else process.env.EVENTIN_APPLICATION_PASSWORD=oldPass;}
+});
+
+test('a new Horeca OS event uploads its saved image as the actual Eventin banner',async()=>{
+ const previous=global.fetch,oldUser=process.env.EVENTIN_CARIBBEAN_USERNAME,oldPass=process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD;
+ process.env.EVENTIN_CARIBBEAN_USERNAME='test';process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD='test';
+ const jpeg=Buffer.from([255,216,255,224,1,2,3]);let featured=0,banner=0;const writes=[];
+ const client={auth:{getUser:async()=>({data:{user:{id:'owner'}}})},from(table){return {select(){return this;},eq(){return this;},maybeSingle:async()=>({data:table==='workspace_members'?{role:'owner'}:{name:'Caribbean Corner'}})};},storage:{from(){return {download:async()=>({data:new Blob([jpeg],{type:'image/jpeg'})})};}}};
+ const {POST}=await load('app/api/marketing/website-events/create/route.js',{'lib/server-supabase.js':{createUserSupabase:()=>client}});
+ global.fetch=async(url,o={})=>{
+  if(o.method==='POST')writes.push([url,JSON.parse(Buffer.isBuffer(o.body)?'{}':o.body)]);
+  if(url.endsWith('/wp-json/wp/v2/media'))return Response.json({id:99});
+  if(/\/wp-json\/wp\/v2\/media\/99$/.test(url))return Response.json({id:99,source_url:'https://caribbeancorner.nl/banner.jpg'});
+  if(/\/wp-json\/wp\/v2\/etn\/9440/.test(url)){if(o.method==='POST')featured=JSON.parse(o.body).featured_media;return Response.json({id:9440,featured_media:featured});}
+  if(url.endsWith('/wp-json/eventin/v2/events'))return Response.json({id:9440,link:'https://caribbeancorner.nl/event/test',visibility_status:'draft'});
+  if(/\/wp-json\/eventin\/v2\/events\/9440/.test(url)){if(o.method==='POST')banner=JSON.parse(o.body).event_banner_id;return Response.json({id:9440,title:'Test',start_date:'2027-01-01',end_date:'2027-01-01',event_banner_id:banner,event_banner:'https://caribbeancorner.nl/banner.jpg',ticket_variations:[]});}
+  throw Error('Unexpected request '+url);
+ };
+ try {
+  const response=await POST(new Request('https://app/api/marketing/website-events/create',{method:'POST',headers:{authorization:'Bearer test','content-type':'application/json'},body:JSON.stringify({workspaceId:'workspace',businessId:'business',site:'caribbeancorner.nl',title:'Test',description:'Tekst',start:'2027-01-01T18:00',end:'2027-01-01T22:00',location:'Caribbean Corner',status:'draft',eventinImage:{path:'workspace/business/eventin-test.jpg',url:'https://storage.example/test.jpg'}})}));
+  assert.equal(response.status,200,JSON.stringify(await response.json()));assert.equal(featured,99);assert.equal(banner,99);assert.equal(writes.filter(([url])=>url.endsWith('/wp-json/eventin/v2/events/9440')).length,1);
+ } finally {global.fetch=previous;if(oldUser===undefined)delete process.env.EVENTIN_CARIBBEAN_USERNAME;else process.env.EVENTIN_CARIBBEAN_USERNAME=oldUser;if(oldPass===undefined)delete process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD;else process.env.EVENTIN_CARIBBEAN_APPLICATION_PASSWORD=oldPass;}
 });
 
 async function routeHarness(overrides={}) {
@@ -127,25 +146,31 @@ test('merged representatives require matching scoped channel identities, legacy 
 test('website route checks remote version before writes and verifies success without touching text',async()=>{
  const previous=global.fetch, oldUser=process.env.EVENTIN_USERNAME,oldPass=process.env.EVENTIN_APPLICATION_PASSWORD;
  process.env.EVENTIN_USERNAME='test';process.env.EVENTIN_APPLICATION_PASSWORD='test';
- let media=10;const externalWrites=[];
+ let media=10,banner=10;const externalWrites=[];
  global.fetch=async(url,o={})=>{
   if(url.includes('fbcdn'))return new Response(jpeg,{headers:{'content-type':'image/jpeg'}});
   assert.equal(o.redirect,'error');
   if(/\/media\/\d+$/.test(url))return Response.json({id:media,source_url:'https://website/'+media+'.jpg'});
-  if(o.method==='POST'){externalWrites.push([url,o]);if(url.endsWith('/media'))return Response.json({id:99});assert.deepEqual(JSON.parse(o.body),{featured_media:99});media=99;}
-  return Response.json(url.includes('eventin')?{id:9440,event_banner_id:'10',event_banner:'https://website/10.jpg'}:{id:9440,featured_media:media,modified_gmt:'time'});
+  if(o.method==='POST'){
+   externalWrites.push([url,o]);
+   if(url.endsWith('/media'))return Response.json({id:99});
+   const body=JSON.parse(o.body);
+   if(url.includes('eventin')){assert.equal(body.event_banner_id,99);banner=99;return Response.json({id:9440,event_banner_id:banner,event_banner:'https://website/'+banner+'.jpg'});}
+   assert.deepEqual(body,{featured_media:99});media=99;return Response.json({id:9440,featured_media:media,modified_gmt:'time'});
+  }
+  return Response.json(url.includes('eventin')?{id:9440,event_banner_id:banner,event_banner:'https://website/'+banner+'.jpg'}:{id:9440,featured_media:media,modified_gmt:'time'});
  };
  try{const h=await routeHarness();const {preview:fb}=await (await h.call('facebook-preview')).json();await h.call('facebook-import',{hash:fb.hash});
   assert.equal((await h.call('website-publish',{websiteVersion:'old'})).status,400);
   assert.equal((await h.call('website-publish',{websiteVersion:'old',confirmed:true})).status,409);assert.equal(externalWrites.length,0);
-  const {preview}=await (await h.call('website-preview')).json();const r=await h.call('website-publish',{websiteVersion:preview.version,confirmed:true});assert.equal(r.status,200,JSON.stringify(await r.json()));assert.equal(externalWrites.length,2);assert.equal(h.row.media[1].event_photo_website.status,'updated');assert.equal(h.row.media[1].common.title,'Keep title');
-  assert.equal(h.row.media[1].event_photo_website.bannerMismatch,true);
+  const {preview}=await (await h.call('website-preview')).json();const r=await h.call('website-publish',{websiteVersion:preview.version,confirmed:true});assert.equal(r.status,200,JSON.stringify(await r.json()));assert.equal(externalWrites.length,3);assert.equal(h.row.media[1].event_photo_website.status,'updated');assert.equal(h.row.media[1].common.title,'Keep title');
+  assert.equal(h.row.media[1].event_photo_website.bannerMismatch,false);
   h.row.media[1].event_photo_website.status='updating';
   const checked=await (await h.call('website-preview')).json();
-  assert.equal(checked.preview.url,'https://website/99.jpg');assert.equal(checked.preview.bannerMismatch,true);
-  assert.equal(h.row.media[1].event_photo_website.status,'updated');assert.equal(externalWrites.length,2,'reconcile must not publish');
+  assert.equal(checked.preview.url,'https://website/99.jpg');assert.equal(checked.preview.bannerMismatch,false);
+  assert.equal(h.row.media[1].event_photo_website.status,'updated');assert.equal(externalWrites.length,3,'reconcile must not publish');
   assert.equal((await h.call('website-publish',{websiteVersion:checked.preview.version,confirmed:true})).status,200);
-  assert.equal(externalWrites.length,2,'retry must not upload or publish an already confirmed attachment');
+  assert.equal(externalWrites.length,3,'retry must not upload or publish an already confirmed attachment');
   media=77;
   await h.call('website-preview');assert.equal(h.row.media[1].event_photo_website.status,'unconfirmed','external photo change must revoke success');
  }finally{global.fetch=previous;if(oldUser===undefined)delete process.env.EVENTIN_USERNAME;else process.env.EVENTIN_USERNAME=oldUser;if(oldPass===undefined)delete process.env.EVENTIN_APPLICATION_PASSWORD;else process.env.EVENTIN_APPLICATION_PASSWORD=oldPass;}
@@ -160,7 +185,7 @@ test('confirmed photo UI shows the banner warning without offering another publi
  try {
   await Renderer.act(async()=>{tree=Renderer.create(React.createElement(Component,{item,mode:'website'}));});
   const content=JSON.stringify(tree.toJSON());
-  assert.match(content,/Opnieuw plaatsen is niet nodig/);assert.match(content,/aparte banner is niet gewijzigd/);
+  assert.match(content,/Opnieuw plaatsen is niet nodig/);assert.match(content,/hoofdfoto en de Eventin-banner zijn nog niet gelijk/);
   assert.equal(tree.root.findAllByType('input').length,0);
   assert.equal(tree.root.findAllByType('button').filter(b=>b.props.children==='Nieuwe foto uit Horeca OS op de website zetten').length,0);
  } finally {if(tree)await Renderer.act(async()=>tree.unmount());}
