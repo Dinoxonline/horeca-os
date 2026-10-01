@@ -403,10 +403,11 @@ function formUiStorageKey(workspaceId, businessId) {
   return `horeca-os:marketing-ui:${workspaceId}:${businessId}`;
 }
 
-export default function CentralEventCreator({ workspaceId, businessId, businesses, session }) {
+export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest }) {
   const [form, setForm] = useState(emptyForm);
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
+  const handledNewEventRequestRef = useRef("");
   const facebookGroupListRef = useRef(null);
   const [eventWorkspaceView, setEventWorkspaceView] = useState("");
   const [preview, setPreview] = useState(false);
@@ -1578,6 +1579,34 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       window.setTimeout(() => window.scrollTo({ top: restoredUi.scrollY, behavior: "auto" }), 0);
     }
   }, [selectedBusiness?.id, workspaceId]);
+
+  useEffect(() => {
+    if (!newEventRequest?.date || !selectedBusiness?.id || handledNewEventRequestRef.current === newEventRequest.id) return;
+    handledNewEventRequestRef.current = newEventRequest.id;
+    const defaults = defaultsForBusiness(selectedBusiness);
+    const start = `${newEventRequest.date}T18:00`;
+    const end = `${newEventRequest.date}T23:00`;
+    setForm({
+      ...emptyForm,
+      images: { ...emptyImages },
+      channels: { ...channelDefaults },
+      editorialTargets: { ...emptyEditorialTargets },
+      organizer: defaults.organizer,
+      location: defaults.location,
+      contactEmail: defaults.contactEmail,
+      start,
+      end,
+    });
+    setEditingCampaignId(null);
+    setEditingWebsiteEvent(null);
+    setEditingBrevoDraftId(null);
+    setSelectedBrevoListIds([]);
+    setSelectedFacebookGroupIds([]);
+    setEventWorkspaceView("new");
+    setPreview(false);
+    setResult({ ok: true, message: `Nieuw evenement klaargezet op ${newEventRequest.date}. Pas de begin- en eindtijd aan als dat nodig is.` });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [newEventRequest?.id, newEventRequest?.date, selectedBusiness]);
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;

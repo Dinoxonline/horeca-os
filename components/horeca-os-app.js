@@ -563,8 +563,8 @@ export default function HorecaOsApp() {
         {activeView === "quotes" && featureVisibility.quotes && <Quotes key={workspaceId} workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && <MarketingAgendaNavigation
           businessId={businessId} businesses={visibleBusinesses}
-          renderAgenda={agendaBusinesses => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} />}
-          renderCreator={creatorBusinessId => <CentralEventCreator workspaceId={workspaceId} businessId={creatorBusinessId} businesses={visibleBusinesses} session={session} />}
+          renderAgenda={(agendaBusinesses, onPlanDate) => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} onPlanDate={onPlanDate} />}
+          renderCreator={(creatorBusinessId, newEventRequest) => <CentralEventCreator workspaceId={workspaceId} businessId={creatorBusinessId} businesses={visibleBusinesses} session={session} newEventRequest={newEventRequest} />}
         />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}

@@ -6,11 +6,19 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
   const [view, setView] = useState("agenda");
   const [creatorVisited, setCreatorVisited] = useState(false);
   const [chosenBusiness, setChosenBusiness] = useState("");
+  const [newEventRequest, setNewEventRequest] = useState(null);
   const agendaBusinesses = useMemo(() => businessId === "all" ? businesses : businesses.filter(business => business.id === businessId), [businessId, businesses]);
   const requestedBusiness = businessId === "all" ? chosenBusiness : businessId;
   const creatorBusiness = businesses.some(business => business.id === requestedBusiness) ? requestedBusiness : "";
 
   function openCreator() { setCreatorVisited(true); setView("create"); }
+  function planEventOnDate(date, requestedBusinessId = "") {
+    const dateValue = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+    if (businessId === "all" && businesses.some((business) => business.id === requestedBusinessId)) setChosenBusiness(requestedBusinessId);
+    setNewEventRequest({ date: dateValue, id: `${dateValue}-${Date.now()}` });
+    setCreatorVisited(true);
+    setView("create");
+  }
   return <>
     <nav aria-label="Marketingnavigatie" style={{ position: "sticky", top: 0, zIndex: 10, display: "flex", flexWrap: "wrap", gap: 10, padding: "12px 0", marginBottom: 12, background: "#edf6f8", borderBottom: "1px solid #c8dce5" }}>
       <button type="button" className="secondaryButton" style={view === "agenda" ? { background: "#176d7f", color: "white" } : undefined} aria-pressed={view === "agenda"} onClick={() => setView("agenda")}>Agenda</button>
@@ -18,7 +26,7 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
     </nav>
     {/* Keep visited screens mounted: returning must not discard a form or reset the calendar month. */}
     <div hidden={view !== "agenda"} aria-label="Marketingagenda" style={view !== "agenda" ? { display: "none" } : undefined}>
-      {renderAgenda(agendaBusinesses)}
+      {renderAgenda(agendaBusinesses, planEventOnDate)}
     </div>
     {creatorVisited && <div hidden={view !== "create"} aria-label="Evenement of campagne maken" style={view !== "create" ? { display: "none" } : undefined}>
       {businessId === "all" && <section className="panel" style={{ padding: 20, marginBottom: 16 }}>
@@ -30,7 +38,7 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
         </label>
         <p>De knop Agenda brengt je altijd terug naar het overzicht.</p>
       </section>}
-      {creatorBusiness ? <div key={creatorBusiness}>{renderCreator(creatorBusiness)}</div> : <p>Kies eerst een vestiging om een evenement, gerecht of campagne te maken.</p>}
+      {creatorBusiness ? <div key={creatorBusiness}>{renderCreator(creatorBusiness, newEventRequest)}</div> : <p>Kies eerst een vestiging om een evenement, gerecht of campagne te maken.</p>}
     </div>}
   </>;
 }
