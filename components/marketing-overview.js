@@ -264,6 +264,17 @@ function externalTitlesMatch(left, right) {
   return overlap >= 2 && overlap / Math.min(a.size, b.size) >= 0.6;
 }
 
+export function facebookEventCandidates(item, events = []) {
+  const start = dateOnly(itemStart(item));
+  if (!start) return [];
+  const title = normalizeEventTitle(eventText(item));
+  return events.filter((event) => {
+    if (!event?.id || !sameDay(dateOnly(event.startDate), start)) return false;
+    const candidateTitle = normalizeEventTitle(event.title);
+    return Boolean(candidateTitle) && (candidateTitle === title || externalTitlesMatch(event.title, eventText(item)));
+  }).sort((left, right) => Number(normalizeEventTitle(right.title) === title) - Number(normalizeEventTitle(left.title) === title));
+}
+
 function mergeExternalSourceItems(items) {
   const result = [];
   for (const item of items) {
@@ -619,6 +630,7 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
     // "nearest" can leave only the heading visible at the bottom of the modal.
     // Align its start so the opened form and confirmation button come into view.
     summary?.scrollIntoView({ block: "start", inline: "nearest" });
+    if (channel === "facebook" && !facebookEventId(distribution)) onCompareSources?.();
   }
   useEffect(() => {
     if (["facebook", "predis"].includes(item.requestedChannel)) openChannel(item.requestedChannel);
@@ -709,6 +721,19 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     const sources = await Promise.all(sourceRequests);
     result.push(...sources.filter(Boolean));
     return result.length > 1 ? result : null;
+  }
+
+  async function findFacebookMatches(item) {
+    if (!item || isExternalEvent(item) || facebookEventId(distributionFor(item)) || !sessionRef.current?.access_token) return [];
+    const business = businessById.get(String(item.business_id));
+    if (!business) return [];
+    const response = await fetch(`/api/integrations/facebook/events?${new URLSearchParams({ workspaceId, businessId: String(item.business_id), includePast: "true" })}`, { headers: { Authorization: `Bearer ${sessionRef.current.access_token}` } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Facebook-evenementen konden niet worden gecontroleerd.");
+    const matches = facebookEventCandidates(item, payload.events || []);
+    const exactMatches = matches.filter(event => normalizeEventTitle(event.title) === normalizeEventTitle(eventText(item)));
+    if (exactMatches.length === 1) await linkFacebookEvent(item, { ...exactMatches[0], pageName: payload.pageName || business.name || "" });
+    return matches;
   }
 
   function checkSourceComparison(item, force = false) {
@@ -814,6 +839,7 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     if (busy || !selectedItem || isExternalEvent(selectedItem) || !sessionRef.current?.access_token) return;
     // Do not make the open event wait for every publication/import request.
     checkSourceComparison(selectedItem, refreshToken > 0).catch(() => {});
+    findFacebookMatches(selectedItem).catch(() => {});
   }, [selectedItem?.id, workspaceId, refreshKey, refreshToken, busy]);
 
   function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
@@ -970,6 +996,30 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     } catch (confirmError) { setError(confirmError.message || "De handmatige bevestiging kon niet worden opgeslagen."); }
     finally { contentSyncRef.current = false; setLinkingId(""); }
   }
+  async function linkFacebookEvent(item, event) {
+    if (!item || !event?.id || (linkingId && linkingId !== `compare:${String(item.id)}`) || contentSyncRef.current || !sessionRef.current?.access_token) return;
+    contentSyncRef.current = true;
+    setLinkingId(String(item.id)); setError("");
+    try {
+      const distribution = distributionFor(item);
+      const eventId = String(event.id);
+      const next = {
+        ...distribution,
+        facebook_event_delivery: {
+          status: "confirmed",
+          external_id: eventId,
+          permalink: event.sourceUrl || `https://www.facebook.com/events/${eventId}/`,
+          business_id: String(item.business_id),
+          page_name: event.pageName || "",
+          confirmed_at: new Date().toISOString(),
+        },
+      };
+      const updated = await saveEventContent(supabase, workspaceId, item, next);
+      showSavedContent(updated);
+      await checkSourceComparison(updated, true);
+    } catch (linkError) { setError(linkError.message || "Het gevonden Facebook-evenement kon niet worden gekoppeld."); }
+    finally { contentSyncRef.current = false; setLinkingId(""); }
+  }
   async function compareSources(item) {
     if (!item || linkingId || comparisonTargetRef.current) return;
     const comparisonKey = `compare:${String(item.id)}`;
@@ -977,6 +1027,7 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     setLinkingId(comparisonKey); setError("");
     try {
       await checkSourceComparison(item, true);
+      await findFacebookMatches(item);
     } catch (compareError) { setError(compareError.message || "De bronnen konden niet opnieuw worden vergeleken."); }
     finally { comparisonTargetRef.current = ""; setLinkingId(""); }
   }

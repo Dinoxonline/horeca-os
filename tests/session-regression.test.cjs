@@ -73,6 +73,18 @@ test('website comparison ignores reader whitespace only; Facebook and meaningful
   assert.deepEqual(check(clean, clean).differences.map(source => source.source), ['Facebook']);
 });
 
+test('Facebook lookup only suggests an event from the same day and matching title', async () => {
+  const { facebookEventCandidates } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'facebook-match', media: [{ kind: 'campaign_distribution', common: { title: '40 jaar Rhythm Construction', start: '2026-11-07T18:00:00+01:00' } }] };
+  const events = [
+    { id: 'exact', title: '40 jaar Rhythm Construction', startDate: '2026-11-07T22:00:00+01:00' },
+    { id: 'close', title: 'Rhythm Construction 40 jaar feest', startDate: '2026-11-07T22:00:00+01:00' },
+    { id: 'other-day', title: '40 jaar Rhythm Construction', startDate: '2026-11-08T22:00:00+01:00' },
+    { id: 'other-title', title: 'Karaoke Night', startDate: '2026-11-07T22:00:00+01:00' },
+  ];
+  assert.deepEqual(facebookEventCandidates(item, events).map(event => event.id), ['exact', 'close']);
+});
+
 test('a new Eventin event ignores only its own generated location and ticket footer', async () => {
   const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const local = { media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', description: 'Live muziek en cocktails.', location: 'Caribbean Corner' } }] };
