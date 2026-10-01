@@ -11,8 +11,8 @@ import styles from "./meta-campaign-composer.module.css";
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", ES: "Spanje", GB: "Verenigd Koninkrijk" };
 
-export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onDirty, busy, error, initialDraft, onDraftChange, budgetContext }) {
-  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), beneficiary: pageName || businessName || "", ...initialDraft, editorVersion: 3 }));
+export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onDirty, busy, error, initialDraft, onDraftChange, budgetContext, lockToEvent = false }) {
+  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), beneficiary: pageName || businessName || "", ...initialDraft, ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
   useEffect(() => { draftListener.current?.(draft); }, [draft]);
@@ -66,7 +66,9 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
         </nav>
         <div className={styles.body}>
           {step === "campaign" && <>
-            <MetaPromotionPicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy} />
+            {lockToEvent
+              ? <section className={styles.picker} aria-label="Advertentiebron"><h4>Je promoot dit evenement</h4><p><strong>{distribution.common?.title || item.body || "Dit evenement"}</strong></p><p className={styles.help}>Tekst, afbeelding en ticketlink komen uit dit evenement. Je hoeft geen andere Facebook- of Instagrambron te zoeken of te kiezen.</p></section>
+              : <MetaPromotionPicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy} />}
             <div className={styles.sectionHeading}><h4>Campagne en doel</h4><p>Wat wil je met deze advertentie bereiken?</p></div>
             {field("Campagnenaam", "campaignName", { maxLength: 150 })}
             <fieldset className={styles.objectives}><legend>Campagnedoel</legend>{Object.entries(META_OBJECTIVES).map(([key, value]) => <label key={key} className={draft.objective === key ? styles.selectedObjective : ""}><input type="radio" name={`meta-objective-${item.id}`} checked={draft.objective === key} disabled={busy || chosenSource} onChange={() => update("objective", key)} /><span><strong>{value.label}</strong><small>{value.detail}</small></span></label>)}</fieldset>

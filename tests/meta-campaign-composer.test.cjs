@@ -57,6 +57,11 @@ test("saved event and product panels open the same editor, use venue identity an
         await React.act(async () => { renderer = Renderer.create(React.createElement(SavedMetaCampaignEditor, props)); });
         assert.equal(requests.length, 0, "closed editors do not load accounts");
         await React.act(async () => renderer.root.findByProps({ className: "savedMetaCampaignEditor" }).props.onToggle({ currentTarget: { open: true } }));
+        if (type === "website_event") {
+          const form = JSON.stringify(renderer.toJSON());
+          assert.match(form, /Je promoot dit evenement/);
+          assert.doesNotMatch(form, /Facebook-evenementen/);
+        }
         const preview = renderer.root.findByProps({ "aria-label": "Advertentievoorbeeld" });
         assert.ok(preview.findAllByType("strong").some(node => node.props.children === "Pagina Het Plein"));
         const field = renderer.root.findAllByType("input").find(node => node.props.maxLength === 150);
