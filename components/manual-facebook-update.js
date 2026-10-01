@@ -11,6 +11,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
   const fieldId = useId();
   const content = draftContent || eventContent(distribution);
   const sourceIsAlreadyStored = draftContent?.label === "Horeca OS";
+  const ticketUrl = String(distribution.common?.website_url || (distribution.source_type === "website_event" ? distribution.source_url : "") || "").trim();
   const id = facebookEventId(distribution);
   const state = contentDeliveryStatus(distribution, "facebook");
   const linkMessage = linkCheck === "pending" ? "Koppeling controleren…" : linkCheck === "error" ? "Koppeling kon niet worden gecontroleerd" : linkCheck === "done" ? "Geen evenement gekoppeld" : "Koppeling nog niet gecontroleerd";
@@ -68,6 +69,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
     <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-description`}>Beschrijving</label><span className="copyActions"><span role="status">{copiedField === "description" ? "Beschrijving gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(content.description, "description")}>Beschrijving kopiëren</button></span></div><textarea id={`${fieldId}-description`} readOnly value={content.description} rows={8} /></div>
     <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-times`}>Begin- en eindtijd (Nederland)</label><span className="copyActions"><span role="status">{copiedField === "times" ? "Tijden gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(`Begin: ${content.start || "Niet opgegeven"}\nEinde: ${content.end || "Niet opgegeven"}`, "times")}>Tijden kopiëren</button></span></div><textarea id={`${fieldId}-times`} readOnly value={`Begin: ${content.start || "Niet opgegeven"}\nEinde: ${content.end || "Niet opgegeven"}`} rows={3} /></div>
     <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-location`}>Locatie</label><span className="copyActions"><span role="status">{copiedField === "location" ? "Locatie gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(content.location || "", "location")}>Locatie kopiëren</button></span></div><textarea id={`${fieldId}-location`} readOnly value={content.location || "Niet opgegeven"} rows={2} /></div>
+    {ticketUrl && <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-tickets`}>Ticket-URL (Eventin)</label><span className="copyActions"><span role="status">{copiedField === "tickets" ? "Ticketlink gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(ticketUrl, "tickets")}>Ticketlink kopiëren</button></span></div><textarea id={`${fieldId}-tickets`} readOnly value={ticketUrl} rows={2} /></div>}
     </div>
     <div className="facebookPane">
     <h5>2. Openen en plakken</h5>

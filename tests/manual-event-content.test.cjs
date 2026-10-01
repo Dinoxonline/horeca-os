@@ -313,7 +313,7 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
   await swc.loadBindings();
   const m = load('lib/manual-event-content.js');
   const Panel = load('components/manual-facebook-update.js').default;
-  let distribution = m.prepareContent(base(), m.eventContent(base()), at);
+  let distribution = m.prepareContent({ ...base(), common: { ...base().common, website_url: 'https://caribbeancorner.nl/etn/example-event/' } }, m.eventContent(base()), at);
   const confirmations = [], copied = [];
   const originalNavigator = Object.getOwnPropertyDescriptor(global, 'navigator');
   Object.defineProperty(global, 'navigator', { configurable: true, value: { clipboard: { writeText: async value => copied.push(value) } } });
@@ -328,8 +328,9 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
     assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => node.props.children === 'Titel gekopieerd'));
     await React.act(async () => button('Beschrijving kopiëren').props.onClick());
     assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => node.props.children === 'Beschrijving gekopieerd'));
+    await React.act(async () => button('Ticketlink kopiëren').props.onClick());
     assert.equal(renderer.root.findAllByProps({ role: 'status' }).some(node => node.props.children === 'Titel gekopieerd'), false);
-    assert.deepEqual(copied, ['Avond', 'Tekst\n🎵']);
+    assert.deepEqual(copied, ['Avond', 'Tekst\n🎵', 'https://caribbeancorner.nl/etn/example-event/']);
     assert.equal(confirmations.length, 0);
     await React.act(async () => renderer.root.findByType('input').props.onChange({ target: { checked: true } }));
     assert.equal(button('Handmatig bijgewerkt').props.disabled, false);
@@ -343,7 +344,7 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
     global.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
     await React.act(async () => button('Titel kopiëren').props.onClick());
     assert.match(JSON.stringify(renderer.toJSON()), /Kopiëren is geblokkeerd/);
-    assert.equal(renderer.root.findAllByType('textarea').length, 4);
+    assert.equal(renderer.root.findAllByType('textarea').length, 5);
   } finally {
     await React.act(async () => renderer.unmount());
     if (originalNavigator) Object.defineProperty(global, 'navigator', originalNavigator); else delete global.navigator;
