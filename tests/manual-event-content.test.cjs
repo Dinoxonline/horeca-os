@@ -389,6 +389,9 @@ test('event workspace opens a secure compact window only on click, with fallback
     await React.act(async () => button('Tekst bewaren in Horeca OS').props.onClick());
     assert.deepEqual(saves, [{ title: 'Nieuw', description: 'Andere tekst' }]);
     assert.equal(confirmations.length, 0);
+    await React.act(async () => renderer.update(React.createElement(Panel, { ...props, draftContent: { label: 'Horeca OS', title: 'Bewaard', description: 'Bewaarde tekst' } })));
+    assert.equal(button('Tekst bewaren in Horeca OS'), undefined, 'the Horeca OS source is already stored');
+    assert.match(JSON.stringify(renderer.toJSON()), /Dit zijn al de bewaarde gegevens in Horeca OS/);
   } finally {
     if (renderer) await React.act(async () => renderer.unmount());
     if (originalWindow === undefined) delete global.window; else global.window = originalWindow;

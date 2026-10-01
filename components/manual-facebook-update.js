@@ -10,6 +10,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
   const [copiedField, setCopiedField] = useState("");
   const fieldId = useId();
   const content = draftContent || eventContent(distribution);
+  const sourceIsAlreadyStored = draftContent?.label === "Horeca OS";
   const id = facebookEventId(distribution);
   const state = contentDeliveryStatus(distribution, "facebook");
   const linkMessage = linkCheck === "pending" ? "Koppeling controleren…" : linkCheck === "error" ? "Koppeling kon niet worden gecontroleerd" : linkCheck === "done" ? "Geen evenement gekoppeld" : "Koppeling nog niet gecontroleerd";
@@ -51,14 +52,14 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
     <header className="workspaceHeading"><h4>Facebook handmatig bijwerken</h4><strong className="statusBadge">{!id ? linkMessage : dirty ? "Nog niet bewaard" : state.label}</strong></header>
     {state.at && <small>Door een gebruiker bevestigd op {new Date(state.at).toLocaleString("nl-NL")}. Niet automatisch door Facebook gecontroleerd.</small>}
     {sources.length > 0 && onChooseSource && <div className="sourceChoice">
-      <h5>1. Kies en bewaar</h5>
+      <h5>1. Kies gegevensbron</h5>
       <div className="sourceControls"><label>Gegevensbron<select value={draftContent?.label || ""} disabled={busy} onChange={event => { const source = sources.find(source => source.label === event.target.value); if (source) onChooseSource(source); }}>
         <option value="" disabled>Kies de gegevens die je wilt gebruiken</option>
         {sources.map(source => <option key={source.label} value={source.label}>{source.label}</option>)}
       </select></label>
-      <button type="button" className="secondaryButton" disabled={busy || !draftContent || !onSave} onClick={saveSelectedContent}>Tekst bewaren in Horeca OS</button></div>
+      {!sourceIsAlreadyStored && <button type="button" className="secondaryButton" disabled={busy || !draftContent || !onSave} onClick={saveSelectedContent}>Tekst bewaren in Horeca OS</button>}</div>
       <EventContentSaveNotice notice={saveNotice} />
-      <small>Bewaar titel, tekst, begin, einde en locatie samen in Horeca OS. Dit wijzigt Facebook en de website nog niet.</small>
+      <small>{sourceIsAlreadyStored ? "Dit zijn al de bewaarde gegevens in Horeca OS." : "Bewaar titel, tekst, begin, einde en locatie samen in Horeca OS. Dit wijzigt Facebook en de website nog niet."}</small>
     </div>}
     <div className="facebookWorkspace">
     <div className="copyPane">
