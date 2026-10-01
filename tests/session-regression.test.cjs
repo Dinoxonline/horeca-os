@@ -29,13 +29,15 @@ const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
 test('event date is visible in the heading without opening event details', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
-  const item = { id: 'date', media: [{ kind: 'campaign_distribution', common: { title: 'Avond', start: '2026-10-01T18:00:00' } }] };
+  const item = { id: 'date', created_at: '2026-09-02T09:30:00', published_at: '2026-09-02T09:30:00', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', start: '2026-10-01T18:00:00' } }] };
   let renderer;
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, onClose() {} })); });
   try {
     const heading = renderer.root.findByProps({ className: 'marketingEventHeading' });
     assert.equal(heading.findByProps({ 'aria-label': 'Evenementdatum' }).findByType('strong').props.children, 'donderdag 1 oktober 2026');
-    await React.act(async () => renderer.update(React.createElement(EventDetails, { item: { ...item, media: [] }, onClose() {} })));
+    assert.match(JSON.stringify(heading.findByProps({ 'aria-label': 'Begintijd' }).props.children), /18:00/);
+    assert.match(JSON.stringify(heading.findAllByProps({ className: 'marketingDetailStatus published' })[0].props.children), /Geplaatst op 2 september 2026/);
+    await React.act(async () => renderer.update(React.createElement(EventDetails, { item: { id: item.id, media: [] }, onClose() {} })));
     assert.equal(renderer.root.findByProps({ 'aria-label': 'Evenementdatum' }).findByType('strong').props.children, 'Datum onbekend');
   } finally { await React.act(async () => renderer.unmount()); }
 });
