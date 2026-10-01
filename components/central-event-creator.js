@@ -1575,7 +1575,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const restoredUi = savedUi || savedDraft?.ui || {};
     setEventWorkspaceView(restoredUi.eventWorkspaceView || (savedForm?.campaignType === "event" ? "new" : ""));
     setSavedEventPreviewId(restoredUi.savedEventPreviewId || null);
-    if (Number.isFinite(restoredUi.scrollY)) {
+    // Een datumklik is altijd een nieuw evenement. Herstel dan niet de oude
+    // schermpositie van een eerder concept: de gebruiker moet bij Basis starten.
+    if (!newEventRequest?.date && Number.isFinite(restoredUi.scrollY)) {
       window.setTimeout(() => window.scrollTo({ top: restoredUi.scrollY, behavior: "auto" }), 0);
     }
   }, [selectedBusiness?.id, workspaceId]);
@@ -1605,7 +1607,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEventWorkspaceView("new");
     setPreview(false);
     setResult({ ok: true, message: `Nieuw evenement klaargezet op ${newEventRequest.date}. Pas de begin- en eindtijd aan als dat nodig is.` });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Deze loopt bewust na de eventuele herstelactie hierboven, zodat een
+    // datumklik nooit onderaan bij Bestemmingen blijft hangen.
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 0);
   }, [newEventRequest?.id, newEventRequest?.date, selectedBusiness]);
 
   useEffect(() => {
