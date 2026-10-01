@@ -13,11 +13,17 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
   const id = facebookEventId(distribution);
   const state = contentDeliveryStatus(distribution, "facebook");
   const linkMessage = linkCheck === "pending" ? "Koppeling controleren…" : linkCheck === "error" ? "Koppeling kon niet worden gecontroleerd" : linkCheck === "done" ? "Geen evenement gekoppeld" : "Koppeling nog niet gecontroleerd";
-  const confirmationHelp = busy ? "Even wachten: de controle of opslag loopt nog." : !id ? "De Facebook-koppeling moet eerst bevestigd zijn." : dirty || state.key === "needs_update" ? "Kies bij stap 1 je tekstbron en klik op ‘Tekst bewaren in Horeca OS’." : state.key === "manual_confirmed" ? "Deze tekst is al door jou of een collega bevestigd." : "Vink alleen aan als deze titel én beschrijving op Facebook zijn opgeslagen.";
-  useEffect(() => { setChecked(false); setMessage(""); setCopiedField(""); }, [content.title, content.description, id, dirty]);
+  const confirmationHelp = busy ? "Even wachten: de controle of opslag loopt nog." : !id ? "De Facebook-koppeling moet eerst bevestigd zijn." : dirty || state.key === "needs_update" ? "Kies bij stap 1 je gegevensbron en klik op ‘Tekst bewaren in Horeca OS’. Tijden en locatie gaan daarbij mee." : state.key === "manual_confirmed" ? "Deze gegevens zijn al door jou of een collega bevestigd." : "Vink alleen aan als titel, omschrijving, tijden en locatie op Facebook zijn opgeslagen.";
+  useEffect(() => { setChecked(false); setMessage(""); setCopiedField(""); }, [content.title, content.description, content.start, content.end, content.location, id, dirty]);
   async function copy(text, field) {
     try { await navigator.clipboard.writeText(text); setCopiedField(field); setMessage(""); }
     catch { setCopiedField(""); setMessage("Kopiëren is geblokkeerd. Selecteer en kopieer de tekst hieronder handmatig."); }
+  }
+  function saveSelectedContent() {
+    const saved = { title: content.title, description: content.description };
+    const current = eventContent(distribution);
+    for (const key of ["start", "end", "location"]) if (content[key] && content[key] !== current[key]) saved[key] = content[key];
+    onSave(saved);
   }
   function openFacebook(event) {
     // Modified clicks retain the browser's ordinary link behavior.
@@ -46,19 +52,21 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
     {state.at && <small>Door een gebruiker bevestigd op {new Date(state.at).toLocaleString("nl-NL")}. Niet automatisch door Facebook gecontroleerd.</small>}
     {sources.length > 0 && onChooseSource && <div className="sourceChoice">
       <h5>1. Kies en bewaar</h5>
-      <div className="sourceControls"><label>Tekstbron<select value={draftContent?.label || ""} disabled={busy} onChange={event => { const source = sources.find(source => source.label === event.target.value); if (source) onChooseSource(source); }}>
-        <option value="" disabled>Kies de tekst die je wilt gebruiken</option>
+      <div className="sourceControls"><label>Gegevensbron<select value={draftContent?.label || ""} disabled={busy} onChange={event => { const source = sources.find(source => source.label === event.target.value); if (source) onChooseSource(source); }}>
+        <option value="" disabled>Kies de gegevens die je wilt gebruiken</option>
         {sources.map(source => <option key={source.label} value={source.label}>{source.label}</option>)}
       </select></label>
-      <button type="button" className="secondaryButton" disabled={busy || !draftContent || !onSave} onClick={() => onSave({ title: content.title, description: content.description })}>Tekst bewaren in Horeca OS</button></div>
+      <button type="button" className="secondaryButton" disabled={busy || !draftContent || !onSave} onClick={saveSelectedContent}>Tekst bewaren in Horeca OS</button></div>
       <EventContentSaveNotice notice={saveNotice} />
-      <small>Alleen lokaal bewaren; dit wijzigt Facebook en de website niet.</small>
+      <small>Bewaar titel, tekst, begin, einde en locatie samen in Horeca OS. Dit wijzigt Facebook en de website nog niet.</small>
     </div>}
     <div className="facebookWorkspace">
     <div className="copyPane">
     {dirty && <p role="status">Deze keuze is nog niet opgeslagen. Bewaar de tekst eerst; daarna kun je kopiëren.</p>}
     <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-title`}>Titel</label><span className="copyActions"><span role="status">{copiedField === "title" ? "Titel gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(content.title, "title")}>Titel kopiëren</button></span></div><textarea id={`${fieldId}-title`} readOnly value={content.title} rows={2} /></div>
     <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-description`}>Beschrijving</label><span className="copyActions"><span role="status">{copiedField === "description" ? "Beschrijving gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(content.description, "description")}>Beschrijving kopiëren</button></span></div><textarea id={`${fieldId}-description`} readOnly value={content.description} rows={8} /></div>
+    <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-times`}>Begin- en eindtijd (Nederland)</label><span className="copyActions"><span role="status">{copiedField === "times" ? "Tijden gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(`Begin: ${content.start || "Niet opgegeven"}\nEinde: ${content.end || "Niet opgegeven"}`, "times")}>Tijden kopiëren</button></span></div><textarea id={`${fieldId}-times`} readOnly value={`Begin: ${content.start || "Niet opgegeven"}\nEinde: ${content.end || "Niet opgegeven"}`} rows={3} /></div>
+    <div className="textField"><div className="fieldHeading"><label htmlFor={`${fieldId}-location`}>Locatie</label><span className="copyActions"><span role="status">{copiedField === "location" ? "Locatie gekopieerd" : ""}</span><button type="button" className="secondaryButton" disabled={dirty || busy} onClick={() => copy(content.location || "", "location")}>Locatie kopiëren</button></span></div><textarea id={`${fieldId}-location`} readOnly value={content.location || "Niet opgegeven"} rows={2} /></div>
     </div>
     <div className="facebookPane">
     <h5>2. Openen en plakken</h5>
@@ -69,7 +77,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
     </> : <p role="status">{linkCheck === "pending" ? "De agenda controleert de Facebook-koppeling automatisch. De knop verschijnt hier zodra het bestaande evenement is gevonden; je hoeft niets opnieuw te starten." : linkCheck === "error" ? "De automatische controle is niet gelukt. Dit betekent niet dat je evenement ontbreekt. Je kunt de controle opnieuw proberen met ‘Bronnen opnieuw vergelijken’." : "Er is nog geen bevestigde Facebook-evenementkoppeling beschikbaar. Je kunt ‘Bronnen opnieuw vergelijken’ gebruiken of het bestaande evenement koppelen. Een Facebookbericht is geen evenement."}</p>}
     <div className="confirmation"><h5>3. Bevestig je wijziging</h5>
     <p id={`${fieldId}-confirmation-help`} className="confirmationHelp">{confirmationHelp}</p>
-    <label className="confirmationCheck"><input type="checkbox" aria-describedby={`${fieldId}-confirmation-help`} checked={checked} onChange={event => setChecked(event.target.checked)} disabled={dirty || busy || state.key !== "ready"} /> Ik heb deze titel en beschrijving op Facebook opgeslagen.</label>
+    <label className="confirmationCheck"><input type="checkbox" aria-describedby={`${fieldId}-confirmation-help`} checked={checked} onChange={event => setChecked(event.target.checked)} disabled={dirty || busy || state.key !== "ready"} /> Ik heb deze titel, omschrijving, tijden en locatie op Facebook opgeslagen.</label>
     <button type="button" className="primaryButton" disabled={!checked || dirty || busy || state.key !== "ready" || !onConfirm} onClick={() => onConfirm(contentSnapshot(distribution, "facebook"))}>Handmatig bijgewerkt</button>
     </div>
     </div>

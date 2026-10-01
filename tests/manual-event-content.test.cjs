@@ -122,6 +122,9 @@ test('content versions invalidate manual confirmations, independently of website
   for (const changed of [
     { ...reopened, common: { ...reopened.common, title: 'Andere titel' } },
     { ...reopened, common: { ...reopened.common, description: '' } },
+    { ...reopened, common: { ...reopened.common, start: '2026-10-01T20:00' } },
+    { ...reopened, common: { ...reopened.common, end: '2026-10-01T23:00' } },
+    { ...reopened, common: { ...reopened.common, location: 'Dorpsstraat 114A' } },
     { ...reopened, facebook_event_delivery: { external_id: '999' } },
   ]) {
     assert.equal(m.contentDeliveryStatus(changed, 'facebook').key, 'needs_update');
@@ -340,7 +343,7 @@ test('manual UI requires explicit checkbox, blocks dirty content and handles cli
     global.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
     await React.act(async () => button('Titel kopiëren').props.onClick());
     assert.match(JSON.stringify(renderer.toJSON()), /Kopiëren is geblokkeerd/);
-    assert.equal(renderer.root.findAllByType('textarea').length, 2);
+    assert.equal(renderer.root.findAllByType('textarea').length, 4);
   } finally {
     await React.act(async () => renderer.unmount());
     if (originalNavigator) Object.defineProperty(global, 'navigator', originalNavigator); else delete global.navigator;
