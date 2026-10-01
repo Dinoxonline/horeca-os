@@ -79,6 +79,7 @@ test('a new Eventin event ignores only its own generated location and ticket foo
   const website = description => ({ media: [{ kind: 'campaign_distribution', common: { title: 'Avond', description } }] });
   const source = description => [{ label: 'Eventin', item: website(description) }];
   assert.equal(sourceComparisonStatus(local, source('Live muziek en cocktails.\n\nLocatie: Caribbean Corner\nTickets: Entree: € 15.00'), 'done').key, 'equal');
+  assert.equal(sourceComparisonStatus(local, source('Live muziek en cocktails.\n\nLocatie: Caribbean Corner\n\nTickets: Entree: € 15.00'), 'done').key, 'equal');
   assert.equal(sourceComparisonStatus(local, source('Live DJ en cocktails.\n\nLocatie: Caribbean Corner'), 'done').key, 'different');
   assert.equal(sourceComparisonStatus(local, source('Live muziek en cocktails.\n\nLocatie: Andere locatie'), 'done').key, 'different');
 });

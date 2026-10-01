@@ -764,7 +764,7 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
         if (!active || comparisonTargetRef.current === String(item.id)) return;
         // A reload after saving must not reuse the previous finished result.
         // Eventin may have accepted the new content after that first check.
-        await checkSourceComparison(item, true).catch(() => {});
+        await checkSourceComparison(item, refreshToken > 0).catch(() => {});
       });
     }
     load();
