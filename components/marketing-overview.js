@@ -26,6 +26,7 @@ import EventContentSaveNotice from "./event-content-save-notice";
 
 const typeLabels = { event: "Evenement", product: "Gerecht of product", offer: "Aanbieding", package: "Arrangement", review: "Review", custom: "Campagne", website_event: "Evenement" };
 const viewLabels = { day: "Dag", week: "Week", month: "Maand", year: "Jaar" };
+const dismissedExternalItemIds = new Set();
 function distributionFor(item) { return (item?.media || []).find((entry) => entry?.kind === "campaign_distribution") || {}; }
 function itemStart(item) { const distribution = distributionFor(item); return distribution.common?.start || distribution.source_preview?.startDate || item.scheduled_for || item.created_at; }
 function statusFor(item, distribution) {
@@ -240,6 +241,10 @@ export function marketingWorklistItems(items, businessById) {
   // Use the same duplicate representatives as the calendar, including records whose
   // former merge target is no longer loaded. The worklist also includes past dates.
   return visibleCalendarItems(items, businessById, new Date(0)).filter(item => !isExternalEvent(item));
+}
+
+export function nextExternalItem(items, dismissedIds = dismissedExternalItemIds) {
+  return (items || []).find(item => !dismissedIds.has(String(item.id))) || null;
 }
 
 function suggestPotentialMatches(items) {
@@ -613,7 +618,12 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
   const [metaUnsaved, setMetaUnsaved] = useState(false);
   const [baseUnsaved, setBaseUnsaved] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
-  function closeDetails() { if ((!photoBusy && !contentDirty && !baseUnsaved && !predisUnsaved && !calendarUnsaved && !seriesUnsaved && !metaUnsaved) || window.confirm("Je voorbereiding is nog niet bewaard of wordt verwerkt. Wil je toch sluiten?")) onClose(); }
+  function closeDetails() {
+    if ((!photoBusy && !contentDirty && !baseUnsaved && !predisUnsaved && !calendarUnsaved && !seriesUnsaved && !metaUnsaved) || window.confirm("Je voorbereiding is nog niet bewaard of wordt verwerkt. Wil je toch sluiten?")) {
+      if (external) dismissedExternalItemIds.add(String(item.id));
+      onClose();
+    }
+  }
   function openSeriesOccurrence(row) { if ((!baseUnsaved && !predisUnsaved && !calendarUnsaved && !metaUnsaved) || window.confirm('Je kanaalvoorbereiding is nog niet bewaard. Toch een andere uitvoering openen?')) onSeriesOpen?.(row); }
   useEffect(() => { setMetaUnsaved(false); }, [item.id]);
   useEffect(() => { setOpenChannels({}); }, [item.id]);
@@ -852,8 +862,9 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
   const dayItems = visibleItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
   const externalItems = visibleItems.filter(isExternalEvent).sort((left, right) => new Date(itemStart(right) || 0) - new Date(itemStart(left) || 0));
   useEffect(() => {
-    if (busy || autoChecking || selectedItem || !externalItems.length) return;
-    setSelectedItem(externalItems[0]);
+    const next = nextExternalItem(externalItems);
+    if (busy || autoChecking || selectedItem || !next) return;
+    setSelectedItem(next);
   }, [busy, autoChecking, selectedItem, externalItems]);
 
   const itemsForBusiness = (businessId) => visibleItems.filter((item) => String(item.business_id) === String(businessId));

@@ -85,6 +85,15 @@ test('Facebook lookup only suggests an event from the same day and matching titl
   assert.deepEqual(facebookEventCandidates(item, events).map(event => event.id), ['exact', 'close']);
 });
 
+test('a dismissed external event is not reopened automatically', async () => {
+  const { nextExternalItem } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const first = { id: 'facebook-event:caribbean:one' }, second = { id: 'facebook-event:caribbean:two' };
+  const dismissed = new Set([first.id]);
+  assert.equal(nextExternalItem([first, second], dismissed), second);
+  dismissed.add(second.id);
+  assert.equal(nextExternalItem([first, second], dismissed), null);
+});
+
 test('a new Eventin event ignores only its own generated location and ticket footer', async () => {
   const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const local = { media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', description: 'Live muziek en cocktails.', location: 'Caribbean Corner' } }] };
