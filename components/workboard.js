@@ -5,7 +5,6 @@ import { supabase } from "../lib/supabase";
 
 const TEMPLATE_HINTS = {
   event: "Evenement lanceren en promoten",
-  event_promotion: "Evenement promotiechecklist",
   dish: "Nieuw gerecht of drankje",
   menu: "Nieuwe menukaart",
   newsletter: "Nieuwsbrief",
@@ -16,6 +15,9 @@ const TEMPLATE_HINTS = {
   vacancy: "Vacature",
   grill_your_own: "Nieuw concept",
 };
+
+// Promotion is part of an event, never a separate type of process to choose.
+const EVENT_PROMOTION_TEMPLATE_KEY = "event_promotion";
 
 const CATEGORY_LABELS = {
   marketing: "Marketing",
@@ -146,7 +148,8 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
       const employeeByUserId = new Map((employeeRows || []).map((item) => [item.user_id, item]));
       setMembers((profileRows || []).map((profile) => ({ ...profile, ...(employeeByUserId.get(profile.id) || {}) })));
     } else setMembers([]);
-    setSelectedTemplateId((current) => current || templateRows?.[0]?.id || "");
+    const startableTemplates = (templateRows || []).filter((template) => template.template_key !== EVENT_PROMOTION_TEMPLATE_KEY);
+    setSelectedTemplateId((current) => startableTemplates.some((template) => template.id === current) ? current : startableTemplates[0]?.id || "");
   }
 
   async function moveProcessToTrash(run) {
@@ -243,11 +246,17 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
     setExpandedRunId(processId);
   }, [runs]);
 
-  const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
+  const startableTemplates = useMemo(() => templates.filter((item) => item.template_key !== EVENT_PROMOTION_TEMPLATE_KEY), [templates]);
+  const eventPromotionTemplate = templates.find((item) => item.template_key === EVENT_PROMOTION_TEMPLATE_KEY);
+  const selectedTemplate = startableTemplates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);
-  const moduleTemplates = useMemo(() => templates.filter((item) => item.id !== selectedTemplateId && item.can_be_added_as_module), [templates, selectedTemplateId]);
-  const selectedModuleSteps = useMemo(() => steps.filter((item) => selectedModuleIds.includes(item.template_id)), [steps, selectedModuleIds]);
-  const availableModuleTemplates = useMemo(() => templates.filter((item) => item.can_be_added_as_module), [templates]);
+  const moduleTemplates = useMemo(() => templates.filter((item) => item.id !== selectedTemplateId && item.template_key !== EVENT_PROMOTION_TEMPLATE_KEY && item.can_be_added_as_module), [templates, selectedTemplateId]);
+  const effectiveModuleIds = useMemo(() => new Set([
+    ...selectedModuleIds,
+    ...(selectedTemplate?.template_key === "event" && eventPromotionTemplate ? [eventPromotionTemplate.id] : []),
+  ]), [selectedModuleIds, selectedTemplate?.template_key, eventPromotionTemplate?.id]);
+  const selectedModuleSteps = useMemo(() => steps.filter((item) => effectiveModuleIds.has(item.template_id)), [steps, effectiveModuleIds]);
+  const availableModuleTemplates = useMemo(() => templates.filter((item) => item.template_key !== EVENT_PROMOTION_TEMPLATE_KEY && item.can_be_added_as_module), [templates]);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const myRunIds = new Set(processTasks.filter((task) => task.assigned_to === userId).map((task) => task.run_id));
   const categories = useMemo(() => [...new Set(templates.map((template) => template.category).filter(Boolean))].sort(), [templates]);
@@ -494,9 +503,10 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
         <section className="panel">
           <div className="panelHead"><div><p className="eyebrow">WERKACTIE</p><h3>Proces starten</h3></div><button type="button" className="secondary" onClick={() => setShowCreateForm((value) => !value)}>{showCreateForm ? "Sluiten" : "Nieuw proces"}</button></div>
           {showCreateForm && <form onSubmit={createProcess} className="stack">
-            <label>Proces<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={!canManage}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+            <label>Proces<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={!canManage}>{startableTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
             <label>Naam van dit initiatief<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Bijvoorbeeld: Nieuw concept september" disabled={!canManage} /></label>
             <label>Start- of uitvoeringsdatum<input type="date" value={anchorDate} onChange={(event) => setAnchorDate(event.target.value)} disabled={!canManage} /></label>
+            {selectedTemplate?.template_key === "event" && <p className="muted">De promotiechecklist wordt automatisch aan dit evenement toegevoegd.</p>}
             {moduleTemplates.length > 0 && <fieldset><legend>Onderdelen toevoegen (optioneel)</legend><p className="muted">Kies alleen wat bij dit proces hoort. De gekozen onderdelen worden als extra taken toegevoegd.</p>{moduleTemplates.map((module) => <label key={module.id}><input type="checkbox" checked={selectedModuleIds.includes(module.id)} onChange={(event) => setSelectedModuleIds((current) => event.target.checked ? [...current, module.id] : current.filter((id) => id !== module.id))} disabled={!canManage} /> {module.name}</label>)}</fieldset>}
             {businessId === "all" && <p className="muted">Er wordt standaard een vestiging gekozen. Kies bovenaan een vestiging als dit proces locatiegebonden is.</p>}
             <button className="primary" type="submit" disabled={!canManage || saving || !selectedTemplateId || !name.trim()}>{saving ? "Proces starten…" : "Proces starten"}</button>
