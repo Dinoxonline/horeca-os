@@ -16,6 +16,13 @@ function load(file, mocks = {}) {
 const distribution = { kind: "campaign_distribution", common: { title: "Live muziek", description: "Een avond vol muziek.", image_url: "https://example.com/poster.jpg", website_url: "https://example.com/tickets" } };
 const item = { id: "campaign", body: "Tekst", business_id: "venue", media: [distribution] };
 
+test("saved Meta audiences always show their concrete location or a clear warning", async () => {
+  await swc.loadBindings();
+  const { audienceLocationSummary } = load("components/meta-audience-picker.js");
+  assert.equal(audienceLocationSummary({ geo_locations: { countries: ["NL"], cities: [{ name: "Zoetermeer", radius: 25, distance_unit: "km" }] } }), "Nederland, Zoetermeer + 25 km");
+  assert.match(audienceLocationSummary({ geo_locations: {} }), /Locatie niet door Meta teruggegeven/);
+});
+
 test("both entry points reuse the shared editor and new campaigns are not gated on a Facebook event", async () => {
   await swc.loadBindings();
   for (const file of ["components/central-event-creator.js", "components/marketing-overview.js", "components/meta-campaign-editor.js"]) {

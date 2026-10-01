@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import MetaAccountBudget from "./meta-account-budget";
 import MetaPromotionPicker, { SOURCE_LABELS } from "./meta-promotion-picker";
-import MetaAudiencePicker, { audienceSummary } from "./meta-audience-picker";
+import MetaAudiencePicker, { audienceLocationSummary, audienceSummary } from "./meta-audience-picker";
 import { META_OBJECTIVES, META_CTA, defaultMetaCampaign, campaignImages, campaignBudgetSummary, validateMetaCampaign, publicWebUrl } from "../lib/meta-campaign-settings";
 import styles from "./meta-campaign-composer.module.css";
 
@@ -147,7 +147,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
         </div>
         <p className={styles.help}>Benadering van de gekozen plaatsing, geen officieel Meta-voorbeeld. Uitsnede, profielnaam, tekstweergave en knop kunnen afwijken. Controleer het definitieve concept in Meta.</p>
         <div className={styles.summary}><strong>{SOURCE_LABELS[draft.sourceKind]}</strong><p>{draft.sourcePreview?.name}</p><p>Doelgroep: {draft.audienceMode === "saved" ? draft.savedAudienceName || "Nog kiezen" : draft.audienceMode === "advantage" ? "Advantage+" : "Zelf samengesteld"}</p><button type="button" onClick={() => setStep("audience")}>Doelgroep aanpassen</button></div>
-        <div className={styles.summary}><h4>Jouw instellingen</h4><dl><dt>Doel</dt><dd>{META_OBJECTIVES[draft.objective].label}</dd><dt>Doelgroep{draft.audienceMode === "advantage" ? "suggesties" : ""}</dt><dd>{draft.audienceMode === "saved" ? audienceSummary(draft.savedAudiencePreview) : `${draft.ageMin}–${Number(draft.ageMax) === 65 ? "65+" : draft.ageMax} jaar · ${draft.gender === "all" ? "iedereen" : draft.gender === "women" ? "vrouwen" : "mannen"}`}</dd>{draft.audienceMode !== "saved" && <><dt>Gebied</dt><dd>{draft.locationQuery ? `${draft.locationQuery} + ${draft.radiusKm} km` : countries[draft.countries[0]]}</dd></>}<dt>Budget</dt><dd>{euros(Number(draft.dailyBudget) || 0)} {draft.budgetType === "daily" ? "per dag" : "totaal"}</dd><dt>Betaler</dt><dd>{draft.payer || "Nog invullen"}</dd><dt>Publicatie</dt><dd>Gepauzeerd in Meta</dd></dl></div>
+        <div className={styles.summary}><h4>Jouw instellingen</h4><dl><dt>Doel</dt><dd>{META_OBJECTIVES[draft.objective].label}</dd><dt>Doelgroep{draft.audienceMode === "advantage" ? "suggesties" : ""}</dt><dd>{draft.audienceMode === "saved" ? `${audienceLocationSummary(draft.savedAudiencePreview)} · ${audienceSummary(draft.savedAudiencePreview)}` : `${draft.ageMin}–${Number(draft.ageMax) === 65 ? "65+" : draft.ageMax} jaar · ${draft.gender === "all" ? "iedereen" : draft.gender === "women" ? "vrouwen" : "mannen"}`}</dd>{draft.audienceMode !== "saved" && <><dt>Gebied</dt><dd>{draft.locationQuery ? `${draft.locationQuery} + ${draft.radiusKm} km` : countries[draft.countries[0]]}</dd></>}<dt>Budget</dt><dd>{euros(Number(draft.dailyBudget) || 0)} {draft.budgetType === "daily" ? "per dag" : "totaal"}</dd><dt>Betaler</dt><dd>{draft.payer || "Nog invullen"}</dd><dt>Publicatie</dt><dd>Gepauzeerd in Meta</dd></dl></div>
       </aside>
     </div>
     <footer className={styles.footer}>

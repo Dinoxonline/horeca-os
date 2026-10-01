@@ -3,11 +3,18 @@
 import { useEffect, useId, useRef, useState } from "react";
 import styles from "./meta-campaign-composer.module.css";
 
+const COUNTRY_NAMES = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", ES: "Spanje", GB: "Verenigd Koninkrijk" };
+
+export function audienceLocationSummary(targeting) {
+  if (!targeting?.geo_locations) return "Locatie niet door Meta teruggegeven — controleer de doelgroep in Meta.";
+  const geo = targeting.geo_locations || {};
+  const places = [...(geo.countries || []).map(country => COUNTRY_NAMES[country] || country), ...(geo.cities || []).map(city => `${city.name || city.key} + ${city.radius || "?"} ${city.distance_unit || "km"}`), ...(geo.regions || []).map(region => region.name || region.key), ...(geo.zips || []).map(zip => zip.name || zip.key), ...(geo.custom_locations || []).map(location => location.name || location.address || location.key)];
+  return places.filter(Boolean).join(", ") || "Locatie niet door Meta teruggegeven — controleer de doelgroep in Meta.";
+}
+
 export function audienceSummary(targeting) {
   if (!targeting) return "Doelgroepdetails niet beschikbaar.";
-  const geo = targeting.geo_locations || {};
-  const places = [...(geo.countries || []), ...(geo.cities || []).map(city => `${city.name || city.key} + ${city.radius || "?"} ${city.distance_unit || "km"}`), ...(geo.regions || []).map(region => region.name || region.key), ...(geo.zips || []).map(zip => zip.name || zip.key)];
-  return `${places.join(", ") || "Locaties volgens Meta"} · ${targeting.age_min || 18}–${targeting.age_max || "65+"} jaar · ${targeting.genders?.length === 1 ? targeting.genders[0] === 1 ? "mannen" : "vrouwen" : "iedereen"}. ${targeting.targeting_automation?.advantage_audience === 1 ? "Advantage+ aan." : ""}`;
+  return `${targeting.age_min || 18}–${targeting.age_max || "65+"} jaar · ${targeting.genders?.length === 1 ? targeting.genders[0] === 1 ? "mannen" : "vrouwen" : "iedereen"}. ${targeting.targeting_automation?.advantage_audience === 1 ? "Advantage+ aan." : ""}`;
 }
 
 export default function MetaAudiencePicker({ draft, onChange, onCatalog, busy }) {
@@ -33,7 +40,7 @@ export default function MetaAudiencePicker({ draft, onChange, onCatalog, busy })
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {rows.length > 0 && (resource === "saved_audiences" ? <label className={styles.field}>Opgeslagen Meta-doelgroep<select value={draft.savedAudienceId} disabled={busy} onChange={event => { const row = rows.find(row => row.id === event.target.value); onChange({ savedAudienceId: row?.id || "", savedAudienceName: row?.name || "", savedAudiencePreview: row?.targeting || null }); }}><option value="">Kies een doelgroep</option>{rows.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label> : <div className={styles.catalog}>{rows.map(row => <label key={row.id}><input type="checkbox" disabled={busy || (!draft.customAudienceIds.includes(row.id) && draft.customAudienceIds.length >= 10)} checked={draft.customAudienceIds.includes(row.id)} onChange={event => onChange({ customAudienceIds: event.target.checked ? [...draft.customAudienceIds, row.id] : draft.customAudienceIds.filter(id => id !== row.id) })} />{row.name} · {row.subtype}</label>)}</div>)}
     {!loading && !error && rows.length === 0 && <p className={styles.help}>Haal de lijst op. Als Meta niets teruggeeft, kun je zelf een doelgroep samenstellen of je toegang in Meta controleren.</p>}
-    {draft.audienceMode === "saved" && draft.savedAudienceId && <div className={styles.budget}><strong>{draft.savedAudienceName}</strong><p>{audienceSummary(draft.savedAudiencePreview)}</p><p>Ook overige voorwaarden en uitsluitingen blijven behouden. We controleren de doelgroep opnieuw vóór aanmaken; plaatsingen kies je hieronder afzonderlijk.</p></div>}
+    {draft.audienceMode === "saved" && draft.savedAudienceId && <div className={styles.budget}><strong>{draft.savedAudienceName}</strong><p><strong>Locatie: </strong>{audienceLocationSummary(draft.savedAudiencePreview)}</p><p>{audienceSummary(draft.savedAudiencePreview)}</p><p>Ook overige voorwaarden en uitsluitingen blijven behouden. We controleren de doelgroep opnieuw vóór aanmaken; plaatsingen kies je hieronder afzonderlijk.</p></div>}
     {draft.audienceMode !== "saved" && draft.customAudienceIds.length > 0 && <p>{draft.customAudienceIds.length} aangepaste doelgroep(en) gekozen. <button type="button" disabled={busy} onClick={() => onChange({ customAudienceIds: [] })}>Selectie wissen</button></p>}
   </section>;
 }
