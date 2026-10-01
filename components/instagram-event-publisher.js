@@ -165,7 +165,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
           {asset.width && asset.height && <small>{asset.width} × {asset.height} px{asset.blob ? " · JPG-kopie, niet bijgesneden" : ""}</small>}
           {asset.type === "image" && asset.width && asset.height && ["feed", "carousel"].includes(format) && (asset.width / asset.height < 0.8 || asset.width / asset.height > 1.91) && <p role="alert">Deze foto heeft geen geschikte feedverhouding. Kies de staande 4:5- of vierkante versie uit Horeca OS.</p>}
           {format === "story" && asset.width && asset.height && Math.abs(asset.width / asset.height - 9 / 16) > 0.02 && <p>Deze foto is niet schermvullend 9:16. Kies bij voorkeur de Story-versie (1080 × 1920 px).</p>}
-          <button type="button" className="secondaryButton" disabled={!!busy} onClick={() => setAssets(previous => previous.filter((_, i) => i !== index))}>Verwijder bestand {index + 1}</button>
+          <button type="button" className="secondaryButton" disabled={!!busy} onClick={() => setAssets(previous => previous.filter((_, i) => i !== index))}>Afbeelding deselecteren</button>
         </div>)}
       </div>
     </div>}
