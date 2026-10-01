@@ -11,6 +11,7 @@ import MarketingOverview from "./marketing-overview";
 import FacebookAdAccountPicker from "./facebook-ad-account-picker";
 import WhatsappBusinessConnection from "./whatsapp-business-connection";
 import MarketingAgendaNavigation from "./marketing-agenda-navigation";
+import FoodMarketingMachine from "./food-marketing-machine";
 import Workboard from "./workboard";
 import ProcessTrash from "./process-trash";
 import ProcessAudit from "./process-audit";
@@ -276,7 +277,7 @@ export default function HorecaOsApp() {
       scope(supabase.from("suppliers").select("id, workspace_id, business_id, location_id, name, active")).order("name"),
       scope(supabase.from("products").select("id, workspace_id, business_id, location_id, supplier_id, name, category, purchase_price, content_quantity, content_unit, currency_code, active")).order("name"),
       scope(supabase.from("ingredients").select("id, workspace_id, business_id, location_id, product_id, name, base_unit, units_per_product, yield_percentage, active")).order("name"),
-      scope(supabase.from("recipes").select("id, workspace_id, business_id, location_id, name, target_foodcost_percentage, active")).order("name"),
+      scope(supabase.from("recipes").select("id, workspace_id, business_id, location_id, name, category, selling_price, target_foodcost_percentage, active")).order("name"),
       scope(supabase.from("recipe_items").select("id, workspace_id, business_id, location_id, recipe_id, product_id, ingredient_id, quantity, waste_percentage, line_order")).order("line_order"),
       scope(supabase.from("menu_items").select("id, workspace_id, business_id, location_id, recipe_id, name, category, selling_price, vat_rate, active")).order("name"),
       scope(supabase.from("ai_conversations").select("id, workspace_id, business_id, location_id, use_case, title, model, updated_at")).order("updated_at", { ascending: false }).limit(30),
@@ -565,6 +566,7 @@ export default function HorecaOsApp() {
           businessId={businessId} businesses={visibleBusinesses}
           renderAgenda={(agendaBusinesses, onPlanDate) => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} onPlanDate={onPlanDate} />}
           renderCreator={(creatorBusinessId, newEventRequest) => <CentralEventCreator workspaceId={workspaceId} businessId={creatorBusinessId} businesses={visibleBusinesses} session={session} newEventRequest={newEventRequest} />}
+          renderFoodMachine={() => <FoodMarketingMachine workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} recipes={data.recipes} session={session} canManage={isOwner || canUseFeature("marketing:manage")} />}
         />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
         {activeView === "users" && featureVisibility.users && <UsersAdmin workspaceId={workspaceId} session={session} />}

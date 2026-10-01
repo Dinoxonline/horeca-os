@@ -16,7 +16,8 @@ async function component() {
 const businesses = [{ id: 'b1', name: 'Caribbean Corner' }, { id: 'b2', name: 'Grandcafé Het Plein' }];
 function Agenda({ venues }) { const [month, setMonth] = React.useState('september'); return React.createElement('input', { 'aria-label': 'Testmaand', value: month, onChange: e => setMonth(e.target.value), 'data-venues': venues.map(v => v.id).join(',') }); }
 function Creator({ business }) { const [title, setTitle] = React.useState(''); return React.createElement('input', { 'aria-label': 'Testtitel', value: title, onChange: e => setTitle(e.target.value), 'data-business': business }); }
-const props = { businessId: 'all', businesses, renderAgenda: venues => React.createElement(Agenda, { venues }), renderCreator: business => React.createElement(Creator, { business }) };
+function FoodMachine() { return React.createElement('div', { 'aria-label': 'Test Food Marketing Machine' }, 'Gerechten'); }
+const props = { businessId: 'all', businesses, renderAgenda: venues => React.createElement(Agenda, { venues }), renderCreator: business => React.createElement(Creator, { business }), renderFoodMachine: () => React.createElement(FoodMachine) };
 const click = (renderer, name) => renderer.root.findAllByType('button').find(button => button.props.children === name).props.onClick();
 const panel = (renderer, label) => renderer.root.findByProps({ 'aria-label': label });
 
@@ -52,6 +53,19 @@ test('switching views keeps calendar position and unsaved form input without any
     await React.act(async () => click(renderer, 'Evenement of campagne maken'));
     assert.equal(panel(renderer, 'Testtitel').props.value, 'Mijn nieuwe evenement');
     assert.equal(calls, 0);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('Food Marketing Machine stays inside Marketing and does not start a campaign', async () => {
+  const Component = await component(); let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { ...props, businessId: 'b1' })); });
+  try {
+    await React.act(async () => click(renderer, 'Food Marketing Machine'));
+    assert.equal(panel(renderer, 'Marketingagenda').props.hidden, true);
+    assert.equal(panel(renderer, 'Test Food Marketing Machine').props.children, 'Gerechten');
+    assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Testtitel' }).length, 0);
+    await React.act(async () => click(renderer, 'Agenda'));
+    assert.equal(panel(renderer, 'Marketingagenda').props.hidden, false);
   } finally { await React.act(async () => renderer.unmount()); }
 });
 

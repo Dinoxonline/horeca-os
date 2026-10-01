@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-export default function MarketingAgendaNavigation({ businessId, businesses, renderAgenda, renderCreator }) {
+export default function MarketingAgendaNavigation({ businessId, businesses, renderAgenda, renderCreator, renderFoodMachine }) {
   const [view, setView] = useState("agenda");
   const [creatorVisited, setCreatorVisited] = useState(false);
   const [chosenBusiness, setChosenBusiness] = useState("");
@@ -22,12 +22,14 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
   return <>
     <nav aria-label="Marketingnavigatie" style={{ position: "sticky", top: 0, zIndex: 10, display: "flex", flexWrap: "wrap", gap: 10, padding: "12px 0", marginBottom: 12, background: "#edf6f8", borderBottom: "1px solid #c8dce5" }}>
       <button type="button" className="secondaryButton" style={view === "agenda" ? { background: "#176d7f", color: "white" } : undefined} aria-pressed={view === "agenda"} onClick={() => setView("agenda")}>Agenda</button>
+      <button type="button" className="secondaryButton" style={view === "food" ? { background: "#176d7f", color: "white" } : undefined} aria-pressed={view === "food"} onClick={() => setView("food")}>Food Marketing Machine</button>
       <button type="button" className="secondaryButton" style={view === "create" ? { background: "#176d7f", color: "white" } : undefined} aria-pressed={view === "create"} onClick={openCreator}>Evenement of campagne maken</button>
     </nav>
     {/* Keep visited screens mounted: returning must not discard a form or reset the calendar month. */}
     <div hidden={view !== "agenda"} aria-label="Marketingagenda" style={view !== "agenda" ? { display: "none" } : undefined}>
       {renderAgenda(agendaBusinesses, planEventOnDate)}
     </div>
+    {view === "food" && <div aria-label="Food Marketing Machine">{renderFoodMachine?.()}</div>}
     {creatorVisited && <div hidden={view !== "create"} aria-label="Evenement of campagne maken" style={view !== "create" ? { display: "none" } : undefined}>
       {businessId === "all" && <section className="panel" style={{ padding: 20, marginBottom: 16 }}>
         <label style={{ display: "grid", gap: 8, maxWidth: 420 }}>Voor welke vestiging wil je iets maken?
