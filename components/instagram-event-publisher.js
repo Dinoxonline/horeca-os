@@ -46,6 +46,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
     statusPanel.current?.focus?.({ preventScroll: true });
   }, [followPreparation, job?.status]);
   const locked = job && !["failed", "draft"].includes(job.status);
+  const published = job?.status === "published";
   const preview = locked ? job.draft : { format, caption: format === "story" ? "" : caption, assets, shareToFeed };
   const profileUrl = account?.name ? `https://www.instagram.com/${encodeURIComponent(account.name)}/` : "https://www.instagram.com/";
   const availableMedia = instagramEventMedia(item, linkedSources);
@@ -170,7 +171,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       </div>
     </div>}
     <div className="instagramPublishStatus" ref={statusPanel} tabIndex={-1} aria-label="Voortgang Instagram-publicatie">
-      <strong>{instagramJobLabel(job)}</strong>
+      {published ? <section className="instagramPublishedNotice" role="status"><strong>✓ Geplaatst op Instagram</strong><a href={job.permalink?.startsWith("https://www.instagram.com/") ? job.permalink : profileUrl} target="_blank" rel="noopener noreferrer">Bekijk op Instagram</a></section> : <strong>{instagramJobLabel(job)}</strong>}
       {busy && <p role="status"><span className="marketingLoadingSpinner" aria-hidden="true" /> {busy}</p>}
       {message && <p role="alert">{message}</p>}
       {job?.status === "preparing" && !job.container_id && !busy && <p>De voorbereiding is nog niet afgerond. Blijft dit na het verversen van de accountstatus zo? Kies ‘Voorbereiding herstellen’. Je gekozen foto en tekst blijven bewaard. Dit plaatst niets op Instagram.</p>}
@@ -201,7 +202,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
         await followStatus(result.job);
       })}>Voorbeeld klaarzetten — nog niet publiceren</button>}
       <div className={locked ? "instagramPreparedLayout" : undefined}>
-      {locked && preview && <InstagramPostPreview draft={preview} accountName={job.account_name || account?.name} businessName={businessName} prepared />}
+      {locked && preview && <InstagramPostPreview draft={preview} accountName={job.account_name || account?.name} businessName={businessName} prepared published={published} />}
       <div className="instagramPreparedActions">
       {locked && ["preparing", "processing", "ready"].includes(job.status) && <button type="button" className="secondaryButton" disabled={!!busy || !loaded || !!warning} onClick={() => run("Voorbereiding vrijgeven…", async () => {
         await request("discard", { operationId: job.operation_id });
@@ -216,7 +217,6 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
           return run("Publiceren op Instagram…", () => request("publish", { confirm: true, operationId: job.operation_id }));
         }}>Publiceren</button>
       </div>}
-      {job?.status === "published" && <a href={job.permalink?.startsWith("https://www.instagram.com/") ? job.permalink : profileUrl} target="_blank" rel="noopener noreferrer">Bekijk op Instagram</a>}
       </div>
       </div>
     </div>
@@ -232,7 +232,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       .instagramToolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.instagramComposer{display:grid;grid-template-columns:1fr 1fr;gap:16px}
       .instagramComposer>div{display:grid;gap:12px;align-content:start;min-width:0}.instagramAsset{display:grid;gap:6px}.instagramPublisher img,.instagramPublisher video{width:100%;max-height:200px;object-fit:contain;background:#f3f7f9}
       .instagramPublisher button{width:auto;justify-self:start;margin:0}.instagramPublisher .instagramCheck{display:flex;align-items:center;gap:8px}.instagramCheck input{width:auto}
-      .instagramPublishStatus,.instagramFormatHelp{display:grid;gap:10px;padding:12px;background:#eef7f9;border-radius:8px}
+      .instagramPublishStatus,.instagramFormatHelp{display:grid;gap:10px;padding:12px;background:#eef7f9;border-radius:8px}.instagramPublishedNotice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border:1px solid #69b87c;border-radius:8px;background:#effaf1;color:#1f6f35;font-size:15px}.instagramPublishedNotice a{color:#176d7f;font-size:13px;font-weight:800}
       .instagramPreparedLayout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}.instagramPreparedActions{display:grid;gap:12px;align-content:start;min-width:0}.instagramAsset>img,.instagramAsset>video{max-height:64px;width:64px;justify-self:start}
       .instagramSteps{font-size:12px;color:#486576}.instagramFinalStep{display:grid;gap:10px;border-top:1px solid #bfd1dc;padding-top:12px}.instagramPublishStatus:focus{outline:2px solid #168499;outline-offset:2px}.instagramPublisher button:disabled{opacity:.6;cursor:not-allowed}
       .instagramPublisher details{padding:8px 0}.instagramPublisher summary{cursor:pointer;font-weight:700}.instagramPublisher small{color:#5c7285}.marketingLoadingSpinner{display:inline-block}

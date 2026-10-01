@@ -378,6 +378,17 @@ test('local Instagram preview supports every format, plain captions, carousel na
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('a published Instagram post is clearly labelled as placed, not as a draft preview', async () => {
+  const Preview = (await load('components/instagram-post-preview.js', { 'next/image': { default: props => React.createElement('img', props) } })).default;
+  const text = node => typeof node === 'string' ? node : (node.children || []).map(text).join(' ');
+  let renderer;
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Preview, { draft: { format: 'feed', assets: [photo], caption: 'Geplaatst bericht' }, published: true })); });
+    assert.match(text(renderer.toJSON()), /Geplaatst/);
+    assert.match(text(renderer.toJSON()), /Dit bericht is geplaatst op Instagram/);
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('publisher preview follows photo and caption edits immediately and always shows the saved draft after preparation', async () => {
   const Component = (await load('components/instagram-event-publisher.js')).default;
   let renderer, calls = 0;

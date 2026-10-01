@@ -4,15 +4,15 @@ import { useState } from "react";
 import Image from "next/image";
 
 // Local presentation only: this component never prepares or publishes media.
-export default function InstagramPostPreview({ draft, accountName, businessName, prepared = false }) {
+export default function InstagramPostPreview({ draft, accountName, businessName, prepared = false, published = false }) {
   const assets = draft?.assets || [];
   const format = draft?.format || "feed";
   // Reset navigation when media/order/format changes, not on every caption edit.
   const mediaKey = JSON.stringify([format, ...assets.map(asset => asset.url)]);
-  return <PreviewContent key={mediaKey} assets={assets} format={format} caption={draft?.caption || ""} accountName={accountName} businessName={businessName} prepared={prepared} />;
+  return <PreviewContent key={mediaKey} assets={assets} format={format} caption={draft?.caption || ""} accountName={accountName} businessName={businessName} prepared={prepared} published={published} />;
 }
 
-function PreviewContent({ assets, format, caption, accountName, businessName, prepared }) {
+function PreviewContent({ assets, format, caption, accountName, businessName, prepared, published }) {
   const [index, setIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [naturalRatio, setNaturalRatio] = useState(null);
@@ -24,7 +24,7 @@ function PreviewContent({ assets, format, caption, accountName, businessName, pr
   const handle = accountName ? `@${accountName.replace(/^@/, "")}` : businessName || "Instagram-account";
   const title = ({ feed: "Feedbericht", carousel: "Carrousel", story: "Story", reel: "Reel" })[format] || "Feedbericht";
   return <section className="igMock" aria-label="Instagram-voorbeeld">
-    <div className="igMockHeading"><strong>Instagram-voorbeeld</strong><span>{title} · {prepared ? "Voorbereid" : "Concept"}</span></div>
+    <div className="igMockHeading"><strong>Instagram-voorbeeld</strong><span>{title} · {published ? "Geplaatst" : prepared ? "Voorbereid" : "Concept"}</span></div>
     <div className={`igMockPhone ${vertical ? "igMockVertical" : ""}`}>
       <div className="igMockAccount"><span className="igMockAvatar" aria-hidden="true">{(businessName || accountName || "IG").slice(0, 2).toUpperCase()}</span><strong>{handle}</strong><span aria-hidden="true">•••</span></div>
       <div className="igMockMedia" style={{ aspectRatio: vertical ? "9 / 16" : String(Math.max(0.8, Math.min(1.91, ratio))) }}>
@@ -52,7 +52,7 @@ function PreviewContent({ assets, format, caption, accountName, businessName, pr
         {caption && <button type="button" className="igMockExpand" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? "Minder tekst" : "Volledig bijschrift bekijken"}</button>}
       </div>}
     </div>
-    <p className="igMockDisclaimer">Voorbeeld in Horeca OS, geen live Instagram-bericht. De uiteindelijke weergave kan afwijken. Je media worden hier niet bijgesneden.</p>
+    <p className="igMockDisclaimer">{published ? "Dit bericht is geplaatst op Instagram." : "Voorbeeld in Horeca OS, geen live Instagram-bericht. De uiteindelijke weergave kan afwijken. Je media worden hier niet bijgesneden."}</p>
     {format === "story" && <p className="igMockDisclaimer">Een Story heeft geen los bijschrift. Tekst moet al in je foto of video staan.</p>}
     <style jsx>{`
       .igMock{display:grid;gap:10px;min-width:0;align-content:start;color:#17212b}
