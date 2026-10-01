@@ -129,9 +129,11 @@ test('website form and tile follow fresh comparison, not a historical updated re
         if (renderer) renderer.update(React.createElement(EventDetails, props));
         else renderer = Renderer.create(React.createElement(EventDetails, props));
       });
-      assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Website openen: ' + expected }).length, 1);
-      const form = renderer.root.findByProps({ 'aria-label': 'Website afzonderlijk bijwerken' });
-      assert.equal(form.findAllByType('strong').at(-1).props.children, expected);
+      const websiteNeedsUpdate = check === 'done' && description !== 'Tekst';
+      assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Website openen: ' + expected }).length, websiteNeedsUpdate ? 1 : 0);
+      const forms = renderer.root.findAllByProps({ 'aria-label': 'Website afzonderlijk bijwerken' });
+      assert.equal(forms.length, websiteNeedsUpdate ? 1 : 0);
+      if (websiteNeedsUpdate) assert.equal(forms[0].findAllByType('strong').at(-1).props.children, expected);
       const summaries = renderer.root.findAllByProps({ 'aria-label': 'Controle op tekstverschillen' });
       assert.equal(summaries.length, expected === 'Websitetekst komt overeen' ? 0 : 1);
     }
@@ -338,7 +340,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Website afzonderlijk bijwerken', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Meta-campagne — Facebook en Instagram', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis — content maken en planning']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Meta-campagne — Facebook en Instagram', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis — content maken en planning']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
@@ -486,7 +488,7 @@ for (const failedSave of [0, 1, 2]) test(`merge workflow reports its local outco
       assert.match(text(notice), /Samengevoegd in Horeca OS/);
       assert.equal(notice.props.role, 'status');
       assert.equal(renderer.root.findAllByProps({ role: 'dialog' }).length, 1, 'retained event stays open');
-      assert.ok(buttons().some(button => button.props.children === 'Website bijwerken'));
+      assert.ok(!buttons().some(button => button.props.children === 'Website bijwerken'), 'a matching website is not offered for editing');
     } else {
       assert.equal(events.length, 2, 'unconfirmed merge is not hidden optimistically');
       assert.equal(notice.props.role, 'alert');
@@ -520,9 +522,9 @@ test('channel tiles open and focus their own editor without saving or publishing
     });
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const buttons = () => statuses.findAllByType('button');
-    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Website', 'Facebook', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
+    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Facebook', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
-    for (const channel of ['website', 'facebook', 'instagram', 'meta', 'calendar', 'predis']) {
+    for (const channel of ['facebook', 'instagram', 'meta', 'calendar', 'predis']) {
       const id = `event-channel-${channel}-tiles`;
       const button = () => buttons().find(button => button.props['aria-controls'] === id);
       await React.act(async () => button().props.onClick());
@@ -549,7 +551,7 @@ test('source selection previews without saving, survives rerenders and resets fo
   const source = (label, description) => ({ label, item: { id: label, media: [{ kind: 'campaign_distribution', common: { title: label + ' title', description } }] } });
   const sources = [source('Horeca OS', 'Original body'), source('Eventin', ''), source('Facebook', 'Chosen body')];
   const saved = [];
-  const props = { item, sourceComparisonItems: sources, onClose() {}, onUpdateWebsite() {}, onSyncContent: content => saved.push(content) };
+  const props = { item, sourceComparisonCheck: 'done', sourceComparisonItems: sources, onClose() {}, onUpdateWebsite() {}, onSyncContent: content => saved.push(content) };
   let renderer;
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, props)); });
   const buttons = () => renderer.root.findAllByType('button');
@@ -667,6 +669,10 @@ for (const failure of [null, 'save', 'external', 'website_save', 'unlinked', 're
       assert.equal(patches.length, 0, 'confirmation never calls Facebook or the website');
       assert.equal(writes.at(-1).value.media[1].event_content_delivery.website, undefined);
       const websiteButton = buttons().find(b => b.props.children === 'Website bijwerken');
+      if (!websiteButton) {
+        assert.equal(patches.length, 0, 'a website that already matches is not offered for editing');
+        return;
+      }
       assert.equal(websiteButton.props.disabled, failure === 'unlinked');
       // Invoke even a disabled handler to ensure the no-link server-call guard also holds.
       await React.act(async () => websiteButton.props.onClick());
