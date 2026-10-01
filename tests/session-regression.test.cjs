@@ -73,6 +73,16 @@ test('website comparison ignores reader whitespace only; Facebook and meaningful
   assert.deepEqual(check(clean, clean).differences.map(source => source.source), ['Facebook']);
 });
 
+test('a new Eventin event ignores only its own generated location and ticket footer', async () => {
+  const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const local = { media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', description: 'Live muziek en cocktails.', location: 'Caribbean Corner' } }] };
+  const website = description => ({ media: [{ kind: 'campaign_distribution', common: { title: 'Avond', description } }] });
+  const source = description => [{ label: 'Eventin', item: website(description) }];
+  assert.equal(sourceComparisonStatus(local, source('Live muziek en cocktails.\n\nLocatie: Caribbean Corner\nTickets: Entree: € 15.00'), 'done').key, 'equal');
+  assert.equal(sourceComparisonStatus(local, source('Live DJ en cocktails.\n\nLocatie: Caribbean Corner'), 'done').key, 'different');
+  assert.equal(sourceComparisonStatus(local, source('Live muziek en cocktails.\n\nLocatie: Andere locatie'), 'done').key, 'different');
+});
+
 test('website form and tile follow fresh comparison, not a historical updated receipt', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const distribution = { kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', description: 'Tekst' }, event_content_delivery: { website: { status: 'updated', snapshot: { title: 'Avond', description: 'Tekst', event_id: '123' } } } };

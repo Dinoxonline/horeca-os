@@ -21,7 +21,7 @@ import { CALENDAR_CONTENT_VIEWS, calendarContentItems } from "../lib/marketing-c
 import publicationStyles from "./marketing-publications.module.css";
 import { withRequestTimeout } from "../lib/request-timeout";
 import { saveLocalEventMerge } from "../lib/local-event-merge";
-import { confirmFacebookContent, contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId, prepareContent, saveEventContent, withVerifiedFacebookEvent, websiteComparableText } from "../lib/manual-event-content";
+import { confirmFacebookContent, contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId, prepareContent, saveEventContent, websiteEventinTextMatches, withVerifiedFacebookEvent, websiteComparableText } from "../lib/manual-event-content";
 import EventContentSaveNotice from "./event-content-save-notice";
 import EventPromotionChecklist from "./event-promotion-checklist";
 
@@ -377,7 +377,7 @@ export function sourceComparisonStatus(item, sources = [], check = "idle") {
   const localTitle = eventText(item).trim();
   const localDescription = descriptionFor(item).trim();
   const descriptionMatches = source => source.label === "Eventin"
-    ? websiteComparableText(descriptionFor(source.item)) === websiteComparableText(localDescription)
+    ? websiteEventinTextMatches(descriptionFor(source.item), localDescription, eventContent(distribution).location)
     : descriptionFor(source.item).trim() === localDescription;
   const differences = remote.map(source => ({
     source: source.label === "Eventin" ? "Website (Eventin)" : source.label,
