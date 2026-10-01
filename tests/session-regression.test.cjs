@@ -84,6 +84,13 @@ test('a new Eventin event ignores only its own generated location and ticket foo
   assert.equal(sourceComparisonStatus(local, source('Live muziek en cocktails.\n\nLocatie: Andere locatie'), 'done').key, 'different');
 });
 
+test('text comparison marks only the changed lines in both sources', async () => {
+  const { comparisonLineParts } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const result = comparisonLineParts('Zelfde regel\nOude regel\nNog hetzelfde', 'Zelfde regel\nNieuwe regel\nNog hetzelfde');
+  assert.deepEqual(result.left.map(line => line.different), [false, true, false]);
+  assert.deepEqual(result.right.map(line => line.different), [false, true, false]);
+});
+
 test('website form and tile follow fresh comparison, not a historical updated receipt', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const distribution = { kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', description: 'Tekst' }, event_content_delivery: { website: { status: 'updated', snapshot: { title: 'Avond', description: 'Tekst', event_id: '123' } } } };

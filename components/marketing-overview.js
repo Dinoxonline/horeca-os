@@ -388,8 +388,41 @@ export function sourceComparisonStatus(item, sources = [], check = "idle") {
   const matchingSources = remote.filter(source => eventText(source.item).trim() === localTitle && descriptionMatches(source)).map(source => source.label);
   return !differences.length
     ? { key: "equal", matchingSources, title: "Titel en tekst zijn gelijk", detail: "Geen tekstwijziging nodig voor de gekoppelde website- en/of Facebook-bronnen." }
-    : { key: "different", title: "Verschillen gevonden", localTitle, differences, matchingSources,
+    : { key: "different", title: "Verschillen gevonden", localTitle, localDescription, sourceDescriptions: Object.fromEntries(remote.map(source => [source.label === "Eventin" ? "Website (Eventin)" : source.label, descriptionFor(source.item).trim()])), differences, matchingSources,
       detail: `Afwijkend van de opgeslagen tekst in Horeca OS: ${differences.map(source => source.source).join(" en ")}. Er is niets automatisch gewijzigd.` };
+}
+
+export function comparisonLineParts(left, right) {
+  const leftLines = String(left || "").split("\n");
+  const rightLines = String(right || "").split("\n");
+  const comparable = value => value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  const table = Array.from({ length: leftLines.length + 1 }, () => new Uint16Array(rightLines.length + 1));
+  for (let leftIndex = leftLines.length - 1; leftIndex >= 0; leftIndex -= 1) for (let rightIndex = rightLines.length - 1; rightIndex >= 0; rightIndex -= 1) {
+    table[leftIndex][rightIndex] = comparable(leftLines[leftIndex]) === comparable(rightLines[rightIndex])
+      ? table[leftIndex + 1][rightIndex + 1] + 1
+      : Math.max(table[leftIndex + 1][rightIndex], table[leftIndex][rightIndex + 1]);
+  }
+  const matchedLeft = new Set(); const matchedRight = new Set(); let leftIndex = 0; let rightIndex = 0;
+  while (leftIndex < leftLines.length && rightIndex < rightLines.length) {
+    if (comparable(leftLines[leftIndex]) === comparable(rightLines[rightIndex])) { matchedLeft.add(leftIndex); matchedRight.add(rightIndex); leftIndex += 1; rightIndex += 1; }
+    else if (table[leftIndex + 1][rightIndex] >= table[leftIndex][rightIndex + 1]) leftIndex += 1;
+    else rightIndex += 1;
+  }
+  return {
+    left: leftLines.map((text, index) => ({ text, different: Boolean(text.trim()) && !matchedLeft.has(index) })),
+    right: rightLines.map((text, index) => ({ text, different: Boolean(text.trim()) && !matchedRight.has(index) })),
+  };
+}
+
+function TextDifferencePreview({ source, localDescription }) {
+  const parts = comparisonLineParts(localDescription, source.description);
+  return <section className="marketingTextDifference" aria-label={`Tekstverschil tussen Horeca OS en ${source.source}`}>
+    <p><strong>Geel gemarkeerd = afwijkende tekst.</strong></p>
+    <div>
+      <article><strong>Horeca OS</strong><pre>{parts.left.map((line, index) => <span className={line.different ? "different" : ""} key={index}>{line.text || " "}{"\n"}</span>)}</pre></article>
+      <article><strong>{source.source}</strong><pre>{parts.right.map((line, index) => <span className={line.different ? "different" : ""} key={index}>{line.text || " "}{"\n"}</span>)}</pre></article>
+    </div>
+  </section>;
 }
 
 function SourceComparisonDifferences({ state }) {
@@ -401,6 +434,7 @@ function SourceComparisonDifferences({ state }) {
       {source.titleDifferent && <span>andere titel: ‘{source.title || "Geen titel"}’.</span>}
       {source.descriptionDifferent && <span>{source.titleDifferent ? " Ook de omschrijving verschilt." : "De omschrijving verschilt; de titel is gelijk."}</span>}
     </li>)}</ul>
+    {state.differences.filter(source => source.descriptionDifferent).map(source => <TextDifferencePreview key={`${source.source}:text`} source={{ ...source, description: state.sourceDescriptions?.[source.source] || "" }} localDescription={state.localDescription} />)}
     <p>Bekijk ‘Bronnen vergelijken — tekst en foto kiezen’ en kies zelf wat je wilt bijwerken.</p>
   </div>;
 }
@@ -1036,5 +1070,6 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
 .marketingCalendarEvent .marketingCalendarDuplicate{display:block;font-size:10px;line-height:1.4;margin:4px 0;padding:2px 4px;border-radius:4px;background:#fff3cf;color:#785500;white-space:normal}`}</style>
     <style jsx global>{`.marketingEventDetails{display:block!important}.marketingChannelStatus button.marketingChannelRow{width:100%;margin:0;border-top:0;border-right:0;border-bottom:0;text-align:left;font:inherit;cursor:pointer;color:inherit}.marketingChannelStatus button.marketingChannelRow:hover{box-shadow:0 0 0 2px #25889b}.marketingChannelStatus button.marketingChannelRow:focus-visible{outline:2px solid #176d7f;outline-offset:3px}.marketingChannelRow small{font-size:11px;color:#176d7f;font-weight:700}.marketingEventDetails>.marketingLinkingNotice{margin-bottom:16px}.marketingEventDetails>.marketingDetailActions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 0 14px;margin-bottom:16px;border-bottom:1px solid #d7dfe4}.marketingDetailActions>button{min-height:42px;padding:10px 15px;white-space:nowrap;border-radius:8px}.marketingDetailActions>.marketingAutoCheck{margin-left:auto}.marketingMergeContent{flex:1 0 100%;width:100%;margin-top:4px}.marketingComparisonGrid{display:grid;align-items:start;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:4px 0 2px}.marketingChosenContent{display:grid;gap:12px;margin:18px 0;padding:16px;border:2px solid #25889b;border-radius:9px;background:#fff}.marketingChosenContent h4,.marketingChosenContent p{margin:0}.marketingChosenContent p{white-space:pre-wrap;max-height:260px;overflow:auto;overflow-wrap:anywhere}.marketingChosenContent small{color:#405866}.marketingChosenContent label{display:grid;gap:6px;min-width:0}.marketingChosenContent input,.marketingChosenContent textarea{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid #b9ccd7;border-radius:6px;font:inherit;line-height:1.5}.marketingChosenContent textarea{resize:vertical}.marketingComparisonCard{min-width:0}.marketingChosenContent button{justify-self:start}.marketingComparisonCard{padding:16px}.marketingComparisonCard>button{margin:6px 0;min-height:40px}.marketingComparisonTitle strong{font-size:15px;line-height:1.35}.marketingComparisonDescription{max-height:240px;font-size:14px;line-height:1.55}.marketingEventDetails>dl{margin-top:18px}@media(max-width:760px){.marketingDetailActions{align-items:stretch}.marketingDetailActions>button,.marketingDetailActions>.marketingAutoCheck{width:100%;margin-left:0}.marketingComparisonGrid{grid-template-columns:1fr}}.marketingDetailFold{margin-top:10px;border:1px solid #cbdde5;border-radius:8px;background:#fff}.marketingDetailFold>summary{padding:12px 14px;cursor:pointer;font-size:13px;font-weight:800;color:#176d7f}.marketingDetailFold[open]{padding:0 14px 14px}.marketingDetailFold[open]>summary{margin:0 -14px 12px;border-bottom:1px solid #e0e9ef}.marketingEventDetails .manualFacebookUpdate button,.marketingEventDetails .manualFacebookUpdate a{width:auto;margin-top:0;min-height:34px}.marketingEventDetails .manualFacebookUpdate textarea{min-height:0}.marketingEventDetails>.marketingDetailActions{margin-bottom:8px;padding-bottom:8px}.marketingDetailFold .marketingChosenContent{margin-bottom:0}@media(max-width:760px){.marketingEventModalBackdrop .marketingEventDetails{padding:12px}.marketingEventDetails>.marketingDetailActions>button{width:auto}.marketingEventDetails .manualFacebookUpdate{padding:12px}}.marketingEventFacts{margin:6px 0 14px}.marketingEventFacts>p{margin:0;font-size:13px;color:#173552}.marketingFullDescription{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;margin:0;line-height:1.55}.marketingEventHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.marketingEventHeading>div:first-child{flex:1;min-width:200px}.marketingEventHeading .marketingDetailActions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.marketingEventHeading .marketingDetailActions>button{width:auto;margin:0}.marketingComparisonSummary{display:grid;gap:5px;margin:14px 0 10px;padding:12px 14px;border-radius:8px;border-left:4px solid #8ca6b6;background:#f5f8fa;font-size:13px}.marketingComparisonProgress{display:flex;align-items:center;gap:9px}.marketingComparisonProgress .marketingLoadingSpinner{display:inline-block}@media(prefers-reduced-motion:reduce){.marketingComparisonProgress .marketingLoadingSpinner{animation:none}}.marketingComparisonSummary.equal{border-color:#3a9455;background:#f1faf4}.marketingComparisonSummary.different{border-color:#d99b16;background:#fffaf0}.marketingComparisonSummary p{line-height:1.5}.marketingDifferenceActions{border-top:1px solid #d7dfe4;padding-top:8px;margin-top:6px}.marketingDifferenceActions>div{display:flex;gap:8px;flex-wrap:wrap}.marketingDifferenceActions p{margin:0 0 8px;font-size:13px;line-height:1.5}.marketingSourceDifferences{min-width:0;overflow-wrap:anywhere}.marketingSourceDifferences p{margin:4px 0}.marketingSourceDifferences ul{margin:6px 0;padding-left:20px}.marketingSourceDifferences li{margin:5px 0;line-height:1.5}.marketingDetailFold .manualFacebookUpdate{margin:0;border:0;padding:0}`}</style>
     <style jsx global>{`.marketingChannelRow strong small{display:block;margin-top:2px;color:#5c7285;font-size:10px;font-weight:700}.marketingMetaCampaign{display:grid;gap:12px;margin:0;padding:14px;border:1px solid #cbdde5;border-left:4px solid #1877f2;border-radius:8px;background:#f7faff}.marketingMetaCampaign p{margin:0;line-height:1.5}.marketingMetaCampaign .secondaryButton{justify-self:start;text-decoration:none}.marketingMetaCampaignFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.marketingMetaCampaignFields label{display:grid;gap:6px;min-width:0;font-size:13px;font-weight:800}.marketingMetaCampaignFields input,.marketingMetaCampaignFields select{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid #b9ccd7;border-radius:6px;background:#fff;font:inherit}.marketingMetaCampaignError{padding:9px 11px;border-left:4px solid #c95d5d;border-radius:6px;background:#fff1f1;color:#a12f2f}@media(max-width:760px){.marketingMetaCampaignFields{grid-template-columns:1fr}}`}</style>
+    <style jsx global>{`.marketingTextDifference{margin:12px 0;padding:12px;border:1px solid #e0bd55;border-radius:7px;background:#fffdf6}.marketingTextDifference>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.marketingTextDifference article{min-width:0;padding:10px;border:1px solid #e5e9ec;border-radius:6px;background:#fff}.marketingTextDifference article>strong{display:block;margin-bottom:7px;color:#173552}.marketingTextDifference pre{max-height:240px;margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#405866;font:inherit;line-height:1.5}.marketingTextDifference pre span{display:block;min-height:1.5em}.marketingTextDifference pre span.different{padding:0 3px;border-radius:2px;background:#ffe58f;color:#513b00}@media(max-width:760px){.marketingTextDifference>div{grid-template-columns:1fr}}`}</style>
   </section></ChannelStatusContext.Provider>;
 }
