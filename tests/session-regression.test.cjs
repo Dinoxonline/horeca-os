@@ -132,7 +132,8 @@ test('website form and tile follow fresh comparison, not a historical updated re
       assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Website openen: ' + expected }).length, 1);
       const form = renderer.root.findByProps({ 'aria-label': 'Website afzonderlijk bijwerken' });
       assert.equal(form.findAllByType('strong').at(-1).props.children, expected);
-      assert.equal(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findAllByProps({ id: 'event-channel-website-fresh-website' }).length, 1);
+      const summaries = renderer.root.findAllByProps({ 'aria-label': 'Controle op tekstverschillen' });
+      assert.equal(summaries.length, expected === 'Websitetekst komt overeen' ? 0 : 1);
     }
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
@@ -193,8 +194,8 @@ test('difference actions follow the actual channel and saving enables navigation
   try {
     await render({ sourceComparisonItems: sources('Oude website', 'Bewaar deze') });
     assert.deepEqual(actions().map(button => button.props.children), ['Website bijwerken openen']);
-    assert.equal(summary().findAllByProps({ id: 'event-channel-website-next-step' }).length, 1, 'website panel lives directly in the top comparison section');
-    assert.equal(renderer.root.findAllByProps({ id: 'event-channel-website-next-step' }).length, 1, 'no duplicate website panel at the bottom');
+    assert.equal(summary().findAllByProps({ id: 'event-channel-website-next-step' }).length, 0, 'website panel is kept outside the comparison notice');
+    assert.equal(renderer.root.findAllByProps({ id: 'event-channel-website-next-step' }).length, 1, 'website panel remains available exactly once');
     assert.ok(Object.values(panels).every(panel => !panel.open));
     await React.act(async () => actions()[0].props.onClick());
     assert.equal(panels['event-channel-website-next-step'].open, true);
@@ -229,7 +230,7 @@ test('difference actions follow the actual channel and saving enables navigation
     await render({ comparing: true });
     assert.equal(chosen().findAllByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).length, 0);
     await render({ comparing: false, sourceComparisonItems: sources('Nieuw Facebook', 'Nieuw Facebook') });
-    assert.equal(actions().length, 0);
+    assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Controle op tekstverschillen' }).length, 0);
     assert.equal(chosen().findAllByProps({ 'aria-label': 'Vervolgstap voor afwijkende bronnen' }).length, 0);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
@@ -315,9 +316,13 @@ test('Facebook editor stays closed while checking and after equal or different r
         else renderer = Renderer.create(React.createElement(EventDetails, { ...props, sourceComparisonCheck: check }));
       });
       assert.equal(Boolean(renderer.root.findByProps({ 'data-facebook-editor': true }).props.open), false);
-      const summary = renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' });
-      assert.equal(summary.props['aria-busy'], check === 'pending');
-      assert.equal(summary.findAllByProps({ className: 'marketingLoadingSpinner' }).length, check === 'pending' ? 1 : 0, 'spinner follows the real check state and stops on success or failure');
+      const summaries = renderer.root.findAllByProps({ 'aria-label': 'Controle op tekstverschillen' });
+      if (check === 'done') assert.equal(summaries.length, 0, 'no banner is shown when the Facebook text is equal');
+      else {
+        const summary = summaries[0];
+        assert.equal(summary.props['aria-busy'], check === 'pending');
+        assert.equal(summary.findAllByProps({ className: 'marketingLoadingSpinner' }).length, check === 'pending' ? 1 : 0, 'spinner follows the real check state and stops on success or failure');
+      }
     }
     await React.act(async () => renderer.update(React.createElement(EventDetails, { ...props, sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Facebook', item: { ...item, media: [{ ...item.media[0], common: { title: 'Other', description: 'Other' } }] } }] })));
     assert.match(renderer.root.findByProps({ 'aria-label': 'Controle op tekstverschillen' }).findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, /Verschillen gevonden/);
@@ -1135,8 +1140,7 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
       assert.equal(comparisons, 2);
     }
     await React.act(async () => finishComparison(reply('Avond')));
-    assert.equal(summary().props['aria-busy'], false);
-    assert.equal(summary().findByProps({ className: 'marketingComparisonProgress' }).findByType('strong').props.children, 'Titel en tekst zijn gelijk');
+    assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Controle op tekstverschillen' }).length, 0, 'no comparison banner is shown when all linked text is equal');
     await React.act(async () => finishPublication({ ok: true, json: async () => ({ media: campaign.media }) }));
     await flush();
     assert.equal(comparisons, timeout ? 2 : 1, 'background batch reuses the already completed check');
