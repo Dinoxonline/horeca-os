@@ -129,6 +129,7 @@ test("editor edits update preview, retain step state, search real IDs and submit
   const control = label => renderer.root.findAllByType("label").find(node => Array.isArray(node.props.children) && node.props.children[0] === label).findAll(node => ["input", "select", "textarea"].includes(node.type))[0];
   const change = (label, value) => React.act(async () => control(label).props.onChange({ target: { value } }));
   try {
+    assert.equal(renderer.root.findAllByType("h4").some(node => node.props.children === "Jouw instellingen"), false, "the preview panel does not repeat editable settings");
     await change("Campagnenaam", "Mijn campagne");
     await change("Betaler", "Testbedrijf BV");
     await change("Budgettype", "lifetime"); await change("Totaalbudget (€)", "85");
