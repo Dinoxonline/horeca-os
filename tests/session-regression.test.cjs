@@ -183,6 +183,10 @@ test('difference actions follow the actual channel and saving enables navigation
     assert.deepEqual(calls, [], 'navigation must not save or publish');
     await render({ sourceComparisonItems: sources('Bewaar deze', 'Oud Facebook') });
     assert.deepEqual(actions().map(button => button.props.children), ['Facebook bijwerken openen']);
+    await React.act(async () => actions()[0].props.onClick());
+    assert.equal(panels['event-channel-facebook-next-step'].open, true, 'Facebook opens its own manual workspace');
+    assert.equal(panels['event-channel-facebook-next-step'].focused, 1);
+    assert.deepEqual(panels['event-channel-facebook-next-step'].scrollOptions, { block: 'start', inline: 'nearest' });
     await render({ sourceComparisonItems: sources('Oude website', 'Nieuw Facebook') });
     assert.equal(actions().length, 2);
     await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Facebook gebruiken' }).props.onClick());
@@ -247,7 +251,7 @@ test('verified matching Facebook content overrides the manual task without inven
       else renderer = Renderer.create(React.createElement(EventDetails, props));
     });
   };
-  const tile = () => renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' }).findAllByType('button').find(button => button.props['aria-controls'] === 'event-channel-sources-matching-facebook');
+  const tile = () => renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' }).findAllByType('button').find(button => button.props['aria-controls'] === 'event-channel-facebook-matching-facebook');
   const panel = () => renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
   try {
     await render({});
@@ -492,7 +496,7 @@ test('channel tiles open and focus their own editor without saving or publishing
     assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Website', 'Facebook', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
     for (const channel of ['website', 'facebook', 'instagram', 'meta', 'calendar', 'predis']) {
-      const id = `event-channel-${channel === 'facebook' ? 'sources' : channel}-tiles`;
+      const id = `event-channel-${channel}-tiles`;
       const button = () => buttons().find(button => button.props['aria-controls'] === id);
       await React.act(async () => button().props.onClick());
       assert.equal(panels[id].open, true);
