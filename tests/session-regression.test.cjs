@@ -279,13 +279,10 @@ test('verified matching Facebook content overrides the manual task without inven
   const panel = () => renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
   try {
     await render({});
-    assert.match(tile().props.className, /placed/);
-    assert.match(tile().props['aria-label'], /Tekst komt overeen — geen actie nodig/);
-    assert.equal(panel().findAllByType('input').length, 0, 'no confirmation checkbox when already equal');
-    assert.equal(panel().findAllByType('button').length, 0, 'no copy, save or confirm tasks when already equal');
-    assert.equal(panel().findByType('a').props.children, 'Facebook-evenement bekijken');
+    assert.equal(tile(), undefined, 'a matching Facebook channel is status only');
+    assert.equal(renderer.root.findByProps({ id: 'event-channel-facebook-matching-facebook' }).props.hidden, true, 'the manual Facebook screen stays out of view when no action is needed');
     await render({ sourceComparisonItems: [{ label: 'Eventin', item: record('Andere website') }, { label: 'Facebook', item: record() }] });
-    assert.match(tile().props['aria-label'], /geen actie nodig/, 'website differences do not create a Facebook task');
+    assert.equal(tile(), undefined, 'website differences do not create a Facebook task');
     // An unsaved choice must not hide the manual editor as though it were saved.
     await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Eventin gebruiken' }).props.onClick());
     assert.equal(panel().findAllByType('input').length, 1);
@@ -293,13 +290,14 @@ test('verified matching Facebook content overrides the manual task without inven
     // Saving a new local title invalidates the old match immediately.
     await render({ item: record('Andere website') });
     assert.match(tile().props['aria-label'], /Tekst verschilt/);
+    assert.equal(renderer.root.findByProps({ id: 'event-channel-facebook-matching-facebook' }).props.hidden, true, 'an actionable editor still opens only after selecting its status card');
     assert.equal(panel().findAllByType('input').length, 1);
     for (const check of ['pending', 'queued', 'error', 'timeout', 'idle']) {
       await render({ item: local, sourceComparisonCheck: check });
-      assert.doesNotMatch(tile().props['aria-label'], /geen actie nodig/);
+      assert.ok(!tile() || !/geen actie nodig/.test(tile().props['aria-label']));
     }
     await render({ sourceComparisonCheck: 'done', sourceComparisonItems: [{ label: 'Eventin', item: record() }] });
-    assert.doesNotMatch(tile().props['aria-label'], /geen actie nodig/, 'missing Facebook evidence is not a match');
+    assert.ok(!tile() || !/geen actie nodig/.test(tile().props['aria-label']), 'missing Facebook evidence is not a match');
     assert.equal(JSON.stringify(local), original, 'comparison never records a fictitious manual confirmation');
     assert.deepEqual(calls, []);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
@@ -522,9 +520,9 @@ test('channel tiles open and focus their own editor without saving or publishing
     });
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const buttons = () => statuses.findAllByType('button');
-    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Facebook', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
+    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
-    for (const channel of ['facebook', 'instagram', 'meta', 'calendar', 'predis']) {
+    for (const channel of ['meta', 'calendar', 'predis']) {
       const id = `event-channel-${channel}-tiles`;
       const button = () => buttons().find(button => button.props['aria-controls'] === id);
       await React.act(async () => button().props.onClick());
