@@ -115,7 +115,7 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       const url = URL.createObjectURL(prepared.blob);
       localPreviews.current.add(url);
       setAssets(previous => [...previous, { type: "image", url, sourceUrl: asset.url, ...prepared }]);
-      setMessage("Foto gekozen. De JPG-kopie wordt pas opgeslagen bij ‘Voorbeeld klaarzetten’. Het origineel blijft behouden; er is niets gepubliceerd.");
+      setMessage("");
     });
     setAssets(previous => [...previous, { type: asset.type, url: asset.url, width: asset.width, height: asset.height }]); setMessage("");
   }
@@ -170,7 +170,6 @@ export default function InstagramEventPublisher({ item, workspaceId, session, bu
       </div>
     </div>}
     <div className="instagramPublishStatus" ref={statusPanel} tabIndex={-1} aria-label="Voortgang Instagram-publicatie">
-      <p className="instagramSteps">1. Foto en tekst kiezen → 2. Voorbeeld klaarzetten → 3. Bevestigen en publiceren</p>
       <strong>{instagramJobLabel(job)}</strong>
       {busy && <p role="status"><span className="marketingLoadingSpinner" aria-hidden="true" /> {busy}</p>}
       {message && <p role="alert">{message}</p>}
