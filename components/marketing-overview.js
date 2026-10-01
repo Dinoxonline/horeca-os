@@ -637,7 +637,7 @@ export function CalendarContentSelector({ value, onChange }) {
   </div>;
 }
 
-export default function MarketingOverview({ workspaceId, businesses, session, onPlanDate }) {
+export default function MarketingOverview({ workspaceId, businesses, session, onPlanDate, refreshToken = 0 }) {
   const [contentView, setContentView] = useState('events');
   const [mergeNotice, setMergeNotice] = useState(null);
   const [contentSaveNotice, setContentSaveNotice] = useState(null);
@@ -771,7 +771,7 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
       if (comparisonJobs.current === jobs) comparisonJobs.current = new Map();
       for (const job of jobs.values()) if (!job.settled) job.controller.abort();
     };
-  }, [workspaceId, refreshKey, session?.user?.id, venueBusinesses]);
+  }, [workspaceId, refreshKey, refreshToken, session?.user?.id, venueBusinesses]);
 
   useEffect(() => {
     if (busy || !selectedItem || isExternalEvent(selectedItem) || !sessionRef.current?.access_token) return;

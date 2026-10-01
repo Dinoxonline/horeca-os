@@ -7,6 +7,7 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
   const [creatorVisited, setCreatorVisited] = useState(false);
   const [chosenBusiness, setChosenBusiness] = useState("");
   const [newEventRequest, setNewEventRequest] = useState(null);
+  const [agendaRefreshToken, setAgendaRefreshToken] = useState(0);
   const agendaBusinesses = useMemo(() => businessId === "all" ? businesses : businesses.filter(business => business.id === businessId), [businessId, businesses]);
   const requestedBusiness = businessId === "all" ? chosenBusiness : businessId;
   const creatorBusiness = businesses.some(business => business.id === requestedBusiness) ? requestedBusiness : "";
@@ -27,7 +28,7 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
     </nav>
     {/* Keep visited screens mounted: returning must not discard a form or reset the calendar month. */}
     <div hidden={view !== "agenda"} aria-label="Marketingagenda" style={view !== "agenda" ? { display: "none" } : undefined}>
-      {renderAgenda(agendaBusinesses, planEventOnDate)}
+      {renderAgenda(agendaBusinesses, planEventOnDate, agendaRefreshToken)}
     </div>
     {view === "food" && <div aria-label="Food Marketing Machine">{renderFoodMachine?.()}</div>}
     {creatorVisited && <div hidden={view !== "create"} aria-label="Evenement of campagne maken" style={view !== "create" ? { display: "none" } : undefined}>
@@ -40,7 +41,7 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
         </label>
         <p>De knop Agenda brengt je altijd terug naar het overzicht.</p>
       </section>}
-      {creatorBusiness ? <div key={creatorBusiness}>{renderCreator(creatorBusiness, newEventRequest)}</div> : <p>Kies eerst een vestiging om een evenement, gerecht of campagne te maken.</p>}
+      {creatorBusiness ? <div key={creatorBusiness}>{renderCreator(creatorBusiness, newEventRequest, () => setAgendaRefreshToken((current) => current + 1))}</div> : <p>Kies eerst een vestiging om een evenement, gerecht of campagne te maken.</p>}
     </div>}
   </>;
 }

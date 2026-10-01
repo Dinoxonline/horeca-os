@@ -403,7 +403,7 @@ function formUiStorageKey(workspaceId, businessId) {
   return `horeca-os:marketing-ui:${workspaceId}:${businessId}`;
 }
 
-export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest }) {
+export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, onEventSaved }) {
   const [form, setForm] = useState(emptyForm);
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
@@ -2323,6 +2323,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusinessId));
       }
       setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : website.event.status === "draft" ? "Het evenement is als Eventin-concept opgeslagen. Publiceer het hieronder wanneer alles klopt." : "Het evenement is verwerkt.", steps, url: website.event.status === "publish" ? website.event.url : "" }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
+      onEventSaved?.();
       setEventWorkspaceView("saved");
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
