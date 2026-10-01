@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import NextImage from "next/image";
 import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
 import { SavedPredisWorkspace } from "./predis-workspace";
-import EventPromotionChecklist from "./event-promotion-checklist";
 import { ensureEventPromotionProcess } from "../lib/event-promotion-process";
 import { saveCampaignDraft } from "../lib/save-campaign-draft";
 import WhatsappShare from "./whatsapp-share";
@@ -2944,7 +2943,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url && (!isWebsiteEvent || ["publish", "cancelled"].includes(websiteEventStatus)) ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
             {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd — blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
-            {isWebsiteEvent && <EventPromotionChecklist compact workspaceId={workspaceId} businessId={item.business_id} marketingItemId={item.id} title={distribution.common?.title || typeLabel} start={distribution.common?.start} userId={session.user.id} />}
             {isWebsiteEvent && !websiteEventCancelled && <div className="campaignWorkflow">
               <div className="campaignWorkflowSteps" aria-label="Publicatievolgorde">
                 <span className={campaignWorkflowStep === 1 ? "current" : campaignWorkflowStep > 1 ? "done" : ""}>1. Eventin</span>
