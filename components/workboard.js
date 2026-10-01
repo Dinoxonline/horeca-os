@@ -236,6 +236,12 @@ export default function Workboard({ workspaceId, businessId, userId, businesses 
 
   useEffect(() => { load(); }, [workspaceId]);
   useEffect(() => { setMineOnly(!canMonitor); }, [canMonitor]);
+  useEffect(() => {
+    const processId = new URLSearchParams(window.location.search).get("proces");
+    if (!processId || !runs.some((run) => run.id === processId)) return;
+    setMineOnly(false);
+    setExpandedRunId(processId);
+  }, [runs]);
 
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
   const selectedSteps = useMemo(() => steps.filter((item) => item.template_id === selectedTemplateId), [steps, selectedTemplateId]);

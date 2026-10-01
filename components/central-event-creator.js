@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import NextImage from "next/image";
 import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
 import { SavedPredisWorkspace } from "./predis-workspace";
+import EventPromotionChecklist from "./event-promotion-checklist";
+import { ensureEventPromotionProcess } from "../lib/event-promotion-process";
 import { saveCampaignDraft } from "../lib/save-campaign-draft";
 import WhatsappShare from "./whatsapp-share";
 import { supabase } from "../lib/supabase";
@@ -1984,8 +1986,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       content_type: "post", direction: "outbound", body: form.description.trim() || form.shortDescription.trim(),
       media: [distribution], status: "draft", workflow_status: "new", scheduled_for: null, created_by: session.user.id,
     };
-    const { error } = await saveCampaignDraft(supabase, workspaceId, editingCampaignId, record);
-    return error ? { warning: error.message || "Het promotieconcept kon niet worden opgeslagen." } : { ok: true };
+    const { data, error } = await saveCampaignDraft(supabase, workspaceId, editingCampaignId, record);
+    return error ? { warning: error.message || "Het promotieconcept kon niet worden opgeslagen." } : { ok: true, itemId: data?.id || editingCampaignId || null };
   }
 
   async function publishFacebookCampaign(item) {
@@ -2253,12 +2255,27 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         setResult({ ok: false, message: `Eventin-concept ${website.event.id} is aangemaakt, maar het beheerdossier kon niet worden opgeslagen. Maak het evenement niet opnieuw aan.`, steps });
         return;
       }
+      if (promotion.itemId) {
+        try {
+          const checklist = await ensureEventPromotionProcess(supabase, {
+            workspaceId,
+            businessId: selectedBusiness?.id || businessId,
+            marketingItemId: promotion.itemId,
+            title: form.title,
+            start: form.start,
+            createdBy: session.user.id,
+          });
+          steps.push({ label: "Promotiechecklist", ok: true, detail: `${checklist.tasks.length} handmatige taken klaargezet.` });
+        } catch (checklistError) {
+          steps.push({ label: "Promotiechecklist", ok: false, detail: checklistError.message || "Start deze later vanuit het evenement." });
+        }
+      }
       const selectedBusinessId = selectedBusiness?.id || businessId;
       if (workspaceId && selectedBusinessId) {
         window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusinessId));
       }
       setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : website.event.status === "draft" ? "Het evenement is als Eventin-concept opgeslagen. Publiceer het hieronder wanneer alles klopt." : "Het evenement is verwerkt.", steps, url: website.event.status === "publish" ? website.event.url : "" }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
-      if (form.channels.predis) setEventWorkspaceView("saved");
+      setEventWorkspaceView("saved");
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
 
@@ -2877,6 +2894,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <p className="conceptSavedAt">Opgeslagen: {formatNlDateTime(item.created_at)}</p>
             <p>{distribution.source_url && (!isWebsiteEvent || ["publish", "cancelled"].includes(websiteEventStatus)) ? <a href={distribution.source_url} target="_blank" rel="noreferrer">Bron openen</a> : isWebsiteEvent && websiteEventStatus === "draft" ? "Nog niet openbaar op de website" : "Campagneconcept in Horeca OS"}</p>
             {isWebsiteEvent && <p className={`websiteEventState ${websiteEventCancelled ? "cancelled" : ""}`}><b>Website-evenement:</b> {websiteEventDeleted ? "Verwijderd" : websiteEventCancelled ? "Geannuleerd — blijft online" : websiteEventStatus === "draft" ? "Eventin-concept" : "Gepubliceerd"}</p>}
+            {isWebsiteEvent && <EventPromotionChecklist compact workspaceId={workspaceId} businessId={item.business_id} marketingItemId={item.id} title={distribution.common?.title || typeLabel} start={distribution.common?.start} userId={session.user.id} />}
             {isWebsiteEvent && !websiteEventCancelled && <div className="campaignWorkflow">
               <div className="campaignWorkflowSteps" aria-label="Publicatievolgorde">
                 <span className={campaignWorkflowStep === 1 ? "current" : campaignWorkflowStep > 1 ? "done" : ""}>1. Eventin</span>
