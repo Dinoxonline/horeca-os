@@ -321,6 +321,7 @@ test('Facebook editor stays closed while checking and after equal or different r
       else {
         const summary = summaries[0];
         assert.equal(summary.props['aria-busy'], check === 'pending');
+        assert.equal(Boolean(summary.props.hidden), ['queued', 'pending'].includes(check), 'background checks do not add a visible notice');
         assert.equal(summary.findAllByProps({ className: 'marketingLoadingSpinner' }).length, check === 'pending' ? 1 : 0, 'spinner follows the real check state and stops on success or failure');
       }
     }
