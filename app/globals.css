@@ -114,3 +114,23 @@
   }
   .sidebar > nav { max-height: none; }
 }
+
+.marketingCalendarPanel .marketingCalendarNav {
+  align-items: center;
+}
+.marketingCalendarPanel .marketingCalendarPeriod {
+  min-width: 150px;
+  padding: 9px 13px;
+  color: #173b5c;
+  font-size: 14px;
+  text-align: center;
+  text-transform: capitalize;
+}
+.marketingCalendarPanel .marketingCalendarNav .marketingCalendarToday {
+  border-color: #d6a64b !important;
+  background: #fff7df !important;
+  color: #805400 !important;
+}
+.marketingCalendarPanel .marketingCalendarNav .marketingCalendarToday:hover {
+  background: #ffedbb !important;
+}
