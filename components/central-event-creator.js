@@ -1573,7 +1573,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPreview(false);
     setResult(null);
     const restoredUi = savedUi || savedDraft?.ui || {};
-    setEventWorkspaceView(restoredUi.eventWorkspaceView || (savedForm?.campaignType === "event" ? "new" : ""));
+    // Een geopend dossier is geen logisch startpunt voor iemand die teruggaat
+    // naar "Evenement of campagne maken". Herstel alleen het nieuwe formulier;
+    // anders kan een eerder geplaatst evenement ten onrechte boven een nieuw
+    // concept verschijnen.
+    const restoredEventWorkspaceView = restoredUi.eventWorkspaceView === "new" ? "new" : "";
+    setEventWorkspaceView(restoredEventWorkspaceView || (savedForm?.campaignType === "event" ? "new" : ""));
     setSavedEventPreviewId(restoredUi.savedEventPreviewId || null);
     // Een datumklik is altijd een nieuw evenement. Herstel dan niet de oude
     // schermpositie van een eerder concept: de gebruiker moet bij Basis starten.
@@ -1856,7 +1861,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     return "";
   };
 
-  const showPreview = () => { const error = validate(); if (error) return setResult({ ok: false, message: error }); setResult(null); setPreviewChannel(""); setPreview(true); };
+  const showPreview = () => {
+    const error = validate();
+    if (error) return setResult({ ok: false, message: error });
+    setResult(null);
+    // Deze actie mag alleen het huidige formulier controleren. Zeker na een
+    // eerder opgeslagen evenement houden we het nieuwe concept daarom open.
+    if (isEvent) setEventWorkspaceView("new");
+    setPreviewChannel("");
+    setPreview(true);
+    window.requestAnimationFrame(() => document.querySelector(".eventPreview")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   const showChannelPreview = (channel) => {
     if (!form.title.trim()) return setResult({ ok: false, message: "Vul eerst de evenementnaam in." });
     if (channel === "eventin" && (!form.start || !form.end || !form.location.trim())) return setResult({ ok: false, message: "Vul voor de Eventin-controle eerst datum, tijd en locatie in." });
@@ -2859,7 +2874,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
         <strong>Nog geen campagneconcepten opgeslagen</strong>
         <p>Maak hierboven je eerste campagne. Na het opslaan verschijnt die hier met controle-, planning- en kopieerknoppen per kanaal.</p>
-        <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>Nieuwe campagne maken</button>
+        <button type="button" onClick={startNewCampaign}>Nieuw evenement maken</button>
       </div> : <>
         <div className="conceptFilters"><label className="conceptSearch">Zoek campagne<input type="search" value={conceptSearch} onChange={(event) => setConceptSearch(event.target.value)} placeholder="Zoek op naam of promotietekst" /></label><label>Soort campagne<select value={conceptTypeFilter} onChange={(event) => setConceptTypeFilter(event.target.value)}><option value="all">Alle soorten</option>{campaignTypes.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Werkstatus<select value={conceptStatusFilter} onChange={(event) => setConceptStatusFilter(event.target.value)}><option value="all">Alle statussen</option><option value="draft">Concept</option><option value="approved">Goedgekeurd</option><option value="scheduled">Ingepland</option><option value="published">Geplaatst</option></select></label><label>Volgorde<select value={conceptSort} onChange={(event) => setConceptSort(event.target.value)}><option value="newest">Nieuwste eerst</option><option value="oldest">Oudste eerst</option></select></label></div>
         <div className="conceptFilterSummary">
