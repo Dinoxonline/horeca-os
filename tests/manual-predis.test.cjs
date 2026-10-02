@@ -240,6 +240,7 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  const content=allText(r.root);
  assert.match(content,/Er wordt geen AI-ontwerp aangevraagd/);
  assert.ok(content.includes('1. Bericht voorbereiden'));
+ assert.equal(r.root.findByProps({'aria-label':'Handmatig overzetten naar Predis'}).props.hidden,true);
  assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Naar Predis gaan'));
  assert.ok(content.indexOf('2. Naar Predis gaan') < content.indexOf('3. Bevestigen na Predis'));
  assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);

@@ -242,7 +242,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       {draft.caption.length > PREDIS_CAPTION_LIMIT && <p role="alert">Predis accepteert maximaal {PREDIS_CAPTION_LIMIT} tekens. Klik op ‘Maak Predis-tekst’ om de belangrijkste gegevens en ticketlink te behouden.</p>}
       {!!draft.assets.length && <div className={styles.actions} aria-label="Berichttekst kopiëren"><button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || draft.caption.length > PREDIS_CAPTION_LIMIT} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button></div>}
     </fieldset>
-    <div className={styles.step} aria-label="Handmatig overzetten naar Predis">
+    <div hidden className={styles.step} aria-label="Handmatig overzetten naar Predis">
       <strong>2. Naar Predis gaan</strong>
       <p>Download hierboven eerst je bestand en kopieer de tekst. Open daarna Predis om het bestand zelf te uploaden.</p>
       {!draft.assets.length && <p>Kies hierboven eerst je afbeelding(en) of video.</p>}
