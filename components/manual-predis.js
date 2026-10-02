@@ -226,17 +226,20 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       {!availableAssets.length && <p>Nog geen foto’s of video’s beschikbaar. Voeg eerst een bestand toe bij het evenement.</p>}
       <label>Je bericht<textarea rows={6} maxLength={10000} value={draft.caption} onChange={e => change({ ...draft, caption: e.target.value })} /></label>
       <small>Je bewerkt alleen dit bericht. Het evenement en bestaande publicaties blijven ongewijzigd.</small>
+      {!!draft.assets.length && <div className={styles.downloads} aria-label="Gekozen bestand en tekst klaarmaken">
+        <strong>Gekozen bestand en tekst</strong>
+        {draft.assets.map((a, i) => <div key={a.url} className={styles.actions}>
+          <button type="button" className="secondaryButton" aria-label={`Gekozen ${a.type === "video" ? "video" : "afbeelding"} ${i + 1} downloaden`} disabled={!loaded || !!busy} onClick={() => downloadAsset(a, i)}>{i + 1}. {a.type === "video" ? "Video" : "Afbeelding"} downloaden</button>
+          {draft.assets.length > 1 && <><button type="button" className="secondaryButton" aria-label={`Verplaats bestand ${i + 1} naar voren`} disabled={!loaded || !!busy || i === 0} onClick={() => moveAsset(i, -1)}>↑</button><button type="button" className="secondaryButton" aria-label={`Verplaats bestand ${i + 1} naar achteren`} disabled={!loaded || !!busy || i === draft.assets.length - 1} onClick={() => moveAsset(i, 1)}>↓</button></>}
+        </div>)}
+        <button type="button" className="primaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
+      </div>}
     </fieldset>
     <div className={styles.step} aria-label="Handmatig overzetten naar Predis">
-      <strong>2. Bestand en tekst klaarzetten voor Predis</strong>
-      <p>Download eerst het gekozen bestand en kopieer daarna je berichttekst. Open Predis pas daarna om het bestand zelf te uploaden.</p>
-      {!!draft.assets.length && <div className={styles.downloads}><strong>Gekozen bestand{draft.assets.length === 1 ? "" : "en"} downloaden · volgorde in Predis</strong>{draft.assets.map((a, i) => <div key={a.url} className={styles.actions}>
-        <button type="button" className="secondaryButton" aria-label={`Gekozen ${a.type === "video" ? "video" : "afbeelding"} ${i + 1} downloaden`} disabled={!loaded || !!busy} onClick={() => downloadAsset(a, i)}>{i + 1}. {a.type === "video" ? "Video" : "Afbeelding"} downloaden</button>
-        {draft.assets.length > 1 && <><button type="button" className="secondaryButton" aria-label={`Verplaats bestand ${i + 1} naar voren`} disabled={!loaded || !!busy || i === 0} onClick={() => moveAsset(i, -1)}>↑</button><button type="button" className="secondaryButton" aria-label={`Verplaats bestand ${i + 1} naar achteren`} disabled={!loaded || !!busy || i === draft.assets.length - 1} onClick={() => moveAsset(i, 1)}>↓</button></>}
-      </div>)}</div>}
+      <strong>2. Naar Predis gaan</strong>
+      <p>Download hierboven eerst je bestand en kopieer de tekst. Open daarna Predis om het bestand zelf te uploaden.</p>
       {!draft.assets.length && <p>Kies hierboven eerst je afbeelding(en) of video.</p>}
       <div className={styles.actions}>
-        <button type="button" className="primaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
         <a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen om te uploaden ↗</a>
         <button type="button" className="secondaryButton" disabled={!loaded || !!busy || (!dirty && !!saved)} onClick={save}>Concept bewaren</button>
       </div>

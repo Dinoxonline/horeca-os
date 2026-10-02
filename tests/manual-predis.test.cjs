@@ -185,7 +185,7 @@ test('optional planner previews selected weekdays, adds nonduplicated dates, sav
    const visibleList=planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'});
    assert.match(allText(visibleList),/nog niet bewaard/);
    assert.match(allText(visibleList),/28\s*-\s*10\s*-\s*2026.*Facebook/);
-   assert.ok(allText(r.root).indexOf('2. Bestand en tekst klaarzetten voor Predis') < allText(r.root).indexOf('Gewenste datums bij je concept'));
+   assert.ok(allText(r.root).indexOf('2. Naar Predis gaan') < allText(r.root).indexOf('Gewenste datums bij je concept'));
    assert.equal(button('Direct publiceren — nog niet beschikbaar'),undefined);
    assert.match(allText(r.root),/nu publiceren/);
    assert.match(allText(r.root),/Je hoeft hier nog geen moment toe te voegen/);
@@ -232,8 +232,8 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  const content=allText(r.root);
  assert.match(content,/Er wordt geen AI-ontwerp aangevraagd/);
  assert.ok(content.includes('1. Bericht voorbereiden'));
- assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Bestand en tekst klaarzetten voor Predis'));
- assert.ok(content.indexOf('2. Bestand en tekst klaarzetten voor Predis') < content.indexOf('3. Bevestigen na Predis'));
+ assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Naar Predis gaan'));
+ assert.ok(content.indexOf('2. Naar Predis gaan') < content.indexOf('3. Bevestigen na Predis'));
  assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);
  assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
  assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen om te uploaden ↗').props.href,'https://app.predis.ai/app/new_post/create');
@@ -301,7 +301,7 @@ test('step three stays visible and requires explicit per-channel confirmation af
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 
-test('all three Predis choices prepare unchanged uploads, never AI generation',async()=>{
+test('Predis workspace only exposes the manual upload route',async()=>{
  fakeWindow();const calls=[];
  global.fetch=async(url,opts)=>{calls.push({url,method:opts.method});return Response.json({saved:null,configured:true,jobs:[],photos:[]});};
  const Component=(await load('components/predis-workspace.js',{'next/image':{default:p=>React.createElement('img',p)}})).default;
@@ -315,32 +315,10 @@ test('all three Predis choices prepare unchanged uploads, never AI generation',a
    assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
    assert.equal(r.root.findAllByProps({'aria-label':'Content maken met Predis'}).length,0);
    assert.equal(calls.length,1);assert.match(calls[0].url,/\/manual-predis\?/);assert.equal(calls[0].method,'GET');
-   await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Mijn eigen bijschrift'}}));
-   global.window.confirm=()=>false;
-   await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
-   assert.equal(r.root.findByType('textarea').props.value,'Mijn eigen bijschrift');assert.equal(calls.length,1);
-   global.window.confirm=()=>true;
-   await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
-   for(const label of ['Enkele afbeelding','Carrousel','Video’s']){
-     await React.act(async()=>button(label).props.onClick());
-     assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
-     assert.match(allText(r.root),/Upload inhoud vanaf apparaat/);
-     assert.match(allText(r.root),/Je ontwerp blijft ongewijzigd/);
-     assert.equal(button('Content laten maken'),undefined);
-     await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
-   }
-   assert.equal(calls.length,4);assert.ok(calls.every(c=>c.url.includes('/manual-predis?')));assert.ok(calls.every(c=>c.method==='GET'));
-   for(const [label,format] of [['AI-afbeelding','single_image'],['AI-carrousel','carousel'],['AI-video','video']]){
-     const choice=button(label);
-     let container=choice.parent;while(container&&container.type!=='details')container=container.parent;
-     assert.equal(container.type,'details');assert.equal(container.props.open,undefined,'AI options are collapsed by default');
-     await React.act(async()=>choice.props.onClick());
-     assert.equal(r.root.findByType('select').props.value,format);
-     assert.match(allText(r.root),/bewust de aparte AI-route gekozen/);
-     assert.equal(button('Content laten maken').props.disabled,true);
-     await React.act(async()=>button('Andere werkwijze kiezen').props.onClick());
-   }
-   assert.ok(calls.slice(4).every(c=>c.url.includes('/predis-content?')&&c.method==='GET'));
+   assert.equal(button('Andere werkwijze kiezen'),undefined);
+   assert.equal(button('Content laten maken'),undefined);
+   assert.match(allText(r.root),/Upload inhoud vanaf apparaat/);
+   assert.match(allText(r.root),/Je ontwerp blijft ongewijzigd/);
  }finally{await React.act(async()=>r.unmount());delete global.window;}
 });
 test('original image and video downloads preserve bytes and MIME extension without generation',async(t)=>{

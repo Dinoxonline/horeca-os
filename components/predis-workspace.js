@@ -30,7 +30,6 @@ export default function PredisWorkspace(props) {
       <details className={styles.moreOptions}><summary>Eigen beeld als bron voor AI (kan je ontwerp veranderen)</summary><p>Niet gebruiken voor een kant-en-klaar ontwerp dat exact moet blijven. Ook met een behoud-instructie kan Predis tekst en opmaak veranderen. Deze route kan tegoed kosten.</p><button type="button" className="secondaryButton" onClick={() => switchMode("own_media")}>Eigen beeld gebruiken — proef voorbereiden</button></details>
       <details className={styles.moreOptions}><summary>Eerdere AI-aanvragen controleren</summary><p>Deze eerdere opdrachten kunnen je beeld hebben aangepast. Ze worden niet verwijderd of opnieuw verstuurd. Controleer ze los van het uploaden van je oorspronkelijke ontwerp.</p><button type="button" className="secondaryButton" onClick={() => switchMode("history")}>Eerdere AI-resultaten bekijken</button></details>
     </section> : <>
-      <button type="button" className="secondaryButton" onClick={() => switchMode("choose")}>Andere werkwijze kiezen</button>
       {mode === "history" || generating ? <PredisContent key={mode} {...props} sourceMode={mode === "own_media" ? "own" : "ai"} historyOnly={mode === "history"} initialFormat={mode.startsWith("ai_") ? mode.slice(3) : "single_image"} onUnsavedChange={setDirty} /> : <ManualPredis key={mode} {...props} uploadType={mode === "manual" ? undefined : mode} onUnsavedChange={setDirty} />}
     </>}
   </div>;

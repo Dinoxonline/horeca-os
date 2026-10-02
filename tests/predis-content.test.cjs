@@ -81,7 +81,7 @@ test('real Supabase client sends a version-guarded update and requests confirmat
   assert.equal(update.body.media[0].predis_content.jobs[0].id, 'keep');
 });
 
-test('saved campaign panel keeps checking disabled while collapsed', async () => {
+test('saved campaign panel only exposes the manual upload route', async () => {
   const { SavedPredisWorkspace } = await load('components/predis-workspace.js', {
     './predis-content': { default: props => React.createElement('predis-generator', { enabled: props.enabled }) },
     './manual-predis': { default: () => null },
@@ -93,13 +93,8 @@ test('saved campaign panel keeps checking disabled while collapsed', async () =>
     assert.equal(newPost.props.href, 'https://app.predis.ai/app/new_post/create');
     assert.equal(r.root.findAllByType('a').some(a => a.props.href === 'https://app.predis.ai/app/content_calendar'), false);
     assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Bestaande post uit Predis ophalen'), false);
-    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Andere werkwijze kiezen').props.onClick());
-    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eerdere AI-resultaten bekijken').props.onClick());
-    assert.equal(r.root.findByType('predis-generator').props.enabled, false);
-    await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: true } }));
-    assert.equal(r.root.findByType('predis-generator').props.enabled, true);
-    await React.act(async () => r.root.findByType('details').props.onToggle({ currentTarget: { open: false } }));
-    assert.equal(r.root.findByType('predis-generator').props.enabled, false);
+    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Andere werkwijze kiezen'), false);
+    assert.equal(r.root.findAllByType('predis-generator').length, 0);
   } finally { if (r) await React.act(async () => r.unmount()); }
 });
 
@@ -446,7 +441,7 @@ test('own-media server trial stores original inputs, uses model 2, and handles b
   assert.equal(invalid.calls.length, 1);
 });
 
-test('own-media choice is visible, separate from unchanged uploads and never generates on opening', async () => {
+test('AI choice is hidden from the manual Predis workspace', async () => {
   const oldWindow = global.window, oldFetch = global.fetch;
   global.window = { confirm: () => true };
   global.fetch = async () => { throw new Error('Choice must not call provider'); };
@@ -458,10 +453,8 @@ test('own-media choice is visible, separate from unchanged uploads and never gen
   try {
     await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, businessName: 'Caribbean Corner' })); });
     assert.equal(r.root.findAllByType('predis-generator').length, 0);
-    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Andere werkwijze kiezen').props.onClick());
-    await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eigen beeld gebruiken — proef voorbereiden').props.onClick());
-    assert.equal(r.root.findByType('predis-generator').props.sourceMode, 'own');
-    assert.match(text(r.root), /geen ongewijzigde upload/);
+    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Andere werkwijze kiezen'), false);
+    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Eigen beeld gebruiken — proef voorbereiden'), false);
   } finally { if (r) await React.act(async () => r.unmount()); global.window = oldWindow; global.fetch = oldFetch; }
 });
 
