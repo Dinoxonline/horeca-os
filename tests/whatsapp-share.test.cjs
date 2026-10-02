@@ -22,6 +22,8 @@ test("WhatsApp draft uses public content, explicit event date and correctly enco
   assert.equal(new URL(helper.whatsappDesktopUrl(draft.text)).protocol, "whatsapp:");
   assert.equal(helper.whatsappShareUrl("  "), "");
   assert.equal(helper.whatsappDesktopUrl("  "), "");
+  const complete = helper.whatsappDraft({}, { common: { title: "Avond", short_description: "Kort", description: "Volledige Horeca OS-tekst met alle details." } });
+  assert.ok(complete.text.includes("Volledige Horeca OS-tekst met alle details.")); assert.ok(!complete.text.includes("Kort"));
   const product = helper.whatsappDraft({ body: "Nieuwe kaart", scheduled_for: "2040-01-01" }, { common: { website_url: "javascript:alert(1)" } });
   assert.equal(product.text, "Nieuwe kaart"); assert.equal(product.images.length, 0);
 });

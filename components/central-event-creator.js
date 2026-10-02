@@ -169,7 +169,7 @@ function channelConceptText(distribution, channel, fallbackBody = "") {
   if (channel === "facebook") return payload.text || common.short_description || fallbackBody;
   if (channel === "instagram") return payload.caption || common.short_description || fallbackBody;
   if (channel === "tiktok") return payload.caption || common.short_description || fallbackBody;
-  if (channel === "whatsapp") return payload.message || common.short_description || fallbackBody;
+  if (channel === "whatsapp") return payload.message || common.description || common.short_description || fallbackBody;
   if (channel === "google") return [
     common.title,
     common.short_description || common.description || fallbackBody,
