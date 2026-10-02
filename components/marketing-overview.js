@@ -28,7 +28,7 @@ import EventGiveaway from "./event-giveaway";
 const typeLabels = { event: "Evenement", product: "Gerecht of product", offer: "Aanbieding", package: "Arrangement", review: "Review", custom: "Campagne", website_event: "Evenement" };
 const viewLabels = { day: "Dag", week: "Week", month: "Maand", year: "Jaar" };
 const dismissedExternalItemIds = new Set();
-const SOURCE_COMPARISON_TIMEOUT_MS = 6000;
+const SOURCE_COMPARISON_TIMEOUT_MS = 30000;
 function distributionFor(item) { return (item?.media || []).find((entry) => entry?.kind === "campaign_distribution") || {}; }
 function itemStart(item) { const distribution = distributionFor(item); return distribution.common?.start || distribution.source_preview?.startDate || item.scheduled_for || item.created_at; }
 function eventinPublishedAt(item, distribution) { return distribution.eventin_first_published_at || distribution.eventin_published_at || distribution.website_event_published_at || distribution.eventin_created_at || distribution.website_event_created_at || distribution.eventin?.published_at || distribution.eventin?.created_at || ((distribution.eventin_event_id || distribution.external_ids?.eventin) ? item.published_at || item.created_at : ""); }
@@ -390,7 +390,7 @@ export function sourceComparisonStatus(item, sources = [], check = "idle") {
   if (facebookEventId(distribution) || distribution.provider_delivery?.facebook?.external_id) expected.push("Facebook");
   if (check === "pending") return { key: "pending", title: "Controle op verschillen loopt…", detail: "Je hoeft niets te doen. De bewerkpanelen blijven gesloten." };
   if (check === "queued") return { key: "queued", title: "Controle staat klaar", detail: "Dit evenement wacht op de automatische controle." };
-  if (check === "timeout") return { key: "incomplete", title: "Controle duurt te lang", detail: "Een bron reageerde niet binnen 6 seconden. Er is niets gewijzigd. Je kunt meteen opnieuw controleren." };
+  if (check === "timeout") return { key: "incomplete", title: "Controle duurt te lang", detail: "Een bron reageerde niet binnen 30 seconden. Er is niets gewijzigd. Je kunt meteen opnieuw controleren." };
   if (check === "error") return { key: "incomplete", title: "Controle niet afgerond", detail: "De bronnen konden niet volledig worden opgehaald. Probeer opnieuw via ‘Bronnen vergelijken — tekst en foto kiezen’." };
   if (!expected.length) return { key: "unlinked", title: "Geen gekoppelde bronnen om te vergelijken", detail: "Er kan nog niet worden vastgesteld of de externe teksten overeenkomen." };
   const remote = sources.filter(source => expected.includes(source.label));
@@ -747,7 +747,7 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     const facebookId = String(distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook || "").trim();
     const sourceRequests = [];
     if (/^\d+$/.test(eventinId) && business) sourceRequests.push((async () => {
-      const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), site: siteForBusiness(business), eventId: eventinId, campaignId: String(item.id), importEvent: "1" });
+      const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), site: siteForBusiness(business), eventId: eventinId, campaignId: String(item.id), importEvent: "1", sourceComparison: "1" });
       const response = await fetch(`/api/marketing/website-events/create?${params}`, { signal, headers: { Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}` }, keepalive: true });
       const payload = await response.json().catch(() => ({}));
       return response.ok && payload.event ? { label: "Eventin", item: { id: `compare:eventin:${eventinId}`, business_id: item.business_id, scheduled_for: payload.event.start, media: [{ kind: "campaign_distribution", source_type: "eventin_event", common: { title: payload.event.title, start: payload.event.start, end: payload.event.end, location: payload.event.location, description: payload.event.description, website_url: payload.event.url || "", image_url: payload.event.imageUrl || "" } }] } } : null;
@@ -789,7 +789,7 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     setSourceComparisonChecks(previous => ({ ...previous, [id]: "pending" }));
     job.promise = (async () => {
       try {
-        const comparison = await withRequestTimeout(fetchSourceComparison(item, job.controller.signal), "Een bron reageerde niet binnen 6 seconden.", () => { job.timedOut = true; job.controller.abort(); }, SOURCE_COMPARISON_TIMEOUT_MS);
+        const comparison = await withRequestTimeout(fetchSourceComparison(item, job.controller.signal), "Een bron reageerde niet binnen 30 seconden.", () => { job.timedOut = true; job.controller.abort(); }, SOURCE_COMPARISON_TIMEOUT_MS);
         if (current()) {
           setSourceComparisons(previous => ({ ...previous, [id]: comparison || [] }));
           setSourceComparisonChecks(previous => ({ ...previous, [id]: comparison ? "done" : "error" }));

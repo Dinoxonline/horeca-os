@@ -58,6 +58,14 @@ test('Eventin start, end and ticket-sale dates retain their day and time', () =>
   assert.equal(normalizedEventinDate('not-a-date'), '');
 });
 
+test('source comparisons request Eventin text without waiting for a featured-photo lookup', () => {
+  const overview = fs.readFileSync(path.join(root, 'components/marketing-overview.js'), 'utf8');
+  const route = fs.readFileSync(path.join(root, 'app/api/marketing/website-events/create/route.js'), 'utf8');
+  assert.match(overview, /sourceComparison: "1"/);
+  assert.match(route, /sourceComparison: url\.searchParams\.get\("sourceComparison"\) === "1"/);
+  assert.match(route, /if \(body\.sourceComparison\) return NextResponse\.json\(\{ event: normalizeEventinDetail\(eventinData, wordpressData, site, ""\)/);
+});
+
 for (const failure of ['', 'first', 'second', 'zero']) test(`local merge verifies both saves and never publishes: ${failure || 'success'}`, async () => {
   await swc.loadBindings();
   const { saveLocalEventMerge } = load('lib/local-event-merge.js');

@@ -536,6 +536,7 @@ export async function GET(request) {
     site: url.searchParams.get("site"),
     campaignId: url.searchParams.get("campaignId"),
     importEvent: url.searchParams.get("importEvent") === "1",
+    sourceComparison: url.searchParams.get("sourceComparison") === "1",
   };
   const context = await ownerContext(request, body.workspaceId);
   if (!context) return NextResponse.json({ error: "Alleen de eigenaar mag bestaande Eventin-evenementen importeren." }, { status: 403 });
@@ -564,6 +565,9 @@ export async function GET(request) {
     if (String(wordpressData.id) !== requestedEventId || String(eventinRow.id) !== requestedEventId) {
       return NextResponse.json({ error: "Het website-evenement kon niet betrouwbaar worden gecontroleerd." }, { status: 502 });
     }
+    // Text comparison does not need a separate media request. Keeping it lean
+    // makes the result available sooner; photo selection has its own check.
+    if (body.sourceComparison) return NextResponse.json({ event: normalizeEventinDetail(eventinData, wordpressData, site, ""), website: site.origin, readOnly: false });
     try {
       // All consumers (source comparison, Instagram, Predis and the editor)
       // must use the same actual featured photo, never the stale Eventin banner.
