@@ -228,28 +228,26 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <small>Je bewerkt alleen dit bericht. Het evenement en bestaande publicaties blijven ongewijzigd.</small>
     </fieldset>
     <div className={styles.step} aria-label="Handmatig overzetten naar Predis">
-      <strong>2. Bestaand ontwerp uploaden, daarna inplannen</strong>
-      <p>Download je bestand(en). De grote knop bewaart je concept, kopieert je exacte tekst en opent Predis. Er is geen Predis-API-koppeling nodig voor deze handmatige route.</p>
-      {!!draft.assets.length && <div className={styles.downloads}><strong>Bestanden om zelf te uploaden · volgorde in Predis</strong>{draft.assets.map((a, i) => <div key={a.url} className={styles.actions}>
-        <button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={() => downloadAsset(a, i)}>{i + 1}. {a.label} opslaan</button>
+      <strong>2. Bestand en tekst klaarzetten voor Predis</strong>
+      <p>Download eerst het gekozen bestand en kopieer daarna je berichttekst. Open Predis pas daarna om het bestand zelf te uploaden.</p>
+      {!!draft.assets.length && <div className={styles.downloads}><strong>Gekozen bestand{draft.assets.length === 1 ? "" : "en"} downloaden · volgorde in Predis</strong>{draft.assets.map((a, i) => <div key={a.url} className={styles.actions}>
+        <button type="button" className="secondaryButton" aria-label={`Gekozen ${a.type === "video" ? "video" : "afbeelding"} ${i + 1} downloaden`} disabled={!loaded || !!busy} onClick={() => downloadAsset(a, i)}>{i + 1}. {a.type === "video" ? "Video" : "Afbeelding"} downloaden</button>
         {draft.assets.length > 1 && <><button type="button" className="secondaryButton" aria-label={`Verplaats bestand ${i + 1} naar voren`} disabled={!loaded || !!busy || i === 0} onClick={() => moveAsset(i, -1)}>↑</button><button type="button" className="secondaryButton" aria-label={`Verplaats bestand ${i + 1} naar achteren`} disabled={!loaded || !!busy || i === draft.assets.length - 1} onClick={() => moveAsset(i, 1)}>↓</button></>}
       </div>)}</div>}
       {!draft.assets.length && <p>Kies hierboven eerst je afbeelding(en) of video.</p>}
       <div className={styles.actions}>
-        <button type="button" className="primaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || !draft.assets.length || !!formatWarning} onClick={handoff}>Bewaren, tekst kopiëren en Predis openen</button>
+        <button type="button" className="primaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
+        <a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen om te uploaden ↗</a>
         <button type="button" className="secondaryButton" disabled={!loaded || !!busy || (!dirty && !!saved)} onClick={save}>Concept bewaren</button>
       </div>
+      <p><small>Wil je alles tegelijk doen? Hiermee wordt het concept bewaard, de tekst gekopieerd en Predis geopend.</small></p>
+      <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || !draft.assets.length || !!formatWarning} onClick={handoff}>Alles klaarzetten en Predis openen</button>
       {saved && !dirty && <small>Concept bewaard in Horeca OS</small>}
       {loaded && !chosen && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
       <p>Controleer in Predis het merk <b>{businessName}</b>. Kies in het Predis-keuzescherm ‘Heb je al een ontwerp? Uploaden en inplannen’ → ‘Upload inhoud vanaf apparaat’ → {uploadLabel || "Enkele afbeelding, Carrousel of Video’s"}. Upload de bestanden in bovenstaande volgorde en plak je tekst met Ctrl+V.</p>
       <p>Controleer het resultaat in de inhoudsbibliotheek. Kies daarna de kanalen en <b>nu publiceren</b> of <b>inplannen voor later</b>. Kies niet de AI-maakoptie of een leeg canvas.</p>
-      <div className={styles.actions}>
-        <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button>
-        <a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Predis openen voor bestaand ontwerp ↗</a>
-        <a className="secondaryButton" href="https://app.predis.ai/app/content_calendar" target="_blank" rel="noopener noreferrer">Predis-planning bekijken ↗</a>
-      </div>
       <small>Foto en tekst worden niet automatisch meegestuurd. Deze handmatige route vraagt geen AI-generatie aan en gebruikt geen generatiecredits.</small>
-      <small>Wil je zien wat al is ingepland? Bekijk de Predis-planning. Handmatige posts en hun status worden niet automatisch ingelezen; bevestig de uitkomst zelf bij stap 3.</small>
+      <small>Handmatige posts en hun status worden niet automatisch ingelezen; bevestig de uitkomst zelf bij stap 3.</small>
     </div>
     <details className={styles.moreOptions}>
     <summary>Datums en kanalen vastleggen in Horeca OS (optioneel) · {draft.entries.length} kanaalmomenten</summary>

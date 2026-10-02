@@ -185,11 +185,11 @@ test('optional planner previews selected weekdays, adds nonduplicated dates, sav
    const visibleList=planner().findByProps({'aria-label':'Toegevoegde publicatiemomenten'});
    assert.match(allText(visibleList),/nog niet bewaard/);
    assert.match(allText(visibleList),/28\s*-\s*10\s*-\s*2026.*Facebook/);
-   assert.ok(allText(r.root).indexOf('2. Bestaand ontwerp') < allText(r.root).indexOf('Gewenste datums bij je concept'));
+   assert.ok(allText(r.root).indexOf('2. Bestand en tekst klaarzetten voor Predis') < allText(r.root).indexOf('Gewenste datums bij je concept'));
    assert.equal(button('Direct publiceren — nog niet beschikbaar'),undefined);
    assert.match(allText(r.root),/nu publiceren/);
    assert.match(allText(r.root),/Je hoeft hier nog geen moment toe te voegen/);
-   assert.match(allText(r.root),/Wil je zien wat al is ingepland/);
+   assert.doesNotMatch(allText(r.root),/Predis-planning bekijken/);
    assert.match(allText(r.root),/Predis-keuzescherm/);
    await React.act(async()=>planner().findByType('select').props.onChange({target:{value:'single'}}));
    await React.act(async()=>label('Datum').findByType('input').props.onChange({target:{value:'2026-10-30'}}));
@@ -232,12 +232,12 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  const content=allText(r.root);
  assert.match(content,/Er wordt geen AI-ontwerp aangevraagd/);
  assert.ok(content.includes('1. Bericht voorbereiden'));
- assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Bestaand ontwerp uploaden, daarna inplannen'));
- assert.ok(content.indexOf('2. Bestaand ontwerp uploaden, daarna inplannen') < content.indexOf('3. Bevestigen na Predis'));
+ assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Bestand en tekst klaarzetten voor Predis'));
+ assert.ok(content.indexOf('2. Bestand en tekst klaarzetten voor Predis') < content.indexOf('3. Bevestigen na Predis'));
  assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);
  assert.match(content,/Foto en tekst worden niet automatisch meegestuurd/);
- assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis-planning bekijken ↗').props.href,'https://app.predis.ai/app/content_calendar');
- assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen voor bestaand ontwerp ↗').props.href,'https://app.predis.ai/app/new_post/create');
+ assert.equal(r.root.findAllByType('a').find(a=>allText(a)==='Predis openen om te uploaden ↗').props.href,'https://app.predis.ai/app/new_post/create');
+ assert.equal(r.root.findAllByType('a').some(a=>a.props.href==='https://app.predis.ai/app/content_calendar'),false);
  await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:'Edited'}}));
  await React.act(async()=>r.update(React.createElement(Component,{...props,enabled:true,session:{access_token:'two'}})));
  assert.equal(r.root.findByType('textarea').props.value,'Edited');assert.equal(calls.length,1);
@@ -263,8 +263,8 @@ test('simple preparation shows selectable images immediately, keeps saved-only m
    assert.equal(r.root.findAllByType('img').length,2);assert.ok(r.root.findAllByType('img').every(n=>!collapsedAncestor(n)));
    assert.ok(!collapsedAncestor(r.root.findByType('table')));assert.ok(collapsedAncestor(button('Bewaarde versie laden')));
    const visibleButtons=r.root.findAllByType('button').filter(n=>!collapsedAncestor(n));
-   assert.equal(visibleButtons.filter(n=>/bewaren/i.test(allText(n))).length,2);
-   assert.equal(visibleButtons.filter(n=>/kopiëren/i.test(allText(n))).length,2);
+   assert.equal(visibleButtons.filter(n=>/bewaren/i.test(allText(n))).length,1);
+   assert.equal(visibleButtons.filter(n=>/kopiëren/i.test(allText(n))).length,1);
    assert.equal(button('Concept bewaren').props.disabled,true);
    await React.act(async()=>r.root.findByProps({'aria-label':'Kies New photo'}).props.onClick());
    assert.equal(r.root.findByProps({'aria-label':'Deselecteer New photo'}).props['aria-pressed'],true);
@@ -357,7 +357,7 @@ test('original image and video downloads preserve bytes and MIME extension witho
      let r;
      try{
        await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},enabled:true,uploadType:type==='video'?'video':'single_image'}));});
-       await React.act(async()=>r.root.findAllByType('button').find(b=>/Origineel\s+opslaan/.test(allText(b))).props.onClick());
+       await React.act(async()=>r.root.findByProps({'aria-label':`Gekozen ${type === 'video' ? 'video' : 'afbeelding'} 1 downloaden`}).props.onClick());
        assert.deepEqual(new Uint8Array(await downloaded.arrayBuffer()),original);
        assert.equal(downloaded.type,mime);assert.ok(link.download.endsWith('.'+extension));
        assert.equal(calls.length,2);assert.equal(calls[1],asset.url);
@@ -399,7 +399,7 @@ test('one-click handoff saves exact text, handles copy/popup/save failures and n
      await React.act(async()=>{r=Renderer.create(React.createElement(Component,{item,workspaceId:'w',session:{access_token:'one'},businessName:'Caribbean Corner',enabled:true}));});
      const caption=scenario==='unchanged'?draft.caption:'  Exact 🌴\n\n#hashtag  \n';
      if(scenario!=='unchanged')await React.act(async()=>r.root.findByType('textarea').props.onChange({target:{value:caption}}));
-     const button=r.root.findAllByType('button').find(b=>allText(b)==='Bewaren, tekst kopiëren en Predis openen');
+     const button=r.root.findAllByType('button').find(b=>allText(b)==='Alles klaarzetten en Predis openen');
      assert.equal(button.props.disabled,false);
      let pending;await React.act(async()=>{pending=button.props.onClick();button.props.onClick();await pending;});
      assert.ok(calls.every(c=>c.url.startsWith('/api/marketing/manual-predis')));
