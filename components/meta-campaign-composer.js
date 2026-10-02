@@ -5,7 +5,7 @@ import Image from "next/image";
 import MetaAccountBudget from "./meta-account-budget";
 import MetaPromotionPicker from "./meta-promotion-picker";
 import MetaAudiencePicker from "./meta-audience-picker";
-import { META_OBJECTIVES, META_CTA, defaultMetaCampaign, campaignImages, campaignBudgetSummary, validateMetaCampaign, publicWebUrl } from "../lib/meta-campaign-settings";
+import { META_OBJECTIVES, META_CTA, defaultMetaCampaign, campaignImages, campaignImageForPlacement, campaignBudgetSummary, validateMetaCampaign, publicWebUrl } from "../lib/meta-campaign-settings";
 import styles from "./meta-campaign-composer.module.css";
 
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
@@ -32,6 +32,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
   const [savedAudienceEditorOpen, setSavedAudienceEditorOpen] = useState(false);
   const [savedAudienceOriginal, setSavedAudienceOriginal] = useState(null);
   const images = campaignImages(distribution);
+  const defaultEventImage = campaignImageForPlacement(distribution, draft.placements);
   const budget = campaignBudgetSummary(draft);
   const platform = ["facebook", "instagram"].includes(draft.placements) ? draft.placements : previewPlatform;
   const story = draft.placementFormat === "story" || (draft.placementFormat !== "feed" && previewStory);
@@ -95,7 +96,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
         <div className={styles.body}>
           {step === "campaign" && <>
             {lockToEvent
-              ? <section className={styles.picker} aria-label="Advertentiebron"><h4>Je promoot dit evenement</h4><p><strong>{distribution.common?.title || item.body || "Dit evenement"}</strong></p><p className={styles.help}>Tekst, afbeelding en ticketlink komen uit dit evenement. Je hoeft geen andere Facebook- of Instagrambron te zoeken of te kiezen.</p></section>
+              ? <section className={styles.picker} aria-label="Advertentiebron"><h4>Je promoot dit evenement</h4><p><strong>{distribution.common?.title || item.body || "Dit evenement"}</strong></p><p className={styles.help}>Tekst en ticketlink komen uit dit evenement. Voor Facebook en Instagram gebruiken we standaard het staande posterbeeld; je kunt dit in stap 3 wijzigen.</p></section>
               : <MetaPromotionPicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy} />}
             <div className={styles.sectionHeading}><h4>Campagne en doel</h4><p>Wat wil je met deze advertentie bereiken?</p></div>
             {field("Campagnenaam", "campaignName", { maxLength: 150 })}
@@ -147,7 +148,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             </>}
             <div className={styles.sectionHeading}><h4>Plaatsingen</h4><p>Kies op welke kanalen je zichtbaar wilt zijn.</p></div>
             <div className={styles.fields}>
-              <label className={styles.field}>Kanalen<select disabled={busy || existingPost} value={draft.placements} onChange={event => update("placements", event.target.value)}><option value="both">Facebook en Instagram</option><option value="facebook">Alleen Facebook</option><option value="instagram">Alleen Instagram</option></select></label>
+              <label className={styles.field}>Kanalen<select disabled={busy || existingPost} value={draft.placements} onChange={event => { const placements = event.target.value; const currentDefault = campaignImageForPlacement(distribution, draft.placements); updateMany({ placements, ...(!existingPost && defaultEventImage?.url && draft.imageUrl === currentDefault?.url ? { imageUrl: campaignImageForPlacement(distribution, placements)?.url || draft.imageUrl } : {}) }); }}><option value="both">Facebook en Instagram</option><option value="facebook">Alleen Facebook</option><option value="instagram">Alleen Instagram</option></select></label>
               <label className={styles.field}>Plaatsingen<select disabled={busy || existingPost} value={draft.placementFormat} onChange={event => update("placementFormat", event.target.value)}><option value="feed">Feeds</option><option value="story">Stories</option><option value="feed_story">Feeds en Stories</option><option value="automatic">Meta kiest binnen deze kanalen</option></select></label>
             </div>
             <p className={styles.help}>Stories en Instagram worden hier op mobiel gericht. Gebruik Meta Ads Manager voor afzonderlijke Reels-instellingen en plaatsingsspecifieke beelden.</p>
