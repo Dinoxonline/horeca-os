@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import FacebookAdAccountPicker from "./facebook-ad-account-picker";
-import MetaCampaignComposer from "./meta-campaign-composer";
+import MetaCampaignComposer, { clearMetaCampaignDraft } from "./meta-campaign-composer";
 import MetaAccountBudget from "./meta-account-budget";
 import MetaCampaignStatus from "./meta-campaign-status";
 import { campaignBudgetSummary } from "../lib/meta-campaign-settings";
@@ -69,6 +69,7 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
       });
       const result = await response.json();
       if (!response.ok || !result.paidCampaign) throw new Error(result.error || "Meta heeft geen campagnebevestiging teruggegeven.");
+      clearMetaCampaignDraft(item);
       onSaved({ ...item, media: (item.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) });
       onDirty?.(false);
     } catch (failure) { setError(failure.message || "Meta kon het concept niet maken."); }

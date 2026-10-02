@@ -9,13 +9,34 @@ import styles from "./meta-campaign-composer.module.css";
 
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", ES: "Spanje", GB: "Verenigd Koninkrijk" };
+const CAMPAIGN_STEPS = new Set(["campaign", "audience", "finance", "creative"]);
+
+export function metaCampaignDraftStorageKey(item = {}) { return `horeca-os:meta-campaign-draft:v1:${item.id || "new"}`; }
+export function readMetaCampaignDraft(item) {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = JSON.parse(window.localStorage?.getItem(metaCampaignDraftStorageKey(item)) || "null");
+    return value?.draft && typeof value.draft === "object" ? value : null;
+  } catch { return null; }
+}
+export function saveMetaCampaignDraft(item, draft, step) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage?.setItem(metaCampaignDraftStorageKey(item), JSON.stringify({ draft, step })); } catch {}
+}
+export function clearMetaCampaignDraft(item) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage?.removeItem(metaCampaignDraftStorageKey(item)); } catch {}
+}
 
 export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onUpdateSavedAudience, onDirty, busy, error, initialDraft, onDraftChange, lockToEvent = false }) {
-  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), ...initialDraft, beneficiary: initialDraft?.beneficiary || pageName || businessName || "", payer: initialDraft?.payer || pageName || businessName || "", ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
+  const [storedDraft] = useState(() => readMetaCampaignDraft(item));
+  const restoredDraft = initialDraft || storedDraft?.draft;
+  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), ...restoredDraft, beneficiary: restoredDraft?.beneficiary || pageName || businessName || "", payer: restoredDraft?.payer || pageName || businessName || "", ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
   useEffect(() => { draftListener.current?.(draft); }, [draft]);
-  const [step, setStep] = useState("campaign");
+  const [step, setStep] = useState(() => CAMPAIGN_STEPS.has(storedDraft?.step) ? storedDraft.step : "campaign");
+  useEffect(() => { saveMetaCampaignDraft(item, draft, step); }, [item, draft, step]);
   const [previewPlatform, setPreviewPlatform] = useState("facebook");
   const [previewStory, setPreviewStory] = useState(false);
   const [localError, setLocalError] = useState("");

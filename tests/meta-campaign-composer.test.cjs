@@ -16,6 +16,20 @@ function load(file, mocks = {}) {
 const distribution = { kind: "campaign_distribution", common: { title: "Live muziek", description: "Een avond vol muziek.", image_url: "https://example.com/poster.jpg", website_url: "https://example.com/tickets" } };
 const item = { id: "campaign", body: "Tekst", business_id: "venue", media: [distribution] };
 
+test("Meta campaign drafts restore the form and current step until the concept is made", async () => {
+  await swc.loadBindings();
+  const originalWindow = global.window, memory = new Map();
+  global.window = { localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) } };
+  try {
+    const { metaCampaignDraftStorageKey, readMetaCampaignDraft, saveMetaCampaignDraft, clearMetaCampaignDraft } = load("components/meta-campaign-composer.js", { "next/image": { __esModule: true, default: () => null } });
+    saveMetaCampaignDraft(item, { campaignName: "Later verder" }, "finance");
+    assert.deepEqual(readMetaCampaignDraft(item), { draft: { campaignName: "Later verder" }, step: "finance" });
+    assert.equal(memory.has(metaCampaignDraftStorageKey(item)), true);
+    clearMetaCampaignDraft(item);
+    assert.equal(readMetaCampaignDraft(item), null);
+  } finally { global.window = originalWindow; }
+});
+
 test("saved Meta audiences always show their concrete location or a clearly labelled name fallback", async () => {
   await swc.loadBindings();
   const { audienceLocationSummary, audienceNameLocationHint } = load("components/meta-audience-picker.js");
