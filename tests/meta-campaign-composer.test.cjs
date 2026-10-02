@@ -160,6 +160,20 @@ test("editor edits update preview, retain step state, search real IDs and submit
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test("advertentievoorbeeld behoudt de oorspronkelijke afbeeldingsverhouding", async () => {
+  await swc.loadBindings();
+  const React = require("react"), Renderer = require("react-test-renderer");
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const Composer = load("components/meta-campaign-composer.js", { "next/image": { __esModule: true, default: props => React.createElement("img", props) } }).default;
+  let renderer;
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Composer, { item, distribution, businessName: "Caribbean Corner", onCreate() {}, onSearch: async () => [], onCatalog: async () => ({ options: [] }) })); });
+    const image = renderer.root.findByProps({ alt: "Gekozen advertentiebeeld" });
+    await React.act(async () => image.props.onLoad({ currentTarget: { naturalWidth: 1080, naturalHeight: 1350 } }));
+    assert.equal(renderer.root.findAllByProps({ className: "adImage" })[0].props.style.aspectRatio, "0.8");
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test("a saved Meta audience is edited in one dialog and saves the existing Meta audience", async () => {
   await swc.loadBindings();
   const React = require("react"), Renderer = require("react-test-renderer");

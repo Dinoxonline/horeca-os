@@ -26,6 +26,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
   const [interestQuery, setInterestQuery] = useState("");
   const [interestResults, setInterestResults] = useState([]);
   const [failedImage, setFailedImage] = useState("");
+  const [previewImageRatio, setPreviewImageRatio] = useState(null);
   const [savedAudienceBusy, setSavedAudienceBusy] = useState(false);
   const [savedAudienceNotice, setSavedAudienceNotice] = useState("");
   const [savedAudienceEditorOpen, setSavedAudienceEditorOpen] = useState(false);
@@ -35,6 +36,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
   const platform = ["facebook", "instagram"].includes(draft.placements) ? draft.placements : previewPlatform;
   const story = draft.placementFormat === "story" || (draft.placementFormat !== "feed" && previewStory);
   const imageUrl = publicWebUrl(draft.imageUrl);
+  useEffect(() => { setPreviewImageRatio(null); }, [imageUrl]);
   const destination = publicWebUrl(draft.destinationUrl);
   const mapQuery = [draft.locationQuery, countries[draft.countries[0]]].filter(Boolean).join(", ");
   const mapZoom = Math.max(8, Math.min(13, Math.round(15 - Math.log2(Math.max(1, Number(draft.radiusKm || 25))))));
@@ -174,7 +176,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
         <div className={`${styles.adCard} ${story ? styles.story : ""}`}>
           <div className={styles.adIdentity}><span className={styles.avatar}>{(identity || "H").slice(0, 1)}</span><div><strong>{identity || "Jouw vestiging"}</strong><small>Gesponsord · {platform === "facebook" ? "Facebook" : "Instagram"}</small></div><span aria-hidden="true">···</span></div>
           {!story && <p className={styles.adText}>{draft.primaryText || "Je advertentietekst verschijnt hier."}</p>}
-          <div className={styles.adImage}>{imageUrl && failedImage !== imageUrl ? <Image src={imageUrl} alt="Gekozen advertentiebeeld" fill unoptimized sizes="(max-width: 800px) 90vw, 340px" onError={() => setFailedImage(imageUrl)} /> : <span>{imageUrl ? "Afbeelding niet te laden — controleer de link" : "Kies een afbeelding bij Advertentie"}</span>}</div>
+          <div className={styles.adImage} style={!story && previewImageRatio ? { aspectRatio: String(previewImageRatio) } : undefined}>{imageUrl && failedImage !== imageUrl ? <Image src={imageUrl} alt="Gekozen advertentiebeeld" fill unoptimized sizes="(max-width: 800px) 90vw, 340px" onLoad={event => { const { naturalWidth, naturalHeight } = event.currentTarget; if (naturalWidth && naturalHeight) setPreviewImageRatio(naturalWidth / naturalHeight); }} onError={() => setFailedImage(imageUrl)} /> : <span>{imageUrl ? "Afbeelding niet te laden — controleer de link" : "Kies een afbeelding bij Advertentie"}</span>}</div>
           {!existingPost && <div className={styles.adLink}><div><small>{destination ? new URL(destination).hostname : "JOUW WEBSITE"}</small><strong>{draft.headline || "Kop van je advertentie"}</strong>{draft.description && <p>{draft.description}</p>}</div><span className={styles.fakeCta}>{META_CTA[draft.callToAction]?.label}</span></div>}
           {!story && <div className={styles.adActions} aria-hidden="true">{platform === "facebook" ? "Vind ik leuk  ·  Reageren  ·  Delen" : "♡   ◯   ↗"}</div>}
         </div>
