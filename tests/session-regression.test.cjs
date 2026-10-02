@@ -56,6 +56,12 @@ test('a manually confirmed Predis schedule gets the green placed status', async 
   assert.deepEqual(channelStatus(item, 'predis'), { key: 'placed', label: 'Ingepland in Predis' });
 });
 
+test('a manually confirmed WhatsApp post gets the green placed status', async () => {
+  const { channelStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'whatsapp-placed', media: [{ kind: 'campaign_distribution', common: { title: 'Avond' }, manual_whatsapp: { state: 'placed', verification: 'user_reported' } }] };
+  assert.deepEqual(channelStatus(item, 'whatsapp'), { key: 'placed', label: 'Geplaatst op WhatsApp' });
+});
+
 test('comparison summary distinguishes equal, different, incomplete and failed checks without trusting manual confirmation', async () => {
   const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = (title = 'Title', description = 'Text') => ({ id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });
@@ -382,7 +388,7 @@ test('event layout starts with one workspace and keeps secondary information col
     assert.equal(article.children[statusIndex - 2].props.className, 'marketingEventHeading');
     assert.ok(facts.findAllByType('p')[0].props.children.includes('Caribbean Corner'), 'empty event location falls back to the linked venue');
     assert.equal(facts.findAllByType('dl').length, 0, 'no tall equal-height metadata columns');
-    assert.deepEqual(statuses.findAllByType('strong').map(node => Array.isArray(node.props.children) ? node.props.children[0] : node.props.children), ['Website', 'Facebook', 'Facebook winactie', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis', 'Overige']);
+    assert.deepEqual(statuses.findAllByType('strong').map(node => Array.isArray(node.props.children) ? node.props.children[0] : node.props.children), ['Website', 'Facebook', 'Facebook winactie', 'WhatsApp', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis', 'Overige']);
     assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
     assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
     const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
@@ -554,9 +560,9 @@ test('channel tiles open and focus their own editor without saving or publishing
     });
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const buttons = () => statuses.findAllByType('button');
-    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Facebook winactie', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
+    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Facebook winactie', 'WhatsApp', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
-    for (const channel of ['meta', 'calendar', 'predis']) {
+    for (const channel of ['whatsapp', 'meta', 'calendar', 'predis']) {
       const id = `event-channel-${channel}-tiles`;
       const button = () => buttons().find(button => button.props['aria-controls'] === id);
       await React.act(async () => button().props.onClick());

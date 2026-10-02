@@ -19,7 +19,9 @@ test("WhatsApp draft uses public content, explicit event date and correctly enco
   assert.ok(draft.text.includes("18:00")); assert.ok(draft.text.includes("Kom langs!")); assert.ok(!draft.text.includes("evil"));
   assert.equal(new URL(helper.whatsappShareUrl(draft.text + " 🎵")).searchParams.get("text"), draft.text + " 🎵");
   assert.equal(new URL(helper.whatsappShareUrl(draft.text)).pathname, "/", "does not target a person or fixed group");
+  assert.equal(new URL(helper.whatsappDesktopUrl(draft.text)).protocol, "whatsapp:");
   assert.equal(helper.whatsappShareUrl("  "), "");
+  assert.equal(helper.whatsappDesktopUrl("  "), "");
   const product = helper.whatsappDraft({ body: "Nieuwe kaart", scheduled_for: "2040-01-01" }, { common: { website_url: "javascript:alert(1)" } });
   assert.equal(product.text, "Nieuwe kaart"); assert.equal(product.images.length, 0);
 });
@@ -55,10 +57,10 @@ test("share UI preserves user control, supports files and cancellation, never ma
     assert.equal(requests, 0);
     await React.act(async () => renderer.root.findByType("details").props.onToggle({ currentTarget: { open: true } }));
     await React.act(async () => renderer.root.findByType("textarea").props.onChange({ target: { value: "Mijn eigen groepsbericht 🎵" } }));
-    const link = renderer.root.findAllByType("a").find(node => node.props.href.startsWith("https://wa.me/"));
+    const link = renderer.root.findAllByType("a").find(node => node.props.href.startsWith("whatsapp://"));
     assert.equal(new URL(link.props.href).searchParams.get("text"), "Mijn eigen groepsbericht 🎵");
     await React.act(async () => link.props.onClick());
-    assert.ok(JSON.stringify(renderer.toJSON()).includes("foto wordt via deze knop niet meegestuurd"));
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("WhatsApp Desktop wordt geopend"));
     await React.act(async () => button("Tekst kopiëren").props.onClick()); assert.equal(copied, "Mijn eigen groepsbericht 🎵");
     await React.act(async () => button("Foto klaarzetten").props.onClick()); assert.equal(requests, 1); assert.equal(shared, undefined);
     await React.act(async () => button("Foto en bericht delen").props.onClick());
@@ -86,6 +88,21 @@ test("fallback UI handles denied clipboard and unavailable photo sharing", async
     assert.ok(JSON.stringify(renderer.toJSON()).includes("originele foto openen"));
     assert.equal(renderer.root.findAllByType("button").filter(node => node.props.children === "Foto en bericht delen").length, 0);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); if (nav) Object.defineProperty(global, "navigator", nav); else delete global.navigator; global.fetch = originalFetch; }
+});
+
+test("manual confirmation is explicit and turns the WhatsApp status green only after the saved response", async () => {
+  await swc.loadBindings();
+  const React = require("react"), Renderer = require("react-test-renderer"); global.IS_REACT_ACT_ENVIRONMENT = true;
+  const Component = load("components/whatsapp-share.js").default;
+  const originalFetch = global.fetch; let renderer, sent;
+  global.fetch = async (url, options) => { sent = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ saved: { revision: "saved", state: "placed" } }) }; };
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item: { id: "event", business_id: "venue" }, distribution, workspaceId: "workspace", session: { access_token: "token" } })); });
+    await React.act(async () => renderer.root.findByType("details").props.onToggle({ currentTarget: { open: true } }));
+    await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Geplaatst op WhatsApp").props.onClick());
+    assert.equal(sent.url, "/api/marketing/manual-whatsapp"); assert.equal(sent.body.action, "mark_published"); assert.equal(sent.body.confirmed, true);
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("Geplaatst op WhatsApp"));
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); global.fetch = originalFetch; }
 });
 
 test("both event details and saved event/product campaigns mount the same sharing component", async () => {
