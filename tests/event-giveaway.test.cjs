@@ -46,6 +46,8 @@ test("a giveaway is filled from the event and keeps its practical variables in t
   assert.match(giveawaySource, /Facebook openen om te plaatsen/);
   assert.match(giveawaySource, /Winactiebeeld downloaden/);
   assert.match(giveawaySource, /Direct op Facebook plaatsen/);
+  assert.match(giveawaySource, /Winactie geplaatst op Facebook/);
+  assert.match(giveawaySource, /Bekijk bericht op Facebook/);
   assert.match(giveawaySource, /maximaal 1080 pixels breed, zonder ruimte naast de flyer/);
   assert.match(giveawaySource, /previewAspectRatio/);
   const giveawayImageSource = fs.readFileSync(path.join(root, "lib/giveaway-image.js"), "utf8");

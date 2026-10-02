@@ -69,9 +69,13 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
   const [message, setMessage] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
   const [previewAspectRatio, setPreviewAspectRatio] = useState("4 / 5");
+  const [publishedPost, setPublishedPost] = useState(() => distribution?.provider_delivery?.facebook_giveaway || null);
   const imageOptions = useMemo(() => instagramEventMedia(item).filter((asset) => asset.type === "image" && !asset.issue), [item]);
   const selectedImage = imageOptions.find((asset) => asset.url === draft.imageUrl) || imageOptions[0] || null;
   const overlayLines = giveawayOverlayLines(draft);
+  const savedGiveaway = distribution?.provider_delivery?.facebook_giveaway;
+  const giveawayPublication = publishedPost || savedGiveaway;
+  const giveawayPublished = ["confirmed", "published"].includes(giveawayPublication?.status);
 
   useEffect(() => {
     try {
@@ -85,6 +89,10 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
     if (!ready) return;
     try { window.localStorage.setItem(storageKey, JSON.stringify(draft)); } catch { /* The concept remains usable when browser storage is unavailable. */ }
   }, [draft, ready, storageKey]);
+
+  useEffect(() => {
+    if (savedGiveaway?.external_id) setPublishedPost(savedGiveaway);
+  }, [savedGiveaway?.external_id, savedGiveaway?.permalink, savedGiveaway?.published_at]);
 
   function update(name, value) {
     setDraft((current) => {
@@ -149,6 +157,7 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "De winactie kon niet op Facebook worden geplaatst.");
+      setPublishedPost({ status: "confirmed", external_id: result.post?.id, permalink: result.post?.permalink, published_at: new Date().toISOString() });
       if (result.campaign) onPublished?.(result.campaign);
       setMessage(result.alreadyPublished ? "Deze winactie stond al op Facebook. De bestaande publicatie is gekoppeld." : `De winactie is op ${result.post?.pageName || "Facebook"} geplaatst.`);
     } catch (error) { setMessage(error.message || "De winactie kon niet op Facebook worden geplaatst."); }
@@ -165,9 +174,10 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
     </div>
     <section style={{ display: "grid", gap: 10 }} aria-label="Afbeelding voor de winactie">
       <div><strong>Afbeelding voor de winactie</strong><p style={{ margin: "4px 0 0" }}>Kies een evenementfoto. De flyer blijft ongesneden en maximaal 1080 pixels breed, zonder ruimte naast de flyer. Daaronder komt een aparte winactiebalk van dezelfde breedte.</p></div>
+      {giveawayPublished && <div role="status" style={{ display: "grid", gap: 8, padding: 14, border: "1px solid #22864d", borderRadius: 8, background: "#edf9f0", color: "#145c31" }}><strong>✓ Winactie geplaatst op Facebook</strong><span>Deze winactie is al gepubliceerd. Je hoeft niets meer te doen.</span>{giveawayPublication?.permalink && <a style={{ width: "fit-content", padding: "10px 14px", borderRadius: 7, background: "#176d7f", color: "#fff", fontWeight: 700, textDecoration: "none" }} href={giveawayPublication.permalink} target="_blank" rel="noreferrer">Bekijk bericht op Facebook ↗</a>}</div>}
       {imageOptions.length ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{imageOptions.map((asset) => <button type="button" key={asset.url} onClick={() => update("imageUrl", asset.url)} aria-pressed={selectedImage?.url === asset.url} title={asset.label} style={{ display: "grid", gap: 5, width: 126, padding: 5, border: selectedImage?.url === asset.url ? "2px solid #1677ff" : "1px solid #cbdde5", borderRadius: 7, background: "#fff", color: "#173552", cursor: "pointer", textAlign: "left" }}><Image unoptimized src={asset.url} alt={asset.label} width={116} height={82} style={{ width: "100%", height: 82, objectFit: "cover", borderRadius: 4 }} /><small>{asset.label}</small></button>)}</div> : <p>Er is nog geen bruikbare evenementfoto. Kies eerst een hoofdfoto bij het evenement.</p>}
       {selectedImage && <div style={{ width: "min(100%, 420px)", overflow: "hidden", borderRadius: 9, background: "#071c2d" }}><div style={{ position: "relative", aspectRatio: previewAspectRatio }}><Image unoptimized src={selectedImage.url} alt="Voorbeeld van het winactiebeeld" fill sizes="420px" onLoad={(event) => { const { naturalWidth, naturalHeight } = event.currentTarget; if (naturalWidth && naturalHeight) setPreviewAspectRatio(`${naturalWidth} / ${naturalHeight}`); }} style={{ objectFit: "contain" }} /></div><div style={{ display: "grid", gap: 2, padding: "18px 12px", background: "rgba(4, 23, 38, .92)", color: "#fff", textAlign: "center", pointerEvents: "none" }}><strong style={{ fontSize: 34, lineHeight: 1 }}>{overlayLines[0]}</strong><span style={{ color: "#ffd34e", fontWeight: 800, fontSize: 18 }}>{overlayLines[1]}</span></div></div>}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={downloadImage}>{imageBusy ? "Winactiebeeld maken…" : "Winactiebeeld downloaden"}</button><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={openFacebookToPublish}>{imageBusy ? "Facebook voorbereiden…" : "Facebook openen om te plaatsen ↗"}</button><button type="button" className="primaryButton" disabled={!selectedImage || imageBusy || !workspaceId || !session?.access_token} onClick={publishDirectly}>{imageBusy ? "Op Facebook plaatsen…" : "Direct op Facebook plaatsen"}</button></div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={downloadImage}>{imageBusy ? "Winactiebeeld maken…" : "Winactiebeeld downloaden"}</button><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={openFacebookToPublish}>{imageBusy ? "Facebook voorbereiden…" : "Facebook openen om te plaatsen ↗"}</button>{giveawayPublished ? <span aria-label="Winactie is geplaatst" style={{ display: "inline-flex", alignItems: "center", padding: "10px 14px", borderRadius: 7, background: "#22864d", color: "#fff", fontWeight: 700 }}>✓ Geplaatst op Facebook</span> : <button type="button" className="primaryButton" disabled={!selectedImage || imageBusy || !workspaceId || !session?.access_token} onClick={publishDirectly}>{imageBusy ? "Op Facebook plaatsen…" : "Direct op Facebook plaatsen"}</button>}</div>
     </section>
     <label className="marketingGiveawayText" style={{ display: "grid", gap: 5 }}>Klaarstaande winactietekst<textarea rows={16} value={draft.text} onChange={(event) => { setDraft((current) => ({ ...current, text: event.target.value })); setMessage(""); }} /></label>
     <div className="marketingGiveawayActions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="primaryButton" onClick={copy}>Tekst kopiëren</button><button type="button" className="secondaryButton" onClick={reset}>Opnieuw invullen vanuit evenement</button></div>
