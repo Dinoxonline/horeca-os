@@ -471,9 +471,11 @@ function formUiStorageKey(workspaceId, businessId) {
 export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, onEventSaved }) {
   const [form, setForm] = useState(emptyForm);
   const [creativeBrief, setCreativeBrief] = useState("");
+  const [artistProgram, setArtistProgram] = useState("");
+  const [ticketDetails, setTicketDetails] = useState("");
+  const [practicalDetails, setPracticalDetails] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [creativeStepOpen, setCreativeStepOpen] = useState(true);
-  const [creativePromptCopied, setCreativePromptCopied] = useState(false);
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
   const handledNewEventRequestRef = useRef("");
@@ -713,9 +715,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setSelectedFacebookGroupIds([]);
     setEventWorkspaceView("new");
     setCreativeBrief("");
+    setArtistProgram("");
+    setTicketDetails("");
+    setPracticalDetails("");
     setSourceText("");
     setCreativeStepOpen(true);
-    setCreativePromptCopied(false);
     setPreview(false);
     setResult({ ok: true, message: "Er staat een leeg nieuw campagneformulier klaar. Het bestaande evenement is niet gewijzigd." });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1688,9 +1692,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setSelectedFacebookGroupIds([]);
     setEventWorkspaceView("new");
     setCreativeBrief("");
+    setArtistProgram("");
+    setTicketDetails("");
+    setPracticalDetails("");
     setSourceText("");
     setCreativeStepOpen(true);
-    setCreativePromptCopied(false);
     setPreview(false);
     setResult({ ok: true, message: `Nieuw evenement klaargezet op ${newEventRequest.date}. Pas de begin- en eindtijd aan als dat nodig is.` });
     // Deze loopt bewust na de eventuele herstelactie hierboven, zodat een
@@ -2632,23 +2638,23 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     return [eventItem.title, eventItem.location, eventItem.start, eventItem.end, eventItem.eventDate, dateText]
       .some((value) => String(value || "").toLocaleLowerCase("nl-NL").includes(managedEventSearchQuery));
   });
-  const chatGptDesignPrompt = chatGptEventDesignBrief(form, selectedBusiness?.name, creativeBrief);
+  const chatGptDesignPrompt = chatGptEventDesignBrief(form, selectedBusiness?.name, [
+    artistProgram.trim() ? `Artiesten en programma: ${artistProgram.trim()}` : "",
+    ticketDetails.trim() ? `Tickets en prijzen: ${ticketDetails.trim()}` : "",
+    practicalDetails.trim() ? `Praktische informatie: ${practicalDetails.trim()}` : "",
+    creativeBrief.trim() ? `Sfeer en beeldwensen: ${creativeBrief.trim()}` : "",
+  ].filter(Boolean).join("\n\n"));
   const chatGptDesignUrl = `https://chatgpt.com/?q=${encodeURIComponent(chatGptDesignPrompt)}`;
   const chatGptDesktopUrl = `codex://new?prompt=${encodeURIComponent(chatGptDesignPrompt)}`;
-  async function copyChatGptDesignPrompt() {
-    try {
-      await navigator.clipboard.writeText(chatGptDesignPrompt);
-      setCreativePromptCopied(true);
-      window.setTimeout(() => setCreativePromptCopied(false), 2500);
-    } catch {
-      setResult({ ok: false, message: "De ChatGPT-briefing kon niet worden gekopieerd. Selecteer de tekst en kopieer hem handmatig." });
-    }
-  }
   function useDetailsFromSourceText() {
     if (!sourceText.trim()) return;
     const details = extractEventDetails(sourceText, form);
     setForm((current) => ({ ...current, ...details, description: current.description || sourceText.trim() }));
     setResult({ ok: true, message: "Herkenbare gegevens zijn uit de tekst overgenomen. Controleer titel, datum, tijden en locatie voordat je ChatGPT opent." });
+  }
+  function continueFromChatGptDesign() {
+    setCreativeStepOpen(false);
+    window.requestAnimationFrame(() => scrollToCreatorSection("campagne-basis"));
   }
 
   return <section className="panel" style={{ marginBottom: 24 }}>
@@ -2666,7 +2672,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
     {(!isEvent || eventWorkspaceView === "new") && <>
     {isEvent && <section className="chatGptDesignStep creatorSection" id="chatgpt-ontwerp">
-      <div className="chatGptDesignHead"><div><p className="eyebrow">EERSTE STAP</p><h3>1. Ontwerp met ChatGPT</h3><p>Vul de kerngegevens in, laat ChatGPT daarna tekst en flyers ontwerpen.</p></div><button type="button" className="secondaryButton" onClick={() => setCreativeStepOpen((current) => !current)}>{creativeStepOpen ? "Inklappen" : "Opnieuw openen"}</button></div>
+      <div className="chatGptDesignHead"><div><p className="eyebrow">STAP 1 VAN 3</p><h3>Ontwerp je evenement met ChatGPT</h3><p>Vul alleen de informatie in die ChatGPT moet kennen. Daarna opent ChatGPT met een complete opdracht voor tekst en beelden.</p></div><button type="button" className="secondaryButton" onClick={() => setCreativeStepOpen((current) => !current)}>{creativeStepOpen ? "Inklappen" : "Opnieuw openen"}</button></div>
       {creativeStepOpen && <div className="chatGptDesignBody">
         <label>Evenementnaam *<input value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Latin Night" /></label>
         <label>Locatie *<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label>
@@ -2674,13 +2680,16 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <label>Begint *<input type="time" value={form.start.slice(11, 16)} onChange={(event) => update("start", form.start.slice(0, 10) ? `${form.start.slice(0, 10)}T${event.target.value}` : "")} /></label>
         <label>Einddatum *<input type="date" value={form.end.slice(0, 10)} onChange={(event) => update("end", event.target.value ? `${event.target.value}T${form.end.slice(11, 16) || "23:00"}` : "")} /></label>
         <label>Eindigt *<input type="time" value={form.end.slice(11, 16)} onChange={(event) => update("end", form.end.slice(0, 10) ? `${form.end.slice(0, 10)}T${event.target.value}` : "")} /></label>
-        <label>Extra wensen voor tekst en beeld<textarea rows={3} value={creativeBrief} onChange={(event) => setCreativeBrief(event.target.value)} placeholder="Bijvoorbeeld: tropische avond, liveband, gouden details, volwassen publiek." /></label>
-        <label className="wide">Bestaande tekst of resultaat van ChatGPT (optioneel)<textarea rows={5} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Plak hier een eerdere evenementtekst. Horeca OS herkent naam, datum en tijden waar mogelijk." /></label>
-        <div className="chatGptDesignActions"><button type="button" className="secondaryButton" disabled={!sourceText.trim()} onClick={useDetailsFromSourceText}>Gegevens uit tekst overnemen</button><button type="button" className="secondaryButton" onClick={copyChatGptDesignPrompt}>{creativePromptCopied ? "Briefing gekopieerd ✓" : "ChatGPT-briefing kopiëren"}</button><a className="primaryButton chatGptDesktopLink" href={chatGptDesktopUrl}>ChatGPT Desktop openen ↗</a><a className="primaryButton chatGptMobileLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen ↗</a><a className="secondaryButton chatGptBrowserLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">In browser openen</a><button type="button" className="secondaryButton" onClick={() => setCreativeStepOpen(false)}>Klaar — gegevens invullen</button></div>
-        <small>Op de computer opent de eerste knop de ChatGPT-desktopapp met je briefing. Op telefoon opent dezelfde briefing in de ChatGPT-app of browser. Controleer de briefing en verstuur hem daarna in ChatGPT. Plak de volledige tekst daarna bij ‘Volledige omschrijving’ en upload de gemaakte afbeeldingen in de volgende stappen.</small>
+        <label>Artiesten en programma<textarea rows={3} value={artistProgram} onChange={(event) => setArtistProgram(event.target.value)} placeholder="Bijvoorbeeld: liveband Rhythm Construction, DJ Marlon, diner en feest." /></label>
+        <label>Tickets en prijzen<textarea rows={3} value={ticketDetails} onChange={(event) => setTicketDetails(event.target.value)} placeholder="Bijvoorbeeld: Early Bird € 10, reguliere ticket € 12,50, deur € 30." /></label>
+        <label>Praktische informatie<textarea rows={3} value={practicalDetails} onChange={(event) => setPracticalDetails(event.target.value)} placeholder="Bijvoorbeeld: 25+, gratis parkeren, diner reserveren, adres, eten en drinken." /></label>
+        <label>Sfeer en beeldwensen<textarea rows={3} value={creativeBrief} onChange={(event) => setCreativeBrief(event.target.value)} placeholder="Bijvoorbeeld: tropisch, chique, gouden details, volwassen publiek." /></label>
+        <details className="sourceTextHelper wide"><summary>Ik heb al een bestaande evenementtekst</summary><p>Plak die hier alleen als je titel, datum, tijden en locatie daaruit wilt overnemen.</p><textarea rows={5} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Plak hier de bestaande tekst." /><button type="button" className="secondaryButton" disabled={!sourceText.trim()} onClick={useDetailsFromSourceText}>Gegevens uit deze tekst invullen</button></details>
+        <div className="chatGptDesignActions"><a className="primaryButton chatGptDesktopLink" href={chatGptDesktopUrl}>ChatGPT Desktop openen ↗</a><a className="primaryButton chatGptMobileLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen ↗</a><details className="chatGptBrowserLink"><summary>Werkt de app niet?</summary><a href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT in browser</a></details><button type="button" className="secondaryButton" onClick={continueFromChatGptDesign}>Ik heb mijn ontwerp — ga verder</button></div>
+        <small>ChatGPT krijgt alle hierboven ingevulde informatie mee. Kies daar de tekst en beelden die je wilt gebruiken. Daarna voeg je die hieronder toe.</small>
       </div>}
     </section>}
-    <nav className="creatorQuickBar" aria-label="Formuliernavigatie">
+    {!isEvent && <nav className="creatorQuickBar" aria-label="Formuliernavigatie">
       <div className="creatorQuickLinks">
         {isEvent && <button type="button" onClick={() => scrollToCreatorSection("chatgpt-ontwerp")}>1. ChatGPT</button>}
         <button type="button" onClick={() => scrollToCreatorSection("campagne-basis")}>{isEvent ? "2." : "1."} Basis</button>
@@ -2694,6 +2703,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         {preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady}>{busy ? "Bezig…" : editingWebsiteEvent ? "Bijwerken" : isEvent ? form.status === "publish" ? "Publiceren" : "Aanmaken" : "Opslaan"}</button>}
       </div>
     </nav>
+    }
+    {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
     <div className="eventCreatorGrid creatorSection" id="campagne-basis">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
       <label>{campaignTitleLabel} *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
@@ -3346,6 +3357,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .eventWorkspaceChooser{display:grid;gap:14px;margin:0 0 20px;padding:18px;border:1px solid #b9d2da;border-radius:14px;background:#f8fbfc}.eventWorkspaceChooser h3,.eventWorkspaceChooser p{margin:0}.eventWorkspaceChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.eventWorkspaceChoices button{display:flex;min-height:112px;flex-direction:column;gap:6px;padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;text-align:left;cursor:pointer}.eventWorkspaceChoices button.active{border-color:#25889b;background:#eaf7f9;box-shadow:inset 0 0 0 2px #25889b}.eventWorkspaceChoices strong{font-size:16px}.eventWorkspaceChoices span{color:#5c7285;line-height:1.4}
       .chatGptDesignStep{display:grid;gap:14px;margin:0 0 18px;padding:18px;border:1px solid #8bc5d7;border-radius:14px;background:linear-gradient(135deg,#edf9fb,#f8fbff)}.chatGptDesignHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.chatGptDesignHead h3,.chatGptDesignHead p{margin:0}.chatGptDesignHead>div{display:grid;gap:4px}.chatGptDesignHead .secondaryButton,.chatGptDesignActions .secondaryButton,.chatGptDesignActions .primaryButton{width:auto;border:1px solid #25889b;border-radius:9px;padding:10px 13px;background:#fff;color:#176d7f;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.chatGptDesignActions .primaryButton{background:#25889b;color:#fff}.chatGptMobileLink{display:none}.chatGptDesignBody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.chatGptDesignBody>.wide,.chatGptDesignBody>small,.chatGptDesignActions{grid-column:1/-1}.chatGptDesignActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.chatGptDesignBody>small{color:#5c7285;line-height:1.45}
+      .sourceTextHelper{display:grid;gap:9px;padding:12px;border:1px solid #c6d5df;border-radius:10px;background:#fff}.sourceTextHelper summary,.chatGptBrowserLink summary{color:#176d7f;font-weight:800;cursor:pointer}.sourceTextHelper p{margin:0;color:#5c7285}.sourceTextHelper button{justify-self:start;border:1px solid #25889b;border-radius:8px;padding:9px 11px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.chatGptBrowserLink{border:1px solid #25889b;border-radius:9px;padding:10px 13px;background:#fff;color:#176d7f;font-weight:800}.chatGptBrowserLink[open]{display:grid;gap:8px}.chatGptBrowserLink a{color:#176d7f;font-weight:800}.eventDetailsIntro{display:grid;gap:5px;margin:0 0 14px;padding:15px 18px;border-left:4px solid #25889b;border-radius:10px;background:#f5f8fa}.eventDetailsIntro h3,.eventDetailsIntro p{margin:0}.eventDetailsIntro p:last-child{color:#5c7285;line-height:1.45}
       .creatorQuickBar{position:sticky;top:10px;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px;padding:10px;border:1px solid #b9d2da;border-radius:12px;background:rgba(255,255,255,.97);box-shadow:0 8px 24px rgba(23,53,82,.12);backdrop-filter:blur(8px)}.creatorQuickLinks,.creatorQuickActions{display:flex;align-items:center;gap:7px}.creatorQuickLinks{min-width:0;overflow-x:auto}.creatorQuickBar button{flex:0 0 auto;border:1px solid #9cbac3;border-radius:8px;padding:8px 10px;background:#f7fbfc;color:#176d7f;font:inherit;font-size:13px;font-weight:800;cursor:pointer}.creatorQuickActions button{border-color:#25889b;background:#25889b;color:#fff}.creatorQuickActions .secondaryButton{background:#fff;color:#176d7f}.creatorSection{scroll-margin-top:92px}
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{flex:1;color:#5c7285}.editingNotice button{border:1px solid #25889b;border-radius:8px;padding:8px 11px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
       .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.facebookEventLinkActions{display:grid;gap:8px;margin-top:10px;padding:12px;border-radius:9px;background:#eef7fa}.facebookEventManualWorkflow{display:grid;gap:9px}.facebookEventManualWorkflow p{margin:0;color:#405866}.facebookEventManualToggle{justify-self:start;border:1px solid #25889b;border-radius:8px;padding:8px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.facebookEventManualFields{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:8px;align-items:center;padding-top:4px}.facebookEventManualFields>.check{grid-column:1/-1}.facebookEventManualFields input{min-width:0}.facebookEventManualFields button{border:1px solid #25889b;border-radius:8px;padding:9px 11px;background:#25889b;color:#fff;font:inherit;font-weight:800;cursor:pointer}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.predisGenerationChoice{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.predisGenerationChoice small{color:#5c7285}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.eventinDestination{display:grid;grid-template-columns:minmax(240px,1fr) minmax(240px,1fr);align-items:end;gap:10px;padding:13px;border:1px solid #57ad7d;border-radius:10px;background:#e9f6ee}.eventinDestination>.check{align-self:center;color:#236d46}.eventinDestination>small{grid-column:1/-1;color:#405866}
