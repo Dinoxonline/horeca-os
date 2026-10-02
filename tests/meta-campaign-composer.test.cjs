@@ -174,6 +174,7 @@ test("a saved Meta audience is edited in one dialog and saves the existing Meta 
     await React.act(async () => button("Doelgroep bewerken").props.onClick());
     assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 1);
     assert.ok(JSON.stringify(renderer.toJSON()).includes("Gouda"));
+    assert.match(renderer.root.findByProps({ title: "Kaart van de doelgroep" }).props.src, /Gouda/);
     await React.act(async () => button("Doelgroep opslaan").props.onClick());
     assert.equal(updated.savedAudienceId, "saved-1");
     assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 0);

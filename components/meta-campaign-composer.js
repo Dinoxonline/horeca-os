@@ -36,6 +36,8 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
   const story = draft.placementFormat === "story" || (draft.placementFormat !== "feed" && previewStory);
   const imageUrl = publicWebUrl(draft.imageUrl);
   const destination = publicWebUrl(draft.destinationUrl);
+  const mapQuery = [draft.locationQuery, countries[draft.countries[0]]].filter(Boolean).join(", ");
+  const mapZoom = Math.max(8, Math.min(13, Math.round(15 - Math.log2(Math.max(1, Number(draft.radiusKm || 25))))));
   const identity = platform === "facebook" ? (pageName || businessName) : businessName;
   const existingPost = ["facebook_posts", "instagram_posts"].includes(draft.sourceKind);
   const chosenSource = draft.sourceKind !== "new";
@@ -190,6 +192,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
           </div>
           <label className={styles.field}>Locaties<div className={styles.search}><input value={draft.locationQuery} disabled={busy || savedAudienceBusy} placeholder="Typ om een plaats toe te voegen" onChange={event => { update("locationQuery", event.target.value); update("locationKey", ""); setLocations([]); }} /><button type="button" disabled={busy || savedAudienceBusy || Boolean(searching)} onClick={() => search("locations")}>{searching === "locations" ? "Zoeken…" : "Zoek plaats"}</button></div></label>
           {draft.locationQuery && <div className={styles.locationChip}>{draft.locationQuery}{draft.locationKey ? ` · ${draft.radiusKm} km` : ""}</div>}
+          {mapQuery && <div className={styles.audienceMap}><iframe title="Kaart van de doelgroep" src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=${mapZoom}&output=embed`} loading="lazy" /><div className={styles.mapRadius} aria-hidden="true" style={{ width: `${Math.min(68, Math.max(24, 16 + Number(draft.radiusKm || 25) * 0.8))}%` }} /><span>Gekozen locatie · straal {draft.radiusKm} km</span></div>}
           {locations.length > 0 && <label className={styles.field}>Kies de plaats uit Meta<select disabled={busy || savedAudienceBusy} value={draft.locationKey} onChange={event => { const chosen = locations.find(location => location.key === event.target.value); update("locationKey", chosen?.key || ""); if (chosen) update("locationQuery", chosen.name); }}><option value="">Selecteer een plaats</option>{locations.map(location => <option key={location.key} value={location.key}>{location.name} · {location.region} · {location.country}</option>)}</select></label>}
           <label className={styles.rangeLabel}>Straal rond de plaats <strong>{draft.radiusKm} km</strong><input type="range" min={1} max={80} value={draft.radiusKm} disabled={busy || savedAudienceBusy} onChange={event => update("radiusKm", event.target.value)} /></label>
           <p className={styles.modalHelp}>Opslaan wijzigt deze bestaande Meta-doelgroep. Andere campagnes die deze doelgroep gebruiken, krijgen dezelfde aanpassing.</p>
