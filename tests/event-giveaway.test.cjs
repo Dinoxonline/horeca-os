@@ -46,9 +46,9 @@ test("a giveaway is filled from the event and keeps its practical variables in t
   assert.match(giveawaySource, /Facebook openen om te plaatsen/);
   assert.match(giveawaySource, /Winactiebeeld downloaden/);
   assert.match(giveawaySource, /Direct op Facebook plaatsen/);
-  assert.match(giveawaySource, /vlak van 1080 × 1080 met gelijke zijkanten/);
-  assert.match(giveawaySource, /aspectRatio: "1 \/ 1"/);
+  assert.match(giveawaySource, /maximaal 1080 pixels breed, zonder ruimte naast de flyer/);
+  assert.match(giveawaySource, /previewAspectRatio/);
   const giveawayImageSource = fs.readFileSync(path.join(root, "lib/giveaway-image.js"), "utf8");
-  assert.match(giveawayImageSource, /imageArea = 1080, bandHeight = 280/);
-  assert.match(giveawayImageSource, /canvas\.height = imageArea \+ bandHeight/);
+  assert.match(giveawayImageSource, /imageWidth = 1080, bandHeight = 280/);
+  assert.match(giveawayImageSource, /canvas\.height = height \+ bandHeight/);
 });
