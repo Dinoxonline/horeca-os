@@ -99,6 +99,7 @@ test("settings have stable future dates, safe URLs and real budget/placement map
   const settings = load("lib/meta-campaign-settings.js");
   const now = new Date("2026-09-29T12:00:00Z");
   const draft = settings.defaultMetaCampaign({ ...item, scheduled_for: "2020-01-01" }, distribution, now);
+  assert.equal(draft.campaignName, "Live muziek");
   const imageDistribution = { common: { images: { landscape: { url: "https://example.com/landscape.jpg" }, portrait: { url: "https://example.com/portrait.jpg" } } } };
   assert.equal(settings.campaignImageForPlacement(imageDistribution, "both").url, "https://example.com/portrait.jpg");
   assert.equal(settings.campaignImageForPlacement(imageDistribution, "facebook").url, "https://example.com/landscape.jpg");
