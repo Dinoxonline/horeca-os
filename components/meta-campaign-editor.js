@@ -12,12 +12,26 @@ export function manualMetaPromotionUrl(adAccountId) {
   return accountId ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(accountId)}` : "https://adsmanager.facebook.com/adsmanager/manage/campaigns";
 }
 
-function ManualMetaPromotionLink({ adAccountId, campaignTitle, onOpened }) {
+export function facebookEventPromotionUrl(adAccountId, pageId, eventId) {
+  const accountId = String(adAccountId || "").trim().replace(/^act_/i, "");
+  const safePageId = String(pageId || "").trim();
+  const safeEventId = String(eventId || "").trim();
+  if (!accountId || !safePageId || !safeEventId) return manualMetaPromotionUrl(adAccountId);
+  const url = new URL("https://www.facebook.com/ad_center/create/eventad/");
+  url.searchParams.set("ad_account_id", accountId);
+  url.searchParams.set("entry_point", "www_event_permalink_header");
+  url.searchParams.set("page_id", safePageId);
+  url.searchParams.set("target_id", safeEventId);
+  return url.toString();
+}
+
+function ManualMetaPromotionLink({ adAccountId, pageId, eventId, campaignTitle, onOpened }) {
+  const opensEventPromotion = Boolean(adAccountId && pageId && eventId);
   return <div className="marketingMetaManualPromotion" style={{ display: "grid", justifyItems: "start", gap: 10 }}>
     <strong>Zelf tijdelijk in Meta promoten</strong>
-    <p>Opent Advertentiebeheer in een nieuw tabblad. Horeca OS maakt of activeert hierbij niets.</p>
-    <p>Zoek daar de campagne voor <strong>{campaignTitle}</strong> en maak of voltooi de advertentieset en advertentie.</p>
-    <a className="secondaryButton" style={{ margin: 0 }} href={manualMetaPromotionUrl(adAccountId)} target="_blank" rel="noreferrer" onClick={onOpened}>Advertentiebeheer openen ↗</a>
+    <p>{opensEventPromotion ? "Opent de Meta-pagina ‘Een evenement promoten’ voor dit Facebook-evenement." : "Opent Advertentiebeheer in een nieuw tabblad."} Horeca OS maakt of activeert hierbij niets.</p>
+    {!opensEventPromotion && <p>Zoek daar de campagne voor <strong>{campaignTitle}</strong> en maak of voltooi de advertentieset en advertentie.</p>}
+    <a className="secondaryButton" style={{ margin: 0 }} href={facebookEventPromotionUrl(adAccountId, pageId, eventId)} target="_blank" rel="noreferrer" onClick={onOpened}>{opensEventPromotion ? "Dit evenement in Meta promoten ↗" : "Advertentiebeheer openen ↗"}</a>
   </div>;
 }
 
@@ -40,6 +54,9 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   const budgetContext = { workspaceId, businessId: item.business_id, session, enabled, accountId: adAccount?.external_account_id || paidCampaign.ad_account_id };
   const metaAdsAccountId = adAccount?.external_account_id || paidCampaign.ad_account_id;
   const promotionTitle = distribution.common?.title || item.body || "dit evenement";
+  const facebookPageId = pageAccount?.external_account_id || distribution.facebook_event_delivery?.page_id || distribution.provider_delivery?.facebook?.page_id;
+  const facebookEventId = distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook;
+  const opensEventPromotion = Boolean(metaAdsAccountId && facebookPageId && facebookEventId);
 
   async function loadAdAccount() {
     if (!session?.access_token) return;
@@ -145,13 +162,13 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
     finally { setManualBusy(false); setManualLinkingId(""); }
   }
 
-  if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><ManualMetaPromotionLink adAccountId={metaAdsAccountId} campaignTitle={promotionTitle} onOpened={() => setManualPromotionOpened(true)} />{manualPromotionOpened && <p role="status">Advertentiebeheer is in een nieuw tabblad geopend. Kies daar de campagne voor dit evenement.</p>}<MetaCampaignStatus key={`${item.id}:${paidCampaign.campaign_id}`} workspaceId={workspaceId} session={session} item={item} paidCampaign={paidCampaign} enabled={enabled} onSaved={onSaved} /><MetaAccountBudget {...budgetContext} /></section>;
+  if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><ManualMetaPromotionLink adAccountId={metaAdsAccountId} pageId={facebookPageId} eventId={facebookEventId} campaignTitle={promotionTitle} onOpened={() => setManualPromotionOpened(true)} />{manualPromotionOpened && <p role="status">{opensEventPromotion ? "Het Meta-promotiescherm voor dit evenement is in een nieuw tabblad geopend." : "Advertentiebeheer is in een nieuw tabblad geopend. Kies daar de campagne voor dit evenement."}</p>}<MetaCampaignStatus key={`${item.id}:${paidCampaign.campaign_id}`} workspaceId={workspaceId} session={session} item={item} paidCampaign={paidCampaign} enabled={enabled} onSaved={onSaved} /><MetaAccountBudget {...budgetContext} /></section>;
   if (loadingAccount || adAccount === undefined) return <p className="marketingMetaCampaign"><strong>Meta-advertentieaccount wordt gecontroleerd…</strong></p>;
   if (adAccount?.connection_status === "pending") return <FacebookAdAccountPicker workspaceId={workspaceId} businessId={item.business_id} businessName={business?.name} session={session} account={adAccount} onSaved={loadAdAccount} />;
   if (!adAccount || adAccount.connection_status !== "connected" || !adAccount.granted_scopes?.includes("ads_management")) return <section className="marketingMetaCampaign">{adsConfiguration?.ready ? <><p>Verbind het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong> met toestemming voor betaalde campagnes.</p><button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></> : <><p>{adsConfiguration?.message || "De advertentiekoppeling kon niet worden gecontroleerd."}</p>{adsConfiguration?.setupUrl && <a className="secondaryButton" href={adsConfiguration.setupUrl} target="_blank" rel="noreferrer">Meta-appinstellingen openen ↗</a>}</>}<button type="button" className="secondaryButton" onClick={loadAdAccount}>Koppeling opnieuw controleren</button>{error && <p role="alert">{error}</p>}</section>;
   const lockToEvent = Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.source_type === "website_event");
   return <>
-    <section className="marketingMetaCampaign"><ManualMetaPromotionLink adAccountId={metaAdsAccountId} campaignTitle={promotionTitle} onOpened={() => setManualPromotionOpened(true)} />{manualPromotionOpened && <p role="status">Advertentiebeheer is in een nieuw tabblad geopend. Kies daar de campagne voor dit evenement.</p>}</section>
+    <section className="marketingMetaCampaign"><ManualMetaPromotionLink adAccountId={metaAdsAccountId} pageId={facebookPageId} eventId={facebookEventId} campaignTitle={promotionTitle} onOpened={() => setManualPromotionOpened(true)} />{manualPromotionOpened && <p role="status">{opensEventPromotion ? "Het Meta-promotiescherm voor dit evenement is in een nieuw tabblad geopend." : "Advertentiebeheer is in een nieuw tabblad geopend. Kies daar de campagne voor dit evenement."}</p>}</section>
     <details className="marketingMetaCampaign">
       <summary>Promotie al in Meta gemaakt?</summary>
       <p>Haal recente campagnes op en koppel alleen de juiste campagne aan dit evenement.</p>

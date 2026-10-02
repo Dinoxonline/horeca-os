@@ -48,11 +48,16 @@ test("saved Meta audiences always show their concrete location or a clearly labe
   assert.match(audienceLocationSummary({ geo_locations: {} }, "Tot amsterdam 25+ 60 km"), /Amsterdam \(volgens de doelgroepnaam/);
 });
 
-test("the temporary manual Meta promotion link opens the selected ad account without creating a campaign", async () => {
+test("the temporary manual Meta promotion link opens the selected event when its Meta identifiers are available", async () => {
   await swc.loadBindings();
-  const { manualMetaPromotionUrl } = load("components/meta-campaign-editor.js", { "next/image": { __esModule: true, default: () => null } });
+  const { manualMetaPromotionUrl, facebookEventPromotionUrl } = load("components/meta-campaign-editor.js", { "next/image": { __esModule: true, default: () => null } });
   assert.equal(manualMetaPromotionUrl("act_779216623834979"), "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=779216623834979");
   assert.equal(manualMetaPromotionUrl(""), "https://adsmanager.facebook.com/adsmanager/manage/campaigns");
+  assert.equal(
+    facebookEventPromotionUrl("act_779216623834979", "110904729511668", "2834953537616196"),
+    "https://www.facebook.com/ad_center/create/eventad/?ad_account_id=779216623834979&entry_point=www_event_permalink_header&page_id=110904729511668&target_id=2834953537616196"
+  );
+  assert.equal(facebookEventPromotionUrl("act_779216623834979", "", "2834953537616196"), manualMetaPromotionUrl("act_779216623834979"));
 });
 
 test("both entry points reuse the shared editor and new campaigns are not gated on a Facebook event", async () => {
