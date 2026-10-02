@@ -239,6 +239,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <label>Je bericht<textarea rows={6} maxLength={10000} value={draft.caption} onChange={e => change({ ...draft, caption: e.target.value })} /></label>
       <small>Je bewerkt alleen dit bericht. Het evenement en bestaande publicaties blijven ongewijzigd.</small>
       <div className={styles.actions} aria-label="Predis-tekst inkorten"><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={makePredisCaption}>Maak Predis-tekst · max. 1.000 tekens</button><small>{draft.caption.length}/{PREDIS_CAPTION_LIMIT} tekens</small></div>
+      <small>De gegenereerde tekst houdt alinea-afstand in Predis vast met een onzichtbare tussenregel.</small>
       {draft.caption.length > PREDIS_CAPTION_LIMIT && <p role="alert">Predis accepteert maximaal {PREDIS_CAPTION_LIMIT} tekens. Klik op ‘Maak Predis-tekst’ om de belangrijkste gegevens en ticketlink te behouden.</p>}
       {!!draft.assets.length && <div className={styles.actions} aria-label="Berichttekst kopiëren"><button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || draft.caption.length > PREDIS_CAPTION_LIMIT} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button></div>}
     </fieldset>
