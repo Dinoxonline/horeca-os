@@ -49,7 +49,7 @@ test('comparison summary distinguishes equal, different, incomplete and failed c
   const sources = [{ label: 'Horeca OS', item: local }, { label: 'Eventin', item: item() }, { label: 'Facebook', item: item() }];
   assert.equal(sourceComparisonStatus(local, sources, 'pending').key, 'pending');
   assert.equal(sourceComparisonStatus(local, sources, 'queued').key, 'queued');
-  assert.match(sourceComparisonStatus(local, sources, 'timeout').detail, /30 seconden/);
+  assert.match(sourceComparisonStatus(local, sources, 'timeout').detail, /6 seconden/);
   assert.equal(sourceComparisonStatus(local, sources, 'error').key, 'incomplete');
   assert.equal(sourceComparisonStatus(local, sources, 'done').key, 'equal');
   assert.equal(sourceComparisonStatus(local, sources.slice(0, 2), 'done').key, 'incomplete');
@@ -340,7 +340,7 @@ test('event layout starts with one workspace and keeps secondary information col
   await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, business: { name: 'Caribbean Corner' }, onSyncContent() {}, onClose() {} })); });
   try {
     const folds = renderer.root.findAllByProps({ className: 'marketingDetailFold' });
-    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Meta-campagne — Facebook en Instagram', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis — content maken en planning']);
+    assert.deepEqual(folds.map(node => node.findAllByType('summary')[0].props.children), ['Evenement bekijken en bewerken', 'Facebook winactie', 'Bronnen vergelijken — tekst en foto kiezen', 'Dit evenement herhalen — reeks maken', 'Facebook handmatig bijwerken', 'Instagram plaatsen', 'Meta-campagne — Facebook en Instagram', 'Agenda info@leclubbbq.nl — inplannen en controleren', 'Predis — content maken en planning']);
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const article = statuses.parent;
     assert.equal(article.type, 'article', 'channel statuses are not hidden inside a details fold');
@@ -350,7 +350,7 @@ test('event layout starts with one workspace and keeps secondary information col
     assert.equal(article.children[statusIndex - 2].props.className, 'marketingEventHeading');
     assert.ok(facts.findAllByType('p')[0].props.children.includes('Caribbean Corner'), 'empty event location falls back to the linked venue');
     assert.equal(facts.findAllByType('dl').length, 0, 'no tall equal-height metadata columns');
-    assert.deepEqual(statuses.findAllByType('strong').map(node => Array.isArray(node.props.children) ? node.props.children[0] : node.props.children), ['Website', 'Facebook', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Google', 'Predis', 'Overige']);
+    assert.deepEqual(statuses.findAllByType('strong').map(node => Array.isArray(node.props.children) ? node.props.children[0] : node.props.children), ['Website', 'Facebook', 'Facebook winactie', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Google', 'Predis', 'Overige']);
     assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
     assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
     const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
@@ -522,7 +522,7 @@ test('channel tiles open and focus their own editor without saving or publishing
     });
     const statuses = renderer.root.findByProps({ 'aria-label': 'Publicatiestatus per kanaal' });
     const buttons = () => statuses.findAllByType('button');
-    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
+    assert.deepEqual(buttons().map(button => button.findByType('strong').props.children[0]), ['Facebook winactie', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis']);
     assert.ok(buttons().every(button => button.props['aria-expanded'] === false));
     for (const channel of ['meta', 'calendar', 'predis']) {
       const id = `event-channel-${channel}-tiles`;
