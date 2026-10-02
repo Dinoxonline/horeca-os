@@ -55,7 +55,7 @@ export default function MetaCampaignStatus({ workspaceId, session, item, paidCam
     {paidCampaign.source && <p>Gepromote bron: {paidCampaign.source.name}. {publicWebUrl(paidCampaign.source.url) && <a href={publicWebUrl(paidCampaign.source.url)} target="_blank" rel="noreferrer">Oorspronkelijk bericht of evenement ↗</a>}</p>}
     {paidCampaign.audience_mode && <p>Doelgroep bij aanmaken: {paidCampaign.audience_mode === "saved" ? `opgeslagen Meta-doelgroep (${paidCampaign.saved_audience_id})` : paidCampaign.audience_mode === "advantage" ? "Advantage+" : "zelf samengesteld"}.</p>}
     {paidCampaign.dsa_payor && <p>Bij aanmaken — adverteerder: {paidCampaign.dsa_beneficiary}; betaler: {paidCampaign.dsa_payor}.</p>}
-    <p>Dit is de campagne en advertentie die via Horeca OS zijn aangemaakt. ‘Actief’ betekent ingeschakeld, niet dat vertoningen of uitgaven zijn bevestigd. Andere campagnes worden niet automatisch gezocht.</p>
+    <p>{paidCampaign.manually_linked ? "Deze campagne is handmatig in Meta gemaakt en aan dit evenement gekoppeld." : "Deze campagne en advertentie zijn via Horeca OS aangemaakt."} ‘Actief’ betekent ingeschakeld, niet dat vertoningen of uitgaven zijn bevestigd.</p>
     {error && <p role="alert">Controle niet gelukt: {error} {snapshot ? "Hierboven staat de laatst bekende status, niet een nieuwe bevestiging." : "De huidige status is onbekend."}</p>}
     <button type="button" className="secondaryButton" disabled={busy || !session?.access_token} onClick={refresh}>{busy ? "Status controleren…" : "Status bij Meta controleren"}</button>
     {paidCampaign.manage_url && <a className="secondaryButton" href={paidCampaign.manage_url} target="_blank" rel="noreferrer">In Meta bekijken ↗</a>}

@@ -258,6 +258,10 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
   global.fetch = async (input, options = {}) => {
     const url = new URL(input);
     if (url.searchParams.get("fields") === "funding_source_details,business_name") return { ok: !paymentDenied, json: async () => paymentDenied ? { error: { message: "No billing access" } } : { business_name: "Le Club", funding_source_details: { display_string: "Visa •••• 1234", id: "private-funding-id" } } };
+    if (!options.method && url.pathname.endsWith("/act_123/campaigns")) return { ok: true, json: async () => ({ data: [{ id: "555", name: "Handmatig gemaakt", status: "PAUSED", effective_status: "PAUSED", created_time: "2026-10-01T12:00:00+0000", objective: "OUTCOME_TRAFFIC" }] }) };
+    if (url.pathname.endsWith("/555")) return { ok: true, json: async () => ({ id: "555", account_id: "123", name: "Handmatig gemaakt", status: "PAUSED", effective_status: "PAUSED", objective: "OUTCOME_TRAFFIC" }) };
+    if (url.pathname.endsWith("/555/adsets")) return { ok: true, json: async () => ({ data: [{ id: "666", account_id: "123", campaign_id: "555", status: "PAUSED", effective_status: "PAUSED" }] }) };
+    if (url.pathname.endsWith("/666/ads")) return { ok: true, json: async () => ({ data: [{ id: "7777", account_id: "123", campaign_id: "555", adset_id: "666", status: "PAUSED", effective_status: "PAUSED" }] }) };
     if (url.pathname.endsWith("/777")) {
       if (options.method === "POST") { calls.push({ path: url.pathname, body: Object.fromEntries(options.body) }); if (savedAudienceCapabilityDenied) return { ok: false, json: async () => ({ error: { message: "(#3) Application does not have the capability to make this API call." } }) }; savedAudience = { ...savedAudience, targeting: JSON.parse(Object.fromEntries(options.body).targeting) }; return { ok: true, json: async () => ({ success: true }) }; }
       return { ok: true, json: async () => savedAudience };
@@ -318,6 +322,13 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
     assert.equal(partial.budget.remaining, 380); assert.ok(partial.paymentWarning);
     assert.equal(calls.length, updatedCount, "reading finance never calls a Meta mutation");
     assert.equal(writes.length, 1, "reading finance never writes to Supabase");
+    const recentCampaigns = await (await route.GET(new Request("https://example.com/api/integrations/facebook/ads?workspaceId=workspace&businessId=venue&resource=recent_campaigns", { headers: { Authorization: "Bearer session" } }))).json();
+    assert.deepEqual(recentCampaigns.options, [{ id: "555", name: "Handmatig gemaakt", status: "PAUSED", effectiveStatus: "PAUSED", createdAt: "2026-10-01T12:00:00+0000", objective: "OUTCOME_TRAFFIC" }]);
+    const linked = await route.POST(new Request("https://example.com/api/integrations/facebook/ads", { method: "POST", headers: { Authorization: "Bearer session", "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: "workspace", businessId: "venue", campaignId: "campaign", action: "link_existing_campaign", metaCampaignId: "555" }) }));
+    assert.equal(linked.status, 200);
+    const linkedCampaign = (await linked.json()).paidCampaign;
+    assert.equal(linkedCampaign.campaign_id, "555"); assert.equal(linkedCampaign.adset_id, "666"); assert.equal(linkedCampaign.ad_id, "7777"); assert.equal(linkedCampaign.manually_linked, true);
+    assert.equal(calls.length, updatedCount, "linking a found campaign never changes Meta");
     assert.ok(lookups.every(call => call.filters.workspace_id === "workspace" && call.filters.business_id === "venue"));
     allowedBusiness = "other-venue"; assert.equal((await route.GET(searchRequest())).status, 403); assert.equal((await route.POST(request())).status, 403);
     assert.equal((await route.GET(budgetRequest())).status, 403);

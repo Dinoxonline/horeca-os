@@ -48,7 +48,7 @@ export async function GET(request) {
   const context = await authorizedContext(request, workspaceId, businessId);
   if (context.error) return context.error;
   const resource = params.get("resource"), q = String(params.get("q") || "").trim(), country = params.get("country") || "NL";
-  if (resource !== "budget" && !META_CATALOG_RESOURCES.includes(resource) && (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country))) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
+  if (resource !== "budget" && resource !== "recent_campaigns" && !META_CATALOG_RESOURCES.includes(resource) && (!["locations", "interests"].includes(resource) || q.length < 2 || q.length > 100 || !/^[A-Z]{2}$/.test(country))) return jsonError("Vul minimaal twee letters in om te zoeken.", 400);
   const { data: account } = await context.admin.from("integration_accounts").select("id,external_account_id,granted_scopes,connection_status")
     .eq("workspace_id", workspaceId).eq("business_id", businessId).eq("provider", "facebook_ads").maybeSingle();
   if (account?.connection_status !== "connected" || !account.granted_scopes?.includes("ads_management")) return jsonError("Koppel eerst het advertentieaccount van deze vestiging.", 409);
@@ -81,6 +81,12 @@ export async function GET(request) {
         paymentWarning: paymentResult.status === "rejected" ? "Meta geeft de betaalmethode en bedrijfsnaam niet vrij via deze koppeling. Bekijk deze in Meta." : null,
       }, { headers: { "Cache-Control": "private, no-store" } });
     }
+    if (resource === "recent_campaigns") {
+      const id = String(account.external_account_id || "").replace(/^act_/, "");
+      if (!/^\d+$/.test(id)) return jsonError("Het gekoppelde advertentieaccount heeft geen geldig nummer.", 409);
+      const result = await graphRead(`act_${id}/campaigns`, token, { fields: "id,name,status,effective_status,created_time,updated_time,objective", limit: "25" });
+      return NextResponse.json({ options: (result.data || []).map(row => ({ id: String(row.id || ""), name: String(row.name || "Campagne zonder naam").slice(0, 200), status: row.status || null, effectiveStatus: row.effective_status || null, createdAt: row.created_time || null, objective: row.objective || null })).filter(row => /^\d+$/.test(row.id)) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     return NextResponse.json({ options: await searchOptions(resource, q, country, token) });
   } catch (error) { return jsonError(error.message, 502); }
 }
@@ -108,6 +114,7 @@ export async function POST(request) {
   const distribution = (campaign.media || []).find(entry => entry?.kind === "campaign_distribution");
   if (!distribution) return jsonError("De campagnegegevens ontbreken.", 409);
   if (body.action === "update_saved_audience") return updateSavedAudience(context.admin, workspaceId, businessId, adAccount, body.settings);
+  if (body.action === "link_existing_campaign") return linkExistingCampaign(admin, workspaceId, businessId, campaign, distribution, adAccount, body.metaCampaignId);
   if (body.action === "refresh_status") return refreshRegisteredCampaign(admin, workspaceId, businessId, campaign, distribution, adAccount);
   if (body.action) return jsonError("Onbekende campagneactie.", 400);
   if (distribution.facebook_paid_campaign?.campaign_id || ["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
@@ -261,6 +268,38 @@ async function refreshRegisteredCampaign(admin, workspaceId, businessId, campaig
     if (!saved) return jsonError("Het dossier is ondertussen gewijzigd. Vernieuw het dossier en controleer opnieuw.", 409);
     return NextResponse.json({ ok: true, paidCampaign }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return jsonError(error.message || "De actuele status kon niet bij Meta worden gecontroleerd.", 502); }
+}
+
+async function linkExistingCampaign(admin, workspaceId, businessId, campaign, distribution, account, metaCampaignId) {
+  const accountId = String(account.external_account_id || "").replace(/^act_/, "");
+  const remoteCampaignId = String(metaCampaignId || "");
+  if (!/^\d+$/.test(accountId)) return jsonError("Het gekoppelde advertentieaccount heeft geen geldig nummer.", 409);
+  if (!/^\d+$/.test(remoteCampaignId)) return jsonError("Kies een geldige Meta-campagne.", 400);
+  try {
+    const token = await accountCredential(admin, workspaceId, businessId, account.id);
+    const [remoteCampaign, adsets] = await Promise.all([
+      graphRead(remoteCampaignId, token, { fields: "id,account_id,name,status,effective_status,objective" }),
+      graphRead(`${remoteCampaignId}/adsets`, token, { fields: "id,account_id,campaign_id,status,effective_status,start_time,end_time", limit: "25" }),
+    ]);
+    if (String(remoteCampaign.id) !== remoteCampaignId || String(remoteCampaign.account_id) !== accountId) return jsonError("Deze campagne hoort niet bij het gekoppelde advertentieaccount.", 409);
+    const adset = (adsets.data || []).find(entry => String(entry.id || "").match(/^\d+$/) && String(entry.account_id) === accountId && String(entry.campaign_id) === remoteCampaignId);
+    if (!adset) return jsonError("Meta gaf voor deze campagne geen bruikbare advertentieset terug.", 409);
+    const ads = await graphRead(`${adset.id}/ads`, token, { fields: "id,account_id,campaign_id,adset_id,status,effective_status", limit: "25" });
+    const ad = (ads.data || []).find(entry => String(entry.id || "").match(/^\d+$/) && String(entry.account_id) === accountId && String(entry.campaign_id) === remoteCampaignId && String(entry.adset_id) === String(adset.id));
+    if (!ad) return jsonError("Meta gaf voor deze campagne geen bruikbare advertentie terug.", 409);
+    const paidCampaign = {
+      status: String(remoteCampaign.status || "paused").toLowerCase(), campaign_id: remoteCampaignId, adset_id: String(adset.id), ad_id: String(ad.id),
+      ad_account_id: `act_${accountId}`, ad_account_name: account.display_name || "Meta-advertentieaccount", name: remoteCampaign.name || "Meta-campagne",
+      objective: remoteCampaign.objective || null, manually_linked: true, launch_status: "manual", started_at: new Date().toISOString(),
+      manage_url: `https://www.facebook.com/adsmanager/manage/campaigns?act=${accountId}&selected_campaign_ids=${remoteCampaignId}`,
+      live_status: metaCampaignStatus(remoteCampaign, adset, ad),
+    };
+    const media = (campaign.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: paidCampaign } : entry);
+    const { error } = await admin.from("social_content_items").update({ media })
+      .eq("id", campaign.id).eq("workspace_id", workspaceId).eq("business_id", businessId);
+    if (error) return jsonError("De campagne is gevonden, maar kon niet aan dit evenement worden gekoppeld.", 502);
+    return NextResponse.json({ ok: true, paidCampaign }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return jsonError(error.message || "De Meta-campagne kon niet worden gecontroleerd.", 502); }
 }
 
 async function graphPost(path, accessToken, values) {
