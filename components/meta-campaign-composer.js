@@ -29,14 +29,22 @@ export function clearMetaCampaignDraft(item) {
 }
 
 export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onUpdateSavedAudience, onDirty, busy, error, initialDraft, onDraftChange, lockToEvent = false }) {
-  const [storedDraft] = useState(() => readMetaCampaignDraft(item));
-  const restoredDraft = initialDraft || storedDraft?.draft;
-  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), ...restoredDraft, beneficiary: restoredDraft?.beneficiary || pageName || businessName || "", payer: restoredDraft?.payer || pageName || businessName || "", ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
+  const createDraft = values => ({ ...defaultMetaCampaign(item, distribution), ...values, beneficiary: values?.beneficiary || pageName || businessName || "", payer: values?.payer || pageName || businessName || "", ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 });
+  const [draft, setDraft] = useState(() => createDraft(initialDraft));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
   useEffect(() => { draftListener.current?.(draft); }, [draft]);
-  const [step, setStep] = useState(() => CAMPAIGN_STEPS.has(storedDraft?.step) ? storedDraft.step : "campaign");
-  useEffect(() => { saveMetaCampaignDraft(item, draft, step); }, [item, draft, step]);
+  const [step, setStep] = useState("campaign");
+  const [draftRestored, setDraftRestored] = useState(false);
+  useEffect(() => {
+    const storedDraft = initialDraft ? null : readMetaCampaignDraft(item);
+    if (storedDraft) {
+      setDraft(createDraft(storedDraft.draft));
+      if (CAMPAIGN_STEPS.has(storedDraft.step)) setStep(storedDraft.step);
+    }
+    setDraftRestored(true);
+  }, [item.id]);
+  useEffect(() => { if (draftRestored) saveMetaCampaignDraft(item, draft, step); }, [item, draft, step, draftRestored]);
   const [previewPlatform, setPreviewPlatform] = useState("facebook");
   const [previewStory, setPreviewStory] = useState(false);
   const [localError, setLocalError] = useState("");

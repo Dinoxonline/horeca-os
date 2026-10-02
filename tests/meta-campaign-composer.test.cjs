@@ -21,10 +21,19 @@ test("Meta campaign drafts restore the form and current step until the concept i
   const originalWindow = global.window, memory = new Map();
   global.window = { localStorage: { getItem: key => memory.get(key) || null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) } };
   try {
-    const { metaCampaignDraftStorageKey, readMetaCampaignDraft, saveMetaCampaignDraft, clearMetaCampaignDraft } = load("components/meta-campaign-composer.js", { "next/image": { __esModule: true, default: () => null } });
+    const React = require("react"), Renderer = require("react-test-renderer"); global.IS_REACT_ACT_ENVIRONMENT = true;
+    const module = load("components/meta-campaign-composer.js", { "next/image": { __esModule: true, default: () => null } });
+    const { default: Composer, metaCampaignDraftStorageKey, readMetaCampaignDraft, saveMetaCampaignDraft, clearMetaCampaignDraft } = module;
     saveMetaCampaignDraft(item, { campaignName: "Later verder" }, "finance");
     assert.deepEqual(readMetaCampaignDraft(item), { draft: { campaignName: "Later verder" }, step: "finance" });
     assert.equal(memory.has(metaCampaignDraftStorageKey(item)), true);
+    let renderer;
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Composer, { item, distribution, businessName: "Restaurant", pageName: "Pagina", onCreate() {}, onCatalog: async () => ({ options: [] }), onSearch: async () => [] })); });
+    const currentStep = renderer.root.findAllByType("button").find(node => node.props["aria-current"] === "step");
+    assert.ok(Array.isArray(currentStep.props.children) && currentStep.props.children.includes("Budget en betalen"));
+    await React.act(async () => renderer.root.findAllByType("button").find(node => Array.isArray(node.props.children) && node.props.children.includes("Campagne en doel")).props.onClick());
+    assert.equal(renderer.root.findAllByType("input").find(node => node.props.maxLength === 150).props.value, "Later verder");
+    await React.act(async () => renderer.unmount());
     clearMetaCampaignDraft(item);
     assert.equal(readMetaCampaignDraft(item), null);
   } finally { global.window = originalWindow; }
