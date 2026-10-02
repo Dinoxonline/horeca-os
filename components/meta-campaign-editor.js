@@ -17,7 +17,9 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   const [manualCampaigns, setManualCampaigns] = useState([]);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualLoaded, setManualLoaded] = useState(false);
-  const paidCampaign = distribution.facebook_paid_campaign || {};
+  const [manualLinkingId, setManualLinkingId] = useState("");
+  const [linkedCampaign, setLinkedCampaign] = useState(null);
+  const paidCampaign = linkedCampaign || distribution.facebook_paid_campaign || {};
   const created = Boolean(paidCampaign.campaign_id) || ["active", "paused"].includes(paidCampaign.status);
   const budgetContext = { workspaceId, businessId: item.business_id, session, enabled, accountId: adAccount?.external_account_id || paidCampaign.ad_account_id };
 
@@ -103,7 +105,7 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   }
 
   async function linkManualCampaign(metaCampaignId) {
-    setManualBusy(true); setError("");
+    setManualBusy(true); setManualLinkingId(metaCampaignId); setError("");
     try {
       const response = await fetch("/api/integrations/facebook/ads", {
         method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -111,9 +113,10 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
       });
       const result = await response.json();
       if (!response.ok || !result.paidCampaign) throw new Error(result.error || "De campagne kon niet worden gekoppeld.");
+      setLinkedCampaign(result.paidCampaign);
       onSaved({ ...item, media: (item.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) });
     } catch (failure) { setError(failure.message || "De campagne kon niet worden gekoppeld."); }
-    finally { setManualBusy(false); }
+    finally { setManualBusy(false); setManualLinkingId(""); }
   }
 
   if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><MetaCampaignStatus key={`${item.id}:${paidCampaign.campaign_id}`} workspaceId={workspaceId} session={session} item={item} paidCampaign={paidCampaign} enabled={enabled} onSaved={onSaved} /><MetaAccountBudget {...budgetContext} /></section>;
@@ -126,7 +129,8 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
       <summary>Promotie al in Meta gemaakt?</summary>
       <p>Haal recente campagnes op en koppel alleen de juiste campagne aan dit evenement.</p>
       <button type="button" className="secondaryButton" disabled={manualBusy} onClick={findManualCampaigns}>{manualBusy ? "Campagnes ophalen…" : "Recente Meta-campagnes ophalen"}</button>
-      {manualCampaigns.map(candidate => <div key={candidate.id} className="savedAudienceItem"><strong>{candidate.name}</strong><span>{candidate.effectiveStatus || candidate.status || "Status onbekend"}</span><button type="button" className="secondaryButton" disabled={manualBusy} onClick={() => linkManualCampaign(candidate.id)}>Deze campagne koppelen</button></div>)}
+      {manualLinkingId && <p role="status">Campagne wordt gecontroleerd en gekoppeld…</p>}
+      {manualCampaigns.map(candidate => <div key={candidate.id} className="savedAudienceItem"><div><strong>{candidate.name}</strong><span>Meta-status: {candidate.effectiveStatus || candidate.status || "onbekend"}</span></div><button type="button" className="secondaryButton" disabled={manualBusy} onClick={() => linkManualCampaign(candidate.id)}>{manualLinkingId === candidate.id ? "Campagne koppelen…" : "Deze campagne koppelen"}</button></div>)}
       {manualLoaded && !manualBusy && manualCampaigns.length === 0 && <p>Meta gaf geen recente campagnes terug.</p>}
       {error && <p role="alert">{error}</p>}
     </details>

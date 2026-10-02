@@ -122,6 +122,30 @@ test("saved event and product panels open the same editor, use venue identity an
   } finally { global.fetch = originalFetch; global.window = originalWindow; }
 });
 
+test("a Meta campaign linked by hand is shown immediately after the chosen campaign is confirmed", async () => {
+  await swc.loadBindings();
+  const React = require("react"), Renderer = require("react-test-renderer");
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const originalFetch = global.fetch;
+  let saved, renderer;
+  global.fetch = async (url, options = {}) => {
+    if (String(url).startsWith("/api/integrations/facebook?")) return { ok: true, json: async () => ({ accounts: [{ business_id: "venue", display_name: "Pagina Het Plein" }], adAccounts: [{ business_id: "venue", display_name: "Advertentieaccount", connection_status: "connected", granted_scopes: ["ads_management"] }] }) };
+    if (String(url).includes("resource=recent_campaigns")) return { ok: true, json: async () => ({ options: [{ id: "555", name: "Mijn handmatige campagne", effectiveStatus: "ACTIVE" }] }) };
+    const action = JSON.parse(options.body || "{}").action;
+    if (action === "link_existing_campaign") return { ok: true, json: async () => ({ paidCampaign: { campaign_id: "555", adset_id: "666", ad_id: "777", status: "active", manually_linked: true, name: "Mijn handmatige campagne" } }) };
+    return { ok: true, json: async () => ({ paidCampaign: { campaign_id: "555", adset_id: "666", ad_id: "777", status: "active", manually_linked: true, name: "Mijn handmatige campagne", live_status: { state: "active" } } }) };
+  };
+  try {
+    const Editor = load("components/meta-campaign-editor.js", { "next/image": { __esModule: true, default: () => null } }).default;
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Editor, { workspaceId: "workspace", session: { access_token: "token" }, item, distribution, business: { name: "Restaurant" }, enabled: true, onSaved: value => { saved = value; } })); });
+    const button = name => renderer.root.findAllByType("button").find(node => node.props.children === name);
+    await React.act(async () => button("Recente Meta-campagnes ophalen").props.onClick());
+    await React.act(async () => button("Deze campagne koppelen").props.onClick());
+    assert.equal(saved.media[0].facebook_paid_campaign.campaign_id, "555");
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("Geregistreerde Meta-campagne"));
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); global.fetch = originalFetch; }
+});
+
 test("settings have stable future dates, safe URLs and real budget/placement mappings", async () => {
   await swc.loadBindings();
   const settings = load("lib/meta-campaign-settings.js");
