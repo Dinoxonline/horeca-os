@@ -22,9 +22,11 @@ export async function POST(request) {
   if (!account) return jsonError("Voor deze vestiging is nog geen Facebookpagina gekoppeld.", 404);
   if (!account.granted_scopes?.includes("pages_manage_posts")) return jsonError("Koppel de Facebookpagina opnieuw om berichten te mogen publiceren.", 409);
   if (!campaign) return jsonError("Het campagneconcept is niet gevonden.", 404);
+  const distribution = (campaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
+  if (!distribution) return jsonError("De evenementgegevens ontbreken.", 409);
+  if (body.action === "publish_giveaway") return publishGiveaway(admin, account, campaign, distribution, workspaceId, businessId, body.giveaway);
   if (campaign.workflow_status !== "in_progress") return jsonError("Keur het campagneconcept eerst goed voordat je het op Facebook plaatst.", 409);
 
-  const distribution = (campaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
   if (!distribution?.target_channels?.includes("facebook")) return jsonError("Facebook is niet als bestemming geselecteerd.", 409);
   const destination = distribution.channel_payloads?.facebook?.destination;
   if (destination?.business_id && destination.business_id !== businessId) {
@@ -85,6 +87,35 @@ export async function POST(request) {
   } catch (error) {
     return jsonError(error.message || "Facebook heeft het bericht geweigerd.", 502);
   }
+}
+
+async function publishGiveaway(admin, account, campaign, distribution, workspaceId, businessId, giveaway) {
+  const message = String(giveaway?.text || "").trim();
+  const imageUrl = String(giveaway?.image_url || "").trim();
+  if (!message || message.length > 10000) return jsonError("De winactietekst ontbreekt of is te lang.", 400);
+  let image;
+  try { image = new URL(imageUrl); } catch { return jsonError("Het winactiebeeld ontbreekt.", 400); }
+  const expectedPath = `/storage/v1/object/public/marketing-assets/${workspaceId}/${businessId}/facebook-giveaway-${campaign.id}-`;
+  if (image.protocol !== "https:" || !image.pathname.includes(expectedPath)) return jsonError("Gebruik het winactiebeeld dat Horeca OS zojuist heeft gemaakt.", 400);
+  const { data: credential } = await admin.from("integration_credentials").select("token_ciphertext,token_iv,token_tag")
+    .eq("account_id", account.id).maybeSingle();
+  if (!credential) return jsonError("De beveiligde Facebook-toegang ontbreekt. Koppel de pagina opnieuw.", 409);
+  try {
+    const accessToken = decryptMetaToken(credential);
+    const existingPost = await findExistingPost(account.external_account_id, accessToken, message);
+    const result = existingPost || await graphPost(`${account.external_account_id}/photos`, accessToken, { url: imageUrl, caption: message, published: "true" });
+    const postId = String(result.post_id || result.id || "");
+    if (!postId) throw new Error("Facebook heeft geen berichtnummer teruggegeven.");
+    const permalink = result.permalink_url || `https://www.facebook.com/${postId.replace("_", "/posts/")}`;
+    const giveawayDelivery = { status: "confirmed", external_id: postId, permalink, published_at: new Date().toISOString(), image_url: imageUrl };
+    const nextDistribution = { ...distribution, provider_delivery: { ...(distribution.provider_delivery || {}), facebook_giveaway: giveawayDelivery } };
+    const media = (campaign.media || []).map((entry) => entry?.kind === "campaign_distribution" ? nextDistribution : entry);
+    const { data: updatedCampaign, error } = await admin.from("social_content_items").update({ media })
+      .eq("id", campaign.id).eq("workspace_id", workspaceId).eq("business_id", businessId).select("id,media").single();
+    if (error || !updatedCampaign) throw new Error("Het bericht staat op Facebook, maar de bevestiging kon niet in Horeca OS worden opgeslagen.");
+    const savedDistribution = (updatedCampaign.media || []).find((entry) => entry?.kind === "campaign_distribution");
+    return NextResponse.json({ ok: true, alreadyPublished: Boolean(existingPost), post: { id: postId, permalink, pageName: account.display_name }, distribution: savedDistribution, campaign: updatedCampaign });
+  } catch (error) { return jsonError(error.message || "Facebook heeft de winactie geweigerd.", 502); }
 }
 
 async function findExistingPost(pageId, accessToken, message) {

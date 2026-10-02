@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { instagramEventMedia } from "../lib/instagram-event-media";
-import { giveawayImageFilename, giveawayOverlayLines, renderGiveawayImage } from "../lib/giveaway-image";
+import { giveawayImageFilename, giveawayOverlayLines, renderGiveawayImage, uploadGiveawayImage } from "../lib/giveaway-image";
 
 function dateInput(value) {
   const match = String(value || "").match(/^\d{4}-\d{2}-\d{2}/);
@@ -61,7 +61,7 @@ export function defaultGiveawayDraft({ item, distribution, businessName }) {
   return { ...draft, text: buildGiveawayText(draft) };
 }
 
-export default function EventGiveaway({ item, distribution, businessName }) {
+export default function EventGiveaway({ item, distribution, businessName, workspaceId, session, onPublished }) {
   const storageKey = giveawayDraftStorageKey(item?.id);
   const defaults = useMemo(() => defaultGiveawayDraft({ item, distribution, businessName }), [item, distribution, businessName]);
   const [draft, setDraft] = useState(defaults);
@@ -135,6 +135,25 @@ export default function EventGiveaway({ item, distribution, businessName }) {
     finally { setImageBusy(false); }
   }
 
+  async function publishDirectly() {
+    if (!selectedImage || imageBusy) return;
+    if (!window.confirm(`Plaats deze winactie nu echt op ${draft.businessName || "de gekoppelde Facebookpagina"}?`)) return;
+    setImageBusy(true); setMessage("");
+    try {
+      const blob = await renderGiveawayImage(selectedImage.url, draft);
+      const imageUrl = await uploadGiveawayImage(blob, { workspaceId, businessId: item.business_id, campaignId: item.id });
+      const response = await fetch("/api/integrations/facebook/publish", {
+        method: "POST", headers: { Authorization: `Bearer ${session?.access_token || ""}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, businessId: item.business_id, campaignId: item.id, action: "publish_giveaway", giveaway: { text: draft.text, image_url: imageUrl } }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "De winactie kon niet op Facebook worden geplaatst.");
+      if (result.campaign) onPublished?.(result.campaign);
+      setMessage(result.alreadyPublished ? "Deze winactie stond al op Facebook. De bestaande publicatie is gekoppeld." : `De winactie is op ${result.post?.pageName || "Facebook"} geplaatst.`);
+    } catch (error) { setMessage(error.message || "De winactie kon niet op Facebook worden geplaatst."); }
+    finally { setImageBusy(false); }
+  }
+
   return <section className="marketingGiveaway" aria-label="Winactie voorbereiden" style={{ display: "grid", gap: 14, padding: "14px 0" }}>
     <div><h4>Winactie voorbereiden</h4><p>Horeca OS heeft de evenementgegevens ingevuld. Kies hieronder je variabelen; er wordt niets automatisch geplaatst.</p></div>
     <div className="marketingGiveawayFields" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
@@ -147,7 +166,7 @@ export default function EventGiveaway({ item, distribution, businessName }) {
       <div><strong>Afbeelding voor de winactie</strong><p style={{ margin: "4px 0 0" }}>Kies een evenementfoto. In het uiteindelijke beeld staat onderaan duidelijk ‘WINACTIE’ en het aantal kaarten.</p></div>
       {imageOptions.length ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{imageOptions.map((asset) => <button type="button" key={asset.url} onClick={() => update("imageUrl", asset.url)} aria-pressed={selectedImage?.url === asset.url} title={asset.label} style={{ display: "grid", gap: 5, width: 126, padding: 5, border: selectedImage?.url === asset.url ? "2px solid #1677ff" : "1px solid #cbdde5", borderRadius: 7, background: "#fff", color: "#173552", cursor: "pointer", textAlign: "left" }}><Image unoptimized src={asset.url} alt={asset.label} width={116} height={82} style={{ width: "100%", height: 82, objectFit: "cover", borderRadius: 4 }} /><small>{asset.label}</small></button>)}</div> : <p>Er is nog geen bruikbare evenementfoto. Kies eerst een hoofdfoto bij het evenement.</p>}
       {selectedImage && <div style={{ position: "relative", width: "min(100%, 420px)", height: 300, overflow: "hidden", borderRadius: 9, background: "#071c2d" }}><Image unoptimized src={selectedImage.url} alt="Voorbeeld van het winactiebeeld" fill sizes="420px" style={{ objectFit: "contain" }} /><div style={{ position: "absolute", inset: "auto 0 0", display: "grid", gap: 2, padding: "18px 12px", background: "rgba(4, 23, 38, .92)", color: "#fff", textAlign: "center", pointerEvents: "none" }}><strong style={{ fontSize: 34, lineHeight: 1 }}>{overlayLines[0]}</strong><span style={{ color: "#ffd34e", fontWeight: 800, fontSize: 18 }}>{overlayLines[1]}</span></div></div>}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={downloadImage}>{imageBusy ? "Winactiebeeld maken…" : "Winactiebeeld downloaden"}</button><button type="button" className="primaryButton" disabled={!selectedImage || imageBusy} onClick={openFacebookToPublish}>{imageBusy ? "Facebook voorbereiden…" : "Facebook openen om te plaatsen ↗"}</button></div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={downloadImage}>{imageBusy ? "Winactiebeeld maken…" : "Winactiebeeld downloaden"}</button><button type="button" className="secondaryButton" disabled={!selectedImage || imageBusy} onClick={openFacebookToPublish}>{imageBusy ? "Facebook voorbereiden…" : "Facebook openen om te plaatsen ↗"}</button><button type="button" className="primaryButton" disabled={!selectedImage || imageBusy || !workspaceId || !session?.access_token} onClick={publishDirectly}>{imageBusy ? "Op Facebook plaatsen…" : "Direct op Facebook plaatsen"}</button></div>
     </section>
     <label className="marketingGiveawayText" style={{ display: "grid", gap: 5 }}>Klaarstaande winactietekst<textarea rows={16} value={draft.text} onChange={(event) => { setDraft((current) => ({ ...current, text: event.target.value })); setMessage(""); }} /></label>
     <div className="marketingGiveawayActions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="primaryButton" onClick={copy}>Tekst kopiëren</button><button type="button" className="secondaryButton" onClick={reset}>Opnieuw invullen vanuit evenement</button></div>
