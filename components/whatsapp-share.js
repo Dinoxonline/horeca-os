@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { whatsappDesktopUrl, whatsappDraft, whatsappShareUrl, prepareWhatsappImage } from "../lib/whatsapp-share";
 import styles from "./whatsapp-share.module.css";
 
@@ -32,10 +31,18 @@ export default function WhatsappShare({ item, distribution, workspaceId, session
     const timer = setTimeout(() => controller.abort(), 20000);
     try {
       const prepared = await prepareWhatsappImage(image, controller.signal);
-      if (request.current === controller && !controller.signal.aborted) { setFile(prepared); setNotice("Foto klaargezet. Kies hieronder hoe je wilt delen."); }
+      if (request.current === controller && !controller.signal.aborted) { setFile(prepared); setNotice("Foto klaargezet. Kies hieronder hoe je wilt delen."); return prepared; }
     } catch (failure) {
       if (request.current === controller) setNotice(`${failure.name === "AbortError" ? "Foto ophalen duurde te lang." : failure.message} Je kunt de originele foto openen en opslaan, en de tekst kopiëren.`);
     } finally { clearTimeout(timer); if (request.current === controller) { request.current = null; setBusy(false); } }
+  }
+  async function downloadImage() {
+    const imageFile = file || await prepare();
+    if (!imageFile) return;
+    const url = URL.createObjectURL(imageFile), link = document.createElement("a");
+    link.href = url; link.download = imageFile.name; document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice("Foto gedownload. Voeg die in WhatsApp Desktop toe met het paperclip-icoon.");
   }
   async function copy() {
     try { await navigator.clipboard.writeText(text); setNotice("Tekst gekopieerd. Plak deze in jullie WhatsApp-groep."); }
@@ -76,10 +83,11 @@ export default function WhatsappShare({ item, distribution, workspaceId, session
         <button type="button" className="secondaryButton" disabled={!text.trim()} onClick={copy}>Tekst kopiëren</button>
       </div>
       {draft.images.length > 0 ? <>
-        <label>Afbeelding<select value={image} disabled={busy} onChange={event => chooseImage(event.target.value)}>{draft.images.map(entry => <option key={entry.url} value={entry.url}>{entry.label}</option>)}</select></label>
-        {image && <Image className={styles.preview} src={image} alt="Afbeelding voor je WhatsApp-bericht" width={280} height={200} unoptimized />}
+        <section aria-label="Kies je WhatsApp-afbeelding"><strong>Kies je foto</strong><div className={styles.imageGrid}>{draft.images.map(entry => <button type="button" key={entry.url} className={`${styles.imageChoice} ${image === entry.url ? styles.selected : ""}`} disabled={busy} onClick={() => chooseImage(entry.url)} aria-pressed={image === entry.url}><img src={entry.url} alt="" /><span>{image === entry.url ? "✓ Gekozen" : "Kiezen"}</span><small>{entry.label}</small></button>)}</div></section>
+        {image && <p className={styles.selectedPhoto}>Gekozen foto: <strong>{draft.images.find(entry => entry.url === image)?.label || "afbeelding"}</strong></p>}
         <div className={styles.actions}>
-          <button type="button" className="secondaryButton" disabled={busy} onClick={prepare}>{busy ? "Foto klaarzetten…" : "Foto klaarzetten"}</button>
+          <button type="button" className="secondaryButton" disabled={busy} onClick={downloadImage}>{busy ? "Foto voorbereiden…" : "Foto downloaden"}</button>
+          <button type="button" className="secondaryButton" disabled={busy} onClick={prepare}>{busy ? "Foto klaarzetten…" : "Afbeelding kopiëren voorbereiden"}</button>
           {image && <a href={image} target="_blank" rel="noreferrer">Originele foto openen / opslaan ↗</a>}
           {downloadUrl && <a href={downloadUrl} download={file.name}>Foto downloaden</a>}
           {file && canCopyImage && <button type="button" className="secondaryButton" onClick={copyImage}>Afbeelding kopiëren</button>}

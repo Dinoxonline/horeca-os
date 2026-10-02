@@ -62,7 +62,7 @@ test("share UI preserves user control, supports files and cancellation, never ma
     await React.act(async () => link.props.onClick());
     assert.ok(JSON.stringify(renderer.toJSON()).includes("WhatsApp Desktop wordt geopend"));
     await React.act(async () => button("Tekst kopiëren").props.onClick()); assert.equal(copied, "Mijn eigen groepsbericht 🎵");
-    await React.act(async () => button("Foto klaarzetten").props.onClick()); assert.equal(requests, 1); assert.equal(shared, undefined);
+    await React.act(async () => button("Afbeelding kopiëren voorbereiden").props.onClick()); assert.equal(requests, 1); assert.equal(shared, undefined);
     await React.act(async () => button("Foto en bericht delen").props.onClick());
     assert.equal(shared.text, "Mijn eigen groepsbericht 🎵"); assert.equal(shared.files[0].type, "image/jpeg");
     assert.ok(JSON.stringify(renderer.toJSON()).includes("kan verzending niet bevestigen"));
@@ -84,7 +84,7 @@ test("fallback UI handles denied clipboard and unavailable photo sharing", async
     await React.act(async () => renderer.root.findByType("details").props.onToggle({ currentTarget: { open: true } }));
     await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Tekst kopiëren").props.onClick());
     assert.ok(JSON.stringify(renderer.toJSON()).includes("Kopiëren is geblokkeerd"));
-    await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Foto klaarzetten").props.onClick());
+    await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Afbeelding kopiëren voorbereiden").props.onClick());
     assert.ok(JSON.stringify(renderer.toJSON()).includes("originele foto openen"));
     assert.equal(renderer.root.findAllByType("button").filter(node => node.props.children === "Foto en bericht delen").length, 0);
   } finally { if (renderer) await React.act(async () => renderer.unmount()); if (nav) Object.defineProperty(global, "navigator", nav); else delete global.navigator; global.fetch = originalFetch; }
