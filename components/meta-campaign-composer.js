@@ -11,7 +11,7 @@ import styles from "./meta-campaign-composer.module.css";
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", ES: "Spanje", GB: "Verenigd Koninkrijk" };
 
-export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onDirty, busy, error, initialDraft, onDraftChange, budgetContext, lockToEvent = false }) {
+export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onUpdateSavedAudience, onDirty, busy, error, initialDraft, onDraftChange, budgetContext, lockToEvent = false }) {
   const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), beneficiary: pageName || businessName || "", ...initialDraft, ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
@@ -26,6 +26,8 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
   const [interestQuery, setInterestQuery] = useState("");
   const [interestResults, setInterestResults] = useState([]);
   const [failedImage, setFailedImage] = useState("");
+  const [savedAudienceBusy, setSavedAudienceBusy] = useState(false);
+  const [savedAudienceNotice, setSavedAudienceNotice] = useState("");
   const images = campaignImages(distribution);
   const budget = campaignBudgetSummary(draft);
   const platform = ["facebook", "instagram"].includes(draft.placements) ? draft.placements : previewPlatform;
@@ -53,6 +55,18 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
     if (invalid) { setLocalError(invalid); return; }
     if (draft.audienceMode !== "saved" && draft.locationQuery.trim() && !draft.locationKey) { setStep("audience"); setLocalError("Zoek de plaats en kies een stad uit de Meta-resultaten."); return; }
     onCreate({ ...draft, startAt: new Date(draft.startAt).toISOString(), endAt: new Date(draft.endAt).toISOString(), editorVersion: 3, launchStatus: "paused" });
+  }
+  async function updateSavedAudience() {
+    if (!onUpdateSavedAudience || !draft.savedAudienceId) return;
+    if (draft.locationQuery.trim() && !draft.locationKey) { setSearchError("Zoek de plaats en kies de juiste stad uit de Meta-resultaten."); return; }
+    if (!window.confirm(`Werk de opgeslagen Meta-doelgroep “${draft.savedAudienceName}” bij? Deze wijziging geldt ook voor andere campagnes die deze doelgroep gebruiken.`)) return;
+    setSavedAudienceBusy(true); setSavedAudienceNotice(""); setSearchError("");
+    try {
+      const result = await onUpdateSavedAudience(draft);
+      updateMany({ savedAudiencePreview: result.targeting || draft.savedAudiencePreview });
+      setSavedAudienceNotice("De opgeslagen doelgroep is bijgewerkt in Meta.");
+    } catch (failure) { setSearchError(failure.message || "De opgeslagen doelgroep kon niet in Meta worden bijgewerkt."); }
+    finally { setSavedAudienceBusy(false); }
   }
   const field = (label, name, options = {}) => <label className={styles.field}>{label}<input {...options} value={draft[name]} disabled={busy} onChange={event => update(name, event.target.value)} /></label>;
 
@@ -92,7 +106,16 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
           </>}
           {step === "audience" && <>
             <div className={styles.sectionHeading}><h4>Doelgroep</h4><p>Bepaal waar en aan wie je advertentie wordt getoond.</p></div>
-            <MetaAudiencePicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy} />
+            <MetaAudiencePicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy || savedAudienceBusy} />
+            {draft.audienceMode === "saved" && draft.savedAudienceId && <>
+              <div className={styles.sectionHeading}><h4>Deze opgeslagen doelgroep aanpassen</h4><p>Deze wijzigingen worden opgeslagen in Meta en gelden ook voor andere campagnes die deze doelgroep gebruiken.</p></div>
+              <label className={styles.field}>Land<select disabled={busy || savedAudienceBusy} value={draft.countries[0]} onChange={event => { update("countries", [event.target.value]); update("locationKey", ""); setLocations([]); }}>{Object.entries(countries).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+              <label className={styles.field}>Plaats (leeg = heel land)<div className={styles.search}><input value={draft.locationQuery} disabled={busy || savedAudienceBusy} placeholder="Bijvoorbeeld Utrecht" onChange={event => { update("locationQuery", event.target.value); update("locationKey", ""); setLocations([]); }} /><button type="button" disabled={busy || savedAudienceBusy || Boolean(searching)} onClick={() => search("locations")}>{searching === "locations" ? "Zoeken…" : "Zoek plaats"}</button></div></label>
+              {locations.length > 0 && <label className={styles.field}>Kies de plaats uit Meta<select disabled={busy || savedAudienceBusy} value={draft.locationKey} onChange={event => { const chosen = locations.find(location => location.key === event.target.value); update("locationKey", chosen?.key || ""); if (chosen) update("locationQuery", chosen.name); }}><option value="">Selecteer een plaats</option>{locations.map(location => <option key={location.key} value={location.key}>{location.name} · {location.region} · {location.country}</option>)}</select></label>}
+              <div className={styles.fields}><label className={styles.field}>Straal rond de plaats (km)<input type="number" min={1} max={80} value={draft.radiusKm} disabled={busy || savedAudienceBusy} onChange={event => update("radiusKm", event.target.value)} /></label><label className={styles.field}>Geslacht<select value={draft.gender} disabled={busy || savedAudienceBusy} onChange={event => update("gender", event.target.value)}><option value="all">Iedereen</option><option value="women">Vrouwen</option><option value="men">Mannen</option></select></label><label className={styles.field}>Minimumleeftijd<input type="number" min={18} max={65} value={draft.ageMin} disabled={busy || savedAudienceBusy} onChange={event => update("ageMin", event.target.value)} /></label><label className={styles.field}>Maximumleeftijd<select disabled={busy || savedAudienceBusy} value={draft.ageMax} onChange={event => update("ageMax", event.target.value)}>{Array.from({ length: 48 }, (_, index) => index + 18).map(age => <option key={age} value={age}>{age === 65 ? "65+" : age}</option>)}</select></label></div>
+              {searchError && <p className={styles.error} role="alert">{searchError}</p>}{savedAudienceNotice && <p role="status">{savedAudienceNotice}</p>}
+              <button type="button" className={styles.primary} disabled={busy || savedAudienceBusy} onClick={updateSavedAudience}>{savedAudienceBusy ? "Doelgroep bijwerken…" : "Opgeslagen doelgroep in Meta bijwerken"}</button>
+            </>}
             {draft.audienceMode !== "saved" && <>
             {draft.audienceMode === "advantage" && <p className={styles.safeNotice}>Advantage+: interesses, geslacht en maximumleeftijd kunnen als suggesties worden gebruikt, niet als vaste grenzen. Controleer de uiteindelijke doelgroep in Meta vóór activeren.</p>}
             <label className={styles.field}>Land<select disabled={busy} value={draft.countries[0]} onChange={event => { update("countries", [event.target.value]); update("locationKey", ""); setLocations([]); }}>{Object.entries(countries).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>

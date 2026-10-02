@@ -163,6 +163,7 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
   const originalFetch = global.fetch;
   const calls = [], writes = [], lookups = [];
   let currency = "EUR", allowedBusiness = "venue", ig = true, paymentDenied = false;
+  let savedAudience = { id: "777", account: { id: "123" }, targeting: { age_min: 18, age_max: 65, geo_locations: { countries: ["NL"] } } };
   const user = { auth: { getUser: async () => ({ data: { user: { id: "user" } } }) }, from: () => { const q = { select() { return q; }, eq() { return q; }, then(resolve) { return Promise.resolve({ data: [{ business_id: allowedBusiness, role: { role_key: "owner" } }] }).then(resolve); } }; return q; } };
   const admin = { from(table) {
     const filters = {}; let payload;
@@ -178,6 +179,10 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
   global.fetch = async (input, options = {}) => {
     const url = new URL(input);
     if (url.searchParams.get("fields") === "funding_source_details,business_name") return { ok: !paymentDenied, json: async () => paymentDenied ? { error: { message: "No billing access" } } : { business_name: "Le Club", funding_source_details: { display_string: "Visa •••• 1234", id: "private-funding-id" } } };
+    if (url.pathname.endsWith("/777")) {
+      if (options.method === "POST") { calls.push({ path: url.pathname, body: Object.fromEntries(options.body) }); savedAudience = { ...savedAudience, targeting: JSON.parse(Object.fromEntries(options.body).targeting) }; return { ok: true, json: async () => ({ success: true }) }; }
+      return { ok: true, json: async () => savedAudience };
+    }
     if (options.method === "POST") { calls.push({ path: url.pathname, body: Object.fromEntries(options.body) }); return { ok: true, json: async () => ({ id: `result-${calls.length}` }) }; }
     let result = url.pathname.endsWith("/act_123") ? { currency, spend_cap: "50000", amount_spent: "12000", balance: "1000", is_prepay_account: false } : url.pathname.endsWith("/page-venue") ? { instagram_business_account: ig ? { id: "ig-venue" } : undefined }
       : { data: url.searchParams.get("type") === "adinterest" ? [{ id: "123", name: "Music" }] : [{ key: "100", name: "Zoetermeer", country_code: "NL" }] };
@@ -208,6 +213,12 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
     currency = "EUR"; ig = false; assert.equal((await route.POST(request())).status, 502); assert.equal(calls.length, count);
     ig = true; assert.equal((await route.POST(request({ locationKey: "unknown" }))).status, 502); assert.equal(calls.length, count);
     assert.equal((await route.POST(request({ ageMin: 12 }))).status, 400); assert.equal(calls.length, count);
+    const updateAudience = new Request("https://example.com/api/integrations/facebook/ads", { method: "POST", headers: { Authorization: "Bearer session", "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: "workspace", businessId: "venue", campaignId: "campaign", action: "update_saved_audience", settings: { ...settings, audienceMode: "saved", savedAudienceId: "777", ageMin: 25, ageMax: 55, gender: "women", locationQuery: "Zoetermeer", locationKey: "100", radiusKm: 20 } }) });
+    const updatedAudience = await route.POST(updateAudience);
+    assert.equal(updatedAudience.status, 200);
+    assert.deepEqual((await updatedAudience.json()).targeting.geo_locations.cities, [{ key: "100", radius: 20, distance_unit: "kilometer" }]);
+    assert.deepEqual(savedAudience.targeting.genders, [2]);
+    const updatedCount = calls.length;
     const searchRequest = () => new Request("https://example.com/api/integrations/facebook/ads?workspaceId=workspace&businessId=venue&resource=interests&q=music", { headers: { Authorization: "Bearer session" } });
     assert.equal((await (await route.GET(searchRequest())).json()).options[0].id, "123");
     const budgetRequest = () => new Request("https://example.com/api/integrations/facebook/ads?workspaceId=workspace&businessId=venue&resource=budget&accountId=act_999", { headers: { Authorization: "Bearer session" } });
@@ -221,7 +232,7 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
     paymentDenied = true;
     const partial = await (await route.GET(budgetRequest())).json();
     assert.equal(partial.budget.remaining, 380); assert.ok(partial.paymentWarning);
-    assert.equal(calls.length, count, "reading finance never calls a Meta mutation");
+    assert.equal(calls.length, updatedCount, "reading finance never calls a Meta mutation");
     assert.equal(writes.length, 1, "reading finance never writes to Supabase");
     assert.ok(lookups.every(call => call.filters.workspace_id === "workspace" && call.filters.business_id === "venue"));
     allowedBusiness = "other-venue"; assert.equal((await route.GET(searchRequest())).status, 403); assert.equal((await route.POST(request())).status, 403);

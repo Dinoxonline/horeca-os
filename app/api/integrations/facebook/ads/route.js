@@ -107,6 +107,7 @@ export async function POST(request) {
   if (!campaign) return jsonError("Het campagneconcept is niet gevonden.", 404);
   const distribution = (campaign.media || []).find(entry => entry?.kind === "campaign_distribution");
   if (!distribution) return jsonError("De campagnegegevens ontbreken.", 409);
+  if (body.action === "update_saved_audience") return updateSavedAudience(context.admin, workspaceId, businessId, adAccount, body.settings);
   if (body.action === "refresh_status") return refreshRegisteredCampaign(admin, workspaceId, businessId, campaign, distribution, adAccount);
   if (body.action) return jsonError("Onbekende campagneactie.", 400);
   if (distribution.facebook_paid_campaign?.campaign_id || ["active", "paused"].includes(distribution.facebook_paid_campaign?.status)) return NextResponse.json({ ok: true, alreadyActive: true, paidCampaign: distribution.facebook_paid_campaign });
@@ -195,6 +196,34 @@ export async function POST(request) {
     const suffix = createdCampaignId ? ` Er staat mogelijk een gedeeltelijk, gepauzeerd concept in Meta (campagne ${createdCampaignId}). Controleer dit vóór opnieuw proberen.` : "";
     return jsonError((error.message || "Meta heeft het concept geweigerd.") + suffix, 502);
   }
+}
+
+async function updateSavedAudience(admin, workspaceId, businessId, account, settings = {}) {
+  const audienceId = String(settings.savedAudienceId || "");
+  const ageMin = Number(settings.ageMin), ageMax = Number(settings.ageMax), radius = Number(settings.radiusKm);
+  const country = String(settings.countries?.[0] || "NL").toUpperCase();
+  if (!/^\d+$/.test(audienceId) || !Number.isInteger(ageMin) || ageMin < 18 || ageMin > 65 || !Number.isInteger(ageMax) || ageMax < ageMin || ageMax > 65 || !/^[A-Z]{2}$/.test(country)) return jsonError("Vul een geldige locatie en leeftijd in voor de opgeslagen doelgroep.", 400);
+  try {
+    const token = await accountCredential(admin, workspaceId, businessId, account.id);
+    const accountId = String(account.external_account_id || "").replace(/^act_/, "");
+    if (!/^\d+$/.test(accountId)) return jsonError("Het gekoppelde advertentieaccount heeft geen geldig nummer.", 409);
+    const audience = await graphRead(audienceId, token, { fields: "id,name,account{id},targeting" });
+    if (String(audience.id) !== audienceId || String(audience.account?.id || "").replace(/^act_/, "") !== accountId) return jsonError("Deze opgeslagen doelgroep hoort niet bij het gekoppelde advertentieaccount.", 409);
+    const targeting = { ...(audience.targeting || {}), age_min: ageMin, age_max: ageMax };
+    if (settings.gender === "men") targeting.genders = [1]; else if (settings.gender === "women") targeting.genders = [2]; else delete targeting.genders;
+    const query = String(settings.locationQuery || "").trim();
+    if (query) {
+      if (!Number.isInteger(radius) || radius < 1 || radius > 80 || !String(settings.locationKey || "")) return jsonError("Zoek de plaats opnieuw en kies de juiste stad uit de Meta-resultaten.", 400);
+      const matches = await searchOptions("locations", query, country, token);
+      const city = matches.find(item => item.key === String(settings.locationKey));
+      if (!city) return jsonError("Meta vindt deze plaats niet meer. Zoek de plaats opnieuw en kies het resultaat.", 409);
+      targeting.geo_locations = { cities: [{ key: city.key, radius, distance_unit: "kilometer" }] };
+    } else targeting.geo_locations = { countries: [country] };
+    await graphPost(audienceId, token, { targeting: JSON.stringify(targeting) });
+    const saved = await graphRead(audienceId, token, { fields: "id,name,account{id},targeting" });
+    if (String(saved.id) !== audienceId || String(saved.account?.id || "").replace(/^act_/, "") !== accountId) return jsonError("Meta gaf geen veilige bevestiging van de doelgroepwijziging.", 502);
+    return NextResponse.json({ ok: true, targeting: saved.targeting }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return jsonError(error.message || "De opgeslagen Meta-doelgroep kon niet worden bijgewerkt.", 502); }
 }
 
 async function refreshRegisteredCampaign(admin, workspaceId, businessId, campaign, distribution, account) {

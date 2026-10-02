@@ -75,12 +75,22 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
     finally { setBusy(false); }
   }
 
+  async function updateSavedAudience(settings) {
+    const response = await fetch("/api/integrations/facebook/ads", {
+      method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceId, businessId: item.business_id, campaignId: item.id, action: "update_saved_audience", settings }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.targeting) throw new Error(result.error || "De opgeslagen doelgroep kon niet in Meta worden bijgewerkt.");
+    return result;
+  }
+
   if (created) return <section className="marketingMetaCampaign" aria-label="Meta-campagne"><MetaCampaignStatus key={`${item.id}:${paidCampaign.campaign_id}`} workspaceId={workspaceId} session={session} item={item} paidCampaign={paidCampaign} enabled={enabled} onSaved={onSaved} /><MetaAccountBudget {...budgetContext} /></section>;
   if (loadingAccount || adAccount === undefined) return <p className="marketingMetaCampaign"><strong>Meta-advertentieaccount wordt gecontroleerd…</strong></p>;
   if (adAccount?.connection_status === "pending") return <FacebookAdAccountPicker workspaceId={workspaceId} businessId={item.business_id} businessName={business?.name} session={session} account={adAccount} onSaved={loadAdAccount} />;
   if (!adAccount || adAccount.connection_status !== "connected" || !adAccount.granted_scopes?.includes("ads_management")) return <section className="marketingMetaCampaign">{adsConfiguration?.ready ? <><p>Verbind het Meta-advertentieaccount van <strong>{business?.name || "deze vestiging"}</strong> met toestemming voor betaalde campagnes.</p><button type="button" className="primaryButton" disabled={busy} onClick={connectAdAccount}>{busy ? "Koppelen…" : "Advertentieaccount koppelen"}</button></> : <><p>{adsConfiguration?.message || "De advertentiekoppeling kon niet worden gecontroleerd."}</p>{adsConfiguration?.setupUrl && <a className="secondaryButton" href={adsConfiguration.setupUrl} target="_blank" rel="noreferrer">Meta-appinstellingen openen ↗</a>}</>}<button type="button" className="secondaryButton" onClick={loadAdAccount}>Koppeling opnieuw controleren</button>{error && <p role="alert">{error}</p>}</section>;
   const lockToEvent = Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.source_type === "website_event");
-  return <MetaCampaignComposer key={item.id} item={item} distribution={distribution} businessName={business?.name || "Deze vestiging"} pageName={pageAccount?.display_name} adAccountName={adAccount.display_name} onCreate={createCampaign} onSearch={searchMeta} onCatalog={loadCatalog} onDirty={onDirty} busy={busy} error={error} initialDraft={initialDraft} onDraftChange={onDraftChange} budgetContext={budgetContext} lockToEvent={lockToEvent} />;
+  return <MetaCampaignComposer key={item.id} item={item} distribution={distribution} businessName={business?.name || "Deze vestiging"} pageName={pageAccount?.display_name} adAccountName={adAccount.display_name} onCreate={createCampaign} onSearch={searchMeta} onCatalog={loadCatalog} onUpdateSavedAudience={updateSavedAudience} onDirty={onDirty} busy={busy} error={error} initialDraft={initialDraft} onDraftChange={onDraftChange} budgetContext={budgetContext} lockToEvent={lockToEvent} />;
 }
 
 export function SavedMetaCampaignEditor(props) {
