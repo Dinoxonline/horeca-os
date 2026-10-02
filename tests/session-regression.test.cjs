@@ -1087,10 +1087,10 @@ test('startup verification updates an open event immediately, independently of s
     assert.equal(panel().findAllByType('a')[0].props.href, 'https://www.facebook.com/events/456/');
     await React.act(async () => pending.get('slow')({ ok: false, json: async () => ({ error: 'Unavailable' }) }));
     await flush();
-    await React.act(async () => buttons().find(b => b.props.children === 'Details sluiten').props.onClick());
+    await React.act(async () => buttons().find(b => b.props.children === 'Evenement sluiten').props.onClick());
     await React.act(async () => open(0));
     assert.equal(panel().findAllByType('a')[0].props.href, 'https://www.facebook.com/events/456/', 'verified link survives reopening');
-    await React.act(async () => buttons().find(b => b.props.children === 'Details sluiten').props.onClick());
+    await React.act(async () => buttons().find(b => b.props.children === 'Evenement sluiten').props.onClick());
     await React.act(async () => open(1));
     assert.equal(panel().findByType('strong').props.children, 'Koppeling kon niet worden gecontroleerd');
   } finally {
@@ -1132,7 +1132,7 @@ for (const timeout of [false, true]) test('open event bypasses slow publication 
     await React.act(async () => open());
     assert.equal(comparisons, 1, 'starts before unrelated publication checks finish');
     assert.equal(summary().props['aria-busy'], true);
-    await React.act(async () => buttons().find(button => button.props.children === 'Details sluiten').props.onClick());
+    await React.act(async () => buttons().find(button => button.props.children === 'Evenement sluiten').props.onClick());
     await React.act(async () => open());
     assert.equal(comparisons, 1, 'reopening reuses the pending request');
     if (timeout) {
@@ -1206,7 +1206,7 @@ test('Facebook status is shared by calendar, worklist and dialog before opening,
     const saved={...campaign,media:[{...campaign.media[0],common:{...campaign.media[0].common,description:'Andere tekst'}}]};
     await React.act(async()=>details().props.onSeriesSaved([saved]));
     state('placed','Tekst komt overeen — geen actie nodig');
-    await click('Details sluiten');
+    await click('Evenement sluiten');
     state('placed','Tekst komt overeen — geen actie nodig');
     assert.equal(reads,3,'view switches, opening and local edits do not add requests');
   } finally {if(renderer)await React.act(async()=>renderer.unmount());global.fetch=oldFetch;global.window=oldWindow;global.document=oldDocument;}
