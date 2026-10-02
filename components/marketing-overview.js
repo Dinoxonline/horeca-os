@@ -56,7 +56,7 @@ export function channelStatus(item, channel, comparison) {
     }
     return { key: "concept", label: "Campagne maken" };
   }
-  if (channel === "predis") return { key: "concept", label: manualSummary(distribution.manual_predis) };
+  if (channel === "predis") return distribution.manual_predis?.predis_schedule?.state === "scheduled" ? { key: "placed", label: "Ingepland in Predis" } : { key: "concept", label: manualSummary(distribution.manual_predis) };
   // A completed content comparison supersedes the older manual-delivery task.
   // Never treat link reachability or a failed/pending check as matching text.
   if (channel === "facebook" && !isExternalEvent(item) && (facebookEventId(distribution) || distribution.provider_delivery?.facebook?.external_id) && comparison) {

@@ -47,6 +47,7 @@ test('unchanged content retains confirmations; content changes clear them; elaps
  assert.deepEqual(retain(previous,{...d,caption:'Changed'}),{});
  assert.deepEqual(retain(previous,{...d,assets:[]}),{});
  assert.equal(manualSummary(previous),'1/1 handmatig bevestigd');
+ assert.equal(manualSummary({...previous,predis_schedule:{state:'scheduled'}}),'Ingepland in Predis');
  assert.match(transferText('Title',d),/NIET automatisch ingepland/);
  assert.equal(manualSummary({draft:d}),'0/1 handmatig bevestigd');
 });
@@ -89,6 +90,10 @@ test('save/reload and explicit per-channel confirmation preserve event and direc
  assert.equal((await h.post({expectedRevision:confirmed.saved.revision,draft:{...draft,caption:'Changed'}})).status,409);
  const reset=await h.post({expectedRevision:confirmed.saved.revision,draft:{...draft,caption:'Changed'},acceptReset:true});
  assert.deepEqual(reset.saved.confirmations,{});assert.equal(reset.saved.history.at(-1).invalidated[0],key);
+ const schedule=await (await harness()).post({action:'mark_scheduled',confirmed:true});
+ assert.equal(schedule.status,200);assert.equal(schedule.saved.predis_schedule.state,'scheduled');assert.equal(schedule.saved.predis_schedule.verification,'user_reported');
+ const missingConfirmation=await (await harness()).post({action:'mark_scheduled'});
+ assert.equal(missingConfirmation.status,400);
 });
 test('CAS retry preserves independent updates but refuses concurrent edits to this preparation',async()=>{
  const h=await harness({conflict:true});assert.equal((await h.post()).status,200);assert.equal(h.updates.length,2);assert.equal(h.row.media[1].instagram_publications.feed.status,'published');

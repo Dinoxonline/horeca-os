@@ -195,6 +195,15 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     if (reset && !window.confirm("Je wijzigt eerder bevestigde inhoud of momenten. De betrokken bevestigingen worden opnieuw ‘Nog overzetten’. Pas deze ook zelf in Predis aan. Doorgaan?")) return;
     return run("Concept bewaren…", async () => { const next = await request("save", { draft: normalized, acceptReset: reset }); accept(next); if (mounted.current) setMessage("Concept bewaard in Horeca OS. Er is niets naar Predis verstuurd. Ga verder bij stap 2; bevestig pas daarna de uitkomst bij stap 3."); });
   }
+  function markPredisScheduled() {
+    let normalized;
+    try { normalized = validateManualDraft(draft); } catch (e) { setFailed(true); setMessage(e.message); return; }
+    return run("Predis-status bewaren…", async () => {
+      const next = await request("mark_scheduled", { draft: normalized, confirmed: true });
+      accept(next);
+      if (mounted.current) setMessage("Predis is als ingepland gemarkeerd. Dit is je eigen bevestiging; Horeca OS heeft Predis niet automatisch gecontroleerd.");
+    });
+  }
   const chosen = draft.entries.find(e => e.key === entryKey);
   const groups = groupManualMoments(draft.entries, now);
   const upcoming = groups.filter(group => !group.elapsed), elapsed = groups.filter(group => group.elapsed);
@@ -242,6 +251,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <small>De gegenereerde tekst houdt alinea-afstand in Predis vast met een onzichtbare tussenregel.</small>
       {draft.caption.length > PREDIS_CAPTION_LIMIT && <p role="alert">Predis accepteert maximaal {PREDIS_CAPTION_LIMIT} tekens. Klik op ‘Maak Predis-tekst’ om de belangrijkste gegevens en ticketlink te behouden.</p>}
       {!!draft.assets.length && <div className={styles.actions} aria-label="Berichttekst kopiëren"><button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || draft.caption.length > PREDIS_CAPTION_LIMIT} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button></div>}
+      <section className={styles.predisSchedule} aria-label="Predis-planning bevestigen">{saved?.predis_schedule?.state === "scheduled" && !dirty ? <><strong>✓ Ingepland in Predis</strong><small>Handmatig bevestigd op {new Date(saved.predis_schedule.at).toLocaleString("nl-NL")}. De Predis-status is groen.</small></> : <><strong>Al ingepland in Predis?</strong><small>Bevestig dit pas nadat je de post zelf in Predis hebt ingepland.</small><button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={markPredisScheduled}>Als ingepland markeren</button></>}</section>
     </fieldset>
     <div hidden className={styles.step} aria-label="Handmatig overzetten naar Predis">
       <strong>2. Naar Predis gaan</strong>

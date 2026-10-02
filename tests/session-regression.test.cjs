@@ -50,6 +50,12 @@ test('a handmatig gekoppelde Meta-campagne gets the green placed status', async 
   assert.match(state.label, /Gekoppeld aan Meta-campagne/);
 });
 
+test('a manually confirmed Predis schedule gets the green placed status', async () => {
+  const { channelStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'predis-scheduled', media: [{ kind: 'campaign_distribution', common: { title: 'Avond' }, manual_predis: { predis_schedule: { state: 'scheduled', verification: 'user_reported' } } }] };
+  assert.deepEqual(channelStatus(item, 'predis'), { key: 'placed', label: 'Ingepland in Predis' });
+});
+
 test('comparison summary distinguishes equal, different, incomplete and failed checks without trusting manual confirmation', async () => {
   const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = (title = 'Title', description = 'Text') => ({ id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });

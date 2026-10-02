@@ -37,11 +37,12 @@ export async function GET(request) {
 export async function POST(request) {
   let input, ctx, draft;
   try { input = await request.json(); } catch { return reply({ error: "Ongeldig verzoek." }, 400); }
-  if (!input || !["save", "confirm"].includes(input.action)) return reply({ error: "Alleen handmatig bewaren en bevestigen is mogelijk." }, 400);
+  if (!input || !["save", "confirm", "mark_scheduled"].includes(input.action)) return reply({ error: "Alleen handmatig bewaren en bevestigen is mogelijk." }, 400);
   if (!(input.expectedRevision === null || (typeof input.expectedRevision === "string" && input.expectedRevision.length <= 100))) return reply({ error: "De versie ontbreekt." }, 400);
   try { ctx = await contextFor(request, input); } catch (e) { return reply({ error: e.message }, 403); }
-  try { if (input.action === "save") draft = validateManualDraft(input.draft); } catch (e) { return reply({ error: e.message }, 400); }
+  try { if (["save", "mark_scheduled"].includes(input.action)) draft = validateManualDraft(input.draft); } catch (e) { return reply({ error: e.message }, 400); }
   if (input.action === "confirm" && (input.confirmed !== true || !["pending", "scheduled", "published"].includes(input.state) || typeof input.entryKey !== "string")) return reply({ error: "Bevestig dat je de status zelf in Predis hebt gecontroleerd." }, 400);
+  if (input.action === "mark_scheduled" && input.confirmed !== true) return reply({ error: "Bevestig dat je dit bericht zelf in Predis hebt ingepland." }, 400);
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: row, error } = await ctx.scope(ctx.query().select("id,media,updated_at")).maybeSingle();
@@ -49,10 +50,15 @@ export async function POST(request) {
       if (error || !dist) return reply({ error: "Evenement niet toegankelijk." }, 404);
       if ((previous?.revision || null) !== input.expectedRevision || !row.updated_at) return reply({ error: "De opgeslagen voorbereiding is gewijzigd. Je invoer blijft staan. Laad de bewaarde versie opnieuw voordat je verdergaat." }, 409);
       const stamp = { at: new Date().toISOString(), by: ctx.userId };
-      let confirmations;
+      let confirmations, predisSchedule = previous?.predis_schedule;
       if (input.action === "save") {
         confirmations = retainedConfirmations(previous, draft);
         if (Object.keys(previous?.confirmations || {}).some(key => !confirmations[key]) && input.acceptReset !== true) return reply({ error: "Deze wijziging maakt eerdere bevestigingen ongeldig. Bevestig eerst dat je die opnieuw gaat controleren." }, 409);
+        if (previous?.draft?.caption !== draft.caption || JSON.stringify(previous?.draft?.assets || []) !== JSON.stringify(draft.assets || [])) predisSchedule = undefined;
+      } else if (input.action === "mark_scheduled") {
+        confirmations = retainedConfirmations(previous, draft);
+        if (!draft.caption.trim()) return reply({ error: "Voeg eerst de berichttekst toe voordat je de Predis-planning bevestigt." }, 400);
+        predisSchedule = { state: "scheduled", ...stamp, verification: "user_reported" };
       } else {
         if (!previous?.draft?.entries.some(e => e.key === input.entryKey)) return reply({ error: "Bewaar eerst dit publicatiemoment." }, 409);
         draft = previous.draft;
@@ -61,7 +67,7 @@ export async function POST(request) {
         if (input.state === "pending") delete confirmations[input.entryKey];
         else confirmations[input.entryKey] = { state: input.state, ...stamp, verification: "user_reported" };
       }
-      const saved = { revision: randomUUID(), draft, confirmations, updated_at: stamp.at, updated_by: ctx.userId,
+      const saved = { revision: randomUUID(), draft, confirmations, ...(predisSchedule ? { predis_schedule: predisSchedule } : {}), updated_at: stamp.at, updated_by: ctx.userId,
         history: [...(previous?.history || []), { action: input.action, ...(input.action === "confirm" ? { key: input.entryKey, state: input.state } : { invalidated: Object.keys(previous?.confirmations || {}).filter(key => !confirmations[key]) }), ...stamp }].slice(-100) };
       const media = row.media.map(entry => entry === dist ? { ...entry, manual_predis: saved } : entry);
       const result = await ctx.scope(ctx.query().update({ media })).eq("updated_at", row.updated_at).select("id").maybeSingle();
