@@ -475,7 +475,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [ticketDetails, setTicketDetails] = useState("");
   const [practicalDetails, setPracticalDetails] = useState("");
   const [sourceText, setSourceText] = useState("");
-  const [creativeStepOpen, setCreativeStepOpen] = useState(true);
+  const [eventCreationStep, setEventCreationStep] = useState(1);
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
   const handledNewEventRequestRef = useRef("");
@@ -719,7 +719,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setTicketDetails("");
     setPracticalDetails("");
     setSourceText("");
-    setCreativeStepOpen(true);
+    setEventCreationStep(1);
     setPreview(false);
     setResult({ ok: true, message: "Er staat een leeg nieuw campagneformulier klaar. Het bestaande evenement is niet gewijzigd." });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -752,7 +752,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   };
   const openNewEventWorkspace = () => {
     setEventWorkspaceView("new");
-    setCreativeStepOpen(true);
+    setEventCreationStep(1);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const toggleFacebookPlacement = (placement) => {
@@ -1696,7 +1696,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setTicketDetails("");
     setPracticalDetails("");
     setSourceText("");
-    setCreativeStepOpen(true);
+    setEventCreationStep(1);
     setPreview(false);
     setResult({ ok: true, message: `Nieuw evenement klaargezet op ${newEventRequest.date}. Pas de begin- en eindtijd aan als dat nodig is.` });
     // Deze loopt bewust na de eventuele herstelactie hierboven, zodat een
@@ -2653,11 +2653,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult({ ok: true, message: "Herkenbare gegevens zijn uit de tekst overgenomen. Controleer titel, datum, tijden en locatie voordat je ChatGPT opent." });
   }
   function continueFromChatGptDesign() {
-    setCreativeStepOpen(false);
+    setEventCreationStep(2);
     window.requestAnimationFrame(() => scrollToCreatorSection("campagne-basis"));
   }
 
+  const newEventFlow = isEvent && eventWorkspaceView === "new";
+
   return <section className="panel" style={{ marginBottom: 24 }}>
+    {!newEventFlow && <>
     <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
     <p>Ook betaald promoten? Sla eerst je evenement of campagne op. Open daarna bij het opgeslagen dossier <b>Meta-campagne — Facebook en Instagram</b> voor doelgroep, budget, advertentie en voorbeeld. Er wordt niets automatisch gestart.</p>
     {editingCampaignId && <div className="editingNotice"><strong>{editingWebsiteEvent ? "Website-evenement bewerken" : "Concept bewerken"}</strong><span>{editingWebsiteEvent ? "Je wijzigingen worden na bevestiging in hetzelfde Eventin-evenement en marketingdossier opgeslagen." : "Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat."}</span><button type="button" onClick={startNewCampaign}>Nieuw evenement</button></div>}
@@ -2670,10 +2673,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <button type="button" className={eventWorkspaceView === "saved" ? "active" : ""} onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); }}><strong>Opgeslagen evenementen</strong><span>Bekijk, bewerk, dupliceer, publiceer of annuleer.</span></button>
       </div>
     </div>}
+    </>}
     {(!isEvent || eventWorkspaceView === "new") && <>
-    {isEvent && <section className="chatGptDesignStep creatorSection" id="chatgpt-ontwerp">
-      <div className="chatGptDesignHead"><div><p className="eyebrow">STAP 1 VAN 3</p><h3>Ontwerp je evenement met ChatGPT</h3><p>Vul alleen de informatie in die ChatGPT moet kennen. Daarna opent ChatGPT met een complete opdracht voor tekst en beelden.</p></div><button type="button" className="secondaryButton" onClick={() => setCreativeStepOpen((current) => !current)}>{creativeStepOpen ? "Inklappen" : "Opnieuw openen"}</button></div>
-      {creativeStepOpen && <div className="chatGptDesignBody">
+    {isEvent && eventCreationStep === 1 && <section className="chatGptDesignStep creatorSection" id="chatgpt-ontwerp">
+      <div className="chatGptDesignHead"><div><p className="eyebrow">STAP 1 VAN 3</p><h3>Ontwerp je evenement met ChatGPT</h3><p>Vul alleen de informatie in die ChatGPT moet kennen. Daarna opent ChatGPT met een complete opdracht voor tekst en beelden.</p></div></div>
+      <div className="chatGptDesignBody">
         <label>Evenementnaam *<input value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Latin Night" /></label>
         <label>Locatie *<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label>
         <label>Datum *<input type="date" value={form.start.slice(0, 10)} onChange={(event) => { const date = event.target.value; update("start", date ? `${date}T${form.start.slice(11, 16) || "18:00"}` : ""); update("end", date ? `${date}T${form.end.slice(11, 16) || "23:00"}` : ""); }} /></label>
@@ -2687,8 +2691,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         <details className="sourceTextHelper wide"><summary>Ik heb al een bestaande evenementtekst</summary><p>Plak die hier alleen als je titel, datum, tijden en locatie daaruit wilt overnemen.</p><textarea rows={5} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Plak hier de bestaande tekst." /><button type="button" className="secondaryButton" disabled={!sourceText.trim()} onClick={useDetailsFromSourceText}>Gegevens uit deze tekst invullen</button></details>
         <div className="chatGptDesignActions"><a className="primaryButton chatGptDesktopLink" href={chatGptDesktopUrl}>ChatGPT Desktop openen ↗</a><a className="primaryButton chatGptMobileLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen ↗</a><details className="chatGptBrowserLink"><summary>Werkt de app niet?</summary><a href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT in browser</a></details><button type="button" className="secondaryButton" onClick={continueFromChatGptDesign}>Ik heb mijn ontwerp — ga verder</button></div>
         <small>ChatGPT krijgt alle hierboven ingevulde informatie mee. Kies daar de tekst en beelden die je wilt gebruiken. Daarna voeg je die hieronder toe.</small>
-      </div>}
+      </div>
     </section>}
+    {(!isEvent || eventCreationStep >= 2) && <>
     {!isEvent && <nav className="creatorQuickBar" aria-label="Formuliernavigatie">
       <div className="creatorQuickLinks">
         {isEvent && <button type="button" onClick={() => scrollToCreatorSection("chatgpt-ontwerp")}>1. ChatGPT</button>}
@@ -2997,6 +3002,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
     <div className="earlyDraftAction"><div><strong>{editingWebsiteEvent ? "Bestaand evenement bijwerken" : "Nog niet alles compleet?"}</strong><p>{editingWebsiteEvent ? "Controleer de wijzigingen en werk daarna hetzelfde Eventin-evenement en dezelfde agenda-afspraak bij." : "Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland."}</p></div><button type="button" className="secondaryButton" onClick={editingWebsiteEvent ? showPreview : saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Wijziging controleren" : "Basisconcept opslaan"}</button></div>
     <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    </>}
     </>}
     {(!isEvent || eventWorkspaceView === "saved") && <div className="campaignStatus creatorSection" id="opgeslagen-campagnes"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
       {eventCampaigns.length === 0 ? <div className="emptyCampaignState">
