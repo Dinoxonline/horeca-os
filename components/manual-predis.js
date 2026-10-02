@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { instagramEventMedia } from "../lib/instagram-event-media";
 import { validateManualHandoff } from "../lib/manual-predis";
-import { PREDIS_CHANNELS, PREDIS_STATES, PREDIS_DAYS, planningLocalTime, nextPlanningMoment, validateNewMoments, groupManualMoments, makeManualEntries, validateManualDraft, transferText, manualDistribution, retainedConfirmations } from "../lib/manual-predis";
+import { PREDIS_CHANNELS, PREDIS_STATES, PREDIS_DAYS, PREDIS_CAPTION_LIMIT, planningLocalTime, nextPlanningMoment, validateNewMoments, groupManualMoments, makeManualEntries, validateManualDraft, transferText, manualDistribution, retainedConfirmations, predisCaption } from "../lib/manual-predis";
 import styles from "./manual-predis.module.css";
 
 export default function ManualPredis({ item, workspaceId, session, businessName, enabled, linkedSources = [], onSaved, onUnsavedChange, generatedContent, onGeneratedContentApplied, uploadType }) {
@@ -91,6 +91,12 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     onGeneratedContentApplied?.();
   }, [loaded, generatedContent]);
   function change(next) { setDraft(next); setDirty(true); setConfirmed(false); setMessage(""); setPlanningFeedback(null); }
+  function makePredisCaption() {
+    const caption = predisCaption(item, draft.caption);
+    change({ ...draft, caption });
+    setFailed(false);
+    setMessage(`Predis-tekst ingevuld: ${caption.length}/${PREDIS_CAPTION_LIMIT} tekens. Controleer hem gerust nog zelf.`);
+  }
   let preview = [], previewError = "";
   try {
     preview = makeManualEntries({ start, end: mode === "weekly" ? end : start, time, weekdays: mode === "weekly" ? days : undefined, channels });
@@ -232,7 +238,9 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       </div>}
       <label>Je bericht<textarea rows={6} maxLength={10000} value={draft.caption} onChange={e => change({ ...draft, caption: e.target.value })} /></label>
       <small>Je bewerkt alleen dit bericht. Het evenement en bestaande publicaties blijven ongewijzigd.</small>
-      {!!draft.assets.length && <div className={styles.actions} aria-label="Berichttekst kopiëren"><button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim()} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button></div>}
+      <div className={styles.actions} aria-label="Predis-tekst inkorten"><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={makePredisCaption}>Maak Predis-tekst · max. 1.000 tekens</button><small>{draft.caption.length}/{PREDIS_CAPTION_LIMIT} tekens</small></div>
+      {draft.caption.length > PREDIS_CAPTION_LIMIT && <p role="alert">Predis accepteert maximaal {PREDIS_CAPTION_LIMIT} tekens. Klik op ‘Maak Predis-tekst’ om de belangrijkste gegevens en ticketlink te behouden.</p>}
+      {!!draft.assets.length && <div className={styles.actions} aria-label="Berichttekst kopiëren"><button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || draft.caption.length > PREDIS_CAPTION_LIMIT} onClick={() => copy(draft.caption, "Berichttekst")}>Tekst kopiëren</button></div>}
     </fieldset>
     <div className={styles.step} aria-label="Handmatig overzetten naar Predis">
       <strong>2. Naar Predis gaan</strong>
@@ -243,7 +251,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
         <button type="button" className="secondaryButton" disabled={!loaded || !!busy || (!dirty && !!saved)} onClick={save}>Concept bewaren</button>
       </div>
       <p><small>Wil je alles tegelijk doen? Hiermee wordt het concept bewaard, de tekst gekopieerd en Predis geopend.</small></p>
-      <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || !draft.assets.length || !!formatWarning} onClick={handoff}>Alles klaarzetten en Predis openen</button>
+      <button type="button" className="secondaryButton" disabled={!loaded || !!busy || !draft.caption.trim() || draft.caption.length > PREDIS_CAPTION_LIMIT || !draft.assets.length || !!formatWarning} onClick={handoff}>Alles klaarzetten en Predis openen</button>
       {saved && !dirty && <small>Concept bewaard in Horeca OS</small>}
       {loaded && !chosen && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
       <p>Controleer in Predis het merk <b>{businessName}</b>. Kies in het Predis-keuzescherm ‘Heb je al een ontwerp? Uploaden en inplannen’ → ‘Upload inhoud vanaf apparaat’ → {uploadLabel || "Enkele afbeelding, Carrousel of Video’s"}. Upload de bestanden in bovenstaande volgorde en plak je tekst met Ctrl+V.</p>

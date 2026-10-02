@@ -29,6 +29,14 @@ test('manual month planning retains Dutch wall-clock times, inclusive boundaries
  assert.throws(()=>make({start:'2026-01-01',end:'2028-01-01',time:'10:00',channels:['google']}));
  assert.throws(()=>make({start:'2026-01-01',time:'10:00',channels:[],weekdays:[3]}));
 });
+test('Predis caption keeps the event essentials and ticket link within one thousand characters', async () => {
+ const { predisCaption, PREDIS_CAPTION_LIMIT } = await load('lib/manual-predis.js');
+ const event = { id: 'event', body: 'x'.repeat(1800), media: [{ kind: 'campaign_distribution', common: { title: 'Rhythm Construction', start: '2026-11-07T18:00:00+01:00', location: 'Caribbean Corner', website_url: 'https://tickets.example.com/rhythm' } }] };
+ const result = predisCaption(event, event.body);
+ assert.ok(result.length <= PREDIS_CAPTION_LIMIT);
+ assert.match(result, /Rhythm Construction/); assert.match(result, /Caribbean Corner/);
+ assert.match(result, /https:\/\/tickets\.example\.com\/rhythm/);
+});
 test('unchanged content retains confirmations; content changes clear them; elapsed time never implies publication', async () => {
  const {validateManualDraft:validate,retainedConfirmations:retain,manualSummary,transferText}=await load('lib/manual-predis.js');
  const d=validate(draft), key=d.entries[0].key, previous={draft:d,confirmations:{[key]:{state:'scheduled'}}};
