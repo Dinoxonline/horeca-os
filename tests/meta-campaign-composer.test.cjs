@@ -143,6 +143,9 @@ test("editor edits update preview, retain step state, search real IDs and submit
     await change("Betaler", "Testbedrijf BV");
     await change("Budgettype", "lifetime"); await change("Totaalbudget (€)", "85");
     await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
+    await React.act(async () => button("← Budget en looptijd aanpassen").props.onClick());
+    assert.equal(control("Totaalbudget (€)").props.value, "85");
+    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
     await change("Plaats (leeg = heel land)", "Zoetermeer");
     await React.act(async () => button("Zoek plaats").props.onClick());
     await change("Kies de plaats uit Meta", "100");

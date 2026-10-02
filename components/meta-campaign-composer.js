@@ -121,6 +121,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
           </>}
           {step === "audience" && <>
             <div className={styles.sectionHeading}><h4>Doelgroep</h4><p>Bepaal waar en aan wie je advertentie wordt getoond.</p></div>
+            <button type="button" className={styles.audienceJump} onClick={() => setStep("campaign")}>← Budget en looptijd aanpassen</button>
             <MetaAudiencePicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy || savedAudienceBusy} />
             {draft.audienceMode === "saved" && draft.savedAudienceId && <>
               <section className={styles.audienceEditCard} aria-label="Opgeslagen Meta-doelgroep">
