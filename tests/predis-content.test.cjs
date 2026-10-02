@@ -91,6 +91,8 @@ test('saved campaign panel keeps checking disabled while collapsed', async () =>
     await React.act(async () => { r = Renderer.create(React.createElement(SavedPredisWorkspace, { item, businessName: 'Caribbean Corner' })); });
     const newPost = r.root.findAllByType('a').find(a => text(a) === 'Nieuw bericht maken ↗');
     assert.equal(newPost.props.href, 'https://app.predis.ai/app/new_post/create');
+    assert.equal(r.root.findAllByType('a').some(a => a.props.href === 'https://app.predis.ai/app/content_calendar'), false);
+    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Bestaande post uit Predis ophalen'), false);
     await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Andere werkwijze kiezen').props.onClick());
     await React.act(async () => r.root.findAllByType('button').find(b => text(b) === 'Eerdere AI-resultaten bekijken').props.onClick());
     assert.equal(r.root.findByType('predis-generator').props.enabled, false);
