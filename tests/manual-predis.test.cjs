@@ -310,8 +310,8 @@ test('all three Predis choices prepare unchanged uploads, never AI generation',a
    const button=label=>r.root.findAllByType('button').find(b=>allText(b).startsWith(label));
    assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
    assert.equal(calls.length,1);
-   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,1);
-   assert.ok(r.root.findAllByType('a').some(a=>a.props.href==='https://app.predis.ai/app/content_library'));
+   assert.equal(r.root.findAllByType('a').filter(a=>a.props.href==='https://app.predis.ai/app/new_post/create').length,2);
+   assert.ok(r.root.findAllByType('a').every(a=>a.props.href!=='https://app.predis.ai/app/content_library'));
    assert.equal(r.root.findByProps({'aria-label':'Predis handmatig voorbereiden'}).type,'section');
    assert.equal(r.root.findAllByProps({'aria-label':'Content maken met Predis'}).length,0);
    assert.equal(calls.length,1);assert.match(calls[0].url,/\/manual-predis\?/);assert.equal(calls[0].method,'GET');
