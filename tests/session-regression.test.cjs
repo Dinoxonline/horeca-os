@@ -42,6 +42,14 @@ test('event date is visible in the heading without opening event details', async
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test('a handmatig gekoppelde Meta-campagne gets the green placed status', async () => {
+  const { channelStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'linked-meta', media: [{ kind: 'campaign_distribution', common: { title: 'Avond', start: '2026-10-01T18:00:00' }, facebook_paid_campaign: { campaign_id: '123', status: 'paused' } }] };
+  const state = channelStatus(item, 'meta');
+  assert.equal(state.key, 'placed');
+  assert.match(state.label, /Gekoppeld aan Meta-campagne/);
+});
+
 test('comparison summary distinguishes equal, different, incomplete and failed checks without trusting manual confirmation', async () => {
   const { sourceComparisonStatus } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = (title = 'Title', description = 'Text') => ({ id: 'one', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title, description } }] });

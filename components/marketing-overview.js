@@ -40,7 +40,7 @@ function statusFor(item, distribution) {
   if (item.workflow_status === "in_progress") return { key: "approved", label: "Goedgekeurd" };
   return { key: "draft", label: "Concept" };
 }
-function channelStatus(item, channel, comparison) {
+export function channelStatus(item, channel, comparison) {
   if (channel === "calendar") return calendarStatus(item);
   if (channel === "facebook_giveaway") {
     const giveaway = distributionFor(item).provider_delivery?.facebook_giveaway;
@@ -51,7 +51,8 @@ function channelStatus(item, channel, comparison) {
     const paidCampaign = distribution.facebook_paid_campaign || {};
     if (paidCampaign.campaign_id || ["active", "paused"].includes(paidCampaign.status)) {
       const live = paidCampaign.live_status;
-      return { key: "scheduled", label: live?.checked_at ? `Laatst gecontroleerd: ${META_CAMPAIGN_STATUS_LABELS[live.state] || "Status onbekend"} (${new Date(live.checked_at).toLocaleString("nl-NL")})` : "Geregistreerd — status controleren" };
+      const liveLabel = live?.checked_at ? ` — ${META_CAMPAIGN_STATUS_LABELS[live.state] || "Status onbekend"} (${new Date(live.checked_at).toLocaleString("nl-NL")})` : "";
+      return { key: "placed", label: `Gekoppeld aan Meta-campagne${liveLabel}` };
     }
     return { key: "concept", label: "Campagne maken" };
   }
