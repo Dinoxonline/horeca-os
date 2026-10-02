@@ -24,8 +24,8 @@ test("WhatsApp draft uses public content, explicit event date and correctly enco
   assert.equal(helper.whatsappDesktopUrl("  "), "");
   const complete = helper.whatsappDraft({}, { common: { title: "Avond", short_description: "Kort", description: "Volledige Horeca OS-tekst met alle details." } });
   assert.ok(complete.text.includes("Volledige Horeca OS-tekst met alle details.")); assert.ok(!complete.text.includes("Kort"));
-  const facebookPost = helper.whatsappDraft({ body: "Kort" }, { channel_payloads: { facebook: { text: "Volledige Facebook-tekst uit Horeca OS met alle details." } }, common: { description: "Minder volledig" } });
-  assert.ok(facebookPost.text.includes("Volledige Facebook-tekst uit Horeca OS met alle details."));
+  const facebookPost = helper.whatsappDraft({ body: "Kort" }, { channel_payloads: { facebook: { text: "Afwijkende Facebook-versie" } }, common: { description: "Originele Horeca OS-evenementtekst met alle details." } });
+  assert.ok(facebookPost.text.includes("Originele Horeca OS-evenementtekst met alle details.")); assert.ok(!facebookPost.text.includes("Afwijkende Facebook-versie"));
   const product = helper.whatsappDraft({ body: "Nieuwe kaart", scheduled_for: "2040-01-01" }, { common: { website_url: "javascript:alert(1)" } });
   assert.equal(product.text, "Nieuwe kaart"); assert.equal(product.images.length, 0);
 });
