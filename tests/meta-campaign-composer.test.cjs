@@ -279,6 +279,7 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
     assert.equal(receipt.status, "paused"); assert.equal(receipt.headline, "Nieuwe kop");
     assert.equal(calls.length, 4);
     for (const call of calls.filter(call => !call.path.endsWith("/adcreatives"))) assert.equal(call.body.status, "PAUSED");
+    assert.equal(calls[0].body.is_adset_budget_sharing_enabled, "false");
     assert.equal(calls[1].body.lifetime_budget, "8000"); assert.equal(calls[1].body.daily_budget, undefined);
     const targeting = JSON.parse(calls[1].body.targeting); assert.equal(targeting.geo_locations.cities[0].key, "100");
     const creative = JSON.parse(calls[2].body.object_story_spec);

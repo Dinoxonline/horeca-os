@@ -154,6 +154,8 @@ export async function POST(request) {
     const targeting = metaTargeting(settings, city, selection.savedTargeting);
     const campaignResult = await graphPost(`${adAccountId}/campaigns`, token, {
       name: settings.campaignName.trim(), objective: objective.api, status, special_ad_categories: JSON.stringify([]),
+      // The budget is set on the one ad set below, so Meta requires this explicit choice.
+      is_adset_budget_sharing_enabled: false,
     });
     createdCampaignId = String(campaignResult.id);
     const budget = { [settings.budgetType === "lifetime" ? "lifetime_budget" : "daily_budget"]: String(Math.round(Number(settings.dailyBudget) * 100)) };
