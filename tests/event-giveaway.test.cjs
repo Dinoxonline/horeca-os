@@ -46,4 +46,6 @@ test("a giveaway is filled from the event and keeps its practical variables in t
   assert.match(giveawaySource, /Facebook openen om te plaatsen/);
   assert.match(giveawaySource, /Winactiebeeld downloaden/);
   assert.match(giveawaySource, /Direct op Facebook plaatsen/);
+  assert.match(giveawaySource, /De flyer blijft volledig zichtbaar/);
+  assert.match(fs.readFileSync(path.join(root, "lib/giveaway-image.js"), "utf8"), /canvas\.height = height \+ bandHeight/);
 });
