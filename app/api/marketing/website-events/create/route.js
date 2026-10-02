@@ -103,7 +103,7 @@ function siteCredentials(body) {
 
 function normalizedTicketInputs(body) {
   if (Array.isArray(body.ticketVariations)) return body.ticketVariations.slice(0, 20).map((item) => ({
-    id: text(item?.id, 150), name: text(item?.name, 80), type: item?.type === "paid" ? "paid" : "free", price: item?.price,
+    id: text(item?.id, 150), name: text(item?.name, 80), description: text(item?.description, 150), type: item?.type === "paid" ? "paid" : "free", price: item?.price,
     capacity: item?.capacity, salesStart: item?.salesStart, salesEnd: item?.salesEnd,
     minQuantity: item?.minQuantity, maxQuantity: item?.maxQuantity,
   })).filter((item) => item.name);
@@ -145,7 +145,7 @@ function eventinTickets(body, start, end, existingTickets = []) {
     const saleEnd = dateParts(ticket.salesEnd) || end;
     return {
       etn_ticket_name: ticket.name,
-      etn_ticket_description: text(body.shortDescription || body.description, 150),
+      etn_ticket_description: ticket.description || text(body.shortDescription || body.description, 150),
       etn_ticket_price: price,
       etn_avaiilable_tickets: capacity || -1,
       etn_unlimited_tickets: !capacity,
@@ -331,6 +331,7 @@ function normalizeEventinDetail(eventinResponse, wordpressRow, site, imageUrl) {
     return {
       id: String(ticket.etn_ticket_slug || `ticket-${index + 1}`),
       name: String(ticket.etn_ticket_name || `Ticket ${index + 1}`),
+      description: cleanHtml(ticket.etn_ticket_description, 150, true),
       type: Number(ticket.etn_ticket_price || 0) > 0 ? "paid" : "free",
       price: String(Number(ticket.etn_ticket_price || 0)),
       capacity: ticket.etn_unlimited_tickets || ticketCapacity < 0 ? "" : String(ticketCapacity || ""),
