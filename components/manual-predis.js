@@ -7,7 +7,7 @@ import { validateManualHandoff } from "../lib/manual-predis";
 import { PREDIS_CHANNELS, PREDIS_STATES, PREDIS_DAYS, PREDIS_CAPTION_LIMIT, planningLocalTime, nextPlanningMoment, validateNewMoments, groupManualMoments, makeManualEntries, validateManualDraft, transferText, manualDistribution, retainedConfirmations, predisCaption } from "../lib/manual-predis";
 import styles from "./manual-predis.module.css";
 
-export default function ManualPredis({ item, workspaceId, session, businessName, enabled, linkedSources = [], onSaved, onUnsavedChange, generatedContent, onGeneratedContentApplied, uploadType }) {
+export default function ManualPredis({ item, workspaceId, session, businessName, enabled, linkedSources = [], onSaved, onScheduled, onUnsavedChange, generatedContent, onGeneratedContentApplied, uploadType }) {
   const dist = manualDistribution(item) || {};
   const initial = () => ({ caption: dist.common?.description || item.body || dist.common?.title || "", assets: [], entries: [], timezone: "Europe/Amsterdam" });
   const [draft, setDraft] = useState(initial);
@@ -201,6 +201,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     return run("Predis-status bewaren…", async () => {
       const next = await request("mark_scheduled", { draft: normalized, confirmed: true });
       accept(next);
+      onScheduled?.(next);
       if (mounted.current) setMessage("Predis is als ingepland gemarkeerd. Dit is je eigen bevestiging; Horeca OS heeft Predis niet automatisch gecontroleerd.");
     });
   }

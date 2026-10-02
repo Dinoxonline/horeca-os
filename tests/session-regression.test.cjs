@@ -382,7 +382,7 @@ test('event layout starts with one workspace and keeps secondary information col
     assert.equal(article.children[statusIndex - 2].props.className, 'marketingEventHeading');
     assert.ok(facts.findAllByType('p')[0].props.children.includes('Caribbean Corner'), 'empty event location falls back to the linked venue');
     assert.equal(facts.findAllByType('dl').length, 0, 'no tall equal-height metadata columns');
-    assert.deepEqual(statuses.findAllByType('strong').map(node => Array.isArray(node.props.children) ? node.props.children[0] : node.props.children), ['Website', 'Facebook', 'Facebook winactie', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Google', 'Predis', 'Overige']);
+    assert.deepEqual(statuses.findAllByType('strong').map(node => Array.isArray(node.props.children) ? node.props.children[0] : node.props.children), ['Website', 'Facebook', 'Facebook winactie', 'Instagram', 'Meta-campagne', 'Agenda info@leclubbbq.nl', 'Predis', 'Overige']);
     assert.ok(folds.every(node => !node.props.open), 'secondary information is initially collapsed');
     assert.equal(renderer.root.findAllByType('button').filter(node => node.props.children === 'Tekst bewaren in Horeca OS').length, 1);
     const panel = renderer.root.findByProps({ 'aria-label': 'Facebook handmatig bijwerken' });
