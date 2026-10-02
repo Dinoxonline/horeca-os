@@ -66,14 +66,14 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
     setSavedAudienceBusy(true); setSavedAudienceNotice(""); setSearchError("");
     try {
       const result = await onUpdateSavedAudience(draft);
-      updateMany({ savedAudiencePreview: result.targeting || draft.savedAudiencePreview });
+      updateMany({ savedAudiencePreview: result.targeting || draft.savedAudiencePreview, savedAudienceLocationFromName: false });
       setSavedAudienceNotice("De opgeslagen doelgroep is bijgewerkt in Meta.");
       setSavedAudienceOriginal(null); setSavedAudienceEditorOpen(false); setLocations([]);
     } catch (failure) { setSearchError(failure.message || "De opgeslagen doelgroep kon niet in Meta worden bijgewerkt."); }
     finally { setSavedAudienceBusy(false); }
   }
   function openSavedAudienceEditor() {
-    setSavedAudienceOriginal({ countries: draft.countries, locationQuery: draft.locationQuery, locationKey: draft.locationKey, radiusKm: draft.radiusKm, ageMin: draft.ageMin, ageMax: draft.ageMax, gender: draft.gender });
+    setSavedAudienceOriginal({ countries: draft.countries, locationQuery: draft.locationQuery, locationKey: draft.locationKey, savedAudienceLocationFromName: draft.savedAudienceLocationFromName, radiusKm: draft.radiusKm, ageMin: draft.ageMin, ageMax: draft.ageMax, gender: draft.gender });
     setSavedAudienceNotice(""); setSearchError(""); setSavedAudienceEditorOpen(true);
   }
   function closeSavedAudienceEditor() {
@@ -121,7 +121,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             <MetaAudiencePicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy || savedAudienceBusy} />
             {draft.audienceMode === "saved" && draft.savedAudienceId && <>
               <section className={styles.audienceEditCard} aria-label="Opgeslagen Meta-doelgroep">
-                <div><strong>{draft.savedAudienceName}</strong><small>{draft.locationQuery || "Heel " + (countries[draft.countries[0]] || "land")} · {draft.radiusKm} km · {draft.ageMin}–{Number(draft.ageMax) >= 65 ? "65+" : draft.ageMax} jaar · {draft.gender === "women" ? "vrouwen" : draft.gender === "men" ? "mannen" : "iedereen"}</small></div>
+                <div><strong>{draft.savedAudienceName}</strong><small>{draft.locationQuery || "Heel " + (countries[draft.countries[0]] || "land")}{draft.savedAudienceLocationFromName ? " (volgens naam)" : ""} · {draft.radiusKm} km · {draft.ageMin}–{Number(draft.ageMax) >= 65 ? "65+" : draft.ageMax} jaar · {draft.gender === "women" ? "vrouwen" : draft.gender === "men" ? "mannen" : "iedereen"}</small></div>
                 <button type="button" disabled={busy || savedAudienceBusy} onClick={openSavedAudienceEditor}>Doelgroep bewerken</button>
               </section>
               {savedAudienceNotice && <p className={styles.success} role="status">{savedAudienceNotice}</p>}
@@ -190,10 +190,11 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             <label className={styles.field}>Land<select disabled={busy || savedAudienceBusy} value={draft.countries[0]} onChange={event => { update("countries", [event.target.value]); update("locationKey", ""); setLocations([]); }}>{Object.entries(countries).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
             <label className={styles.field}>Geslacht<select value={draft.gender} disabled={busy || savedAudienceBusy} onChange={event => update("gender", event.target.value)}><option value="all">Iedereen</option><option value="women">Vrouwen</option><option value="men">Mannen</option></select></label>
           </div>
-          <label className={styles.field}>Locaties<div className={styles.search}><input value={draft.locationQuery} disabled={busy || savedAudienceBusy} placeholder="Typ om een plaats toe te voegen" onChange={event => { update("locationQuery", event.target.value); update("locationKey", ""); setLocations([]); }} /><button type="button" disabled={busy || savedAudienceBusy || Boolean(searching)} onClick={() => search("locations")}>{searching === "locations" ? "Zoeken…" : "Zoek plaats"}</button></div></label>
+          <label className={styles.field}>Locaties<div className={styles.search}><input value={draft.locationQuery} disabled={busy || savedAudienceBusy} placeholder="Typ om een plaats toe te voegen" onChange={event => { updateMany({ locationQuery: event.target.value, locationKey: "", savedAudienceLocationFromName: false }); setLocations([]); }} /><button type="button" disabled={busy || savedAudienceBusy || Boolean(searching)} onClick={() => search("locations")}>{searching === "locations" ? "Zoeken…" : "Zoek plaats"}</button></div></label>
+          {draft.savedAudienceLocationFromName && <p className={styles.modalHelp}>Meta gaf de locatie niet terug. {draft.locationQuery} komt uit de naam van deze doelgroep. Zoek en kies deze plaats in Meta voordat je opslaat.</p>}
           {draft.locationQuery && <div className={styles.locationChip}>{draft.locationQuery}{draft.locationKey ? ` · ${draft.radiusKm} km` : ""}</div>}
           {mapQuery && <div className={styles.audienceMap}><iframe title="Kaart van de doelgroep" src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=${mapZoom}&output=embed`} loading="lazy" /><div className={styles.mapRadius} aria-hidden="true" style={{ width: `${Math.min(68, Math.max(24, 16 + Number(draft.radiusKm || 25) * 0.8))}%` }} /><span>Gekozen locatie · straal {draft.radiusKm} km</span></div>}
-          {locations.length > 0 && <label className={styles.field}>Kies de plaats uit Meta<select disabled={busy || savedAudienceBusy} value={draft.locationKey} onChange={event => { const chosen = locations.find(location => location.key === event.target.value); update("locationKey", chosen?.key || ""); if (chosen) update("locationQuery", chosen.name); }}><option value="">Selecteer een plaats</option>{locations.map(location => <option key={location.key} value={location.key}>{location.name} · {location.region} · {location.country}</option>)}</select></label>}
+          {locations.length > 0 && <label className={styles.field}>Kies de plaats uit Meta<select disabled={busy || savedAudienceBusy} value={draft.locationKey} onChange={event => { const chosen = locations.find(location => location.key === event.target.value); updateMany({ locationKey: chosen?.key || "", ...(chosen ? { locationQuery: chosen.name, savedAudienceLocationFromName: false } : {}) }); }}><option value="">Selecteer een plaats</option>{locations.map(location => <option key={location.key} value={location.key}>{location.name} · {location.region} · {location.country}</option>)}</select></label>}
           <label className={styles.rangeLabel}>Straal rond de plaats <strong>{draft.radiusKm} km</strong><input type="range" min={1} max={80} value={draft.radiusKm} disabled={busy || savedAudienceBusy} onChange={event => update("radiusKm", event.target.value)} /></label>
           <p className={styles.modalHelp}>Opslaan wijzigt deze bestaande Meta-doelgroep. Andere campagnes die deze doelgroep gebruiken, krijgen dezelfde aanpassing.</p>
           {searchError && <p className={styles.error} role="alert">{searchError}</p>}

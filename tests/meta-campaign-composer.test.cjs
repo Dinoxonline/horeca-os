@@ -16,11 +16,13 @@ function load(file, mocks = {}) {
 const distribution = { kind: "campaign_distribution", common: { title: "Live muziek", description: "Een avond vol muziek.", image_url: "https://example.com/poster.jpg", website_url: "https://example.com/tickets" } };
 const item = { id: "campaign", body: "Tekst", business_id: "venue", media: [distribution] };
 
-test("saved Meta audiences always show their concrete location or a clear warning", async () => {
+test("saved Meta audiences always show their concrete location or a clearly labelled name fallback", async () => {
   await swc.loadBindings();
-  const { audienceLocationSummary } = load("components/meta-audience-picker.js");
+  const { audienceLocationSummary, audienceNameLocationHint } = load("components/meta-audience-picker.js");
   assert.equal(audienceLocationSummary({ geo_locations: { countries: ["NL"], cities: [{ name: "Zoetermeer", radius: 25, distance_unit: "km" }] } }), "Nederland, Zoetermeer + 25 km");
   assert.match(audienceLocationSummary({ geo_locations: {} }), /Locatie niet door Meta teruggegeven/);
+  assert.equal(audienceNameLocationHint("Tot amsterdam 25+ 60 km"), "Amsterdam");
+  assert.match(audienceLocationSummary({ geo_locations: {} }, "Tot amsterdam 25+ 60 km"), /Amsterdam \(volgens de doelgroepnaam/);
 });
 
 test("both entry points reuse the shared editor and new campaigns are not gated on a Facebook event", async () => {
