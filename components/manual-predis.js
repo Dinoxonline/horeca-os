@@ -260,7 +260,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <small>Foto en tekst worden niet automatisch meegestuurd. Deze handmatige route vraagt geen AI-generatie aan en gebruikt geen generatiecredits.</small>
       <small>Handmatige posts en hun status worden niet automatisch ingelezen; bevestig de uitkomst zelf bij stap 3.</small>
     </div>
-    <details className={styles.moreOptions}>
+    <details hidden className={styles.moreOptions}>
     <summary>Datums en kanalen vastleggen in Horeca OS (optioneel) · {draft.entries.length} kanaalmomenten</summary>
     <fieldset disabled={!loaded || !!busy} className={styles.fields} aria-label="Publicatiemomenten kiezen">
       <legend>Gewenste datums bij je concept (optioneel)</legend>
@@ -292,7 +292,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
       <small>{draft.entries.length} kanaalmomenten in dit bericht. {dirty ? "Bewaar hieronder om je wijzigingen in de agenda te tonen." : "Bewaarde momenten staan in de marketingagenda."} Nederlandse kloktijd blijft behouden bij zomer- en wintertijd.</small>
     </fieldset>
     </details>
-    <section className={styles.step} aria-label="Uitkomst in Predis bevestigen">
+    <section hidden className={styles.step} aria-label="Uitkomst in Predis bevestigen">
     <strong>3. Bevestigen na Predis</strong>
     <p>Voer deze stap alleen uit nadat je het bericht zelf in Predis hebt ingepland of gepubliceerd. Zonder jouw bevestiging blijft een nieuw moment ‘Concept — nog niet overgezet’.</p>
     <fieldset disabled={!loaded || !!busy} className={styles.fields}><legend>Planning en handmatige controle</legend>
@@ -305,7 +305,7 @@ export default function ManualPredis({ item, workspaceId, session, businessName,
     {loaded && chosen && message && <p role={failed ? "alert" : "status"} className={failed ? styles.error : styles.notice}>{message}</p>}
     <small>Verwijderen of aanpassen in Horeca OS wijzigt niets in Predis. Pas een reeds ingepland bericht daar ook zelf aan. Bevestigingen worden nooit automatisch ‘Geplaatst’ wanneer de tijd verstrijkt.</small>
     </section>
-    <details className={styles.moreOptions}><summary>Meer opties</summary>
+    <details hidden className={styles.moreOptions}><summary>Meer opties</summary>
     <div className={styles.actions}><button type="button" className="secondaryButton" disabled={!!busy} onClick={() => { if (!dirty || window.confirm("Je hebt onbewaarde wijzigingen. Wil je de bewaarde versie laden en je invoer vervangen?")) load(); }}>Bewaarde versie laden</button><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={() => { if (window.confirm("Vervang deze berichttekst door de huidige tekst uit Horeca OS?")) change({ ...draft, caption: initial().caption }); }}>Horeca OS-tekst overnemen</button><button type="button" className="secondaryButton" disabled={!loaded || !!busy} onClick={() => copy(transferText(dist.common?.title || "Evenement", draft), "Tekst, media en planning")}>Alles kopiëren</button></div>
     </details>
   </section>;

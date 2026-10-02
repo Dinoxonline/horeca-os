@@ -244,6 +244,9 @@ test('UI loads lazily, keeps draft through token refresh and save failure, and d
  assert.match(content,/Er wordt geen AI-ontwerp aangevraagd/);
  assert.ok(content.includes('1. Bericht voorbereiden'));
  assert.equal(r.root.findByProps({'aria-label':'Handmatig overzetten naar Predis'}).props.hidden,true);
+ assert.equal(r.root.findByProps({'aria-label':'Publicatiemomenten kiezen'}).parent.props.hidden,true);
+ assert.equal(r.root.findByProps({'aria-label':'Uitkomst in Predis bevestigen'}).props.hidden,true);
+ assert.ok(r.root.findAllByType('details').filter(node=>allText(node.findByType('summary'))==='Meer opties').every(node=>node.props.hidden));
  assert.ok(content.indexOf('1. Bericht voorbereiden') < content.indexOf('2. Naar Predis gaan'));
  assert.ok(content.indexOf('2. Naar Predis gaan') < content.indexOf('3. Bevestigen na Predis'));
  assert.doesNotMatch(content,/3\. Bericht en planning bewaren|4\. Verder/);
