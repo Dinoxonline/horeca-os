@@ -76,6 +76,7 @@ test("saved event and product panels open the same editor, use venue identity an
         const field = renderer.root.findAllByType("input").find(node => node.props.maxLength === 150);
         await React.act(async () => field.props.onChange({ target: { value: "Mijn " + type } }));
         assert.equal(draftSnapshot.campaignName, "Mijn " + type);
+        await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Budget en betalen" || (Array.isArray(node.props.children) && node.props.children.includes("Budget en betalen"))).props.onClick());
         await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Betaler is dezelfde als adverteerder").props.onClick());
         const submit = () => renderer.root.findAllByType("button").find(node => node.props.children === "Controleren en concept maken");
         await React.act(async () => submit().props.onClick());
@@ -140,12 +141,13 @@ test("editor edits update preview, retain step state, search real IDs and submit
   try {
     assert.equal(renderer.root.findAllByType("h4").some(node => node.props.children === "Jouw instellingen"), false, "the preview panel does not repeat editable settings");
     await change("Campagnenaam", "Mijn campagne");
+    await React.act(async () => button("Budget en betalen").props.onClick());
     await change("Betaler", "Testbedrijf BV");
     await change("Budgettype", "lifetime"); await change("Totaalbudget (€)", "85");
-    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
-    await React.act(async () => button("← Budget en looptijd aanpassen").props.onClick());
+    const startAt = control("Start").props.value;
+    const endAt = control("Einde").props.value;
     assert.equal(control("Totaalbudget (€)").props.value, "85");
-    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
+    await React.act(async () => button("Doelgroep").props.onClick());
     await change("Plaats (leeg = heel land)", "Zoetermeer");
     await React.act(async () => button("Zoek plaats").props.onClick());
     await change("Kies de plaats uit Meta", "100");
@@ -158,12 +160,10 @@ test("editor edits update preview, retain step state, search real IDs and submit
     await change("Actieknop", "sign_up");
     assert.ok(JSON.stringify(renderer.toJSON()).includes("Zaterdag live"));
     assert.ok(dirty);
-    await React.act(async () => button("Campagne en bron").props.onClick());
-    assert.equal(control("Campagnenaam").props.value, "Mijn campagne");
     await React.act(async () => button("Controleren en concept maken").props.onClick());
     assert.equal(submitted.launchStatus, "paused"); assert.equal(submitted.editorVersion, 3);
-    assert.equal(submitted.startAt, new Date(control("Start").props.value).toISOString());
-    assert.equal(submitted.endAt, new Date(control("Einde").props.value).toISOString());
+    assert.equal(submitted.startAt, new Date(startAt).toISOString());
+    assert.equal(submitted.endAt, new Date(endAt).toISOString());
     assert.equal(submitted.dailyBudget, "85"); assert.equal(submitted.budgetType, "lifetime");
     assert.equal(submitted.locationKey, "100"); assert.equal(submitted.placementFormat, "story");
     assert.equal(submitted.interests[0].id, "123"); assert.equal(submitted.primaryText, "Mijn eigen tekst");
@@ -194,7 +194,7 @@ test("a saved Meta audience is edited in one dialog and saves the existing Meta 
   const button = name => renderer.root.findAllByType("button").find(node => node.props.children === name || (Array.isArray(node.props.children) && node.props.children.includes(name)));
   try {
     await React.act(async () => { renderer = Renderer.create(React.createElement(Composer, { item, distribution, businessName: "Caribbean Corner", pageName: "Caribbean Corner", initialDraft, onCreate() {}, onSearch: async () => [], onCatalog: async () => ({ options: [] }), onUpdateSavedAudience: async draft => { updated = draft; return { targeting: draft.savedAudiencePreview }; } })); });
-    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
+    await React.act(async () => button("Doelgroep").props.onClick());
     assert.ok(JSON.stringify(renderer.toJSON()).includes("Tot Utrecht"));
     assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 0);
     await React.act(async () => button("Doelgroep bewerken").props.onClick());

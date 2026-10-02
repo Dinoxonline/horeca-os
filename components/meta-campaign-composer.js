@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import MetaAccountBudget from "./meta-account-budget";
 import MetaPromotionPicker from "./meta-promotion-picker";
 import MetaAudiencePicker from "./meta-audience-picker";
 import { META_OBJECTIVES, META_CTA, defaultMetaCampaign, campaignImages, campaignImageForPlacement, campaignBudgetSummary, validateMetaCampaign, publicWebUrl } from "../lib/meta-campaign-settings";
@@ -11,7 +10,7 @@ import styles from "./meta-campaign-composer.module.css";
 const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(value);
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", ES: "Spanje", GB: "Verenigd Koninkrijk" };
 
-export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onUpdateSavedAudience, onDirty, busy, error, initialDraft, onDraftChange, budgetContext, lockToEvent = false }) {
+export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onUpdateSavedAudience, onDirty, busy, error, initialDraft, onDraftChange, lockToEvent = false }) {
   const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), beneficiary: pageName || businessName || "", ...initialDraft, ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
@@ -91,7 +90,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
     <div className={styles.layout}>
       <div className={styles.workspace}>
         <nav className={styles.steps} aria-label="Campagneonderdelen">
-          {[["campaign", "1", "Campagne en bron"], ["audience", "2", "Doelgroep en plaatsingen"], ["creative", "3", "Advertentie"]].map(([key, number, label]) => <button key={key} type="button" aria-current={step === key ? "step" : undefined} onClick={() => setStep(key)}><span>{number}</span>{label}</button>)}
+          {[["campaign", "1", "Campagne en doel"], ["audience", "2", "Doelgroep"], ["finance", "3", "Budget en betalen"], ["creative", "4", "Advertentie"]].map(([key, number, label]) => <button key={key} type="button" aria-current={step === key ? "step" : undefined} onClick={() => setStep(key)}><span>{number}</span>{label}</button>)}
         </nav>
         <div className={styles.body}>
           {step === "campaign" && <>
@@ -103,25 +102,9 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             <fieldset className={styles.objectives}><legend>Campagnedoel</legend>{Object.entries(META_OBJECTIVES).map(([key, value]) => <label key={key} className={draft.objective === key ? styles.selectedObjective : ""}><input type="radio" name={`meta-objective-${item.id}`} checked={draft.objective === key} disabled={busy || chosenSource} onChange={() => update("objective", key)} /><span><strong>{value.label}</strong><small>{value.detail}</small></span></label>)}</fieldset>
             {chosenSource && <p className={styles.help}>Het doel volgt de gekozen bron: betrokkenheid voor berichten, verkeer voor de evenementpagina.</p>}
             <button type="button" className={styles.audienceJump} onClick={() => setStep("audience")}>Doelgroep kiezen of aanpassen →</button>
-            <div className={styles.sectionHeading}><h4>Budget en looptijd</h4><p>Het budget geldt voor deze campagne, niet voor de hele vestiging.</p></div>
-            {budgetContext && <MetaAccountBudget {...budgetContext} plannedBudget={budget.estimate} />}
-            <div className={styles.fields}>
-              <label className={styles.field}>Budgettype<select value={draft.budgetType} disabled={busy} onChange={event => update("budgetType", event.target.value)}><option value="daily">Dagbudget</option><option value="lifetime">Totaalbudget voor de looptijd</option></select></label>
-              {field(draft.budgetType === "daily" ? "Dagbudget (€)" : "Totaalbudget (€)", "dailyBudget", { type: "number", min: 2, step: "0.01" })}
-              {field("Start", "startAt", { type: "datetime-local" })}{field("Einde", "endAt", { type: "datetime-local" })}
-            </div>
-            <p className={styles.help}>Tijden volgen de tijdzone van je apparaat. Deze editor ondersteunt advertentieaccounts in EUR.</p>
-            <div className={styles.budget}><strong>{budget.estimate === null ? "Kies een geldige looptijd" : `${budget.fixed ? "Totaalbudget" : "Budgetindicatie"}: ${euros(budget.estimate)}`}</strong><p>{budget.fixed ? "Dit is het gekozen advertentiebudget voor de volledige looptijd." : "Dagbudget × afgeronde looptijd. Dit is geen harde bestedingslimiet: Meta kan daguitgaven verdelen. Kies totaalbudget voor een vast looptijdbudget."}</p></div>
-            <label className={styles.field}>Speciale advertentiecategorie<select disabled={busy} value={draft.specialCategory} onChange={event => update("specialCategory", event.target.value)}><option value="none">Geen — regulier horeca-aanbod of evenement</option><option value="employment">Werkgelegenheid</option><option value="housing">Huisvesting</option><option value="finance">Financiële producten en diensten</option><option value="politics">Maatschappelijke kwesties, verkiezingen of politiek</option></select></label>
-            {draft.specialCategory !== "none" && <p className={styles.error} role="alert">Deze categorie vraagt aanvullende Meta-instellingen. Aanmaken vanuit Horeca OS is geblokkeerd. <a href="https://www.facebook.com/adsmanager/" target="_blank" rel="noreferrer">Verder in Meta ↗</a></p>}
-            <div className={styles.sectionHeading}><h4>Adverteerder en betaler</h4><p>Wie profiteert van de advertentie, en wie betaalt? Deze namen worden naar Meta gestuurd voor advertentietransparantie. Dit wijzigt je betaalmethode niet.</p></div>
-            {field("Adverteerder (begunstigde)", "beneficiary", { maxLength: 200 })}
-            {field("Betaler", "payer", { maxLength: 200, placeholder: "Naam van de betalende persoon of onderneming" })}
-            <button type="button" disabled={busy} onClick={() => update("payer", draft.beneficiary)}>Betaler is dezelfde als adverteerder</button>
           </>}
           {step === "audience" && <>
             <div className={styles.sectionHeading}><h4>Doelgroep</h4><p>Bepaal waar en aan wie je advertentie wordt getoond.</p></div>
-            <button type="button" className={styles.audienceJump} onClick={() => setStep("campaign")}>← Budget en looptijd aanpassen</button>
             <MetaAudiencePicker draft={draft} onChange={updateMany} onCatalog={onCatalog} busy={busy || savedAudienceBusy} />
             {draft.audienceMode === "saved" && draft.savedAudienceId && <>
               <section className={styles.audienceEditCard} aria-label="Opgeslagen Meta-doelgroep">
@@ -154,6 +137,21 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             </div>
             <p className={styles.help}>Stories en Instagram worden hier op mobiel gericht. Gebruik Meta Ads Manager voor afzonderlijke Reels-instellingen en plaatsingsspecifieke beelden.</p>
           </>}
+          {step === "finance" && <>
+            <div className={styles.sectionHeading}><h4>Budget en betalen</h4><p>Dit geldt alleen voor deze campagne.</p></div>
+            <div className={styles.fields}>
+              <label className={styles.field}>Budgettype<select value={draft.budgetType} disabled={busy} onChange={event => update("budgetType", event.target.value)}><option value="daily">Dagbudget</option><option value="lifetime">Totaalbudget voor de looptijd</option></select></label>
+              {field(draft.budgetType === "daily" ? "Dagbudget (€)" : "Totaalbudget (€)", "dailyBudget", { type: "number", min: 2, step: "0.01" })}
+              {field("Start", "startAt", { type: "datetime-local" })}{field("Einde", "endAt", { type: "datetime-local" })}
+            </div>
+            <div className={styles.budget}><strong>{budget.estimate === null ? "Kies een geldige looptijd" : `${budget.fixed ? "Totaalbudget" : "Budgetindicatie"}: ${euros(budget.estimate)}`}</strong></div>
+            <label className={styles.field}>Speciale advertentiecategorie<select disabled={busy} value={draft.specialCategory} onChange={event => update("specialCategory", event.target.value)}><option value="none">Geen — regulier horeca-aanbod of evenement</option><option value="employment">Werkgelegenheid</option><option value="housing">Huisvesting</option><option value="finance">Financiële producten en diensten</option><option value="politics">Maatschappelijke kwesties, verkiezingen of politiek</option></select></label>
+            {draft.specialCategory !== "none" && <p className={styles.error} role="alert">Deze categorie vraagt aanvullende Meta-instellingen. Aanmaken vanuit Horeca OS is geblokkeerd. <a href="https://www.facebook.com/adsmanager/" target="_blank" rel="noreferrer">Verder in Meta ↗</a></p>}
+            <div className={styles.sectionHeading}><h4>Adverteerder en betaler</h4><p>Deze namen gaan mee naar Meta.</p></div>
+            {field("Adverteerder (begunstigde)", "beneficiary", { maxLength: 200 })}
+            {field("Betaler", "payer", { maxLength: 200, placeholder: "Naam van de betalende persoon of onderneming" })}
+            <button type="button" disabled={busy} onClick={() => update("payer", draft.beneficiary)}>Betaler is dezelfde als adverteerder</button>
+          </>}
           {step === "creative" && <>
             <div className={styles.sectionHeading}><h4>Identiteit en advertentie</h4><p>De gekoppelde pagina van {businessName} blijft de afzender.</p></div>
             <div className={styles.identity}><span className={styles.avatar}>{(businessName || "H").slice(0, 1)}</span><div><strong>{pageName || businessName}</strong><small>Facebookpagina van deze vestiging · Instagram wordt bij Meta gecontroleerd</small></div></div>
@@ -168,7 +166,7 @@ export default function MetaCampaignComposer({ item, distribution, businessName,
             <label className={styles.field}>Actieknop<select disabled={busy} value={draft.callToAction} onChange={event => update("callToAction", event.target.value)}>{Object.entries(META_CTA).map(([key, value]) => <option value={key} key={key}>{value.label}</option>)}</select></label>
             </>}
           </>}
-          <div className={styles.navigation}><button type="button" disabled={step === "campaign" || busy} onClick={() => setStep(step === "creative" ? "audience" : "campaign")}>Vorige</button>{step !== "creative" && <button type="button" className={styles.primary} onClick={() => setStep(step === "campaign" ? "audience" : "creative")}>Volgende</button>}</div>
+          <div className={styles.navigation}>{step !== "campaign" && <button type="button" disabled={busy} onClick={() => setStep(step === "creative" ? "finance" : step === "finance" ? "audience" : "campaign")}>{step === "audience" ? "← Campagne en doel" : step === "finance" ? "← Doelgroep aanpassen" : "← Budget en betalen"}</button>}{step !== "creative" && <button type="button" className={styles.primary} onClick={() => setStep(step === "campaign" ? "audience" : step === "audience" ? "finance" : "creative")}>{step === "campaign" ? "Doelgroep kiezen →" : step === "audience" ? "Budget en betalen →" : "Advertentie maken →"}</button>}</div>
         </div>
       </div>
       <aside className={styles.previewColumn} aria-label="Advertentievoorbeeld">
