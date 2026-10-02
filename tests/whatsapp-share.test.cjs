@@ -43,13 +43,14 @@ test("image preparation is client-side, omits credentials and rejects HTML and o
   } finally { global.fetch = original; }
 });
 
-test("share UI preserves user control, supports files and cancellation, never marks a publication sent", async () => {
+test("share UI copies the chosen image and never marks a publication sent", async () => {
   await swc.loadBindings();
   const React = require("react"), Renderer = require("react-test-renderer"); global.IS_REACT_ACT_ENVIRONMENT = true;
   const Component = load("components/whatsapp-share.js").default;
   const nav = Object.getOwnPropertyDescriptor(global, "navigator"), originalFetch = global.fetch;
-  let renderer, shared, copied, cancel = false, requests = 0;
-  Object.defineProperty(global, "navigator", { configurable: true, value: { canShare: () => true, clipboard: { writeText: async value => { copied = value; } }, share: async value => { if (cancel) throw new DOMException("Cancel", "AbortError"); shared = value; } } });
+  const clipboardItem = Object.getOwnPropertyDescriptor(global, "ClipboardItem"); let renderer, copiedImage, requests = 0;
+  global.ClipboardItem = class { constructor(value) { copiedImage = value; } };
+  Object.defineProperty(global, "navigator", { configurable: true, value: { clipboard: { write: async () => {} } } });
   global.fetch = async (_, options) => { requests++; assert.equal(options.credentials, "omit"); return { ok: true, headers: new Headers({ "content-type": "image/jpeg" }), blob: async () => new Blob(["photo"], { type: "image/jpeg" }) }; };
   const button = name => renderer.root.findAllByType("button").find(node => node.props.children === name);
   try {
@@ -61,17 +62,11 @@ test("share UI preserves user control, supports files and cancellation, never ma
     assert.equal(new URL(link.props.href).searchParams.get("text"), "Mijn eigen groepsbericht 🎵");
     await React.act(async () => link.props.onClick());
     assert.ok(JSON.stringify(renderer.toJSON()).includes("WhatsApp Desktop wordt geopend"));
-    await React.act(async () => button("Tekst kopiëren").props.onClick()); assert.equal(copied, "Mijn eigen groepsbericht 🎵");
-    await React.act(async () => button("Afbeelding kopiëren voorbereiden").props.onClick()); assert.equal(requests, 1); assert.equal(shared, undefined);
-    await React.act(async () => button("Foto en bericht delen").props.onClick());
-    assert.equal(shared.text, "Mijn eigen groepsbericht 🎵"); assert.equal(shared.files[0].type, "image/jpeg");
-    assert.ok(JSON.stringify(renderer.toJSON()).includes("kan verzending niet bevestigen"));
-    cancel = true; await React.act(async () => button("Foto en bericht delen").props.onClick());
-    assert.ok(JSON.stringify(renderer.toJSON()).includes("Delen geannuleerd")); assert.equal(requests, 1, "no API writes or background sends");
-  } finally { if (renderer) await React.act(async () => renderer.unmount()); if (nav) Object.defineProperty(global, "navigator", nav); else delete global.navigator; global.fetch = originalFetch; }
+    await React.act(async () => button("Afbeelding kopiëren").props.onClick()); assert.equal(requests, 1); assert.ok(copiedImage["image/jpeg"]); assert.ok(JSON.stringify(renderer.toJSON()).includes("Afbeelding gekopieerd"));
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); if (nav) Object.defineProperty(global, "navigator", nav); else delete global.navigator; if (clipboardItem) Object.defineProperty(global, "ClipboardItem", clipboardItem); else delete global.ClipboardItem; global.fetch = originalFetch; }
 });
 
-test("fallback UI handles denied clipboard and unavailable photo sharing", async () => {
+test("fallback UI handles denied clipboard and unavailable photo copying", async () => {
   await swc.loadBindings();
   const React = require("react"), Renderer = require("react-test-renderer"); global.IS_REACT_ACT_ENVIRONMENT = true;
   const Component = load("components/whatsapp-share.js").default;
@@ -82,11 +77,8 @@ test("fallback UI handles denied clipboard and unavailable photo sharing", async
   try {
     await React.act(async () => { renderer = Renderer.create(React.createElement(Component, { item: { id: "event" }, distribution })); });
     await React.act(async () => renderer.root.findByType("details").props.onToggle({ currentTarget: { open: true } }));
-    await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Tekst kopiëren").props.onClick());
-    assert.ok(JSON.stringify(renderer.toJSON()).includes("Kopiëren is geblokkeerd"));
-    await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Afbeelding kopiëren voorbereiden").props.onClick());
-    assert.ok(JSON.stringify(renderer.toJSON()).includes("originele foto openen"));
-    assert.equal(renderer.root.findAllByType("button").filter(node => node.props.children === "Foto en bericht delen").length, 0);
+    await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Afbeelding kopiëren").props.onClick());
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("Kies een andere foto"));
   } finally { if (renderer) await React.act(async () => renderer.unmount()); if (nav) Object.defineProperty(global, "navigator", nav); else delete global.navigator; global.fetch = originalFetch; }
 });
 
