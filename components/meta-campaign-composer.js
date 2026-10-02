@@ -11,7 +11,7 @@ const euros = value => new Intl.NumberFormat("nl-NL", { style: "currency", curre
 const countries = { NL: "Nederland", BE: "België", DE: "Duitsland", FR: "Frankrijk", ES: "Spanje", GB: "Verenigd Koninkrijk" };
 
 export default function MetaCampaignComposer({ item, distribution, businessName, pageName, adAccountName, onCreate, onSearch, onCatalog, onUpdateSavedAudience, onDirty, busy, error, initialDraft, onDraftChange, lockToEvent = false }) {
-  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), beneficiary: pageName || businessName || "", ...initialDraft, ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
+  const [draft, setDraft] = useState(() => ({ ...defaultMetaCampaign(item, distribution), ...initialDraft, beneficiary: initialDraft?.beneficiary || pageName || businessName || "", payer: initialDraft?.payer || pageName || businessName || "", ...(lockToEvent ? { sourceKind: "new", sourceId: "", sourcePreview: null } : {}), editorVersion: 3 }));
   const draftListener = useRef(onDraftChange);
   useEffect(() => { draftListener.current = onDraftChange; }, [onDraftChange]);
   useEffect(() => { draftListener.current?.(draft); }, [draft]);

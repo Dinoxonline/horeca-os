@@ -73,6 +73,8 @@ test("saved event and product panels open the same editor, use venue identity an
         }
         const preview = renderer.root.findByProps({ "aria-label": "Advertentievoorbeeld" });
         assert.ok(preview.findAllByType("strong").some(node => node.props.children === "Pagina Het Plein"));
+        assert.equal(draftSnapshot.beneficiary, "Pagina Het Plein");
+        assert.equal(draftSnapshot.payer, "Pagina Het Plein");
         const field = renderer.root.findAllByType("input").find(node => node.props.maxLength === 150);
         await React.act(async () => field.props.onChange({ target: { value: "Mijn " + type } }));
         assert.equal(draftSnapshot.campaignName, "Mijn " + type);
