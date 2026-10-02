@@ -63,7 +63,7 @@ test("selection revalidation rejects cross-venue sources and foreign account aud
 test("targeting preserves saved exclusions, explicitly controls Advantage+ and gates unsupported / incomplete choices", async () => {
   await swc.loadBindings();
   const settings = load("lib/meta-campaign-settings.js");
-  const draft = { ...settings.defaultMetaCampaign(item, distribution), editorVersion: 3, beneficiary: "Restaurant", payer: "Bedrijf" };
+  const draft = { ...settings.defaultMetaCampaign(item, distribution), audienceMode: "manual", editorVersion: 3, beneficiary: "Restaurant", payer: "Bedrijf" };
   assert.equal(settings.validateMetaCampaign(draft), "");
   for (const patch of [{ payer: "" }, { specialCategory: "housing" }, { sourceKind: "facebook_posts", sourceId: "10_31" }, { audienceMode: "saved", savedAudienceId: "" }, { customAudienceIds: ["bad"] }]) assert.ok(settings.validateMetaCampaign({ ...draft, ...patch }));
   const post = { ...draft, sourceKind: "facebook_posts", sourceId: "10_31", objective: "engagement", placements: "facebook", placementFormat: "automatic", primaryText: "", imageUrl: "", destinationUrl: "" };
@@ -138,10 +138,11 @@ test("UI selects a real Instagram post, uses saved audience, retains preview and
     await React.act(async () => button("Meer laden").props.onClick());
     assert.equal(catalogs[1].after, "older");
     await React.act(async () => button("Kiezen").props.onClick());
+    await React.act(async () => button("Budget en betalen").props.onClick());
     await React.act(async () => button("Betaler is dezelfde als adverteerder").props.onClick());
-    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
+    await React.act(async () => button("Doelgroep").props.onClick());
     const savedRadio = renderer.root.findAllByType("label").find(node => node.findAllByType("strong").some(strong => strong.props.children === "Opgeslagen doelgroep uit Meta")).findByType("input");
-    await React.act(async () => savedRadio.props.onChange());
+    assert.equal(savedRadio.props.checked, true);
     await React.act(async () => button("Doelgroepen ophalen").props.onClick());
     const audienceSelect = renderer.root.findAllByType("select").find(node => node.findAllByType("option").some(option => option.props.value === "40"));
     await React.act(async () => audienceSelect.props.onChange({ target: { value: "40" } }));

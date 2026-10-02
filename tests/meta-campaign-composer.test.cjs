@@ -78,6 +78,8 @@ test("saved event and product panels open the same editor, use venue identity an
         assert.equal(draftSnapshot.campaignName, "Mijn " + type);
         await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Budget en betalen" || (Array.isArray(node.props.children) && node.props.children.includes("Budget en betalen"))).props.onClick());
         await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Betaler is dezelfde als adverteerder").props.onClick());
+        await React.act(async () => renderer.root.findAllByType("button").find(node => node.props.children === "Doelgroep" || (Array.isArray(node.props.children) && node.props.children.includes("Doelgroep"))).props.onClick());
+        await React.act(async () => renderer.root.findAllByType("label").find(node => node.findAllByType("strong").some(strong => strong.props.children === "Zelf samenstellen")).findByType("input").props.onChange());
         const submit = () => renderer.root.findAllByType("button").find(node => node.props.children === "Controleren en concept maken");
         await React.act(async () => submit().props.onClick());
         assert.equal(requests.filter(row => row.options.method === "POST").length, 0, "cancelled confirmation does not create anything");
@@ -101,13 +103,14 @@ test("settings have stable future dates, safe URLs and real budget/placement map
   const now = new Date("2026-09-29T12:00:00Z");
   const draft = settings.defaultMetaCampaign({ ...item, scheduled_for: "2020-01-01" }, distribution, now);
   assert.equal(draft.campaignName, "Live muziek");
+  assert.equal(draft.audienceMode, "saved");
   const imageDistribution = { common: { images: { landscape: { url: "https://example.com/landscape.jpg" }, portrait: { url: "https://example.com/portrait.jpg" } } } };
   assert.equal(settings.campaignImageForPlacement(imageDistribution, "both").url, "https://example.com/portrait.jpg");
   assert.equal(settings.campaignImageForPlacement(imageDistribution, "facebook").url, "https://example.com/landscape.jpg");
   assert.equal(settings.defaultMetaCampaign(item, imageDistribution, now).imageUrl, "https://example.com/portrait.jpg");
   const eventDistribution = { source_type: "website_event", eventin_event_id: "123", common: { title: "Volledig evenement", short_description: "Korte versie", description: "Volledige omschrijving uit Eventin" }, channel_payloads: { facebook: { text: "Korte Facebooktekst" } } };
   assert.equal(settings.defaultMetaCampaign(item, eventDistribution, now).primaryText, "Volledige omschrijving uit Eventin");
-  assert.equal(settings.validateMetaCampaign(draft, now), "");
+  assert.equal(settings.validateMetaCampaign({ ...draft, audienceMode: "manual" }, now), "");
   assert.ok(new Date(draft.endAt) > new Date(draft.startAt));
   assert.equal(draft.launchStatus, "paused");
   for (const patch of [{ ageMin: "NaN" }, { ageMin: 17 }, { ageMin: 55, ageMax: 20 }, { dailyBudget: 0 }, { imageUrl: "javascript:alert(1)" }, { primaryText: "" }, { campaignName: 33 }, { interests: [null] }]) assert.ok(settings.validateMetaCampaign({ ...draft, ...patch }, now));
@@ -148,6 +151,7 @@ test("editor edits update preview, retain step state, search real IDs and submit
     const endAt = control("Einde").props.value;
     assert.equal(control("Totaalbudget (€)").props.value, "85");
     await React.act(async () => button("Doelgroep").props.onClick());
+    await React.act(async () => renderer.root.findAllByType("label").find(node => node.findAllByType("strong").some(strong => strong.props.children === "Zelf samenstellen")).findByType("input").props.onChange());
     await change("Plaats (leeg = heel land)", "Zoetermeer");
     await React.act(async () => button("Zoek plaats").props.onClick());
     await change("Kies de plaats uit Meta", "100");
@@ -242,7 +246,7 @@ test("route sends edited fields to Meta, isolates venue identity, fails prefligh
     "../../../../../lib/server-supabase": { createAdminSupabase: () => admin, createUserSupabase: () => user },
     "../../../../../lib/meta-oauth": { decryptMetaToken: () => "secret" },
   });
-  const settings = { ...load("lib/meta-campaign-settings.js").defaultMetaCampaign(item, distribution), editorVersion: 2, launchStatus: "active", budgetType: "lifetime", dailyBudget: 80, headline: "Nieuwe kop", primaryText: "Nieuwe tekst", description: "Korte uitleg", locationQuery: "Zoetermeer", locationKey: "100", placementFormat: "feed_story", callToAction: "sign_up", interests: [{ id: "123", name: "Music" }] };
+  const settings = { ...load("lib/meta-campaign-settings.js").defaultMetaCampaign(item, distribution), audienceMode: "manual", editorVersion: 2, launchStatus: "active", budgetType: "lifetime", dailyBudget: 80, headline: "Nieuwe kop", primaryText: "Nieuwe tekst", description: "Korte uitleg", locationQuery: "Zoetermeer", locationKey: "100", placementFormat: "feed_story", callToAction: "sign_up", interests: [{ id: "123", name: "Music" }] };
   const request = patch => new Request("https://example.com/api/integrations/facebook/ads", { method: "POST", headers: { Authorization: "Bearer session", "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: "workspace", businessId: "venue", campaignId: "campaign", settings: { ...settings, ...patch } }) });
   try {
     const response = await route.POST(request()); assert.equal(response.status, 200);
