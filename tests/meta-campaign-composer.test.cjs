@@ -158,6 +158,29 @@ test("editor edits update preview, retain step state, search real IDs and submit
   } finally { await React.act(async () => renderer.unmount()); }
 });
 
+test("a saved Meta audience is edited in one dialog and saves the existing Meta audience", async () => {
+  await swc.loadBindings();
+  const React = require("react"), Renderer = require("react-test-renderer");
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const Composer = load("components/meta-campaign-composer.js", { "next/image": { __esModule: true, default: props => React.createElement("img", { src: props.src, alt: props.alt }) } }).default;
+  let renderer, updated;
+  const initialDraft = { audienceMode: "saved", savedAudienceId: "saved-1", savedAudienceName: "Tot Utrecht", savedAudiencePreview: { geo_locations: { countries: ["NL"], cities: [{ name: "Gouda", key: "gouda", radius: 37, distance_unit: "kilometer" }] }, age_min: 18, age_max: 65 }, countries: ["NL"], locationQuery: "Gouda", locationKey: "gouda", radiusKm: 37, ageMin: 18, ageMax: 65, gender: "all" };
+  const button = name => renderer.root.findAllByType("button").find(node => node.props.children === name || (Array.isArray(node.props.children) && node.props.children.includes(name)));
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(Composer, { item, distribution, businessName: "Caribbean Corner", pageName: "Caribbean Corner", initialDraft, onCreate() {}, onSearch: async () => [], onCatalog: async () => ({ options: [] }), onUpdateSavedAudience: async draft => { updated = draft; return { targeting: draft.savedAudiencePreview }; } })); });
+    await React.act(async () => button("Doelgroep en plaatsingen").props.onClick());
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("Tot Utrecht"));
+    assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 0);
+    await React.act(async () => button("Doelgroep bewerken").props.onClick());
+    assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 1);
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("Gouda"));
+    await React.act(async () => button("Doelgroep opslaan").props.onClick());
+    assert.equal(updated.savedAudienceId, "saved-1");
+    assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 0);
+    assert.ok(JSON.stringify(renderer.toJSON()).includes("bijgewerkt in Meta"));
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test("route sends edited fields to Meta, isolates venue identity, fails preflight safely and cannot activate", async () => {
   await swc.loadBindings();
   const originalFetch = global.fetch;
