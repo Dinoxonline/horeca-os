@@ -57,7 +57,7 @@ test('comparison summary distinguishes equal, different, incomplete and failed c
   const sources = [{ label: 'Horeca OS', item: local }, { label: 'Eventin', item: item() }, { label: 'Facebook', item: item() }];
   assert.equal(sourceComparisonStatus(local, sources, 'pending').key, 'pending');
   assert.equal(sourceComparisonStatus(local, sources, 'queued').key, 'queued');
-  assert.match(sourceComparisonStatus(local, sources, 'timeout').detail, /30 seconden/);
+  assert.match(sourceComparisonStatus(local, sources, 'timeout').detail, /45 seconden/);
   assert.equal(sourceComparisonStatus(local, sources, 'error').key, 'incomplete');
   assert.equal(sourceComparisonStatus(local, sources, 'done').key, 'equal');
   assert.equal(sourceComparisonStatus(local, sources.slice(0, 2), 'done').key, 'incomplete');
