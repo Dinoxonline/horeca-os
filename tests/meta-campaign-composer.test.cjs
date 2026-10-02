@@ -103,6 +103,8 @@ test("settings have stable future dates, safe URLs and real budget/placement map
   assert.equal(settings.campaignImageForPlacement(imageDistribution, "both").url, "https://example.com/portrait.jpg");
   assert.equal(settings.campaignImageForPlacement(imageDistribution, "facebook").url, "https://example.com/landscape.jpg");
   assert.equal(settings.defaultMetaCampaign(item, imageDistribution, now).imageUrl, "https://example.com/portrait.jpg");
+  const eventDistribution = { source_type: "website_event", eventin_event_id: "123", common: { title: "Volledig evenement", short_description: "Korte versie", description: "Volledige omschrijving uit Eventin" }, channel_payloads: { facebook: { text: "Korte Facebooktekst" } } };
+  assert.equal(settings.defaultMetaCampaign(item, eventDistribution, now).primaryText, "Volledige omschrijving uit Eventin");
   assert.equal(settings.validateMetaCampaign(draft, now), "");
   assert.ok(new Date(draft.endAt) > new Date(draft.startAt));
   assert.equal(draft.launchStatus, "paused");
