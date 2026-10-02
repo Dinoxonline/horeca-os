@@ -18,6 +18,7 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   const [manualBusy, setManualBusy] = useState(false);
   const [manualLoaded, setManualLoaded] = useState(false);
   const [manualLinkingId, setManualLinkingId] = useState("");
+  const [manualNotice, setManualNotice] = useState("");
   const [linkedCampaign, setLinkedCampaign] = useState(null);
   const paidCampaign = linkedCampaign || distribution.facebook_paid_campaign || {};
   const created = Boolean(paidCampaign.campaign_id) || ["active", "paused"].includes(paidCampaign.status);
@@ -105,7 +106,11 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
   }
 
   async function linkManualCampaign(metaCampaignId) {
-    setManualBusy(true); setManualLinkingId(metaCampaignId); setError("");
+    if (!session?.access_token) {
+      setManualNotice("De aanmelding is verlopen. Ververs de pagina en meld je opnieuw aan voordat je de campagne koppelt.");
+      return;
+    }
+    setManualBusy(true); setManualLinkingId(metaCampaignId); setManualNotice("Campagne wordt gecontroleerd en gekoppeld…"); setError("");
     try {
       const response = await fetch("/api/integrations/facebook/ads", {
         method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
@@ -114,8 +119,12 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
       const result = await response.json();
       if (!response.ok || !result.paidCampaign) throw new Error(result.error || "De campagne kon niet worden gekoppeld.");
       setLinkedCampaign(result.paidCampaign);
+      setManualNotice("De Meta-campagne is aan dit evenement gekoppeld.");
       onSaved({ ...item, media: (item.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, facebook_paid_campaign: result.paidCampaign } : entry) });
-    } catch (failure) { setError(failure.message || "De campagne kon niet worden gekoppeld."); }
+    } catch (failure) {
+      const message = failure.message || "De campagne kon niet worden gekoppeld.";
+      setError(message); setManualNotice(message);
+    }
     finally { setManualBusy(false); setManualLinkingId(""); }
   }
 
@@ -129,10 +138,9 @@ export default function MetaCampaignEditor({ workspaceId, session, item, distrib
       <summary>Promotie al in Meta gemaakt?</summary>
       <p>Haal recente campagnes op en koppel alleen de juiste campagne aan dit evenement.</p>
       <button type="button" className="secondaryButton" disabled={manualBusy} onClick={findManualCampaigns}>{manualBusy ? "Campagnes ophalen…" : "Recente Meta-campagnes ophalen"}</button>
-      {manualLinkingId && <p role="status">Campagne wordt gecontroleerd en gekoppeld…</p>}
-      {manualCampaigns.map(candidate => <div key={candidate.id} className="savedAudienceItem"><div><strong>{candidate.name}</strong><span>Meta-status: {candidate.effectiveStatus || candidate.status || "onbekend"}</span></div><button type="button" className="secondaryButton" disabled={manualBusy} onClick={() => linkManualCampaign(candidate.id)}>{manualLinkingId === candidate.id ? "Campagne koppelen…" : "Deze campagne koppelen"}</button></div>)}
+      {manualNotice && <p role={error ? "alert" : "status"}>{manualNotice}</p>}
+      {manualCampaigns.map(candidate => <div key={candidate.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, marginTop: 10, padding: 10, border: "1px solid #c6d5df", borderRadius: 8 }}><div><strong style={{ display: "block" }}>{candidate.name}</strong><span>Meta-status: {candidate.effectiveStatus || candidate.status || "onbekend"}</span></div><button type="button" className="secondaryButton" disabled={manualBusy} onClick={event => { event?.preventDefault(); event?.stopPropagation(); linkManualCampaign(candidate.id); }}>{manualLinkingId === candidate.id ? "Campagne koppelen…" : "Deze campagne koppelen"}</button></div>)}
       {manualLoaded && !manualBusy && manualCampaigns.length === 0 && <p>Meta gaf geen recente campagnes terug.</p>}
-      {error && <p role="alert">{error}</p>}
     </details>
     <MetaCampaignComposer key={item.id} item={item} distribution={distribution} businessName={business?.name || "Deze vestiging"} pageName={pageAccount?.display_name} adAccountName={adAccount.display_name} onCreate={createCampaign} onSearch={searchMeta} onCatalog={loadCatalog} onUpdateSavedAudience={updateSavedAudience} onDirty={onDirty} busy={busy} error={error} initialDraft={initialDraft} onDraftChange={onDraftChange} budgetContext={budgetContext} lockToEvent={lockToEvent} />
   </>;
