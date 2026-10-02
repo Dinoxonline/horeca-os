@@ -341,6 +341,24 @@ test('Facebook editor stays closed while checking and after equal or different r
   } finally { if (renderer) await React.act(async () => renderer.unmount()); }
 });
 
+test('source choice and saving remain available while the background comparison runs', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'background-edit', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Horeca OS titel', description: 'Horeca OS tekst' } }] };
+  const eventin = { label: 'Eventin', item: { id: 'eventin-copy', media: [{ kind: 'campaign_distribution', common: { title: 'Website titel', description: 'Website tekst' } }] } };
+  const saved = [];
+  let renderer;
+  try {
+    await React.act(async () => { renderer = Renderer.create(React.createElement(EventDetails, { item, sourceComparisonCheck: 'pending', sourceComparisonItems: [eventin], onClose() {}, onSyncContent: content => saved.push(content) })); });
+    assert.equal(renderer.root.findByProps({ id: 'event-channel-sources-background-edit' }).props.hidden, false);
+    await React.act(async () => renderer.root.findByProps({ 'aria-label': 'Tekst van Eventin gebruiken' }).props.onClick());
+    const preview = renderer.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+    assert.equal(preview.findByType('textarea').props.disabled, false);
+    await React.act(async () => preview.findByType('textarea').props.onChange({ target: { value: 'Aangepaste tekst' } }));
+    await React.act(async () => renderer.root.findAllByType('button').find(button => button.props.children === 'Tekst bewaren in Horeca OS').props.onClick());
+    assert.deepEqual(saved, [{ title: 'Website titel', description: 'Aangepaste tekst' }]);
+  } finally { if (renderer) await React.act(async () => renderer.unmount()); }
+});
+
 test('event layout starts with one workspace and keeps secondary information collapsed', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'layout', media: [{ kind: 'campaign_distribution', facebook_event_delivery: { external_id: '456' }, common: { title: 'Avond', description: 'Tekst' } }] };
