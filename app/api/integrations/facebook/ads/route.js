@@ -223,7 +223,11 @@ async function updateSavedAudience(admin, workspaceId, businessId, account, sett
     const saved = await graphRead(audienceId, token, { fields: "id,name,account{id},targeting" });
     if (String(saved.id) !== audienceId || String(saved.account?.id || "").replace(/^act_/, "") !== accountId) return jsonError("Meta gaf geen veilige bevestiging van de doelgroepwijziging.", 502);
     return NextResponse.json({ ok: true, targeting: saved.targeting }, { headers: { "Cache-Control": "private, no-store" } });
-  } catch (error) { return jsonError(error.message || "De opgeslagen Meta-doelgroep kon niet worden bijgewerkt.", 502); }
+  } catch (error) {
+    const message = error.message || "De opgeslagen Meta-doelgroep kon niet worden bijgewerkt.";
+    if (/capability to make this api call/i.test(message)) return jsonError("Meta blokkeert deze wijziging: de Meta-app heeft nog geen toestemming om opgeslagen doelgroepen te wijzigen. Rond de toegang voor de Marketing API af in Meta Developers en koppel daarna het advertentieaccount opnieuw.", 409);
+    return jsonError(message, 502);
+  }
 }
 
 async function refreshRegisteredCampaign(admin, workspaceId, businessId, campaign, distribution, account) {
