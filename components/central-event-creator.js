@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import NextImage from "next/image";
 import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
 import { SavedPredisWorkspace } from "./predis-workspace";
-import { ensureEventPromotionProcess } from "../lib/event-promotion-process";
+import { ensureEventPromotionProcess, ensureEventPromotionRun } from "../lib/event-promotion-process";
 import { saveCampaignDraft } from "../lib/save-campaign-draft";
 import WhatsappShare from "./whatsapp-share";
 import { supabase } from "../lib/supabase";
@@ -23,6 +23,7 @@ const imageSlots = [
 
 const emptyImages = Object.fromEntries(imageSlots.map(({ key }) => [key, null]));
 const defaultTicketVariation = { id: "ticket-1", name: "Gratis ticket", type: "free", price: "0", description: "", capacity: "", salesStart: "", salesEnd: "", minQuantity: "1", maxQuantity: "10" };
+const emptyEventWorkboardTask = () => ({ id: `event-task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: "", dueDate: "", priority: "medium" });
 
 const campaignTypes = [
   ["event", "Evenement", "Met Eventin, datum, tickets en agenda"],
@@ -481,6 +482,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [artistProgram, setArtistProgram] = useState("");
   const [practicalDetails, setPracticalDetails] = useState("");
   const [sourceText, setSourceText] = useState("");
+  const [eventWorkboardTasks, setEventWorkboardTasks] = useState([]);
   const [eventCreationStep, setEventCreationStep] = useState(1);
   const [chatGptDesignNotice, setChatGptDesignNotice] = useState("");
   const automaticShortTextRef = useRef("");
@@ -645,6 +647,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       if (formHasCampaignContent(form)) {
         window.localStorage.setItem(draftKey, JSON.stringify({
           form,
+          eventWorkboardTasks,
           ui: { eventWorkspaceView, scrollY },
           savedAt: new Date().toISOString(),
         }));
@@ -672,6 +675,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     ticketVariations: [...(current.ticketVariations || []), { ...defaultTicketVariation, id: `ticket-${Date.now()}`, name: `Ticket ${(current.ticketVariations || []).length + 1}` }],
   }));
   const removeTicketVariation = (id) => setForm((current) => ({ ...current, ticketVariations: (current.ticketVariations || []).filter((ticket) => ticket.id !== id) }));
+  const addEventWorkboardTask = () => setEventWorkboardTasks((current) => [...current, emptyEventWorkboardTask()]);
+  const updateEventWorkboardTask = (id, key, value) => setEventWorkboardTasks((current) => current.map((task) => task.id === id ? { ...task, [key]: value } : task));
+  const removeEventWorkboardTask = (id) => setEventWorkboardTasks((current) => current.filter((task) => task.id !== id));
   useEffect(() => {
     const correctedEnd = normalizeOvernightEnd(form.start, form.end);
     if (!correctedEnd || correctedEnd === form.end) return;
@@ -717,6 +723,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setArtistProgram("");
     setPracticalDetails("");
     setSourceText("");
+    setEventWorkboardTasks([]);
     setEventCreationStep(1);
     setChatGptDesignNotice("");
     setPreview(false);
@@ -1265,6 +1272,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       setEditingBrevoDraftId(null);
       setSelectedBrevoListIds([]);
       setSelectedFacebookGroupIds([]);
+      setEventWorkboardTasks([]);
       setEventWorkspaceView("new");
       setPreview(false);
       setResult({
@@ -1365,6 +1373,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
     });
     setEditingCampaignId(item.id);
+    setEventWorkboardTasks([]);
     setEventWorkspaceView("new");
     const isEarlyCalendarConcept = storedType === "event" && !isWebsiteEvent && distribution.calendar_delivery?.stage === "concept";
     setEventCreationStep(isEarlyCalendarConcept ? 1 : 2);
@@ -1646,6 +1655,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       contactEmail: defaults.contactEmail,
     });
     setRestoredDraftKey(draftKey);
+    setEventWorkboardTasks(Array.isArray(savedDraft?.eventWorkboardTasks) ? savedDraft.eventWorkboardTasks : []);
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
     setEarlyCalendarDelivery(null);
@@ -1698,6 +1708,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setArtistProgram("");
     setPracticalDetails("");
     setSourceText("");
+    setEventWorkboardTasks([]);
     setEventCreationStep(1);
     setChatGptDesignNotice("");
     setPreview(false);
@@ -1721,7 +1732,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [form, eventWorkspaceView, workspaceId, selectedBusiness?.id, businessId, restoredDraftKey, editingCampaignId, editingWebsiteEvent]);
+  }, [form, eventWorkboardTasks, eventWorkspaceView, workspaceId, selectedBusiness?.id, businessId, restoredDraftKey, editingCampaignId, editingWebsiteEvent]);
 
   useEffect(() => {
     const preserveDraft = () => saveCurrentFormDraft();
@@ -1973,6 +1984,37 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     window.requestAnimationFrame(() => document.getElementById("kanaal-controle")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   };
 
+  async function addEventWorkboardTasks(marketingItemId, includePromotionChecklist = false) {
+    const tasksToCreate = eventWorkboardTasks.filter((task) => task.title.trim());
+    if (!tasksToCreate.length && !includePromotionChecklist) return { checklistCount: 0, taskCount: 0 };
+    const options = {
+      workspaceId,
+      businessId: selectedBusiness?.id || businessId,
+      marketingItemId,
+      title: form.title,
+      start: form.start,
+      createdBy: session.user.id,
+    };
+    const process = includePromotionChecklist
+      ? await ensureEventPromotionProcess(supabase, options)
+      : await ensureEventPromotionRun(supabase, options);
+    if (tasksToCreate.length) {
+      const { error } = await supabase.from("process_run_tasks").insert(tasksToCreate.map((task) => ({
+        workspace_id: workspaceId,
+        business_id: selectedBusiness?.id || businessId,
+        run_id: process.run.id,
+        template_step_id: null,
+        title: task.title.trim(),
+        due_date: task.dueDate || null,
+        priority: task.priority || "medium",
+        status: "not_started",
+      })));
+      if (error) throw error;
+      setEventWorkboardTasks([]);
+    }
+    return { checklistCount: process.tasks.length, taskCount: tasksToCreate.length };
+  }
+
   async function saveIncompleteDraft() {
     const agendaOnlyDraft = isEvent && eventCreationStep === 1;
     if (!form.title.trim()) return setResult({ ok: false, message: `Vul minimaal een naam in voor ${campaignTypeLabel.toLowerCase()}.` });
@@ -2041,6 +2083,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const { data, error } = await saveCampaignDraft(supabase, workspaceId, editingCampaignId, record);
       if (error) throw error;
       const savedCampaignId = data?.id || editingCampaignId || null;
+      let workboardMessage = "";
       setEditingCampaignId(savedCampaignId);
       setEditingWebsiteEvent(null);
       setPreview(false);
@@ -2070,7 +2113,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           return;
         }
       }
-      setResult({ ok: true, message: agendaOnlyDraft ? `${campaignTypeLabel} staat als CONCEPT in Horeca OS én in de agenda van ${form.calendarMailbox.trim() || "info@leclubbbq.nl"}. Er is niets gepubliceerd.` : `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.` });
+      if (isEvent && savedCampaignId && eventWorkboardTasks.some((task) => task.title.trim())) {
+        try {
+          const workboard = await addEventWorkboardTasks(savedCampaignId);
+          workboardMessage = ` ${workboard.taskCount} taak${workboard.taskCount === 1 ? "" : "en"} staat nu op het Werkbord.`;
+        } catch (workboardError) {
+          workboardMessage = ` Het concept is opgeslagen, maar de Werkbordtaken nog niet: ${workboardError.message || "probeer opnieuw op te slaan"}.`;
+        }
+      }
+      setResult({ ok: true, message: (agendaOnlyDraft ? `${campaignTypeLabel} staat als CONCEPT in Horeca OS én in de agenda van ${form.calendarMailbox.trim() || "info@leclubbbq.nl"}. Er is niets gepubliceerd.` : `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.`) + workboardMessage });
       await loadEventCampaigns();
       // Keep the already-mounted marketing agenda current when this early concept is saved.
       onEventSaved?.();
@@ -2428,17 +2479,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
       if (promotion.itemId) {
         try {
-          const checklist = await ensureEventPromotionProcess(supabase, {
-            workspaceId,
-            businessId: selectedBusiness?.id || businessId,
-            marketingItemId: promotion.itemId,
-            title: form.title,
-            start: form.start,
-            createdBy: session.user.id,
-          });
-          steps.push({ label: "Promotiechecklist", ok: true, detail: `${checklist.tasks.length} handmatige taken klaargezet.` });
+          const workboard = await addEventWorkboardTasks(promotion.itemId, true);
+          const detail = [`${workboard.checklistCount} promotietaken klaargezet.`];
+          if (workboard.taskCount) detail.push(`${workboard.taskCount} eigen taak${workboard.taskCount === 1 ? "" : "en"} toegevoegd.`);
+          steps.push({ label: "Werkbord", ok: true, detail: detail.join(" ") });
         } catch (checklistError) {
-          steps.push({ label: "Promotiechecklist", ok: false, detail: checklistError.message || "Start deze later vanuit het evenement." });
+          steps.push({ label: "Werkbord", ok: false, detail: checklistError.message || "Start de taken later vanuit het evenement." });
         }
       }
       const selectedBusinessId = selectedBusiness?.id || businessId;
@@ -2770,6 +2816,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         </fieldset>
         <label>Praktische informatie<textarea rows={3} value={practicalDetails} onChange={(event) => setPracticalDetails(event.target.value)} placeholder="Bijvoorbeeld: 25+, gratis parkeren, diner reserveren, adres, eten en drinken." /></label>
         <label>Sfeer en beeldwensen<textarea rows={3} value={creativeBrief} onChange={(event) => setCreativeBrief(event.target.value)} placeholder="Bijvoorbeeld: tropisch, chique, gouden details, volwassen publiek." /></label>
+        <details className="eventWorkboardTasks wide"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
+          {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
+            <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
+            <label>Deadline<input type="date" value={task.dueDate} onChange={(event) => updateEventWorkboardTask(task.id, "dueDate", event.target.value)} /></label>
+            <label>Prioriteit<select value={task.priority} onChange={(event) => updateEventWorkboardTask(task.id, "priority", event.target.value)}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
+            <button type="button" onClick={() => removeEventWorkboardTask(task.id)}>Verwijderen</button>
+          </div>)}</div>}
+          <button type="button" className="secondaryButton" onClick={addEventWorkboardTask}>+ Taak toevoegen</button>
+        </details>
         <details className="sourceTextHelper wide"><summary>Ik heb al een bestaande evenementtekst</summary><p>Plak die hier alleen als je titel, datum, tijden en locatie daaruit wilt overnemen.</p><textarea rows={5} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Plak hier de bestaande tekst." /><button type="button" className="secondaryButton" disabled={!sourceText.trim()} onClick={useDetailsFromSourceText}>Gegevens uit deze tekst invullen</button></details>
         <div className="chatGptDesignActions"><a className="primaryButton chatGptDesktopLink" href={chatGptDesktopUrl}>ChatGPT Desktop openen ↗</a><a className="primaryButton chatGptMobileLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen ↗</a><details className="chatGptBrowserLink"><summary>Werkt de app niet?</summary><a href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT in browser</a></details><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Concept opslaan…" : "Als concept in agenda opslaan"}</button><button type="button" className="secondaryButton" onClick={continueFromChatGptDesign}>Ik heb mijn ontwerp — ga verder</button></div>
         {chatGptDesignNotice && <p className="chatGptDesignNotice" role="status">✓ {chatGptDesignNotice}</p>}
@@ -2793,6 +2848,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </nav>
     }
     {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
+    {isEvent && <details className="eventWorkboardTasks creatorSection" id="werkbord-taken"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
+      {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
+        <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
+        <label>Deadline<input type="date" value={task.dueDate} onChange={(event) => updateEventWorkboardTask(task.id, "dueDate", event.target.value)} /></label>
+        <label>Prioriteit<select value={task.priority} onChange={(event) => updateEventWorkboardTask(task.id, "priority", event.target.value)}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
+        <button type="button" onClick={() => removeEventWorkboardTask(task.id)}>Verwijderen</button>
+      </div>)}</div>}
+      <button type="button" className="secondaryButton" onClick={addEventWorkboardTask}>+ Taak toevoegen</button>
+    </details>}
     <div className="eventCreatorGrid creatorSection" id="campagne-basis">
       <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
       <label>{campaignTitleLabel} *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
@@ -3427,12 +3491,12 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       .campaignTypeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}.campaignTypeGrid button{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;cursor:pointer}.campaignTypeGrid button.active{border-color:#25889b;background:#eef7f9;box-shadow:inset 0 0 0 1px #25889b}.campaignTypeGrid span{font-size:13px;color:#5c7285;font-weight:400}
       .eventWorkspaceChooser{display:grid;gap:14px;margin:0 0 20px;padding:18px;border:1px solid #b9d2da;border-radius:14px;background:#f8fbfc}.eventWorkspaceChooser h3,.eventWorkspaceChooser p{margin:0}.eventWorkspaceChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.eventWorkspaceChoices button{display:flex;min-height:112px;flex-direction:column;gap:6px;padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#fff;color:#173552;text-align:left;cursor:pointer}.eventWorkspaceChoices button.active{border-color:#25889b;background:#eaf7f9;box-shadow:inset 0 0 0 2px #25889b}.eventWorkspaceChoices strong{font-size:16px}.eventWorkspaceChoices span{color:#5c7285;line-height:1.4}
       .chatGptDesignStep{display:grid;gap:14px;margin:0 0 18px;padding:18px;border:1px solid #8bc5d7;border-radius:14px;background:linear-gradient(135deg,#edf9fb,#f8fbff)}.chatGptDesignHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.chatGptDesignHead h3,.chatGptDesignHead p{margin:0}.chatGptDesignHead>div{display:grid;gap:4px}.chatGptDesignHead .secondaryButton,.chatGptDesignActions .secondaryButton,.chatGptDesignActions .primaryButton{width:auto;border:1px solid #25889b;border-radius:9px;padding:10px 13px;background:#fff;color:#176d7f;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.chatGptDesignActions .primaryButton{background:#25889b;color:#fff}.chatGptMobileLink{display:none}.chatGptDesignBody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.chatGptDesignBody>.wide,.chatGptDesignBody>small,.chatGptDesignActions,.chatGptDesignNotice{grid-column:1/-1}.chatGptDesignActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.chatGptDesignNotice{margin:0;padding:10px 12px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46;font-weight:800}.chatGptDesignBody>small{color:#5c7285;line-height:1.45}
-      .sourceTextHelper{display:grid;gap:9px;padding:12px;border:1px solid #c6d5df;border-radius:10px;background:#fff}.sourceTextHelper summary,.chatGptBrowserLink summary{color:#176d7f;font-weight:800;cursor:pointer}.sourceTextHelper p{margin:0;color:#5c7285}.sourceTextHelper button{justify-self:start;border:1px solid #25889b;border-radius:8px;padding:9px 11px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.chatGptBrowserLink{border:1px solid #25889b;border-radius:9px;padding:10px 13px;background:#fff;color:#176d7f;font-weight:800}.chatGptBrowserLink[open]{display:grid;gap:8px}.chatGptBrowserLink a{color:#176d7f;font-weight:800}.eventDetailsIntro{display:grid;gap:5px;margin:0 0 14px;padding:15px 18px;border-left:4px solid #25889b;border-radius:10px;background:#f5f8fa}.eventDetailsIntro h3,.eventDetailsIntro p{margin:0}.eventDetailsIntro p:last-child{color:#5c7285;line-height:1.45}
+      .sourceTextHelper{display:grid;gap:9px;padding:12px;border:1px solid #c6d5df;border-radius:10px;background:#fff}.sourceTextHelper summary,.chatGptBrowserLink summary,.eventWorkboardTasks summary{color:#176d7f;font-weight:800;cursor:pointer}.sourceTextHelper p{margin:0;color:#5c7285}.sourceTextHelper button{justify-self:start;border:1px solid #25889b;border-radius:8px;padding:9px 11px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.eventWorkboardTasks{display:grid;gap:10px;padding:12px;border:1px solid #c6d5df;border-radius:10px;background:#fff}.eventWorkboardTasks p{margin:0;color:#5c7285}.eventWorkboardTasks>button{justify-self:start}.eventWorkboardTaskList{display:grid;gap:8px}.eventWorkboardTask{display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,.45fr) minmax(130px,.35fr) auto;gap:8px;align-items:end;padding:10px;border-radius:8px;background:#f5f8fa}.eventWorkboardTask button{border:0;background:none;color:#a12f2f;text-decoration:underline;font:inherit;font-weight:800;cursor:pointer;padding:10px 0}.chatGptBrowserLink{border:1px solid #25889b;border-radius:9px;padding:10px 13px;background:#fff;color:#176d7f;font-weight:800}.chatGptBrowserLink[open]{display:grid;gap:8px}.chatGptBrowserLink a{color:#176d7f;font-weight:800}.eventDetailsIntro{display:grid;gap:5px;margin:0 0 14px;padding:15px 18px;border-left:4px solid #25889b;border-radius:10px;background:#f5f8fa}.eventDetailsIntro h3,.eventDetailsIntro p{margin:0}.eventDetailsIntro p:last-child{color:#5c7285;line-height:1.45}
       .creatorQuickBar{position:sticky;top:10px;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px;padding:10px;border:1px solid #b9d2da;border-radius:12px;background:rgba(255,255,255,.97);box-shadow:0 8px 24px rgba(23,53,82,.12);backdrop-filter:blur(8px)}.creatorQuickLinks,.creatorQuickActions{display:flex;align-items:center;gap:7px}.creatorQuickLinks{min-width:0;overflow-x:auto}.creatorQuickBar button{flex:0 0 auto;border:1px solid #9cbac3;border-radius:8px;padding:8px 10px;background:#f7fbfc;color:#176d7f;font:inherit;font-size:13px;font-weight:800;cursor:pointer}.creatorQuickActions button{border-color:#25889b;background:#25889b;color:#fff}.creatorQuickActions .secondaryButton{background:#fff;color:#176d7f}.creatorSection{scroll-margin-top:92px}
       .missingChannelNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #e4a91b;border-radius:8px;background:#fff2d1;color:#815b00}.protectedCampaignNotice{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #78909c;border-radius:8px;background:#eef2f5;color:#405866}.placedCampaignLock{margin:8px 0 0!important;padding:9px 11px;border-left:4px solid #3a9455;border-radius:8px;background:#e9f6ee;color:#236d46}.conceptHeading{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:5px}.campaignKind{display:block;width:max-content;padding:4px 8px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:12px;font-weight:800}.conceptSavedAt{margin:4px 0!important;color:#5c7285;font-size:12px}.approvalState{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800}.approvalState.draft{background:#eef2f5;color:#4c6172}.approvalState.approved{background:#e5f6ea;color:#24723b}.campaignStatus article>div:first-child strong{display:block}.status.local{background:#eef2f5;color:#4c6172}.editingNotice{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0;padding:12px 14px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#173552}.editingNotice span{flex:1;color:#5c7285}.editingNotice button{border:1px solid #25889b;border-radius:8px;padding:8px 11px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.conceptFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 10px}.conceptSearch{grid-column:1/-1}.conceptFilterSummary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;color:#5c7285;font-size:13px}.conceptFilterSummary button{border:0;background:none;color:#176d7f;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}.emptyConcepts{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.emptyCampaignState{display:grid;justify-items:start;gap:8px;margin-top:16px;padding:18px;border:1px dashed #9cbac3;border-radius:12px;background:#f8fbfc}.emptyCampaignState p{margin:0;color:#5c7285}.emptyCampaignState button{border:0;border-radius:9px;padding:10px 14px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.conceptActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.conceptActions button,.conceptSchedule button{padding:8px 11px;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.conceptActions button:disabled,.conceptSchedule button:disabled{opacity:.55;cursor:wait}.conceptOpenButton{border:1px solid #25889b;color:#176d7f}.conceptApproveButton{border:1px solid #3a9455;color:#24723b}.conceptDuplicateButton{border:1px solid #78909c;color:#405866}.conceptDeleteButton{border:1px solid #c95d5d;color:#a12f2f}.conceptSchedule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px;padding:10px;border-radius:9px;background:#f5f8fa}.conceptSchedule label{min-width:220px}.conceptSchedule button{border:1px solid #25889b;color:#176d7f}.conceptSchedule span{align-self:center;color:#405866;font-size:13px;font-weight:700}
       .placementChoices{display:grid;gap:8px}.placementChoices>span{font-weight:800}.placementChoices label{font-weight:700}.facebookEventLinkActions{display:grid;gap:8px;margin-top:10px;padding:12px;border-radius:9px;background:#eef7fa}.facebookEventManualWorkflow{display:grid;gap:9px}.facebookEventManualWorkflow p{margin:0;color:#405866}.facebookEventManualToggle{justify-self:start;border:1px solid #25889b;border-radius:8px;padding:8px 10px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.facebookEventManualFields{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:8px;align-items:center;padding-top:4px}.facebookEventManualFields>.check{grid-column:1/-1}.facebookEventManualFields input{min-width:0}.facebookEventManualFields button{border:1px solid #25889b;border-radius:8px;padding:9px 11px;background:#25889b;color:#fff;font:inherit;font-weight:800;cursor:pointer}.brevoAudiencePicker{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.brevoAudiencePicker p{margin:0}.brevoAudiencePicker small{color:#5c7285}.brevoAudienceError{color:#a12f2f}.predisGenerationChoice{display:grid;gap:8px;padding:10px;border-radius:9px;background:#f5f8fa}.predisGenerationChoice small{color:#5c7285}.staggerFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.eventinDestination{display:grid;grid-template-columns:minmax(240px,1fr) minmax(240px,1fr);align-items:end;gap:10px;padding:13px;border:1px solid #57ad7d;border-radius:10px;background:#e9f6ee}.eventinDestination>.check{align-self:center;color:#236d46}.eventinDestination>small{grid-column:1/-1;color:#405866}
       .eventCreatorGrid,.channelDetails{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.channelDetails fieldset{margin:0;padding:14px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:10px}.channelDetails legend,.eventDestinations legend{font-weight:800}.channelDetails p{margin:0;color:#5c7285}.channelChecks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.channelCheck{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:1px solid #d5e0e7;border-radius:9px;background:#fff}.channelCheck .check{margin:0}.channelCheck small{padding:4px 7px;border-radius:999px;background:#eef7f9;color:#176d7f;font-size:11px;white-space:nowrap}.editorialAgendaPicker{min-width:0;overflow:hidden}.editorialTargetBulkActions{display:flex;flex-wrap:wrap;gap:8px}.editorialTargetBulkActions button{border:1px solid #25889b;border-radius:8px;padding:9px 12px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.editorialTargetBulkActions button:first-child{background:#25889b;color:#fff}.editorialTargetGrid{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}.editorialTargetCard{display:block;min-width:0}.editorialTargetHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}.editorialTargetHead .check{min-width:0}.editorialTargetHead small{flex:0 1 auto;max-width:55%;white-space:normal;text-align:right}.editorialTargetLinks{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;min-width:0}.editorialTargetLinks a,.editorialTargetLinks span{max-width:100%;overflow-wrap:anywhere;word-break:break-word}.editorialTargetHint{display:block;margin-top:7px;white-space:normal!important}.channelSafetyNote{margin:0;padding:10px 12px;border-left:4px solid #25889b;border-radius:8px;background:#eef7f9;color:#405866}.check{flex-direction:row;align-items:center}.wide{grid-column:1/-1}label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#173552}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #c6d5df;border-radius:9px;padding:11px 12px;background:#fff;color:#173552;font:inherit}textarea{resize:vertical}.check input,.eventDestinations input[type=checkbox]{width:auto}.imageUploads{padding:16px;border:1px solid #c6d5df;border-radius:12px;background:#f8fbfc}.imageUploadHead p,.imageHelp,.uploadedImage p{margin:4px 0 0;color:#5c7285}.eventinImageStatus{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:14px;padding:13px;border-radius:10px;border:1px solid #d5e0e7}.eventinImageStatus>div:first-child{display:flex;flex-direction:column;gap:4px}.eventinImageStatus span{font-weight:800}.eventinImageStatus small{color:#5c7285}.eventinImageStatus.ready{border-color:#57ad7d;background:#e9f6ee}.eventinImageStatus.ready span{color:#236d46}.eventinImageStatus.empty{background:#fff}.eventinImagePreview{display:grid;grid-template-columns:72px minmax(80px,160px);align-items:center;gap:9px}.eventinImagePreview img{display:block;width:72px;height:72px;border-radius:8px;object-fit:cover}.eventinImagePreview small{overflow-wrap:anywhere}.cropFocus{margin-top:14px;padding:12px;border-radius:10px;background:#eef7f9}.cropFocus select{margin-top:2px}.cropFocus small{color:#5c7285;font-weight:500}.imageSlotGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.imageSlot{display:flex;justify-content:space-between;gap:12px;min-height:125px;padding:13px;border:1px solid #d5e0e7;border-radius:10px;background:#fff;transition:border-color .15s ease,background .15s ease,transform .15s ease}.imageSlot.imageSlotAll{margin-top:14px;border:2px dashed #25889b;background:#eef9fa}.imageSlot.exact{border-color:#57ad7d}.imageSlot.dragging{border:2px dashed #25889b;background:#e7f6f8;transform:translateY(-2px)}.imageSlot>div:first-child{display:flex;flex-direction:column;gap:4px}.imageSlot span{font-weight:800;color:#176d7f}.imageSlot small{color:#5c7285;max-width:220px}.imageDropZone{min-width:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px;border:2px dashed #9cbac3;border-radius:10px;background:#f7fbfc;text-align:center}.imageDropZone>strong{color:#176d7f;font-size:13px}.imageDropZone>small,.replaceHint{color:#5c7285;font-weight:600}.uploadButton{align-self:center;display:inline-flex;cursor:pointer;background:#25889b;color:#fff;padding:10px 12px;border-radius:8px;text-align:center}.uploadButton input{display:none}.uploadedImage{min-width:145px}.imagePreview{height:74px;border-radius:8px;background-size:cover;background-position:center}.uploadedImage p{font-size:12px}.removeImage{border:0;background:none;color:#a23a3a;text-decoration:underline;cursor:pointer;padding:4px 0}.uploadMessage{padding:9px 11px;border-radius:8px}.uploadMessage.success{background:#e9f6ee;color:#236d46}.uploadMessage.error{background:#fff2d1;color:#815b00}.eventDestinations{margin:18px 0;padding:16px;border:1px solid #c6d5df;border-radius:12px;display:grid;gap:12px}.eventPreview,.eventResult{padding:16px;margin:14px 0;border-radius:12px;background:#eef7f9}.mediaCheck{margin-top:14px;padding:12px 14px;border-radius:9px}.mediaCheck ul{margin:8px 0 0;padding-left:20px}.mediaCheckReady{background:#e9f6ee;color:#236d46}.mediaCheckWarning{background:#fff2d1;color:#815b00}.channelImagePreviewGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.channelImagePreview{background:#fff;border:1px solid #c6d5df;border-radius:10px;padding:12px}.channelImagePreviewHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.channelImagePreviewHead span{font-size:12px;padding:5px 8px;border-radius:999px}.imageReady{background:#e9f6ee;color:#236d46}.imageMissing{background:#fff2d1;color:#815b00}.channelImagePreview img{display:block;width:100%;height:180px;object-fit:contain;background:#f4f7f9;border-radius:8px}.channelImagePreview p{margin:9px 0 3px}.channelImagePreview small{display:block;color:#5c7285;line-height:1.4}.channelImagePreview .fallbackNotice{color:#815b00}.missingImageNotice{padding:16px;background:#fff8e6;border-radius:8px;color:#815b00}.eventResult.success{border-left:5px solid #2ba66d}.eventResult.error{background:#fff2d1;border-left:5px solid #e4a91b}.earlyDraftAction{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:14px;border:1px dashed #9cbac3;border-radius:10px;background:#f8fbfc}.earlyDraftAction p{margin:4px 0 0;color:#5c7285}.earlyDraftAction button{flex:0 0 auto;border:1px solid #25889b;border-radius:9px;padding:11px 15px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.eventActions{display:flex;gap:12px;justify-content:flex-end;margin-top:18px}.eventActions button{border:0;border-radius:9px;padding:12px 18px;background:#25889b;color:#fff;font-weight:800;cursor:pointer}.eventActions .secondaryButton{background:#fff;color:#176d7f;border:1px solid #25889b}button:disabled{opacity:.55;cursor:not-allowed}.campaignStatus{margin-top:22px;padding-top:20px;border-top:1px solid #d5e0e7}.statusHead,.campaignStatus article{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.campaignStatus article{padding:14px 0;border-top:1px solid #e1e9ee}.statusHead h3,.campaignStatus p{margin:0}.statusPills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}.status{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:12px;background:#e9f6ee;color:#236d46;font-size:13px}.status button{border:1px solid currentColor;border-radius:7px;padding:5px 7px;background:#fff;color:inherit;font:inherit;font-weight:800;cursor:pointer}.status button:disabled{opacity:.5;cursor:not-allowed}.status.extra_gegevens_nodig{background:#fff2d1;color:#815b00}.loadMoreCampaigns{display:block;margin:14px auto 4px;border:1px solid #25889b;border-radius:9px;padding:10px 16px;background:#fff;color:#176d7f;font-weight:800;cursor:pointer}.loadMoreCampaigns:disabled{opacity:.55;cursor:wait}.statusNote{color:#5c7285;font-size:13px}@media(max-width:760px){.earlyDraftAction{display:block}.earlyDraftAction button{width:100%;margin-top:10px}.campaignTypeGrid,.eventCreatorGrid,.channelDetails,.channelChecks,.imageSlotGrid,.conceptFilters,.channelImagePreviewGrid,.staggerFields{grid-template-columns:1fr}.wide{grid-column:auto}.imageSlot,.eventinImageStatus{display:block}.eventinImagePreview{margin-top:12px}.uploadButton{margin-top:12px}.eventActions{flex-direction:column}.statusHead,.campaignStatus article{display:block}.statusPills{justify-content:flex-start;margin-top:10px}}
-      @media(max-width:760px){.ticketSetupRow,.ticketAdvancedGrid,.facebookGroupAdd,.facebookGroupTools,.facebookGroupDelaySettings,.eventWorkspaceChoices,.facebookGroupAdvicePanel,.facebookGroupListCreate,.campaignWorkflowSteps,.chatGptDesignBody{grid-template-columns:1fr}.chatGptDesignHead{display:block}.chatGptDesignHead>button{width:100%;margin-top:12px}.chatGptDesignActions>*{width:100%!important;text-align:center}.facebookGroupAdvicePanel>div,.facebookGroupAdvicePanel p,.facebookGroupAdvicePanel button{grid-column:1;grid-row:auto}.facebookGroupPickerHead{align-items:flex-start}.facebookGroupTools>div{flex-wrap:wrap}.facebookGroupShareActions button{width:100%}.facebookGroupShareActions .facebookGroupReset{margin-left:0}.campaignCardMain{display:block}.campaignCardImage{margin-bottom:10px}.campaignCardImage img{width:100%;max-width:220px;height:120px}.creatorQuickBar{top:6px;display:block;padding:8px}.creatorQuickLinks,.creatorQuickActions{overflow-x:auto}.creatorQuickActions{margin-top:7px}.creatorQuickBar button{padding:8px;font-size:12px}.creatorSection{scroll-margin-top:126px}.editorialBulkActions,.internalEmailHead,.internalEmailFooter{align-items:stretch;flex-direction:column}.editorialBulkActions>div{display:grid}.editorialSubmissionToggle span{align-items:flex-start;flex-direction:column}.internalEmailOverlay{padding:8px}}
+      @media(max-width:760px){.ticketSetupRow,.ticketAdvancedGrid,.facebookGroupAdd,.facebookGroupTools,.facebookGroupDelaySettings,.eventWorkspaceChoices,.facebookGroupAdvicePanel,.facebookGroupListCreate,.campaignWorkflowSteps,.chatGptDesignBody,.eventWorkboardTask{grid-template-columns:1fr}.chatGptDesignHead{display:block}.chatGptDesignHead>button{width:100%;margin-top:12px}.chatGptDesignActions>*{width:100%!important;text-align:center}.facebookGroupAdvicePanel>div,.facebookGroupAdvicePanel p,.facebookGroupAdvicePanel button{grid-column:1;grid-row:auto}.facebookGroupPickerHead{align-items:flex-start}.facebookGroupTools>div{flex-wrap:wrap}.facebookGroupShareActions button{width:100%}.facebookGroupShareActions .facebookGroupReset{margin-left:0}.campaignCardMain{display:block}.campaignCardImage{margin-bottom:10px}.campaignCardImage img{width:100%;max-width:220px;height:120px}.creatorQuickBar{top:6px;display:block;padding:8px}.creatorQuickLinks,.creatorQuickActions{overflow-x:auto}.creatorQuickActions{margin-top:7px}.creatorQuickBar button{padding:8px;font-size:12px}.creatorSection{scroll-margin-top:126px}.editorialBulkActions,.internalEmailHead,.internalEmailFooter{align-items:stretch;flex-direction:column}.editorialBulkActions>div{display:grid}.editorialSubmissionToggle span{align-items:flex-start;flex-direction:column}.internalEmailOverlay{padding:8px}}
       @media(max-width:760px){.chatGptDesktopLink,.chatGptBrowserLink{display:none}.chatGptMobileLink{display:inline-flex;justify-content:center;align-items:center}}
       .channelPreviewControls{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:18px;padding:15px;border:1px solid #9cbac3;border-radius:12px;background:#f8fbfc}.channelPreviewControls p{margin:4px 0 0;color:#5c7285}.channelPreviewButtons{display:flex;flex-wrap:wrap;gap:8px}.channelPreviewButtons button{border:1px solid #25889b;border-radius:9px;padding:10px 13px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.channelPreviewButtons button.active{background:#25889b;color:#fff}.channelSpecificPreview{margin:14px 0;padding:16px;border:2px solid #25889b;border-radius:12px;background:#eef7f9;scroll-margin-top:110px}.channelSpecificPreviewHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.channelSpecificPreviewHead span,.googleTopicLabel{padding:5px 9px;border-radius:999px;background:#e9f6ee;color:#236d46;font-size:12px;font-weight:800}.providerPreviewCard{display:grid;grid-template-columns:minmax(180px,280px) 1fr;gap:18px;padding:14px;border-radius:10px;background:#fff}.providerPreviewCard img,.providerPreviewPlaceholder{width:100%;height:220px;border-radius:9px;object-fit:contain;background:#f1f4f6}.providerPreviewPlaceholder{display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;color:#5c7285;text-align:center}.providerPreviewCard h3{margin:6px 0 10px}.providerPreviewText{white-space:pre-wrap;line-height:1.55}.providerPreviewCard small{display:block;margin-top:10px;color:#5c7285}.emailProviderPreview{padding:16px;border-radius:10px;background:#fff}.emailProviderPreview>p{overflow-wrap:anywhere}.emailPreviewBody{margin:14px 0;padding:16px;border:1px solid #d5e0e7;border-radius:9px;background:#fafcfd}.googleProviderPreview button{width:auto;margin-top:8px}@media(max-width:760px){.channelPreviewControls{display:block}.channelPreviewButtons{margin-top:12px}.channelPreviewButtons button{width:100%}.providerPreviewCard{grid-template-columns:1fr}}
       @media(max-width:760px){.facebookEventManualFields{grid-template-columns:1fr}.facebookEventManualFields>.check{grid-column:auto}}
