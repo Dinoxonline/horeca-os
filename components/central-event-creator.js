@@ -2722,13 +2722,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </div>
     </div>}
     </>}
+    {newEventFlow && <div className="eventWorkspaceChooser">
+      <div><p className="eyebrow">EVENEMENTEN</p><h3>Wat wil je doen?</h3><p>Kies één onderdeel. Horeca OS toont daarna alleen wat je daarvoor nodig hebt.</p></div>
+      <div className="eventWorkspaceChoices">
+        <button type="button" className="active" onClick={openNewEventWorkspace}><strong>Nieuw evenement maken</strong><span>Ontwerp eerst tekst en beelden met ChatGPT, vul daarna de gegevens in.</span></button>
+        <button type="button" onClick={() => { setEventWorkspaceView("existing"); if (managedWebsiteEvents.length === 0) loadManagedWebsiteEvents(); }}><strong>Bestaand evenement</strong><span>Laad een Eventin-evenement en koppel het aan Horeca OS.</span></button>
+        <button type="button" onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); }}><strong>Opgeslagen evenementen</strong><span>Bekijk, bewerk, dupliceer, publiceer of annuleer.</span></button>
+      </div>
+    </div>}
     {(!isEvent || eventWorkspaceView === "new") && <>
-    {newEventFlow && <div className="editingNotice" role="status">
-      <strong>{editingCampaignId ? (editingWebsiteEvent ? "Evenement bewerken" : "Concept bewerken") : "Nieuw evenement"}</strong>
-      <span>{editingCampaignId ? "Je werkt nu in een opgeslagen evenement. Sla de wijzigingen op wanneer je klaar bent." : "Wil je verder met een eerder opgeslagen evenement? Open het hier."}</span>
-      <button type="button" onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); window.requestAnimationFrame(() => scrollToCreatorSection("opgeslagen-campagnes")); }}>Opgeslagen evenementen</button>
-      <button type="button" onClick={() => { setEventWorkspaceView("existing"); if (managedWebsiteEvents.length === 0) loadManagedWebsiteEvents(); window.requestAnimationFrame(() => scrollToCreatorSection("bestaande-evenementen")); }}>Bestaand Eventin-evenement</button>
-      {editingCampaignId && <button type="button" onClick={startNewCampaign}>Nieuw evenement</button>}
+    {newEventFlow && editingCampaignId && <div className="editingNotice" role="status">
+      <strong>{editingWebsiteEvent ? "Evenement bewerken" : "Concept bewerken"}</strong>
+      <span>Je werkt nu in een opgeslagen evenement. Sla de wijzigingen op wanneer je klaar bent.</span>
     </div>}
     {isEvent && eventCreationStep === 1 && <section className="chatGptDesignStep creatorSection" id="chatgpt-ontwerp">
       <div className="chatGptDesignHead"><div><p className="eyebrow">STAP 1 VAN 3</p><h3>Ontwerp je evenement met ChatGPT</h3><p>Vul alleen de informatie in die ChatGPT moet kennen. Daarna opent ChatGPT met een complete opdracht voor tekst en beelden.</p></div></div>
