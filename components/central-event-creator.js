@@ -2074,6 +2074,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
       setResult({ ok: true, message: agendaOnlyDraft ? `${campaignTypeLabel} staat als CONCEPT in Horeca OS én in de agenda van ${form.calendarMailbox.trim() || "info@leclubbbq.nl"}. Er is niets gepubliceerd.` : `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.` });
       await loadEventCampaigns();
+      // Keep the already-mounted marketing agenda current when this early concept is saved.
+      onEventSaved?.();
       if (agendaOnlyDraft) setChatGptDesignNotice("Je concept staat in Horeca OS én als CONCEPT in de agenda van info@leclubbbq.nl. Je kunt nu rustig verder met ChatGPT, tekst en afbeeldingen.");
       if (!agendaOnlyDraft && form.channels.predis && isEvent) setEventWorkspaceView("saved");
     } catch (error) {
