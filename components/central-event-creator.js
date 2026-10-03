@@ -1658,12 +1658,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPreview(false);
     setResult(null);
     const restoredUi = savedUi || savedDraft?.ui || {};
-    // Een geopend dossier is geen logisch startpunt voor iemand die teruggaat
-    // naar "Evenement of campagne maken". Herstel alleen het nieuwe formulier;
-    // anders kan een eerder geplaatst evenement ten onrechte boven een nieuw
-    // concept verschijnen.
-    const restoredEventWorkspaceView = restoredUi.eventWorkspaceView === "new" ? "new" : "";
-    setEventWorkspaceView(restoredEventWorkspaceView || (savedForm?.campaignType === "event" ? "new" : ""));
+    // Bij het openen van de campagnebouwer kies je altijd eerst wat je wilt
+    // doen. Een lokaal bewaard formulier blijft behouden, maar verschijnt pas
+    // nadat de gebruiker bewust voor "Nieuw evenement maken" kiest.
+    setEventWorkspaceView("");
     setSavedEventPreviewId(restoredUi.savedEventPreviewId || null);
     // Een datumklik is altijd een nieuw evenement. Herstel dan niet de oude
     // schermpositie van een eerder concept: de gebruiker moet bij Basis starten.
