@@ -107,7 +107,11 @@ function isToday(date) { return sameDay(date, todayStart()); }
 function startOfWeek(date) { const result = new Date(date); const day = result.getDay(); result.setDate(result.getDate() - (day === 0 ? 6 : day - 1)); result.setHours(0, 0, 0, 0); return result; }
 function formatDate(value, options = { day: "numeric", month: "long", year: "numeric" }) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Datum onbekend" : new Intl.DateTimeFormat("nl-NL", options).format(date); }
 function toLocalDateTimeInput(value) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16); }
-function eventText(item) { const distribution = distributionFor(item); return distribution.common?.title || "Zonder titel"; }
+function eventText(item) {
+  const distribution = distributionFor(item);
+  const title = distribution.common?.title || "Zonder titel";
+  return distribution.calendar_delivery?.stage === "concept" ? `CONCEPT — ${title}` : title;
+}
 function descriptionFor(item) {
   const distribution = distributionFor(item);
   const value = distribution.common?.description || distribution.common?.short_description || item?.body || "";

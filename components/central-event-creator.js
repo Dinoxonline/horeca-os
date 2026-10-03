@@ -193,6 +193,13 @@ function calendarEventDescription(form, websiteUrl) {
   ].filter(Boolean).join("\n\n");
 }
 
+function calendarConceptDescription(form) {
+  return [
+    "CONCEPT in Horeca OS — nog niet definitief. Tekst, afbeeldingen en Eventin volgen later.",
+    calendarEventDescription(form, ""),
+  ].filter(Boolean).join("\n\n");
+}
+
 function editorialEmailDraft(target, common = {}, sourceUrl = "") {
   const description = common.description || common.short_description || "";
   const imageUrl = common.image_url || common.images?.landscape?.url || common.images?.square?.url || "";
@@ -500,6 +507,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [hasMoreCampaigns, setHasMoreCampaigns] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState(null);
   const [editingWebsiteEvent, setEditingWebsiteEvent] = useState(null);
+  const [earlyCalendarDelivery, setEarlyCalendarDelivery] = useState(null);
   const [conceptBusyId, setConceptBusyId] = useState(null);
   const [conceptTypeFilter, setConceptTypeFilter] = useState("all");
   const [conceptStatusFilter, setConceptStatusFilter] = useState("all");
@@ -700,6 +708,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     });
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
+    setEarlyCalendarDelivery(null);
     setEditingBrevoDraftId(null);
     setSelectedBrevoListIds([]);
     setSelectedFacebookGroupIds([]);
@@ -737,7 +746,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     }));
     setSelectedBrevoListIds([]);
     setSelectedFacebookGroupIds([]);
-    setEditingCampaignId(null); setEditingWebsiteEvent(null); setEditingBrevoDraftId(null); setPreview(false); setResult(null);
+    setEditingCampaignId(null); setEditingWebsiteEvent(null); setEarlyCalendarDelivery(null); setEditingBrevoDraftId(null); setPreview(false); setResult(null);
     setEventWorkspaceView(campaignType === "event" ? "" : "new");
   };
   const openNewEventWorkspace = () => {
@@ -1357,6 +1366,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     });
     setEditingCampaignId(item.id);
     setEventWorkspaceView("new");
+    const isEarlyCalendarConcept = storedType === "event" && !isWebsiteEvent && distribution.calendar_delivery?.stage === "concept";
+    setEventCreationStep(isEarlyCalendarConcept ? 1 : 2);
+    setEarlyCalendarDelivery(isEarlyCalendarConcept ? distribution.calendar_delivery : null);
     setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url, calendarDelivery: distribution.calendar_delivery || null } : null);
     setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
@@ -1370,6 +1382,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     openCampaignConcept(item, true);
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
+    setEarlyCalendarDelivery(null);
     setEditingBrevoDraftId(null);
     setResult({ ok: true, message: "Het concept is als kopie geopend. Pas eventueel de naam of inhoud aan en sla het op als nieuw concept." });
   }
@@ -1635,6 +1648,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setRestoredDraftKey(draftKey);
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
+    setEarlyCalendarDelivery(null);
     setEditingBrevoDraftId(null);
     setManagedWebsiteEvents([]);
     setManagedEventSearch("");
@@ -1677,6 +1691,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     });
     setEditingCampaignId(null);
     setEditingWebsiteEvent(null);
+    setEarlyCalendarDelivery(null);
     setEditingBrevoDraftId(null);
     setSelectedBrevoListIds([]);
     setSelectedFacebookGroupIds([]);
@@ -2018,7 +2033,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         eventin_event_id: null, common, target_channels: enabledChannels, channel_payloads, channel_status,
         editorial_submissions: editorialAgendaTargets.filter(({ key }) => form.editorialTargets?.[key]).map((target) => ({ ...target, status: "ready" })),
         schedule_settings: { stagger_enabled: form.staggerEnabled, min_minutes: Number(form.staggerMinMinutes) || 15, max_minutes: Number(form.staggerMaxMinutes) || 45 },
-        channel_schedule: {}, provider_delivery, scheduling_status: "draft",
+        channel_schedule: {}, provider_delivery, scheduling_status: "draft", calendar_delivery: earlyCalendarDelivery,
       };
       const record = {
         account_id: integration.id, business_id: selectedBusiness?.id || businessId || null,
@@ -2027,12 +2042,39 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       };
       const { data, error } = await saveCampaignDraft(supabase, workspaceId, editingCampaignId, record);
       if (error) throw error;
-      setResult({ ok: true, message: `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.` });
-      setEditingCampaignId(data?.id || editingCampaignId || null);
+      const savedCampaignId = data?.id || editingCampaignId || null;
+      setEditingCampaignId(savedCampaignId);
       setEditingWebsiteEvent(null);
       setPreview(false);
+      if (agendaOnlyDraft) {
+        const mailbox = form.calendarMailbox.trim() || "info@leclubbbq.nl";
+        const existingAppointment = earlyCalendarDelivery?.event_id && earlyCalendarDelivery.status !== "deleted";
+        const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", {
+          method: existingAppointment ? "PATCH" : "POST",
+          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId, mailbox, eventId: existingAppointment ? earlyCalendarDelivery.event_id : undefined,
+            subject: `CONCEPT — ${form.title.trim()}`, description: calendarConceptDescription(form),
+            start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy",
+          }),
+        });
+        const calendar = await calendarResponse.json().catch(() => ({}));
+        const nextCalendarDelivery = calendarResponse.ok
+          ? { status: "confirmed", stage: "concept", mailbox, event_id: calendar.event?.id || earlyCalendarDelivery?.event_id || "", web_link: calendar.event?.webLink || earlyCalendarDelivery?.web_link || "", updated_at: new Date().toISOString() }
+          : { ...(earlyCalendarDelivery || {}), status: "failed", stage: "concept", mailbox, error: calendar.error || "Niet toegevoegd aan de agenda.", updated_at: new Date().toISOString() };
+        distribution.calendar_delivery = nextCalendarDelivery;
+        const { error: calendarSaveError } = await saveCampaignDraft(supabase, workspaceId, savedCampaignId, { ...record, media: [distribution] });
+        if (calendarSaveError) throw calendarSaveError;
+        setEarlyCalendarDelivery(nextCalendarDelivery);
+        if (!calendarResponse.ok) {
+          await loadEventCampaigns();
+          setResult({ ok: false, message: `Het concept staat wel in Horeca OS, maar niet in de agenda van ${mailbox}: ${nextCalendarDelivery.error}` });
+          return;
+        }
+      }
+      setResult({ ok: true, message: agendaOnlyDraft ? `${campaignTypeLabel} staat als CONCEPT in Horeca OS én in de agenda van ${form.calendarMailbox.trim() || "info@leclubbbq.nl"}. Er is niets gepubliceerd.` : `${campaignTypeLabel} is intern als vroeg concept opgeslagen. Er is niets gepubliceerd, verzonden of ingepland.` });
       await loadEventCampaigns();
-      if (agendaOnlyDraft) setChatGptDesignNotice("Je concept staat in de Horeca OS-agenda. Je kunt nu rustig verder met ChatGPT, tekst en afbeeldingen.");
+      if (agendaOnlyDraft) setChatGptDesignNotice("Je concept staat in Horeca OS én als CONCEPT in de agenda van info@leclubbbq.nl. Je kunt nu rustig verder met ChatGPT, tekst en afbeeldingen.");
       if (!agendaOnlyDraft && form.channels.predis && isEvent) setEventWorkspaceView("saved");
     } catch (error) {
       setResult({ ok: false, message: error.message || "Het vroege concept kon niet worden opgeslagen." });
@@ -2363,9 +2405,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const website = await response.json(); if (!response.ok) throw new Error(website.error || (updatingWebsiteEvent ? "Het website-evenement kon niet worden gewijzigd." : "Het website-evenement kon niet worden aangemaakt."));
       steps.push({ label: updatingWebsiteEvent ? "Website en Eventin bijgewerkt" : "Website en Eventin", ok: true, detail: website.event.url });
       if (website.warning) steps.push({ label: "Eventin-banner", ok: false, detail: website.warning });
-      let calendarDelivery = editingWebsiteEvent?.calendarDelivery || null;
+      let calendarDelivery = editingWebsiteEvent?.calendarDelivery || earlyCalendarDelivery || null;
       if (form.addToCalendar) {
-        const updatingCalendar = Boolean(updatingWebsiteEvent && calendarDelivery?.event_id);
+        const updatingCalendar = Boolean(calendarDelivery?.event_id && calendarDelivery.status !== "deleted");
         const calendarResponse = await fetch("/api/integrations/microsoft/calendar/action", { method: updatingCalendar ? "PATCH" : "POST", headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, mailbox: form.calendarMailbox.trim(), eventId: updatingCalendar ? calendarDelivery.event_id : undefined, subject: form.title.trim(), description: calendarEventDescription(form, website.event.url), start: form.start, end: form.end, location: form.location.trim(), attendees: [], recurrence: "none", reminderMinutes: 60, showAs: "busy" }) });
         const calendar = await calendarResponse.json();
         if (calendarResponse.ok) {
@@ -2405,6 +2447,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
       setResult({ ok: true, message: updatingWebsiteEvent ? "Het bestaande evenement is bijgewerkt." : website.event.status === "draft" ? "Het evenement is als Eventin-concept opgeslagen. Publiceer het hieronder wanneer alles klopt." : "Het evenement is verwerkt.", steps, url: website.event.status === "publish" ? website.event.url : "" }); setEditingWebsiteEvent(null); setEditingCampaignId(null); setPreview(false); await loadEventCampaigns();
       onEventSaved?.();
+      setEarlyCalendarDelivery(null);
       setEventWorkspaceView("saved");
     } catch (requestError) { setResult({ ok: false, message: requestError.message }); } finally { setBusy(false); }
   }
