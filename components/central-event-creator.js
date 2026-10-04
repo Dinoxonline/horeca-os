@@ -22,6 +22,31 @@ const imageSlots = [
 ];
 
 const emptyImages = Object.fromEntries(imageSlots.map(({ key }) => [key, null]));
+function normaliseStoredImages(images = {}) {
+  return Object.fromEntries(imageSlots.map((slot) => {
+    const stored = images?.[slot.key];
+    if (!stored) return [slot.key, null];
+    if (typeof stored === "string") {
+      return [slot.key, {
+        url: stored,
+        name: "Bewaarde afbeelding",
+        width: slot.width,
+        height: slot.height,
+        matches: true,
+      }];
+    }
+    const url = stored.url || stored.image_url || stored.publicUrl || stored.public_url || "";
+    if (!url) return [slot.key, null];
+    return [slot.key, {
+      ...stored,
+      url,
+      name: stored.name || "Bewaarde afbeelding",
+      width: Number(stored.width) || slot.width,
+      height: Number(stored.height) || slot.height,
+      matches: stored.matches ?? true,
+    }];
+  }));
+}
 const defaultTicketVariation = { id: "ticket-1", name: "Gratis ticket", type: "free", price: "0", description: "", capacity: "", salesStart: "", salesEnd: "", minQuantity: "1", maxQuantity: "10" };
 const emptyEventWorkboardTask = () => ({ id: `event-task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: "", dueDate: "", priority: "medium" });
 
@@ -1349,7 +1374,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       title: common.title || "", shortDescription: common.short_description || "", description: common.description || item.body || "",
       start: common.start || "", end: common.end || "", location: common.location || emptyForm.location,
       imageUrl: common.image_url || "", eventinImage: common.image_url ? { url: common.image_url, name: "Bestaande Eventin-afbeelding" } : null,
-      images: { ...emptyImages, ...(common.images || {}) }, videoUrl: common.video_url || "",
+      images: normaliseStoredImages(common.images), videoUrl: common.video_url || "",
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
@@ -1643,7 +1668,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setForm(savedForm ? {
       ...emptyForm,
       ...savedForm,
-      images: { ...emptyImages, ...(savedForm.images || {}) },
+      images: normaliseStoredImages(savedForm.images),
       channels: { ...channelDefaults, ...(savedForm.channels || {}) },
       editorialTargets: { ...emptyEditorialTargets, ...(savedForm.editorialTargets || {}) },
     } : {
