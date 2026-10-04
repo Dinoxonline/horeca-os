@@ -22,31 +22,6 @@ const imageSlots = [
 ];
 
 const emptyImages = Object.fromEntries(imageSlots.map(({ key }) => [key, null]));
-function normaliseStoredImages(images = {}) {
-  return Object.fromEntries(imageSlots.map((slot) => {
-    const stored = images?.[slot.key];
-    if (!stored) return [slot.key, null];
-    if (typeof stored === "string") {
-      return [slot.key, {
-        url: stored,
-        name: "Bewaarde afbeelding",
-        width: slot.width,
-        height: slot.height,
-        matches: true,
-      }];
-    }
-    const url = stored.url || stored.image_url || stored.publicUrl || stored.public_url || "";
-    if (!url) return [slot.key, null];
-    return [slot.key, {
-      ...stored,
-      url,
-      name: stored.name || "Bewaarde afbeelding",
-      width: Number(stored.width) || slot.width,
-      height: Number(stored.height) || slot.height,
-      matches: stored.matches ?? true,
-    }];
-  }));
-}
 const defaultTicketVariation = { id: "ticket-1", name: "Gratis ticket", type: "free", price: "0", description: "", capacity: "", salesStart: "", salesEnd: "", minQuantity: "1", maxQuantity: "10" };
 const emptyEventWorkboardTask = () => ({ id: `event-task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: "", dueDate: "", priority: "medium" });
 
@@ -501,19 +476,18 @@ function formUiStorageKey(workspaceId, businessId) {
   return `horeca-os:marketing-ui:${workspaceId}:${businessId}`;
 }
 
-export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, openCampaignRequest, onEventSaved }) {
+export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, onEventSaved }) {
   const [form, setForm] = useState(emptyForm);
   const [creativeBrief, setCreativeBrief] = useState("");
   const [artistProgram, setArtistProgram] = useState("");
   const [practicalDetails, setPracticalDetails] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [eventWorkboardTasks, setEventWorkboardTasks] = useState([]);
-  const [eventCreationStep, setEventCreationStep] = useState(2);
+  const [eventCreationStep, setEventCreationStep] = useState(1);
   const [chatGptDesignNotice, setChatGptDesignNotice] = useState("");
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
   const handledNewEventRequestRef = useRef("");
-  const handledOpenCampaignRequestRef = useRef("");
   const facebookGroupListRef = useRef(null);
   const [eventWorkspaceView, setEventWorkspaceView] = useState("");
   const [preview, setPreview] = useState(false);
@@ -750,7 +724,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPracticalDetails("");
     setSourceText("");
     setEventWorkboardTasks([]);
-    setEventCreationStep(2);
+    setEventCreationStep(1);
     setChatGptDesignNotice("");
     setPreview(false);
     setResult({ ok: true, message: "Er staat een leeg nieuw campagneformulier klaar. Het bestaande evenement is niet gewijzigd." });
@@ -784,7 +758,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   };
   const openNewEventWorkspace = () => {
     setEventWorkspaceView("new");
-    setEventCreationStep(2);
+    setEventCreationStep(1);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const toggleFacebookPlacement = (placement) => {
@@ -1374,7 +1348,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       title: common.title || "", shortDescription: common.short_description || "", description: common.description || item.body || "",
       start: common.start || "", end: common.end || "", location: common.location || emptyForm.location,
       imageUrl: common.image_url || "", eventinImage: common.image_url ? { url: common.image_url, name: "Bestaande Eventin-afbeelding" } : null,
-      images: normaliseStoredImages(common.images), videoUrl: common.video_url || "",
+      images: { ...emptyImages, ...(common.images || {}) }, videoUrl: common.video_url || "",
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
@@ -1402,7 +1376,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEventWorkboardTasks([]);
     setEventWorkspaceView("new");
     const isEarlyCalendarConcept = storedType === "event" && !isWebsiteEvent && distribution.calendar_delivery?.stage === "concept";
-    setEventCreationStep(2);
+    setEventCreationStep(isEarlyCalendarConcept ? 1 : 2);
     setEarlyCalendarDelivery(isEarlyCalendarConcept ? distribution.calendar_delivery : null);
     setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url, calendarDelivery: distribution.calendar_delivery || null } : null);
     setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
@@ -1668,7 +1642,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setForm(savedForm ? {
       ...emptyForm,
       ...savedForm,
-      images: normaliseStoredImages(savedForm.images),
+      images: { ...emptyImages, ...(savedForm.images || {}) },
       channels: { ...channelDefaults, ...(savedForm.channels || {}) },
       editorialTargets: { ...emptyEditorialTargets, ...(savedForm.editorialTargets || {}) },
     } : {
@@ -1735,7 +1709,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPracticalDetails("");
     setSourceText("");
     setEventWorkboardTasks([]);
-    setEventCreationStep(2);
+    setEventCreationStep(1);
     setChatGptDesignNotice("");
     setPreview(false);
     setResult({ ok: true, message: `Nieuw evenement klaargezet op ${newEventRequest.date}. Pas de begin- en eindtijd aan als dat nodig is.` });
@@ -1743,14 +1717,6 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     // datumklik nooit onderaan bij Bestemmingen blijft hangen.
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 0);
   }, [newEventRequest?.id, newEventRequest?.date, selectedBusiness]);
-
-  useEffect(() => {
-    const request = openCampaignRequest;
-    if (!request?.id || !request.item || !selectedBusiness?.id || handledOpenCampaignRequestRef.current === request.id) return;
-    if (String(request.item.business_id || "") !== String(selectedBusiness.id)) return;
-    handledOpenCampaignRequestRef.current = request.id;
-    openCampaignConcept(request.item);
-  }, [openCampaignRequest, selectedBusiness?.id]);
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;
@@ -2881,7 +2847,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </div>
     </nav>
     }
-    {isEvent && <div className="eventDetailsIntro"><h3>Evenement invullen</h3><p>Maak eerst je tekst en afbeelding in ChatGPT. Plak en upload het resultaat daarna hier.</p><a className="primaryButton" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen voor tekst en afbeelding ↗</a></div>}
+    {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
     {isEvent && <details className="eventWorkboardTasks creatorSection" id="werkbord-taken"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
       {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
         <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>

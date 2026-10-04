@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { PREDIS_FORMATS, PREDIS_JOB_LABELS, predisPrompt } from "../lib/predis-content";
+import { PREDIS_FORMATS, PREDIS_JOB_LABELS, predisPrompt, predisOwnMediaPrompt } from "../lib/predis-content";
 import { nextPredisPoll, PREDIS_POLL_INTERVAL } from "../lib/predis-polling";
 import styles from "./manual-predis.module.css";
 
-export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image", historyOnly = false }) {
-  const defaultPrompt = () => predisPrompt(item);
+export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image", historyOnly = false, sourceMode = "ai" }) {
+  const ownMedia = sourceMode === "own";
+  const defaultPrompt = () => ownMedia ? predisOwnMediaPrompt(item) : predisPrompt(item);
   const [prompt, setPrompt] = useState(defaultPrompt);
-  const [format, setFormat] = useState(() => Object.hasOwn(PREDIS_FORMATS, initialFormat) ? initialFormat : "single_image");
+  const [format, setFormat] = useState(() => Object.hasOwn(PREDIS_FORMATS, initialFormat) ? initialFormat : "single_image"), [photos, setPhotos] = useState([]), [selected, setSelected] = useState([]);
   const [jobs, setJobs] = useState([]), [config, setConfig] = useState(null), [loaded, setLoaded] = useState(false);
   const [confirmed, setConfirmed] = useState(false), [acknowledgePending, setAcknowledgePending] = useState(false);
   const [needsCheck, setNeedsCheck] = useState(false);
@@ -47,20 +48,22 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
   async function load() {
     return run(async () => {
       const data = await request(); if (!mounted.current) return;
-      setJobs(data.jobs); setConfig(data); setLoaded(true);
+      const available = data.assets || data.photos;
+      setJobs(data.jobs); setConfig(data); setPhotos(available); setLoaded(true);
       setNeedsCheck(false);
       setAutoFailures(0);
+      if (!loaded && !dirty) setSelected(available.filter(a => format === "video" || a.type !== "video").slice(0, 1).map(a => a.url));
       if (requestId.current && data.jobs.some(j => j.id === requestId.current)) { requestId.current = null; setDirty(false); }
     });
   }
   useEffect(() => { if (enabled && hasToken && !loaded && !lock.current) load(); }, [enabled, hasToken]);
   function edit(fn) { fn(); setDirty(true); setConfirmed(false); }
   function generate() {
-    if (historyOnly || !confirmed || !loaded || !config?.configured) return;
+    if (historyOnly || !confirmed || !loaded || !config?.configured || (ownMedia && !selected.length)) return;
     return run(async () => {
       requestId.current ||= crypto.randomUUID();
       let data;
-      try { data = await request("generate", { requestId: requestId.current, prompt, mediaType: format, mediaUrls: [], sourceMode: "ai", confirmed, acknowledgePending }); }
+      try { data = await request("generate", { requestId: requestId.current, prompt, mediaType: format, mediaUrls: selected, sourceMode, confirmed, acknowledgePending }); }
       catch (e) { if (mounted.current) setNeedsCheck(true); throw e; }
       if (!mounted.current) return;
       setJobs(data.jobs); setDirty(false); setConfirmed(false); setAcknowledgePending(false); requestId.current = null;
@@ -90,7 +93,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
   const pending = jobs.some(j => ["submitting", "generating", "unknown"].includes(j.status));
   if (!enabled && !loaded) return null;
   return <section className={styles.root} aria-label="Content maken met Predis">
-    {historyOnly ? <div className={styles.notice}><strong>Eerdere AI-aanvragen · {businessName}</strong><p>Alleen eerder aangevraagde resultaten controleren. Dit zijn AI-ontwerpen, geen ongewijzigde uploads. Hier wordt geen nieuwe maakopdracht verstuurd.</p></div> : <div className={styles.notice}><strong>Nieuw ontwerp maken met Predis · {businessName}</strong><p>Predis versie 4 maakt een nieuw Nederlands ontwerp op basis van de evenementgegevens hieronder. Kies afbeelding of carrousel. Voor een bestaande flyer gebruik je de handmatige uploadroute.</p></div>}
+    {historyOnly ? <div className={styles.notice}><strong>Eerdere AI-aanvragen · {businessName}</strong><p>Alleen eerder aangevraagde resultaten controleren. Dit zijn AI-ontwerpen, geen ongewijzigde uploads. Hier wordt geen nieuwe maakopdracht verstuurd.</p></div> : ownMedia ? <div className={styles.notice}><strong>Eigen beeld gebruiken — proef met Predis · {businessName}</strong><p>Je geselecteerde bestanden gaan via media_urls naar modelversie 2. De opdracht vraagt om beeld en tekst te behouden en niets over het beeld te zetten. Predis kan toch wijzigingen maken: dit is geen gegarandeerd ongewijzigde upload.</p><p>Er wordt één post aangevraagd. Eerst origineel en resultaat vergelijken, daarna zelf beslissen over inplannen. Er wordt niets automatisch gepubliceerd.</p></div> : <div className={styles.notice}><strong>Content maken met Predis · {businessName}</strong><p>Predis maakt een nieuw ontwerp op basis van je tekst en gekozen foto’s. De opdracht gaat automatisch naar het gekoppelde merk van deze vestiging. Eerst het ontwerp bekijken, daarna pas inplannen.</p></div>}
     {busy && <p role="status">Predis-aanvragen verwerken…</p>}
     {autoChecking && <p role="status">Resultaat automatisch controleren…</p>}
     {autoFailures >= 3 && <p className={styles.notice}>Automatisch controleren is gepauzeerd na drie mislukte controles. Gebruik ‘Resultaat ophalen’ om opnieuw te controleren; er wordt geen nieuwe maakopdracht verstuurd.</p>}
@@ -101,11 +104,14 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
     {!historyOnly && <fieldset className={styles.fields} disabled={busy || autoChecking || !loaded}><legend>1. Bronmateriaal en maakopdracht</legend>
       <label>Opdracht voor Predis<textarea rows={7} maxLength={10000} value={prompt} onChange={e => edit(() => setPrompt(e.target.value))} /></label>
       <button type="button" className="secondaryButton" onClick={() => { if (window.confirm("Je opdracht vervangen door de actuele evenementgegevens?")) edit(() => setPrompt(defaultPrompt())); }}>Evenementgegevens opnieuw overnemen</button>
-      <label>Soort content<select value={format} onChange={e => edit(() => setFormat(e.target.value))}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <small>Predis kiest het beeld zelf op basis van je opdracht. De bestaande afbeeldingen van dit evenement worden niet meegestuurd en niet gewijzigd.</small>
-      <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik wil deze evenementopdracht naar Predis sturen en hiervoor Predis-tegoed gebruiken.</label>
+      <label>Soort content<select value={format} onChange={e => edit(() => { const next = e.target.value; setFormat(next); setSelected(current => current.filter(url => photos.some(a => a.url === url && (next === "video" || a.type !== "video")))); })}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <strong>Eigen bestanden meegeven ({selected.length}/10)</strong><small>{ownMedia ? "Kies minimaal één opgeslagen evenementbestand. De originele bestanden in Horeca OS blijven behouden. De nummers tonen de volgorde waarin je ze meestuurt." : "Deze bestanden worden meegestuurd als bronmateriaal voor een nieuw ontwerp, niet ongewijzigd geüpload. Zonder selectie kiest Predis zelf beeld. Controleer altijd tekst, uitsnede en eindresultaat."}</small>
+      <div className={styles.media}>{photos.filter(a => format === "video" || a.type !== "video").map(a => <div key={a.url}>{a.type === "video" ? <video src={a.url} controls preload="none" /> : <Image unoptimized src={a.url} width={240} height={150} alt={a.label} />}<label className={styles.check}><input type="checkbox" checked={selected.includes(a.url)} disabled={!selected.includes(a.url) && selected.length >= 10} onChange={() => edit(() => setSelected(selected.includes(a.url) ? selected.filter(u => u !== a.url) : [...selected, a.url]))} />{selected.includes(a.url) ? `${selected.indexOf(a.url) + 1}. ` : ""}{a.label}</label><a href={a.url} target="_blank" rel="noopener noreferrer">Origineel bekijken</a></div>)}</div>
+      {!photos.filter(a => format === "video" || a.type !== "video").length && <p>{ownMedia ? "Nog geen passend bestand opgeslagen. Voeg eerst je afbeelding of video toe aan het evenement, sla het op en kies daarna ‘Bewaarde aanvragen laden’. Er wordt zonder eigen bestand geen proef gestart." : "Nog geen passend bestand in dit evenement opgeslagen. Predis kan zelf beeld maken."}</p>}
+      {ownMedia && <small>Deze proef gebruikt modelversie 2 en kan Predis-tegoed kosten. Controleer hierboven je beeld, bijschrift en vestiging voordat je bevestigt.</small>}
+      <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik wil deze tekst en gekozen foto’s naar Predis sturen en hiervoor Predis-tegoed gebruiken.</label>
       {pending && <label className={styles.check}><input type="checkbox" checked={acknowledgePending} onChange={e => setAcknowledgePending(e.target.checked)} />Er is nog een open of onzekere aanvraag. Ik heb die gecontroleerd en wil bewust een extra concept laten maken; dit kan opnieuw tegoed kosten.</label>}
-      <button type="button" className="secondaryButton" disabled={!config?.configured || !confirmed || (pending && !acknowledgePending) || needsCheck} onClick={generate}>Content laten maken</button>
+      <button type="button" className="secondaryButton" disabled={!config?.configured || !confirmed || (pending && !acknowledgePending) || needsCheck || (ownMedia && !selected.length)} onClick={generate}>{ownMedia ? "Proef met eigen beeld starten" : "Content laten maken"}</button>
       {needsCheck && <small>Laad eerst de bewaarde aanvragen om de vorige poging te controleren.</small>}
       {dirty && <small>Opdracht aangepast — nog niet aangevraagd.</small>}
     </fieldset>}
@@ -113,7 +119,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
     {pending && <small>Geaccepteerde aanvragen worden maximaal 15 minuten automatisch gecontroleerd terwijl dit onderdeel openstaat. Daarna kun je zelf ‘Resultaat ophalen’ kiezen. Een onzekere aanvraag wordt nooit automatisch opnieuw gemaakt.</small>}
     {!jobs.length && <p>Nog geen content aangevraagd vanuit dit scherm.</p>}
     {[...jobs].reverse().map(job => <article key={job.id} className={styles.fields}>
-      <strong>{PREDIS_FORMATS[job.mediaType] || "Eerdere content"} · {PREDIS_JOB_LABELS[job.status] || "Status onbekend"}</strong><small>{new Date(job.createdAt).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam" })} · Nederlandse tijd</small>
+      <strong>{PREDIS_FORMATS[job.mediaType]} · {PREDIS_JOB_LABELS[job.status] || "Status onbekend"}</strong><small>{new Date(job.createdAt).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam" })} · Nederlandse tijd</small>
       <details><summary>Gebruikte opdracht bekijken</summary><p style={{ whiteSpace: "pre-wrap" }}>{job.prompt}</p></details>
       {job.sourceMode === "own" && <section className={styles.fields} aria-label="Origineel vergelijken met Predis"><strong>Origineel — vergelijken met het Predis-resultaat hieronder</strong><div className={styles.media}>{(job.sourceAssets || []).map((asset, i) => <div key={asset.url}>{asset.type === "video" ? <video src={asset.url} controls preload="none" /> : <Image unoptimized src={asset.url} alt={`Origineel ${i + 1}`} width={320} height={240} />}<a href={asset.url} target="_blank" rel="noopener noreferrer">Origineel {i + 1} openen</a></div>)}</div><small>Controleer of tekst, opmaak en uitsnede zijn behouden. Een geslaagde generatie bewijst niet dat het resultaat ongewijzigd is.</small></section>}
       {job.status !== "ready" && <button type="button" className="secondaryButton" disabled={busy || autoChecking} onClick={() => refresh(job)}>Resultaat ophalen</button>}

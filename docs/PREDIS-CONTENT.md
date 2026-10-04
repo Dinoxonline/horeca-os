@@ -17,11 +17,9 @@ Original provider delivery data and the manual planning object are untouched.
 
 - Explicit consent before sending an edited event prompt and selected photos to
   Predis; each request can consume credits. One generated post per request.
-- Every new AI request uses `model_version: 4`. Predis version 2 was retired on
-  2 October 2026 and is never used for a new request.
-- Version 4 creates a single image or carousel from the approved Dutch prompt. It
-  does not accept `media_urls` and does not create videos. Existing flyers and
-  videos therefore remain in the separate handmatige uploadroute.
+- Custom photos use model 2 (model 4 does not support `media_urls`); without photos,
+  images/carousels use model 4. Video uses model 2 and short duration.
+- Photos must belong to the stored event. No arbitrary client URLs are accepted.
 - An operation ID is durably reserved before the paid call. Double clicks/retries
   cannot resend that operation. Uncertain outcomes stay visible and block a new
   request until separately acknowledged. A one-minute cooldown also applies.
