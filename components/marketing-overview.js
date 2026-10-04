@@ -664,6 +664,15 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
   function openSeriesOccurrence(row) { if ((!baseUnsaved && !predisUnsaved && !calendarUnsaved) || window.confirm('Je kanaalvoorbereiding is nog niet bewaard. Toch een andere uitvoering openen?')) onSeriesOpen?.(row); }
   useEffect(() => { setMetaUnsaved(false); }, [item.id]);
   useEffect(() => { setOpenChannels({}); }, [item.id]);
+  useEffect(() => {
+    if (external || typeof document === "undefined") return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const editor = [...document.querySelectorAll(".marketingEventDetails .marketingDetailFold")]
+        .find((panel) => panel.querySelector("summary")?.textContent?.trim() === "Evenement bekijken en bewerken");
+      if (editor) editor.open = true;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [external, item.id]);
   function trackChannel(channel, open) {
     setOpenChannels(current => current[channel] === open ? current : { ...current, [channel]: open });
   }

@@ -24,6 +24,12 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
   const web = website ? eventEditorDraft(website) : null, webCommon = calendarDistribution(website).common || {};
   const differences = web ? editorDifferences(eventEditorDraft(item), web) : [];
   const assets = instagramEventMedia(item).filter(a => a.type === 'image');
+  const savedCommon = calendarDistribution(item).common || {};
+  const savedPhotos = [
+    ...Object.entries(imageRoles).map(([key, label]) => ({ label, url: draft[key] })),
+    ...assets.map(asset => ({ label: asset.label, url: asset.url })),
+  ].filter((photo, index, all) => safeEventUrl(photo.url) && all.findIndex(candidate => candidate.url === photo.url) === index);
+  const savedTickets = Array.isArray(savedCommon.tickets?.variations) ? savedCommon.tickets.variations : [];
   function change(key, value) { setDraft(v => ({ ...v, [key]: value })); setNotice(''); setError(''); }
   async function save() {
     if (lock.current || busy || !dirty) return;
@@ -35,9 +41,16 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
   const disabled = busy || saving;
   return <section className={styles.editor} aria-label="Evenement bekijken en bewerken">
     <p className={styles.notice}>Horeca OS is je basis. Bewerk en bewaar hier het evenement. De website, Facebook, Instagram en agenda worden pas via hun eigen acties bijgewerkt. Alle tijden zijn Nederlandse tijd.</p>
+    <section className={styles.savedOverview} aria-label="Opgeslagen in Horeca OS">
+      <div className={styles.savedOverviewHead}><div><p>HORECA OS</p><h4>Dit staat klaar voor Eventin</h4></div><span>Concept</span></div>
+      <dl className={styles.savedFacts}><div><dt>Titel</dt><dd>{draft.title || 'Nog niet ingevuld'}</dd></div><div><dt>Begin</dt><dd>{draft.start?.replace('T', ' ') || 'Nog niet ingevuld'}</dd></div><div><dt>Einde</dt><dd>{draft.end?.replace('T', ' ') || 'Nog niet ingevuld'}</dd></div><div><dt>Locatie</dt><dd>{draft.location || 'Nog niet ingevuld'}</dd></div></dl>
+      <div className={styles.savedText}><strong>Omschrijving</strong><p>{draft.description || 'Nog niet ingevuld'}</p></div>
+      <div className={styles.savedTickets}><strong>Tickets</strong>{savedTickets.length ? <ul>{savedTickets.map((ticket, index) => <li key={`${ticket.name || 'ticket'}-${index}`}>{ticket.name || 'Ticket'} · {ticket.type === 'paid' ? `€ ${Number(ticket.price || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Gratis'}{ticket.capacity ? ` · ${ticket.capacity} beschikbaar` : ''}</li>)}</ul> : <p>Nog geen tickets opgeslagen.</p>}</div>
+      <div className={styles.savedPhotos}><strong>Afbeeldingen ({savedPhotos.length})</strong>{savedPhotos.length ? <div>{savedPhotos.map(photo => <figure key={photo.url}><Photo url={photo.url} label={photo.label} /><figcaption>{photo.label}</figcaption></figure>)}</div> : <p>Nog geen afbeeldingen opgeslagen.</p>}</div>
+    </section>
     {busy && <p role="status">Rond eerst de lopende actie of niet-opgeslagen kanaalvoorbereiding af. Daarna kun je de basis bewerken.</p>}
     {calendarDistribution(item).series && <p className={styles.notice}>Dit is een uitvoering van een reeks. Opslaan hier wijzigt alleen deze uitvoering en bewaart die als uitzondering. Gebruik ‘Reeks bekijken en wijzigen’ voor meerdere uitvoeringen.</p>}
-    <>
+    <details className={styles.editDetails}><summary>Gegevens aanpassen</summary><div className={styles.editForm}>
       <div className={styles.panel}>
         <h4>Horeca OS — mijn evenement</h4>
         <div className={styles.horecaPreview}><strong>Foto in Horeca OS</strong><Photo url={draft.image_url} label="Foto in Horeca OS" /></div>
@@ -70,7 +83,7 @@ export default function EventEditor({ item, sources = [], checking, onRefresh, o
           <small>Overnemen is alleen een voorstel. Controleer het links en bewaar daarna in Horeca OS.</small>
         </> : <p className={styles.notice}>{checking ? 'De websitegegevens worden gecontroleerd.' : 'Geen websitegegevens beschikbaar. Haal de gekoppelde bron opnieuw op. Horeca OS-gegevens worden hier niet als websitegegevens getoond.'}</p>}
       </div>
-    </>
+    </div></details>
     <div className={styles.actions}>{[['website','Website bijwerken openen'],['facebook','Facebook bijwerken openen'],['calendar','Agenda controleren openen']].map(([channel,label]) => <button type="button" className="secondaryButton" key={channel} disabled={disabled || dirty} onClick={() => onOpenChannel?.(channel)}>{label}</button>)}</div>
     <small>De bronvergelijking controleert titel en tekst. Controleer gewijzigde tijden, locatie en foto’s apart; de knop ‘Website bijwerken’ werkt alleen titel en tekst bij. Voor een Facebookfoto gebruik je ‘Foto overnemen — Facebook → Horeca OS → website’.</small>
   </section>;
