@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { supabase } from "../lib/supabase";
 import ManualFacebookUpdate from "./manual-facebook-update";
 import MetaCampaignEditor from "./meta-campaign-editor";
@@ -16,28 +23,89 @@ import { saveEventEdit } from "../lib/event-editor";
 import { calendarStatus } from "../lib/event-calendar";
 import MarketingWorklist from "./marketing-worklist";
 import { manualSummary } from "../lib/manual-predis";
-import { publicationCalendarItems, publicationCalendarSelection } from "../lib/marketing-publications";
-import { CALENDAR_CONTENT_VIEWS, calendarContentItems } from "../lib/marketing-calendar-view";
+import {
+  publicationCalendarItems,
+  publicationCalendarSelection,
+} from "../lib/marketing-publications";
+import {
+  CALENDAR_CONTENT_VIEWS,
+  calendarContentItems,
+} from "../lib/marketing-calendar-view";
 import publicationStyles from "./marketing-publications.module.css";
 import { withRequestTimeout } from "../lib/request-timeout";
 import { saveLocalEventMerge } from "../lib/local-event-merge";
-import { confirmFacebookContent, contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId, prepareContent, saveEventContent, websiteEventinTextMatches, withVerifiedFacebookEvent, websiteComparableText } from "../lib/manual-event-content";
+import {
+  confirmFacebookContent,
+  contentDeliveryStatus,
+  contentSnapshot,
+  eventContent,
+  facebookEventId,
+  prepareContent,
+  saveEventContent,
+  websiteEventinTextMatches,
+  withVerifiedFacebookEvent,
+  websiteComparableText,
+} from "../lib/manual-event-content";
 import EventContentSaveNotice from "./event-content-save-notice";
 import EventGiveaway from "./event-giveaway";
 
-const typeLabels = { event: "Evenement", product: "Gerecht of product", offer: "Aanbieding", package: "Arrangement", review: "Review", custom: "Campagne", website_event: "Evenement" };
+const typeLabels = {
+  event: "Evenement",
+  product: "Gerecht of product",
+  offer: "Aanbieding",
+  package: "Arrangement",
+  review: "Review",
+  custom: "Campagne",
+  website_event: "Evenement",
+};
 const viewLabels = { day: "Dag", week: "Week", month: "Maand", year: "Jaar" };
 const dismissedExternalItemIds = new Set();
 const SOURCE_COMPARISON_TIMEOUT_MS = 45000;
-function distributionFor(item) { return (item?.media || []).find((entry) => entry?.kind === "campaign_distribution") || {}; }
-function itemStart(item) { const distribution = distributionFor(item); return distribution.common?.start || distribution.source_preview?.startDate || item.scheduled_for || item.created_at; }
-function eventinPublishedAt(item, distribution) { return distribution.eventin_first_published_at || distribution.eventin_published_at || distribution.website_event_published_at || distribution.eventin_created_at || distribution.website_event_created_at || distribution.eventin?.published_at || distribution.eventin?.created_at || ((distribution.eventin_event_id || distribution.external_ids?.eventin) ? item.published_at || item.created_at : ""); }
+function distributionFor(item) {
+  return (
+    (item?.media || []).find(
+      (entry) => entry?.kind === "campaign_distribution",
+    ) || {}
+  );
+}
+function itemStart(item) {
+  const distribution = distributionFor(item);
+  return (
+    distribution.common?.start ||
+    distribution.source_preview?.startDate ||
+    item.scheduled_for ||
+    item.created_at
+  );
+}
+function eventinPublishedAt(item, distribution) {
+  return (
+    distribution.eventin_first_published_at ||
+    distribution.eventin_published_at ||
+    distribution.website_event_published_at ||
+    distribution.eventin_created_at ||
+    distribution.website_event_created_at ||
+    distribution.eventin?.published_at ||
+    distribution.eventin?.created_at ||
+    (distribution.eventin_event_id || distribution.external_ids?.eventin
+      ? item.published_at || item.created_at
+      : "")
+  );
+}
 function statusFor(item, distribution) {
-  if (distribution.series?.cancelled) return { key: "cancelled", label: "Geannuleerd in Horeca OS" };
-  if (["cancelled", "trash"].includes(distribution.website_event_status)) return { key: "cancelled", label: "Geannuleerd" };
-  if (distribution.provider_delivery?.facebook?.status === "confirmed" || distribution.facebook_event_delivery?.status === "confirmed" || distribution.provider_delivery?.brevo?.status === "confirmed" || item.published_at) return { key: "published", label: "Geplaatst" };
+  if (distribution.series?.cancelled)
+    return { key: "cancelled", label: "Geannuleerd in Horeca OS" };
+  if (["cancelled", "trash"].includes(distribution.website_event_status))
+    return { key: "cancelled", label: "Geannuleerd" };
+  if (
+    distribution.provider_delivery?.facebook?.status === "confirmed" ||
+    distribution.facebook_event_delivery?.status === "confirmed" ||
+    distribution.provider_delivery?.brevo?.status === "confirmed" ||
+    item.published_at
+  )
+    return { key: "published", label: "Geplaatst" };
   if (item.scheduled_for) return { key: "scheduled", label: "Ingepland" };
-  if (item.workflow_status === "in_progress") return { key: "approved", label: "Goedgekeurd" };
+  if (item.workflow_status === "in_progress")
+    return { key: "approved", label: "Goedgekeurd" };
   return { key: "draft", label: "Concept" };
 }
 export function channelStatus(item, channel, comparison) {
@@ -50,93 +118,317 @@ export function channelStatus(item, channel, comparison) {
   if (channel === "calendar") return calendarStatus(item);
   if (channel === "facebook_giveaway") {
     const giveaway = distributionFor(item).provider_delivery?.facebook_giveaway;
-    return ["confirmed", "published"].includes(giveaway?.status) ? { key: "placed", label: "Winactie geplaatst" } : { key: "concept", label: "Winactie voorbereiden" };
+    return ["confirmed", "published"].includes(giveaway?.status)
+      ? { key: "placed", label: "Winactie geplaatst" }
+      : { key: "concept", label: "Winactie voorbereiden" };
   }
-  const distribution = distributionFor(item); const targetChannels = distribution.target_channels || [];
-  if (channel === "whatsapp") return distribution.manual_whatsapp?.state === "placed" ? { key: "placed", label: "Geplaatst op WhatsApp" } : { key: "concept", label: "Handmatig plaatsen" };
+  const distribution = distributionFor(item);
+  const targetChannels = distribution.target_channels || [];
+  if (channel === "whatsapp")
+    return distribution.manual_whatsapp?.state === "placed"
+      ? { key: "placed", label: "Geplaatst op WhatsApp" }
+      : { key: "concept", label: "Handmatig plaatsen" };
   if (channel === "meta") {
     const paidCampaign = distribution.facebook_paid_campaign || {};
-    if (paidCampaign.campaign_id || ["active", "paused"].includes(paidCampaign.status)) {
+    if (
+      paidCampaign.campaign_id ||
+      ["active", "paused"].includes(paidCampaign.status)
+    ) {
       const live = paidCampaign.live_status;
-      const liveLabel = live?.checked_at ? ` — ${META_CAMPAIGN_STATUS_LABELS[live.state] || "Status onbekend"} (${new Date(live.checked_at).toLocaleString("nl-NL")})` : "";
-      return { key: "placed", label: `Gekoppeld aan Meta-campagne${liveLabel}` };
+      const liveLabel = live?.checked_at
+        ? ` — ${META_CAMPAIGN_STATUS_LABELS[live.state] || "Status onbekend"} (${new Date(live.checked_at).toLocaleString("nl-NL")})`
+        : "";
+      return {
+        key: "placed",
+        label: `Gekoppeld aan Meta-campagne${liveLabel}`,
+      };
     }
     return { key: "concept", label: "Campagne maken" };
   }
-  if (channel === "predis") return distribution.manual_predis?.predis_schedule?.state === "scheduled" ? { key: "placed", label: "Ingepland in Predis" } : { key: "concept", label: manualSummary(distribution.manual_predis) };
+  if (channel === "predis")
+    return distribution.manual_predis?.predis_schedule?.state === "scheduled"
+      ? { key: "placed", label: "Ingepland in Predis" }
+      : { key: "concept", label: manualSummary(distribution.manual_predis) };
   // A completed content comparison supersedes the older manual-delivery task.
   // Never treat link reachability or a failed/pending check as matching text.
-  if (channel === "facebook" && !isExternalEvent(item) && (facebookEventId(distribution) || distribution.provider_delivery?.facebook?.external_id) && comparison) {
-    if (["queued", "pending"].includes(comparison.key)) return { key: "checking", label: comparison.key === "queued" ? "Controle staat klaar" : "Facebook wordt gecontroleerd…" };
-    if (comparison.key === "incomplete") return { key: "unchecked", label: "Facebook-controle niet afgerond" };
+  if (
+    channel === "facebook" &&
+    !isExternalEvent(item) &&
+    (facebookEventId(distribution) ||
+      distribution.provider_delivery?.facebook?.external_id) &&
+    comparison
+  ) {
+    if (["queued", "pending"].includes(comparison.key))
+      return {
+        key: "checking",
+        label:
+          comparison.key === "queued"
+            ? "Controle staat klaar"
+            : "Facebook wordt gecontroleerd…",
+      };
+    if (comparison.key === "incomplete")
+      return { key: "unchecked", label: "Facebook-controle niet afgerond" };
   }
-  if (channel === "facebook" && comparison?.matchingSources?.includes("Facebook")) return { key: "placed", label: "Tekst komt overeen — geen actie nodig" };
-  if (channel === "facebook" && comparison?.differences?.some(source => source.source === "Facebook")) return { key: "warning", label: "Tekst verschilt — bijwerken nodig" };
-  if (channel === "website" && !isExternalEvent(item) && (distribution.eventin_event_id || distribution.external_ids?.eventin) && comparison) {
-    if (["queued", "pending"].includes(comparison.key)) return { key: "checking", label: "Websitetekst wordt gecontroleerd…" };
-    if (comparison.key === "incomplete") return { key: "unchecked", label: "Websitecontrole niet afgerond" };
-    if (comparison.matchingSources?.includes("Eventin")) return { key: "placed", label: "Websitetekst komt overeen" };
-    if (comparison.differences?.some(source => source.source === "Website (Eventin)")) return { key: "warning", label: "Websitetekst verschilt — bijwerken nodig" };
+  if (
+    channel === "facebook" &&
+    comparison?.matchingSources?.includes("Facebook")
+  )
+    return { key: "placed", label: "Tekst komt overeen — geen actie nodig" };
+  if (
+    channel === "facebook" &&
+    comparison?.differences?.some((source) => source.source === "Facebook")
+  )
+    return { key: "warning", label: "Tekst verschilt — bijwerken nodig" };
+  if (
+    channel === "website" &&
+    !isExternalEvent(item) &&
+    (distribution.eventin_event_id || distribution.external_ids?.eventin) &&
+    comparison
+  ) {
+    if (["queued", "pending"].includes(comparison.key))
+      return { key: "checking", label: "Websitetekst wordt gecontroleerd…" };
+    if (comparison.key === "incomplete")
+      return { key: "unchecked", label: "Websitecontrole niet afgerond" };
+    if (comparison.matchingSources?.includes("Eventin"))
+      return { key: "placed", label: "Websitetekst komt overeen" };
+    if (
+      comparison.differences?.some(
+        (source) => source.source === "Website (Eventin)",
+      )
+    )
+      return {
+        key: "warning",
+        label: "Websitetekst verschilt — bijwerken nodig",
+      };
   }
   if (channel === "instagram") {
-    const published = Object.values(distribution.instagram_publications || {}).filter(job => job.status === "published");
-    if (published.length) return { key: "placed", label: `${published.length} Instagram-publicatie${published.length === 1 ? "" : "s"} geplaatst` };
+    const published = Object.values(
+      distribution.instagram_publications || {},
+    ).filter((job) => job.status === "published");
+    if (published.length)
+      return {
+        key: "placed",
+        label: `${published.length} Instagram-publicatie${published.length === 1 ? "" : "s"} geplaatst`,
+      };
   }
-  if (["facebook", "website"].includes(channel) && distribution.event_content_delivery?.[channel]) {
+  if (
+    ["facebook", "website"].includes(channel) &&
+    distribution.event_content_delivery?.[channel]
+  ) {
     const delivery = contentDeliveryStatus(distribution, channel);
-    return { key: ["manual_confirmed", "updated"].includes(delivery.key) ? "placed" : delivery.key === "failed" ? "error" : "warning", label: delivery.label };
+    return {
+      key: ["manual_confirmed", "updated"].includes(delivery.key)
+        ? "placed"
+        : delivery.key === "failed"
+          ? "error"
+          : "warning",
+      label: delivery.label,
+    };
   }
   const verified = distribution.verification?.channels?.[channel];
-  if (verified?.status === "reachable") return { key: "placed", label: verified.label || (channel === "website" ? "Eventin gecontroleerd" : channel === "facebook" ? "Facebook gecontroleerd" : "Live gecontroleerd") };
-  if (verified?.status === "unreachable") return { key: "error", label: verified.label || (channel === "website" ? "Eventin controle mislukt" : channel === "facebook" ? "Facebook controle mislukt" : "Controle mislukt") };
-  if (verified?.status === "missing") return { key: "warning", label: verified.label || "Niet gecontroleerd: link ontbreekt" };
+  if (verified?.status === "reachable")
+    return {
+      key: "placed",
+      label:
+        verified.label ||
+        (channel === "website"
+          ? "Eventin gecontroleerd"
+          : channel === "facebook"
+            ? "Facebook gecontroleerd"
+            : "Live gecontroleerd"),
+    };
+  if (verified?.status === "unreachable")
+    return {
+      key: "error",
+      label:
+        verified.label ||
+        (channel === "website"
+          ? "Eventin controle mislukt"
+          : channel === "facebook"
+            ? "Facebook controle mislukt"
+            : "Controle mislukt"),
+    };
+  if (verified?.status === "missing")
+    return {
+      key: "warning",
+      label: verified.label || "Niet gecontroleerd: link ontbreekt",
+    };
   if (channel === "website") {
-    if (distribution.website_event_status === "publish" && (distribution.source_type === "website_event" || distribution.eventin_event_id)) return { key: "placed", label: "Geplaatst" };
-    return { key: distribution.source_type === "website_event" ? "concept" : "not_active", label: distribution.source_type === "website_event" ? "Concept" : "Niet actief" };
+    if (
+      distribution.website_event_status === "publish" &&
+      (distribution.source_type === "website_event" ||
+        distribution.eventin_event_id)
+    )
+      return { key: "placed", label: "Geplaatst" };
+    return {
+      key:
+        distribution.source_type === "website_event" ? "concept" : "not_active",
+      label:
+        distribution.source_type === "website_event"
+          ? "Concept"
+          : "Niet actief",
+    };
   }
-  if (!targetChannels.includes(channel)) return { key: "not_active", label: "Niet actief" };
+  if (!targetChannels.includes(channel))
+    return { key: "not_active", label: "Niet actief" };
   const delivery = distribution.provider_delivery?.[channel] || {};
-  if (["failed", "error"].includes(delivery.status) || distribution.channel_status?.[channel] === "error") return { key: "error", label: "Fout" };
-  if (["confirmed", "published", "placed"].includes(delivery.status)) return { key: "placed", label: "Geplaatst" };
-  if (["scheduled", "in_progress"].includes(delivery.status)) return { key: "scheduled", label: "Gepland" };
-  if (distribution.channel_status?.[channel] === "extra_gegevens_nodig") return { key: "warning", label: "Gegevens nodig" };
+  if (
+    ["failed", "error"].includes(delivery.status) ||
+    distribution.channel_status?.[channel] === "error"
+  )
+    return { key: "error", label: "Fout" };
+  if (["confirmed", "published", "placed"].includes(delivery.status))
+    return { key: "placed", label: "Geplaatst" };
+  if (["scheduled", "in_progress"].includes(delivery.status))
+    return { key: "scheduled", label: "Gepland" };
+  if (distribution.channel_status?.[channel] === "extra_gegevens_nodig")
+    return { key: "warning", label: "Gegevens nodig" };
   return { key: "concept", label: "Concept" };
 }
-const channelLabels = { horeca_os: "Horeca OS", website: "Website", facebook: "Facebook", facebook_giveaway: "Facebook winactie", whatsapp: "WhatsApp", instagram: "Instagram", meta: "Meta-campagne", calendar: "Agenda info@leclubbbq.nl", google: "Google", predis: "Predis", other: "Overige" };
+const channelLabels = {
+  horeca_os: "Horeca OS",
+  website: "Eventin",
+  facebook: "Facebook",
+  facebook_giveaway: "Facebook winactie",
+  whatsapp: "WhatsApp",
+  instagram: "Instagram",
+  meta: "Meta-campagne",
+  calendar: "Agenda info@leclubbbq.nl",
+  google: "Google",
+  predis: "Predis",
+  other: "Overige",
+};
 // Calendar views share the same per-event comparison as the worklist and dialog.
 // Context keeps status-only state out of persisted campaign records.
 const ChannelStatusContext = createContext(channelStatus);
-function dateOnly(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? null : new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
-function sameDay(left, right) { return left && right && left.toDateString() === right.toDateString(); }
-function todayStart() { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), now.getDate()); }
-function isToday(date) { return sameDay(date, todayStart()); }
-function startOfWeek(date) { const result = new Date(date); const day = result.getDay(); result.setDate(result.getDate() - (day === 0 ? 6 : day - 1)); result.setHours(0, 0, 0, 0); return result; }
-function formatDate(value, options = { day: "numeric", month: "long", year: "numeric" }) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Datum onbekend" : new Intl.DateTimeFormat("nl-NL", options).format(date); }
-function toLocalDateTimeInput(value) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16); }
+function dateOnly(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+function sameDay(left, right) {
+  return left && right && left.toDateString() === right.toDateString();
+}
+function todayStart() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+function isToday(date) {
+  return sameDay(date, todayStart());
+}
+function startOfWeek(date) {
+  const result = new Date(date);
+  const day = result.getDay();
+  result.setDate(result.getDate() - (day === 0 ? 6 : day - 1));
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+function formatDate(
+  value,
+  options = { day: "numeric", month: "long", year: "numeric" },
+) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Datum onbekend"
+    : new Intl.DateTimeFormat("nl-NL", options).format(date);
+}
+function toLocalDateTimeInput(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
 function calendarViewRange(anchor, view) {
-  const start = new Date(anchor.getFullYear(), view === "year" ? 0 : anchor.getMonth(), view === "month" || view === "year" ? 1 : anchor.getDate());
-  if (view === "week") { const weekStart = startOfWeek(start); return { start: weekStart, end: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7) }; }
-  if (view === "day") return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1) };
-  return { start, end: new Date(start.getFullYear() + (view === "year" ? 1 : 0), start.getMonth() + (view === "month" ? 1 : 0), 1) };
+  const start = new Date(
+    anchor.getFullYear(),
+    view === "year" ? 0 : anchor.getMonth(),
+    view === "month" || view === "year" ? 1 : anchor.getDate(),
+  );
+  if (view === "week") {
+    const weekStart = startOfWeek(start);
+    return {
+      start: weekStart,
+      end: new Date(
+        weekStart.getFullYear(),
+        weekStart.getMonth(),
+        weekStart.getDate() + 7,
+      ),
+    };
+  }
+  if (view === "day")
+    return {
+      start,
+      end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1),
+    };
+  return {
+    start,
+    end: new Date(
+      start.getFullYear() + (view === "year" ? 1 : 0),
+      start.getMonth() + (view === "month" ? 1 : 0),
+      1,
+    ),
+  };
 }
 function infoCalendarItem(event) {
   const start = event?.start?.dateTime || event?.start?.date || "";
   const end = event?.end?.dateTime || event?.end?.date || "";
-  return { id: `info-calendar:${event.id}`, info_calendar: { web_link: event.webLink || "", is_all_day: Boolean(event.isAllDay) }, scheduled_for: start, created_at: start, media: [{ kind: "campaign_distribution", source_type: "info_calendar", common: { title: event.subject || "Zonder titel", start, end, location: event.location?.displayName || "", description: event.bodyPreview || "" } }] };
+  return {
+    id: `info-calendar:${event.id}`,
+    info_calendar: {
+      web_link: event.webLink || "",
+      is_all_day: Boolean(event.isAllDay),
+    },
+    scheduled_for: start,
+    created_at: start,
+    media: [
+      {
+        kind: "campaign_distribution",
+        source_type: "info_calendar",
+        common: {
+          title: event.subject || "Zonder titel",
+          start,
+          end,
+          location: event.location?.displayName || "",
+          description: event.bodyPreview || "",
+        },
+      },
+    ],
+  };
 }
 function eventText(item) {
   const distribution = distributionFor(item);
   const title = distribution.common?.title || "Zonder titel";
-  return distribution.calendar_delivery?.stage === "concept" ? `CONCEPT — ${title}` : title;
+  return distribution.calendar_delivery?.stage === "concept"
+    ? `CONCEPT — ${title}`
+    : title;
 }
 function descriptionFor(item) {
   const distribution = distributionFor(item);
-  const value = distribution.common?.description || distribution.common?.short_description || item?.body || "";
-  return String(value).replace(/\s*\{\s*["']@context[\s\S]*$/i, "").trim() || "Geen omschrijving";
+  const value =
+    distribution.common?.description ||
+    distribution.common?.short_description ||
+    item?.body ||
+    "";
+  return (
+    String(value)
+      .replace(/\s*\{\s*["']@context[\s\S]*$/i, "")
+      .trim() || "Geen omschrijving"
+  );
 }
-function isExternalEvent(item) { const distribution = distributionFor(item); return (["facebook_event", "eventin_event", "external_event"].includes(distribution.source_type) || distribution.external_sources?.length > 0) && !distribution.linked_to_horeca_os; }
+function isExternalEvent(item) {
+  const distribution = distributionFor(item);
+  return (
+    (["facebook_event", "eventin_event", "external_event"].includes(
+      distribution.source_type,
+    ) ||
+      distribution.external_sources?.length > 0) &&
+    !distribution.linked_to_horeca_os
+  );
+}
 async function mapWithConcurrency(items, limit, worker) {
-  const results = new Array(items.length); let nextIndex = 0;
+  const results = new Array(items.length);
+  let nextIndex = 0;
   async function run() {
     while (true) {
       const index = nextIndex++;
@@ -158,17 +450,42 @@ function facebookCalendarItem(event, business) {
     scheduled_for: event.startDate,
     published_at: event.startDate,
     created_at: event.startDate || checkedAt,
-    media: [{
-      kind: "campaign_distribution",
-      source_type: "facebook_event",
-      external_source: "facebook",
-      external_id: String(event.id),
-      linked_to_horeca_os: false,
-      common: { title: event.title, start: event.startDate, end: event.endDate, location: event.location, description: event.description, image_url: event.image || "" },
-      target_channels: ["facebook"],
-      provider_delivery: { facebook: { status: "confirmed", external_id: event.id, permalink: event.sourceUrl } },
-      verification: { checked_at: checkedAt, checked_by: "facebook-events-sync", channels: { facebook: { status: "reachable", label: "Facebook-evenement gevonden" } }, links: { facebook: event.sourceUrl } },
-    }],
+    media: [
+      {
+        kind: "campaign_distribution",
+        source_type: "facebook_event",
+        external_source: "facebook",
+        external_id: String(event.id),
+        linked_to_horeca_os: false,
+        common: {
+          title: event.title,
+          start: event.startDate,
+          end: event.endDate,
+          location: event.location,
+          description: event.description,
+          image_url: event.image || "",
+        },
+        target_channels: ["facebook"],
+        provider_delivery: {
+          facebook: {
+            status: "confirmed",
+            external_id: event.id,
+            permalink: event.sourceUrl,
+          },
+        },
+        verification: {
+          checked_at: checkedAt,
+          checked_by: "facebook-events-sync",
+          channels: {
+            facebook: {
+              status: "reachable",
+              label: "Facebook-evenement gevonden",
+            },
+          },
+          links: { facebook: event.sourceUrl },
+        },
+      },
+    ],
   };
 }
 
@@ -184,55 +501,115 @@ function eventinCalendarItem(event, business) {
     scheduled_for: start,
     published_at: start,
     created_at: start || checkedAt,
-    media: [{
-      kind: "campaign_distribution",
-      source_type: "eventin_event",
-      external_source: "eventin",
-      external_id: String(event.id),
-      linked_to_horeca_os: false,
-      source_url: event.url || "",
-      common: { title: event.title, start, end, location: event.location, description: event.description, website_url: event.url || "", image_url: event.imageUrl || "" },
-      target_channels: ["website"],
-      verification: { checked_at: checkedAt, checked_by: "eventin-events-sync", channels: { website: { status: "reachable", label: "Eventin-evenement gevonden" } }, links: { website: event.url || "" } },
-    }],
+    media: [
+      {
+        kind: "campaign_distribution",
+        source_type: "eventin_event",
+        external_source: "eventin",
+        external_id: String(event.id),
+        linked_to_horeca_os: false,
+        source_url: event.url || "",
+        common: {
+          title: event.title,
+          start,
+          end,
+          location: event.location,
+          description: event.description,
+          website_url: event.url || "",
+          image_url: event.imageUrl || "",
+        },
+        target_channels: ["website"],
+        verification: {
+          checked_at: checkedAt,
+          checked_by: "eventin-events-sync",
+          channels: {
+            website: {
+              status: "reachable",
+              label: "Eventin-evenement gevonden",
+            },
+          },
+          links: { website: event.url || "" },
+        },
+      },
+    ],
   };
 }
 
-async function loadFacebookItems({ workspaceId, businesses, token, campaigns }) {
-  const knownIds = new Set(campaigns.flatMap((item) => {
-    const distribution = distributionFor(item);
-    return [distribution.facebook_event_delivery?.external_id, distribution.provider_delivery?.facebook?.external_id].filter(Boolean).map(String);
-  }));
-  const responses = await Promise.all((businesses || []).map(async (business) => {
-    try {
-      const response = await fetch(`/api/integrations/facebook/events?workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(business.id)}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) return [];
-      const payload = await response.json();
-      return (payload.events || []).filter((event) => !knownIds.has(String(event.id))).map((event) => facebookCalendarItem(event, business));
-    } catch { return []; }
-  }));
+async function loadFacebookItems({
+  workspaceId,
+  businesses,
+  token,
+  campaigns,
+}) {
+  const knownIds = new Set(
+    campaigns.flatMap((item) => {
+      const distribution = distributionFor(item);
+      return [
+        distribution.facebook_event_delivery?.external_id,
+        distribution.provider_delivery?.facebook?.external_id,
+      ]
+        .filter(Boolean)
+        .map(String);
+    }),
+  );
+  const responses = await Promise.all(
+    (businesses || []).map(async (business) => {
+      try {
+        const response = await fetch(
+          `/api/integrations/facebook/events?workspaceId=${encodeURIComponent(workspaceId)}&businessId=${encodeURIComponent(business.id)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!response.ok) return [];
+        const payload = await response.json();
+        return (payload.events || [])
+          .filter((event) => !knownIds.has(String(event.id)))
+          .map((event) => facebookCalendarItem(event, business));
+      } catch {
+        return [];
+      }
+    }),
+  );
   return responses.flat();
 }
 
 function siteForBusiness(business) {
-  return String(business?.name || "").toLowerCase().includes("plein") ? "grandcafehetplein.com" : "caribbeancorner.nl";
+  return String(business?.name || "")
+    .toLowerCase()
+    .includes("plein")
+    ? "grandcafehetplein.com"
+    : "caribbeancorner.nl";
 }
 
 async function loadEventinItems({ workspaceId, businesses, token, campaigns }) {
-  const knownIds = new Set(campaigns.flatMap((item) => {
-    const distribution = distributionFor(item);
-    return [distribution.eventin_event_id, distribution.external_id].filter(Boolean).map(String);
-  }));
-  const responses = await Promise.all((businesses || []).map(async (business) => {
-    try {
-      const site = siteForBusiness(business);
-      const endpoint = `/api/marketing/website-events?site=${encodeURIComponent(site)}`;
-      const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) return [];
-      const payload = await response.json();
-      return (payload.events || []).filter((event) => event.id && !event.expired && !knownIds.has(String(event.id))).map((event) => eventinCalendarItem(event, business));
-    } catch { return []; }
-  }));
+  const knownIds = new Set(
+    campaigns.flatMap((item) => {
+      const distribution = distributionFor(item);
+      return [distribution.eventin_event_id, distribution.external_id]
+        .filter(Boolean)
+        .map(String);
+    }),
+  );
+  const responses = await Promise.all(
+    (businesses || []).map(async (business) => {
+      try {
+        const site = siteForBusiness(business);
+        const endpoint = `/api/marketing/website-events?site=${encodeURIComponent(site)}`;
+        const response = await fetch(endpoint, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) return [];
+        const payload = await response.json();
+        return (payload.events || [])
+          .filter(
+            (event) =>
+              event.id && !event.expired && !knownIds.has(String(event.id)),
+          )
+          .map((event) => eventinCalendarItem(event, business));
+      } catch {
+        return [];
+      }
+    }),
+  );
   return responses.flat();
 }
 
@@ -247,10 +624,14 @@ function deduplicateCalendarItems(items) {
 }
 
 function duplicateRootId(item, items) {
-  let current = item; const visited = new Set();
+  let current = item;
+  const visited = new Set();
   while (distributionFor(current).duplicate_of && !visited.has(current.id)) {
     visited.add(current.id);
-    const next = items.find((candidate) => String(candidate.id) === String(distributionFor(current).duplicate_of));
+    const next = items.find(
+      (candidate) =>
+        String(candidate.id) === String(distributionFor(current).duplicate_of),
+    );
     if (!next) return item.id;
     current = next;
   }
@@ -258,11 +639,17 @@ function duplicateRootId(item, items) {
 }
 
 function visibleCalendarItems(items, businessById, activeFromToday) {
-  const candidates = items.filter((item) => businessById.has(String(item.business_id)) && (dateOnly(itemStart(item)) || activeFromToday) >= activeFromToday);
+  const candidates = items.filter(
+    (item) =>
+      businessById.has(String(item.business_id)) &&
+      (dateOnly(itemStart(item)) || activeFromToday) >= activeFromToday,
+  );
   const grouped = new Map();
   candidates.forEach((item) => {
-    const rootId = duplicateRootId(item, items); const current = grouped.get(String(rootId));
-    if (!current || statusRank(item) > statusRank(current)) grouped.set(String(rootId), item);
+    const rootId = duplicateRootId(item, items);
+    const current = grouped.get(String(rootId));
+    if (!current || statusRank(item) > statusRank(current))
+      grouped.set(String(rootId), item);
   });
   return [...grouped.values()];
 }
@@ -270,26 +657,54 @@ function visibleCalendarItems(items, businessById, activeFromToday) {
 export function marketingWorklistItems(items, businessById) {
   // Use the same duplicate representatives as the calendar, including records whose
   // former merge target is no longer loaded. The worklist also includes past dates.
-  return visibleCalendarItems(items, businessById, new Date(0)).filter(item => !isExternalEvent(item));
+  return visibleCalendarItems(items, businessById, new Date(0)).filter(
+    (item) => !isExternalEvent(item),
+  );
 }
 
-export function nextExternalItem(items, dismissedIds = dismissedExternalItemIds) {
-  return (items || []).find(item => !dismissedIds.has(String(item.id))) || null;
+export function nextExternalItem(
+  items,
+  dismissedIds = dismissedExternalItemIds,
+) {
+  return (
+    (items || []).find((item) => !dismissedIds.has(String(item.id))) || null
+  );
 }
 
 function suggestPotentialMatches(items) {
   return items.map((item) => {
-    const match = items.find((candidate) => candidate.id !== item.id
-      && !isExternalEvent(candidate)
-      && !distributionFor(candidate).duplicate_of
-      && String(candidate.business_id) === String(item.business_id)
-      && dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
-      && externalTitlesMatch(eventText(candidate), eventText(item)));
-    return match ? { ...item, potentialMatch: { id: match.id, title: eventText(match), status: statusFor(match, distributionFor(match)).label, external: isExternalEvent(match) } } : item;
+    const match = items.find(
+      (candidate) =>
+        candidate.id !== item.id &&
+        !isExternalEvent(candidate) &&
+        !distributionFor(candidate).duplicate_of &&
+        String(candidate.business_id) === String(item.business_id) &&
+        dateOnly(itemStart(candidate))?.toDateString() ===
+          dateOnly(itemStart(item))?.toDateString() &&
+        externalTitlesMatch(eventText(candidate), eventText(item)),
+    );
+    return match
+      ? {
+          ...item,
+          potentialMatch: {
+            id: match.id,
+            title: eventText(match),
+            status: statusFor(match, distributionFor(match)).label,
+            external: isExternalEvent(match),
+          },
+        }
+      : item;
   });
 }
 
-function normalizeEventTitle(value) { return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim(); }
+function normalizeEventTitle(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
 function externalTitlesMatch(left, right) {
   const meaningful = (word) => word.length > 2 && !/^\d+$/.test(word);
   const a = new Set(normalizeEventTitle(left).split(" ").filter(meaningful));
@@ -303,31 +718,94 @@ export function facebookEventCandidates(item, events = []) {
   const start = dateOnly(itemStart(item));
   if (!start) return [];
   const title = normalizeEventTitle(eventText(item));
-  return events.filter((event) => {
-    if (!event?.id || !sameDay(dateOnly(event.startDate), start)) return false;
-    const candidateTitle = normalizeEventTitle(event.title);
-    return Boolean(candidateTitle) && (candidateTitle === title || externalTitlesMatch(event.title, eventText(item)));
-  }).sort((left, right) => Number(normalizeEventTitle(right.title) === title) - Number(normalizeEventTitle(left.title) === title));
+  return events
+    .filter((event) => {
+      if (!event?.id || !sameDay(dateOnly(event.startDate), start))
+        return false;
+      const candidateTitle = normalizeEventTitle(event.title);
+      return (
+        Boolean(candidateTitle) &&
+        (candidateTitle === title ||
+          externalTitlesMatch(event.title, eventText(item)))
+      );
+    })
+    .sort(
+      (left, right) =>
+        Number(normalizeEventTitle(right.title) === title) -
+        Number(normalizeEventTitle(left.title) === title),
+    );
 }
 
 function mergeExternalSourceItems(items) {
   const result = [];
   for (const item of items) {
     const distribution = distributionFor(item);
-    if (!isExternalEvent(item)) { result.push(item); continue; }
+    if (!isExternalEvent(item)) {
+      result.push(item);
+      continue;
+    }
     const match = result.find((candidate) => {
-      if (!isExternalEvent(candidate) || String(candidate.business_id) !== String(item.business_id)) return false;
-      return dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
-        && externalTitlesMatch(eventText(candidate), eventText(item));
+      if (
+        !isExternalEvent(candidate) ||
+        String(candidate.business_id) !== String(item.business_id)
+      )
+        return false;
+      return (
+        dateOnly(itemStart(candidate))?.toDateString() ===
+          dateOnly(itemStart(item))?.toDateString() &&
+        externalTitlesMatch(eventText(candidate), eventText(item))
+      );
     });
-    if (!match) { result.push(item); continue; }
+    if (!match) {
+      result.push(item);
+      continue;
+    }
     const current = distributionFor(match);
-    const sources = [...new Set([...(current.external_sources || [current.external_source]), ...(distribution.external_sources || [distribution.external_source])].filter(Boolean))];
-    const externalIds = { ...(current.external_ids || {}), ...(distribution.external_ids || {}) };
-    if (distribution.external_source && distribution.external_id) externalIds[distribution.external_source] = String(distribution.external_id);
-    if (current.external_source && current.external_id) externalIds[current.external_source] = String(current.external_id);
-    const merged = { ...current, ...distribution, source_type: "external_event", external_source: "multiple", external_sources: sources, external_ids: externalIds, external_id: externalIds.eventin || externalIds.facebook, target_channels: [...new Set([...(current.target_channels || []), ...(distribution.target_channels || [])])], provider_delivery: { ...(current.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, verification: { ...(current.verification || {}), ...(distribution.verification || {}) }, common: { ...(current.common || {}), ...(distribution.common || {}) } };
-    match.media = (match.media || []).map((entry) => entry?.kind === "campaign_distribution" ? merged : entry);
+    const sources = [
+      ...new Set(
+        [
+          ...(current.external_sources || [current.external_source]),
+          ...(distribution.external_sources || [distribution.external_source]),
+        ].filter(Boolean),
+      ),
+    ];
+    const externalIds = {
+      ...(current.external_ids || {}),
+      ...(distribution.external_ids || {}),
+    };
+    if (distribution.external_source && distribution.external_id)
+      externalIds[distribution.external_source] = String(
+        distribution.external_id,
+      );
+    if (current.external_source && current.external_id)
+      externalIds[current.external_source] = String(current.external_id);
+    const merged = {
+      ...current,
+      ...distribution,
+      source_type: "external_event",
+      external_source: "multiple",
+      external_sources: sources,
+      external_ids: externalIds,
+      external_id: externalIds.eventin || externalIds.facebook,
+      target_channels: [
+        ...new Set([
+          ...(current.target_channels || []),
+          ...(distribution.target_channels || []),
+        ]),
+      ],
+      provider_delivery: {
+        ...(current.provider_delivery || {}),
+        ...(distribution.provider_delivery || {}),
+      },
+      verification: {
+        ...(current.verification || {}),
+        ...(distribution.verification || {}),
+      },
+      common: { ...(current.common || {}), ...(distribution.common || {}) },
+    };
+    match.media = (match.media || []).map((entry) =>
+      entry?.kind === "campaign_distribution" ? merged : entry,
+    );
   }
   return result;
 }
@@ -335,40 +813,134 @@ function mergeExternalSourceItems(items) {
 function mergeExternalWithManagedItems(items) {
   const result = [];
   for (const item of items) {
-    if (!isExternalEvent(item)) { result.push(item); continue; }
-    const managed = result.find((candidate) => !isExternalEvent(candidate)
-      && String(candidate.business_id) === String(item.business_id)
-      && dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
-      && externalTitlesMatch(eventText(candidate), eventText(item)));
-    if (!managed) { result.push(item); continue; }
+    if (!isExternalEvent(item)) {
+      result.push(item);
+      continue;
+    }
+    const managed = result.find(
+      (candidate) =>
+        !isExternalEvent(candidate) &&
+        String(candidate.business_id) === String(item.business_id) &&
+        dateOnly(itemStart(candidate))?.toDateString() ===
+          dateOnly(itemStart(item))?.toDateString() &&
+        externalTitlesMatch(eventText(candidate), eventText(item)),
+    );
+    if (!managed) {
+      result.push(item);
+      continue;
+    }
     const managedDistribution = distributionFor(managed);
     const externalDistribution = distributionFor(item);
-    const sources = [...new Set([...(managedDistribution.external_sources || []), ...(externalDistribution.external_sources || [externalDistribution.external_source])].filter(Boolean))];
-    const externalIds = { ...(managedDistribution.external_ids || {}), ...(externalDistribution.external_ids || {}) };
-    if (externalDistribution.external_source && externalDistribution.external_id) externalIds[externalDistribution.external_source] = String(externalDistribution.external_id);
-    const merged = { ...managedDistribution, external_sources: sources, external_ids: externalIds, linked_to_horeca_os: true, target_channels: [...new Set([...(managedDistribution.target_channels || []), ...(externalDistribution.target_channels || [])])], provider_delivery: { ...(managedDistribution.provider_delivery || {}), ...(externalDistribution.provider_delivery || {}) }, verification: { ...(managedDistribution.verification || {}), ...(externalDistribution.verification || {}) } };
-    managed.media = (managed.media || []).map((entry) => entry?.kind === "campaign_distribution" ? merged : entry);
+    const sources = [
+      ...new Set(
+        [
+          ...(managedDistribution.external_sources || []),
+          ...(externalDistribution.external_sources || [
+            externalDistribution.external_source,
+          ]),
+        ].filter(Boolean),
+      ),
+    ];
+    const externalIds = {
+      ...(managedDistribution.external_ids || {}),
+      ...(externalDistribution.external_ids || {}),
+    };
+    if (
+      externalDistribution.external_source &&
+      externalDistribution.external_id
+    )
+      externalIds[externalDistribution.external_source] = String(
+        externalDistribution.external_id,
+      );
+    const merged = {
+      ...managedDistribution,
+      external_sources: sources,
+      external_ids: externalIds,
+      linked_to_horeca_os: true,
+      target_channels: [
+        ...new Set([
+          ...(managedDistribution.target_channels || []),
+          ...(externalDistribution.target_channels || []),
+        ]),
+      ],
+      provider_delivery: {
+        ...(managedDistribution.provider_delivery || {}),
+        ...(externalDistribution.provider_delivery || {}),
+      },
+      verification: {
+        ...(managedDistribution.verification || {}),
+        ...(externalDistribution.verification || {}),
+      },
+    };
+    managed.media = (managed.media || []).map((entry) =>
+      entry?.kind === "campaign_distribution" ? merged : entry,
+    );
   }
   return result;
 }
 
-function statusRank(item) { const status = statusFor(item, distributionFor(item)).key; return { published: 4, scheduled: 3, approved: 2, draft: 1 }[status] || 0; }
+function statusRank(item) {
+  const status = statusFor(item, distributionFor(item)).key;
+  return { published: 4, scheduled: 3, approved: 2, draft: 1 }[status] || 0;
+}
 function mergeSimilarManagedItems(items) {
   const result = [];
   for (const item of items) {
-    if (isExternalEvent(item)) { result.push(item); continue; }
-    const index = result.findIndex((candidate) => !isExternalEvent(candidate)
-      && String(candidate.business_id) === String(item.business_id)
-      && dateOnly(itemStart(candidate))?.toDateString() === dateOnly(itemStart(item))?.toDateString()
-      && externalTitlesMatch(eventText(candidate), eventText(item)));
-    if (index < 0) { result.push(item); continue; }
+    if (isExternalEvent(item)) {
+      result.push(item);
+      continue;
+    }
+    const index = result.findIndex(
+      (candidate) =>
+        !isExternalEvent(candidate) &&
+        String(candidate.business_id) === String(item.business_id) &&
+        dateOnly(itemStart(candidate))?.toDateString() ===
+          dateOnly(itemStart(item))?.toDateString() &&
+        externalTitlesMatch(eventText(candidate), eventText(item)),
+    );
+    if (index < 0) {
+      result.push(item);
+      continue;
+    }
     const candidate = result[index];
-    const preferred = statusRank(item) > statusRank(candidate) ? item : candidate;
+    const preferred =
+      statusRank(item) > statusRank(candidate) ? item : candidate;
     const other = preferred.id === item.id ? candidate : item;
     const preferredDistribution = distributionFor(preferred);
     const otherDistribution = distributionFor(other);
-    const mergedDistribution = { ...preferredDistribution, external_sources: [...new Set([...(preferredDistribution.external_sources || []), ...(otherDistribution.external_sources || [])])], external_ids: { ...(otherDistribution.external_ids || {}), ...(preferredDistribution.external_ids || {}) }, provider_delivery: { ...(otherDistribution.provider_delivery || {}), ...(preferredDistribution.provider_delivery || {}) }, verification: { ...(otherDistribution.verification || {}), ...(preferredDistribution.verification || {}) }, target_channels: [...new Set([...(preferredDistribution.target_channels || []), ...(otherDistribution.target_channels || [])])] };
-    result[index] = { ...preferred, media: (preferred.media || []).map((entry) => entry?.kind === "campaign_distribution" ? mergedDistribution : entry) };
+    const mergedDistribution = {
+      ...preferredDistribution,
+      external_sources: [
+        ...new Set([
+          ...(preferredDistribution.external_sources || []),
+          ...(otherDistribution.external_sources || []),
+        ]),
+      ],
+      external_ids: {
+        ...(otherDistribution.external_ids || {}),
+        ...(preferredDistribution.external_ids || {}),
+      },
+      provider_delivery: {
+        ...(otherDistribution.provider_delivery || {}),
+        ...(preferredDistribution.provider_delivery || {}),
+      },
+      verification: {
+        ...(otherDistribution.verification || {}),
+        ...(preferredDistribution.verification || {}),
+      },
+      target_channels: [
+        ...new Set([
+          ...(preferredDistribution.target_channels || []),
+          ...(otherDistribution.target_channels || []),
+        ]),
+      ],
+    };
+    result[index] = {
+      ...preferred,
+      media: (preferred.media || []).map((entry) =>
+        entry?.kind === "campaign_distribution" ? mergedDistribution : entry,
+      ),
+    };
   }
   return result;
 }
@@ -377,179 +949,691 @@ export function CalendarEvent({ item, business, onSelectEvent }) {
   const channelStatus = useContext(ChannelStatusContext);
   if (item.publication) {
     const publication = item.publication;
-    return <button type="button" className={publicationStyles.card} data-venue={business?.color || "venueA"}
-      title={`Publicatiemoment · ${publication.at.replace("T", " ")} (Nederland) · ${publication.channelLabel} · ${publication.title} · ${publication.label}`}
-      onClick={() => onSelectEvent(publicationCalendarSelection(item))}>
-      <small>Publicatie · {publication.at.slice(11)} · {publication.channelLabel}</small>
-      <strong>{publication.title}</strong><small>{publication.label}</small>
-    </button>;
+    return (
+      <button
+        type="button"
+        className={publicationStyles.card}
+        data-venue={business?.color || "venueA"}
+        title={`Publicatiemoment · ${publication.at.replace("T", " ")} (Nederland) · ${publication.channelLabel} · ${publication.title} · ${publication.label}`}
+        onClick={() => onSelectEvent(publicationCalendarSelection(item))}
+      >
+        <small>
+          Publicatie · {publication.at.slice(11)} · {publication.channelLabel}
+        </small>
+        <strong>{publication.title}</strong>
+        <small>{publication.label}</small>
+      </button>
+    );
   }
   if (item.info_calendar) {
-    const summary = item.info_calendar.is_all_day ? "Hele dag · Agenda info@leclubbbq.nl" : `Agenda info@leclubbbq.nl · ${formatDate(itemStart(item), { timeStyle: "short" })}`;
-    const content = <><strong>{eventText(item)}</strong><span>{summary}</span></>;
-    return item.info_calendar.web_link
-      ? <a className="marketingCalendarEvent infoCalendarEvent" href={item.info_calendar.web_link} target="_blank" rel="noreferrer" title={`${eventText(item)} · ${summary}`}>{content}</a>
-      : <div className="marketingCalendarEvent infoCalendarEvent" title={`${eventText(item)} · ${summary}`}>{content}</div>;
+    const summary = item.info_calendar.is_all_day
+      ? "Hele dag · Agenda info@leclubbbq.nl"
+      : `Agenda info@leclubbbq.nl · ${formatDate(itemStart(item), { timeStyle: "short" })}`;
+    const content = (
+      <>
+        <strong>{eventText(item)}</strong>
+        <span>{summary}</span>
+      </>
+    );
+    return item.info_calendar.web_link ? (
+      <a
+        className="marketingCalendarEvent infoCalendarEvent"
+        href={item.info_calendar.web_link}
+        target="_blank"
+        rel="noreferrer"
+        title={`${eventText(item)} · ${summary}`}
+      >
+        {content}
+      </a>
+    ) : (
+      <div
+        className="marketingCalendarEvent infoCalendarEvent"
+        title={`${eventText(item)} · ${summary}`}
+      >
+        {content}
+      </div>
+    );
   }
-  const distribution = distributionFor(item); const status = statusFor(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event";
-  return <button type="button" className={`marketingCalendarEvent ${business?.color || "venueA"} ${external ? "externalFacebookEvent" : ""}`} onClick={() => onSelectEvent(item)} title={`${eventText(item)} · ${external ? externalLabel : status.label}`}><strong>{eventText(item)}</strong><span>{external ? externalLabel : status.label}</span>{item.potentialMatch && <small className="marketingCalendarDuplicate" title={`Agendapunt ${item.id}. Mogelijke overeenkomst op basis van titel, datum en vestiging; nog niet bevestigd.`}>Mogelijk dubbel · {eventReference(item)}</small>}<div className="marketingChannelMini">{["website", "facebook", "instagram"].map((channel) => { const channelState = channelStatus(item, channel); return <i className={channelState.key} key={channel} title={`${channelLabels[channel]}: ${channelState.label}`}>{channel === "website" ? "W" : channel === "facebook" ? "F" : "I"}</i>; })}</div></button>;
+  const distribution = distributionFor(item);
+  const status = statusFor(item, distribution);
+  const external = isExternalEvent(item);
+  const externalLabel =
+    distribution.external_source === "multiple"
+      ? "Extern Eventin + Facebook"
+      : distribution.external_source === "eventin"
+        ? "Extern Eventin-evenement"
+        : "Extern Facebook-event";
+  return (
+    <button
+      type="button"
+      className={`marketingCalendarEvent ${business?.color || "venueA"} ${external ? "externalFacebookEvent" : ""}`}
+      onClick={() => onSelectEvent(item)}
+      title={`${eventText(item)} · ${external ? externalLabel : status.label}`}
+    >
+      <strong>{eventText(item)}</strong>
+      <span>{external ? externalLabel : status.label}</span>
+      {item.potentialMatch && (
+        <small
+          className="marketingCalendarDuplicate"
+          title={`Agendapunt ${item.id}. Mogelijke overeenkomst op basis van titel, datum en vestiging; nog niet bevestigd.`}
+        >
+          Mogelijk dubbel · {eventReference(item)}
+        </small>
+      )}
+      <div className="marketingChannelMini">
+        {["website", "facebook", "instagram"].map((channel) => {
+          const channelState = channelStatus(item, channel);
+          return (
+            <i
+              className={channelState.key}
+              key={channel}
+              title={`${channelLabels[channel]}: ${channelState.label}`}
+            >
+              {channel === "website" ? "W" : channel === "facebook" ? "F" : "I"}
+            </i>
+          );
+        })}
+      </div>
+    </button>
+  );
 }
 
-function ComparisonCard({ label, item, onChoose, selected = false, disabled = false, children }) {
+function ComparisonCard({
+  label,
+  item,
+  onChoose,
+  selected = false,
+  disabled = false,
+  children,
+}) {
   const distribution = distributionFor(item);
   const description = descriptionFor(item);
-  return <div className="marketingComparisonCard"><p className="eyebrow">{label}</p>{onChoose && <button type="button" className={selected ? "primaryButton" : "secondaryButton"} aria-label={`Tekst van ${label} gebruiken`} aria-pressed={selected} disabled={disabled} onClick={onChoose}>{selected ? "Deze tekst is gekozen" : "Deze tekst gebruiken"}</button>}<div className="marketingComparisonTitle"><span>Titel</span><strong>{eventText(item)}</strong></div><dl><div><dt>Datum</dt><dd>{formatDate(itemStart(item), { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</dd></div><div><dt>Locatie</dt><dd>{distribution.common?.location || "Geen locatie"}</dd></div><div><dt>Status</dt><dd>{statusFor(item, distribution).label}</dd></div></dl><div className="marketingComparisonDescription"><span>Tekst</span><p>{description}</p></div>{children}</div>;
+  return (
+    <div className="marketingComparisonCard">
+      <p className="eyebrow">{label}</p>
+      {onChoose && (
+        <button
+          type="button"
+          className={selected ? "primaryButton" : "secondaryButton"}
+          aria-label={`Tekst van ${label} gebruiken`}
+          aria-pressed={selected}
+          disabled={disabled}
+          onClick={onChoose}
+        >
+          {selected ? "Deze tekst is gekozen" : "Deze tekst gebruiken"}
+        </button>
+      )}
+      <div className="marketingComparisonTitle">
+        <span>Titel</span>
+        <strong>{eventText(item)}</strong>
+      </div>
+      <dl>
+        <div>
+          <dt>Datum</dt>
+          <dd>
+            {formatDate(itemStart(item), {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </dd>
+        </div>
+        <div>
+          <dt>Locatie</dt>
+          <dd>{distribution.common?.location || "Geen locatie"}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{statusFor(item, distribution).label}</dd>
+        </div>
+      </dl>
+      <div className="marketingComparisonDescription">
+        <span>Tekst</span>
+        <p>{description}</p>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function comparisonDifference(items) {
   if (!items?.length || items.length < 2) return "";
   const records = items.map((entry) => entry?.item || entry).filter(Boolean);
   const titles = new Set(records.map((entry) => eventText(entry).trim()));
-  const descriptions = new Set(records.map((entry) => descriptionFor(entry).trim()));
+  const descriptions = new Set(
+    records.map((entry) => descriptionFor(entry).trim()),
+  );
   const titleDifferent = titles.size > 1;
   const descriptionDifferent = descriptions.size > 1;
-  if (!titleDifferent && !descriptionDifferent) return "Titel en tekst zijn gelijk.";
-  return [titleDifferent ? "De titels verschillen" : "De titels zijn gelijk", descriptionDifferent ? "de omschrijvingen verschillen" : "de omschrijvingen zijn gelijk"].join("; ") + ".";
+  if (!titleDifferent && !descriptionDifferent)
+    return "Titel en tekst zijn gelijk.";
+  return (
+    [
+      titleDifferent ? "De titels verschillen" : "De titels zijn gelijk",
+      descriptionDifferent
+        ? "de omschrijvingen verschillen"
+        : "de omschrijvingen zijn gelijk",
+    ].join("; ") + "."
+  );
 }
 
 export function sourceComparisonStatus(item, sources = [], check = "idle") {
   const distribution = distributionFor(item);
   const expected = [];
-  if (distribution.eventin_event_id || distribution.external_ids?.eventin) expected.push("Eventin");
-  if (facebookEventId(distribution) || distribution.provider_delivery?.facebook?.external_id) expected.push("Facebook");
-  if (check === "pending") return { key: "pending", title: "Controle op verschillen loopt…", detail: "Je kunt ondertussen gewoon tekst en foto kiezen, aanpassen en bewaren. De vergelijking loopt op de achtergrond door." };
-  if (check === "queued") return { key: "queued", title: "Controle staat klaar", detail: "Je kunt ondertussen gewoon verderwerken. De automatische vergelijking start zo meteen." };
-  if (check === "timeout") return { key: "incomplete", title: "Controle duurt te lang", detail: "Een bron reageerde niet binnen 45 seconden. Er is niets gewijzigd. Je kunt meteen opnieuw controleren." };
-  if (check === "error") return { key: "incomplete", title: "Controle niet afgerond", detail: "De bronnen konden niet volledig worden opgehaald. Probeer opnieuw via ‘Bronnen vergelijken — tekst en foto kiezen’." };
-  if (!expected.length) return { key: "unlinked", title: "Geen gekoppelde bronnen om te vergelijken", detail: "Er kan nog niet worden vastgesteld of de externe teksten overeenkomen." };
-  const remote = sources.filter(source => expected.includes(source.label));
-  const missing = expected.filter(label => !remote.some(source => source.label === label));
-  if (check !== "done" || missing.length) return { key: "incomplete", title: "Controle niet afgerond", detail: missing.length ? `Nog niet vergeleken: ${missing.join(" en ")}. Open ‘Bronnen vergelijken — tekst en foto kiezen’ voor een nieuwe controle.` : "De automatische controle is nog niet afgerond." };
+  if (distribution.eventin_event_id || distribution.external_ids?.eventin)
+    expected.push("Eventin");
+  if (
+    facebookEventId(distribution) ||
+    distribution.provider_delivery?.facebook?.external_id
+  )
+    expected.push("Facebook");
+  if (check === "pending")
+    return {
+      key: "pending",
+      title: "Controle op verschillen loopt…",
+      detail:
+        "Je kunt ondertussen gewoon tekst en foto kiezen, aanpassen en bewaren. De vergelijking loopt op de achtergrond door.",
+    };
+  if (check === "queued")
+    return {
+      key: "queued",
+      title: "Controle staat klaar",
+      detail:
+        "Je kunt ondertussen gewoon verderwerken. De automatische vergelijking start zo meteen.",
+    };
+  if (check === "timeout")
+    return {
+      key: "incomplete",
+      title: "Controle duurt te lang",
+      detail:
+        "Een bron reageerde niet binnen 45 seconden. Er is niets gewijzigd. Je kunt meteen opnieuw controleren.",
+    };
+  if (check === "error")
+    return {
+      key: "incomplete",
+      title: "Controle niet afgerond",
+      detail:
+        "De bronnen konden niet volledig worden opgehaald. Probeer opnieuw via ‘Bronnen vergelijken — tekst en foto kiezen’.",
+    };
+  if (!expected.length)
+    return {
+      key: "unlinked",
+      title: "Geen gekoppelde bronnen om te vergelijken",
+      detail:
+        "Er kan nog niet worden vastgesteld of de externe teksten overeenkomen.",
+    };
+  const remote = sources.filter((source) => expected.includes(source.label));
+  const missing = expected.filter(
+    (label) => !remote.some((source) => source.label === label),
+  );
+  if (check !== "done" || missing.length)
+    return {
+      key: "incomplete",
+      title: "Controle niet afgerond",
+      detail: missing.length
+        ? `Nog niet vergeleken: ${missing.join(" en ")}. Open ‘Bronnen vergelijken — tekst en foto kiezen’ voor een nieuwe controle.`
+        : "De automatische controle is nog niet afgerond.",
+    };
   // Compare against the CURRENT saved record, not the older local copy returned by a background check.
   const localTitle = eventText(item).trim();
   const localDescription = descriptionFor(item).trim();
-  const descriptionMatches = source => source.label === "Eventin"
-    ? websiteEventinTextMatches(descriptionFor(source.item), localDescription, eventContent(distribution).location)
-    : descriptionFor(source.item).trim() === localDescription;
-  const differences = remote.map(source => ({
-    source: source.label === "Eventin" ? "Website (Eventin)" : source.label,
-    title: eventText(source.item).trim(),
-    titleDifferent: eventText(source.item).trim() !== localTitle,
-    descriptionDifferent: !descriptionMatches(source),
-  })).filter(source => source.titleDifferent || source.descriptionDifferent);
-  const matchingSources = remote.filter(source => eventText(source.item).trim() === localTitle && descriptionMatches(source)).map(source => source.label);
+  const descriptionMatches = (source) =>
+    source.label === "Eventin"
+      ? websiteEventinTextMatches(
+          descriptionFor(source.item),
+          localDescription,
+          eventContent(distribution).location,
+        )
+      : descriptionFor(source.item).trim() === localDescription;
+  const differences = remote
+    .map((source) => ({
+      source: source.label === "Eventin" ? "Website (Eventin)" : source.label,
+      title: eventText(source.item).trim(),
+      titleDifferent: eventText(source.item).trim() !== localTitle,
+      descriptionDifferent: !descriptionMatches(source),
+    }))
+    .filter((source) => source.titleDifferent || source.descriptionDifferent);
+  const matchingSources = remote
+    .filter(
+      (source) =>
+        eventText(source.item).trim() === localTitle &&
+        descriptionMatches(source),
+    )
+    .map((source) => source.label);
   return !differences.length
-    ? { key: "equal", matchingSources, title: "Titel en tekst zijn gelijk", detail: "Geen tekstwijziging nodig voor de gekoppelde website- en/of Facebook-bronnen." }
-    : { key: "different", title: "Verschillen gevonden", localTitle, localDescription, sourceDescriptions: Object.fromEntries(remote.map(source => [source.label === "Eventin" ? "Website (Eventin)" : source.label, descriptionFor(source.item).trim()])), differences, matchingSources,
-      detail: `Afwijkend van de opgeslagen tekst in Horeca OS: ${differences.map(source => source.source).join(" en ")}. Er is niets automatisch gewijzigd.` };
+    ? {
+        key: "equal",
+        matchingSources,
+        title: "Titel en tekst zijn gelijk",
+        detail:
+          "Geen tekstwijziging nodig voor de gekoppelde website- en/of Facebook-bronnen.",
+      }
+    : {
+        key: "different",
+        title: "Verschillen gevonden",
+        localTitle,
+        localDescription,
+        sourceDescriptions: Object.fromEntries(
+          remote.map((source) => [
+            source.label === "Eventin" ? "Website (Eventin)" : source.label,
+            descriptionFor(source.item).trim(),
+          ]),
+        ),
+        differences,
+        matchingSources,
+        detail: `Afwijkend van de opgeslagen tekst in Horeca OS: ${differences.map((source) => source.source).join(" en ")}. Er is niets automatisch gewijzigd.`,
+      };
 }
 
 export function comparisonLineParts(left, right) {
   const leftLines = String(left || "").split("\n");
   const rightLines = String(right || "").split("\n");
-  const comparable = value => value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
-  const table = Array.from({ length: leftLines.length + 1 }, () => new Uint16Array(rightLines.length + 1));
-  for (let leftIndex = leftLines.length - 1; leftIndex >= 0; leftIndex -= 1) for (let rightIndex = rightLines.length - 1; rightIndex >= 0; rightIndex -= 1) {
-    table[leftIndex][rightIndex] = comparable(leftLines[leftIndex]) === comparable(rightLines[rightIndex])
-      ? table[leftIndex + 1][rightIndex + 1] + 1
-      : Math.max(table[leftIndex + 1][rightIndex], table[leftIndex][rightIndex + 1]);
-  }
-  const matchedLeft = new Set(); const matchedRight = new Set(); let leftIndex = 0; let rightIndex = 0;
+  const comparable = (value) =>
+    value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  const table = Array.from(
+    { length: leftLines.length + 1 },
+    () => new Uint16Array(rightLines.length + 1),
+  );
+  for (let leftIndex = leftLines.length - 1; leftIndex >= 0; leftIndex -= 1)
+    for (
+      let rightIndex = rightLines.length - 1;
+      rightIndex >= 0;
+      rightIndex -= 1
+    ) {
+      table[leftIndex][rightIndex] =
+        comparable(leftLines[leftIndex]) === comparable(rightLines[rightIndex])
+          ? table[leftIndex + 1][rightIndex + 1] + 1
+          : Math.max(
+              table[leftIndex + 1][rightIndex],
+              table[leftIndex][rightIndex + 1],
+            );
+    }
+  const matchedLeft = new Set();
+  const matchedRight = new Set();
+  let leftIndex = 0;
+  let rightIndex = 0;
   while (leftIndex < leftLines.length && rightIndex < rightLines.length) {
-    if (comparable(leftLines[leftIndex]) === comparable(rightLines[rightIndex])) { matchedLeft.add(leftIndex); matchedRight.add(rightIndex); leftIndex += 1; rightIndex += 1; }
-    else if (table[leftIndex + 1][rightIndex] >= table[leftIndex][rightIndex + 1]) leftIndex += 1;
+    if (
+      comparable(leftLines[leftIndex]) === comparable(rightLines[rightIndex])
+    ) {
+      matchedLeft.add(leftIndex);
+      matchedRight.add(rightIndex);
+      leftIndex += 1;
+      rightIndex += 1;
+    } else if (
+      table[leftIndex + 1][rightIndex] >= table[leftIndex][rightIndex + 1]
+    )
+      leftIndex += 1;
     else rightIndex += 1;
   }
   return {
-    left: leftLines.map((text, index) => ({ text, different: Boolean(text.trim()) && !matchedLeft.has(index) })),
-    right: rightLines.map((text, index) => ({ text, different: Boolean(text.trim()) && !matchedRight.has(index) })),
+    left: leftLines.map((text, index) => ({
+      text,
+      different: Boolean(text.trim()) && !matchedLeft.has(index),
+    })),
+    right: rightLines.map((text, index) => ({
+      text,
+      different: Boolean(text.trim()) && !matchedRight.has(index),
+    })),
   };
 }
 
 function TextDifferencePreview({ source, localDescription }) {
   const parts = comparisonLineParts(localDescription, source.description);
-  return <section className="marketingTextDifference" aria-label={`Tekstverschil tussen Horeca OS en ${source.source}`}>
-    <p><strong>Geel gemarkeerd = afwijkende tekst.</strong></p>
-    <div>
-      <article><strong>Horeca OS</strong><pre>{parts.left.map((line, index) => <span className={line.different ? "different" : ""} key={index}>{line.text || " "}{"\n"}</span>)}</pre></article>
-      <article><strong>{source.source}</strong><pre>{parts.right.map((line, index) => <span className={line.different ? "different" : ""} key={index}>{line.text || " "}{"\n"}</span>)}</pre></article>
-    </div>
-  </section>;
+  return (
+    <section
+      className="marketingTextDifference"
+      aria-label={`Tekstverschil tussen Horeca OS en ${source.source}`}
+    >
+      <p>
+        <strong>Geel gemarkeerd = afwijkende tekst.</strong>
+      </p>
+      <div>
+        <article>
+          <strong>Horeca OS</strong>
+          <pre>
+            {parts.left.map((line, index) => (
+              <span className={line.different ? "different" : ""} key={index}>
+                {line.text || " "}
+                {"\n"}
+              </span>
+            ))}
+          </pre>
+        </article>
+        <article>
+          <strong>{source.source}</strong>
+          <pre>
+            {parts.right.map((line, index) => (
+              <span className={line.different ? "different" : ""} key={index}>
+                {line.text || " "}
+                {"\n"}
+              </span>
+            ))}
+          </pre>
+        </article>
+      </div>
+    </section>
+  );
 }
 
 function SourceComparisonDifferences({ state }) {
   if (!state.differences?.length) return null;
-  return <div className="marketingSourceDifferences">
-    {state.differences.some(source => source.titleDifferent) && <p><strong>Titel in Horeca OS: </strong>{state.localTitle || "Geen titel"}</p>}
-    <ul aria-label="Afwijkingen per bron">{state.differences.map(source => <li key={source.source}>
-      <strong>{source.source}: </strong>
-      {source.titleDifferent && <span>andere titel: ‘{source.title || "Geen titel"}’.</span>}
-      {source.descriptionDifferent && <span>{source.titleDifferent ? " Ook de omschrijving verschilt." : "De omschrijving verschilt; de titel is gelijk."}</span>}
-    </li>)}</ul>
-    {state.differences.filter(source => source.descriptionDifferent).map(source => <TextDifferencePreview key={`${source.source}:text`} source={{ ...source, description: state.sourceDescriptions?.[source.source] || "" }} localDescription={state.localDescription} />)}
-    <p>Bekijk ‘Bronnen vergelijken — tekst en foto kiezen’ en kies zelf wat je wilt bijwerken.</p>
-  </div>;
+  return (
+    <div className="marketingSourceDifferences">
+      {state.differences.some((source) => source.titleDifferent) && (
+        <p>
+          <strong>Titel in Horeca OS: </strong>
+          {state.localTitle || "Geen titel"}
+        </p>
+      )}
+      <ul aria-label="Afwijkingen per bron">
+        {state.differences.map((source) => (
+          <li key={source.source}>
+            <strong>{source.source}: </strong>
+            {source.titleDifferent && (
+              <span>andere titel: ‘{source.title || "Geen titel"}’.</span>
+            )}
+            {source.descriptionDifferent && (
+              <span>
+                {source.titleDifferent
+                  ? " Ook de omschrijving verschilt."
+                  : "De omschrijving verschilt; de titel is gelijk."}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {state.differences
+        .filter((source) => source.descriptionDifferent)
+        .map((source) => (
+          <TextDifferencePreview
+            key={`${source.source}:text`}
+            source={{
+              ...source,
+              description: state.sourceDescriptions?.[source.source] || "",
+            }}
+            localDescription={state.localDescription}
+          />
+        ))}
+      <p>
+        Bekijk ‘Bronnen vergelijken — tekst en foto kiezen’ en kies zelf wat je
+        wilt bijwerken.
+      </p>
+    </div>
+  );
 }
 
 function SourceDifferenceActions({ state, itemId, dirty, busy, onOpen }) {
   if (!state.differences?.length) return null;
-  return <div className="marketingDifferenceActions" aria-label="Vervolgstap voor afwijkende bronnen">
-    <p>{dirty ? "Bewaar eerst je gekozen tekst in Horeca OS. Daarna kun je de afwijkende bron bijwerken." : "Gebruik de bewaarde tekst om de afwijkende bron bij te werken. Open hieronder de juiste vervolgstap; er wordt nog niets gepubliceerd."}</p>
-    <div>{state.differences.map(source => {
-      const channel = source.source === "Website (Eventin)" ? "website" : "facebook";
-      return <button type="button" className="secondaryButton" key={channel}
-        aria-controls={`event-channel-${channel}-${itemId}`} disabled={dirty || busy}
-        onClick={() => onOpen(channel)}>
-        {channel === "website" ? "Website bijwerken openen" : "Facebook bijwerken openen"}
-      </button>;
-    })}</div>
-  </div>;
+  return (
+    <div
+      className="marketingDifferenceActions"
+      aria-label="Vervolgstap voor afwijkende bronnen"
+    >
+      <p>
+        {dirty
+          ? "Bewaar eerst je gekozen tekst in Horeca OS. Daarna kun je de afwijkende bron bijwerken."
+          : "Gebruik de bewaarde tekst om de afwijkende bron bij te werken. Open hieronder de juiste vervolgstap; er wordt nog niets gepubliceerd."}
+      </p>
+      <div>
+        {state.differences.map((source) => {
+          const channel =
+            source.source === "Website (Eventin)" ? "website" : "facebook";
+          return (
+            <button
+              type="button"
+              className="secondaryButton"
+              key={channel}
+              aria-controls={`event-channel-${channel}-${itemId}`}
+              disabled={dirty || busy}
+              onClick={() => onOpen(channel)}
+            >
+              {channel === "website"
+                ? "Website bijwerken openen"
+                : "Facebook bijwerken openen"}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
-export function MonthCalendar({ anchor, items, businessById, onSelectEvent, onPlanDate }) {
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1); const gridStart = startOfWeek(first);
-  const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index));
-  return <div className="marketingMonthCalendar"><div className="marketingWeekdayRow">{["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"].map((day) => <strong key={day}>{day}</strong>)}</div><div className="marketingMonthGrid">{days.map((day) => { const dayItems = items.filter((item) => sameDay(dateOnly(itemStart(item)), day)); const isCurrentMonth = day.getMonth() === anchor.getMonth(); const canPlanOnDay = isCurrentMonth && day >= todayStart(); const className = `marketingDayCell ${isCurrentMonth ? "" : "outside"} ${isToday(day) ? "today" : ""}`; if (canPlanOnDay && !dayItems.length && onPlanDate) return <button type="button" className={`${className} marketingEmptyDay`} key={day.toISOString()} onClick={() => onPlanDate(day)} aria-label={`Evenement plannen op ${formatDate(day)}`}><strong>{isToday(day) ? "Vandaag · " : ""}{day.getDate()}</strong></button>; return <div className={className} key={day.toISOString()}><strong>{isToday(day) ? "Vandaag · " : ""}{day.getDate()}</strong><div>{dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={onSelectEvent} />)}</div></div>; })}</div></div>;
+export function MonthCalendar({
+  anchor,
+  items,
+  businessById,
+  onSelectEvent,
+  onPlanDate,
+}) {
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const gridStart = startOfWeek(first);
+  const days = Array.from(
+    { length: 42 },
+    (_, index) =>
+      new Date(
+        gridStart.getFullYear(),
+        gridStart.getMonth(),
+        gridStart.getDate() + index,
+      ),
+  );
+  return (
+    <div className="marketingMonthCalendar">
+      <div className="marketingWeekdayRow">
+        {["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"].map((day) => (
+          <strong key={day}>{day}</strong>
+        ))}
+      </div>
+      <div className="marketingMonthGrid">
+        {days.map((day) => {
+          const dayItems = items.filter((item) =>
+            sameDay(dateOnly(itemStart(item)), day),
+          );
+          const isCurrentMonth = day.getMonth() === anchor.getMonth();
+          const canPlanOnDay = isCurrentMonth && day >= todayStart();
+          const className = `marketingDayCell ${isCurrentMonth ? "" : "outside"} ${isToday(day) ? "today" : ""}`;
+          if (canPlanOnDay && !dayItems.length && onPlanDate)
+            return (
+              <button
+                type="button"
+                className={`${className} marketingEmptyDay`}
+                key={day.toISOString()}
+                onClick={() => onPlanDate(day)}
+                aria-label={`Evenement plannen op ${formatDate(day)}`}
+              >
+                <strong>
+                  {isToday(day) ? "Vandaag · " : ""}
+                  {day.getDate()}
+                </strong>
+              </button>
+            );
+          return (
+            <div className={className} key={day.toISOString()}>
+              <strong>
+                {isToday(day) ? "Vandaag · " : ""}
+                {day.getDate()}
+              </strong>
+              <div>
+                {dayItems.map((item) => (
+                  <CalendarEvent
+                    key={item.id}
+                    item={item}
+                    business={businessById.get(String(item.business_id))}
+                    onSelectEvent={onSelectEvent}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function WeekCalendar({ anchor, items, businessById, onSelectEvent }) {
-  const first = startOfWeek(anchor); const days = Array.from({ length: 7 }, (_, index) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
-  return <div className="marketingWeekCalendar"><div className="marketingWeekHeader">{days.map((day) => <strong className={isToday(day) ? "today" : ""} key={day.toISOString()}>{isToday(day) ? "Vandaag · " : ""}{formatDate(day, { weekday: "short", day: "numeric", month: "short" })}</strong>)}</div><div className="marketingWeekColumns">{days.map((day) => { const dayItems = items.filter((item) => sameDay(dateOnly(itemStart(item)), day)); return <div className={`marketingWeekColumn ${isToday(day) ? "today" : ""}`} key={day.toISOString()}>{dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={onSelectEvent} />)}{!dayItems.length && <span className="marketingCalendarEmpty">Geen afspraken</span>}</div>; })}</div></div>;
+  const first = startOfWeek(anchor);
+  const days = Array.from(
+    { length: 7 },
+    (_, index) =>
+      new Date(first.getFullYear(), first.getMonth(), first.getDate() + index),
+  );
+  return (
+    <div className="marketingWeekCalendar">
+      <div className="marketingWeekHeader">
+        {days.map((day) => (
+          <strong
+            className={isToday(day) ? "today" : ""}
+            key={day.toISOString()}
+          >
+            {isToday(day) ? "Vandaag · " : ""}
+            {formatDate(day, {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+            })}
+          </strong>
+        ))}
+      </div>
+      <div className="marketingWeekColumns">
+        {days.map((day) => {
+          const dayItems = items.filter((item) =>
+            sameDay(dateOnly(itemStart(item)), day),
+          );
+          return (
+            <div
+              className={`marketingWeekColumn ${isToday(day) ? "today" : ""}`}
+              key={day.toISOString()}
+            >
+              {dayItems.map((item) => (
+                <CalendarEvent
+                  key={item.id}
+                  item={item}
+                  business={businessById.get(String(item.business_id))}
+                  onSelectEvent={onSelectEvent}
+                />
+              ))}
+              {!dayItems.length && (
+                <span className="marketingCalendarEmpty">Geen afspraken</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function YearCalendar({ anchor, items, onSelectEvent }) {
   const [selectedDay, setSelectedDay] = useState(null);
   const dayList = useRef(null);
-  useEffect(() => { setSelectedDay(null); }, [anchor.getFullYear()]);
-  useEffect(() => { dayList.current?.scrollIntoView?.({ block: "nearest" }); }, [selectedDay]);
-  return <div className="marketingYearGrid">{Array.from({ length: 12 }, (_, month) => {
-    const monthDate = new Date(anchor.getFullYear(), month, 1);
-    const current = monthDate.getMonth() === todayStart().getMonth() && monthDate.getFullYear() === todayStart().getFullYear();
-    const gridStart = startOfWeek(monthDate);
-    const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index));
-    const monthItems = items.filter(item => { const date = dateOnly(itemStart(item)); return date?.getFullYear() === anchor.getFullYear() && date.getMonth() === month; });
-    return <article className={`marketingMiniMonth ${current ? "currentMonth" : ""}`} key={month}>
-      <h4>{current ? "Deze maand · " : ""}{formatDate(monthDate, { month: "long" })}</h4>
-      <div className="marketingMiniWeekdays">{["M", "D", "W", "D", "V", "Z", "Z"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
-      <div className="marketingMiniDays">{days.map(day => {
-        const dayItems = monthItems.filter(item => sameDay(dateOnly(itemStart(item)), day));
-        return <button type="button" className={`${day.getMonth() !== month ? "outside" : ""} ${dayItems.length ? "hasEvent" : ""} ${isToday(day) ? "today" : ""}`}
-          onClick={() => dayItems.length && setSelectedDay(day)} title={dayItems.map(eventText).join(", ")}
-          aria-label={`${formatDate(day)} · ${dayItems.length} items`} key={day.toISOString()}>{isToday(day) ? "Vandaag" : day.getDate()}</button>;
-      })}</div><small>{monthItems.length} {monthItems.length === 1 ? "item" : "items"}</small>
-    </article>;
-  })}{selectedDay && <section className={publicationStyles.dayList} ref={dayList} aria-label="Gekozen dag">
-    <strong>{formatDate(selectedDay)}</strong>
-    {items.filter(item => sameDay(dateOnly(itemStart(item)), selectedDay)).map(item => <CalendarEvent key={item.id} item={item} onSelectEvent={onSelectEvent} />)}
-  </section>}</div>;
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [anchor.getFullYear()]);
+  useEffect(() => {
+    dayList.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedDay]);
+  return (
+    <div className="marketingYearGrid">
+      {Array.from({ length: 12 }, (_, month) => {
+        const monthDate = new Date(anchor.getFullYear(), month, 1);
+        const current =
+          monthDate.getMonth() === todayStart().getMonth() &&
+          monthDate.getFullYear() === todayStart().getFullYear();
+        const gridStart = startOfWeek(monthDate);
+        const days = Array.from(
+          { length: 42 },
+          (_, index) =>
+            new Date(
+              gridStart.getFullYear(),
+              gridStart.getMonth(),
+              gridStart.getDate() + index,
+            ),
+        );
+        const monthItems = items.filter((item) => {
+          const date = dateOnly(itemStart(item));
+          return (
+            date?.getFullYear() === anchor.getFullYear() &&
+            date.getMonth() === month
+          );
+        });
+        return (
+          <article
+            className={`marketingMiniMonth ${current ? "currentMonth" : ""}`}
+            key={month}
+          >
+            <h4>
+              {current ? "Deze maand · " : ""}
+              {formatDate(monthDate, { month: "long" })}
+            </h4>
+            <div className="marketingMiniWeekdays">
+              {["M", "D", "W", "D", "V", "Z", "Z"].map((day, index) => (
+                <span key={`${day}-${index}`}>{day}</span>
+              ))}
+            </div>
+            <div className="marketingMiniDays">
+              {days.map((day) => {
+                const dayItems = monthItems.filter((item) =>
+                  sameDay(dateOnly(itemStart(item)), day),
+                );
+                return (
+                  <button
+                    type="button"
+                    className={`${day.getMonth() !== month ? "outside" : ""} ${dayItems.length ? "hasEvent" : ""} ${isToday(day) ? "today" : ""}`}
+                    onClick={() => dayItems.length && setSelectedDay(day)}
+                    title={dayItems.map(eventText).join(", ")}
+                    aria-label={`${formatDate(day)} · ${dayItems.length} items`}
+                    key={day.toISOString()}
+                  >
+                    {isToday(day) ? "Vandaag" : day.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+            <small>
+              {monthItems.length} {monthItems.length === 1 ? "item" : "items"}
+            </small>
+          </article>
+        );
+      })}
+      {selectedDay && (
+        <section
+          className={publicationStyles.dayList}
+          ref={dayList}
+          aria-label="Gekozen dag"
+        >
+          <strong>{formatDate(selectedDay)}</strong>
+          {items
+            .filter((item) => sameDay(dateOnly(itemStart(item)), selectedDay))
+            .map((item) => (
+              <CalendarEvent
+                key={item.id}
+                item={item}
+                onSelectEvent={onSelectEvent}
+              />
+            ))}
+        </section>
+      )}
+    </div>
+  );
 }
 
-function eventReference(item) { return String(item.id).slice(-8); }
+function eventReference(item) {
+  return String(item.id).slice(-8);
+}
 
 // Stored event identifiers describe links, not proof of duplicate live publications.
 export function duplicateChannelReferences(item) {
   const distribution = distributionFor(item);
-  const websiteId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || (distribution.external_source === "eventin" ? distribution.external_id : "") || "");
+  const websiteId = String(
+    distribution.eventin_event_id ||
+      distribution.external_ids?.eventin ||
+      (distribution.external_source === "eventin"
+        ? distribution.external_id
+        : "") ||
+      "",
+  );
   return {
     website: /^\d+$/.test(websiteId) ? websiteId : "",
     facebook: facebookEventId(distribution),
@@ -559,24 +1643,65 @@ export function duplicateChannelReferences(item) {
 function DuplicateRecordIdentity({ item, currentItem }) {
   const links = duplicateChannelReferences(item);
   const currentLinks = duplicateChannelReferences(currentItem);
-  return <div className="marketingDuplicateIdentity">
-    <span>{isExternalEvent(item) ? "Externe bron" : "Horeca OS"} · {statusFor(item, distributionFor(item)).label} · <span title={String(item.id)}>Kenmerk {eventReference(item)}</span></span>
-    {["website", "facebook"].map(channel => <span key={channel}>
-      <b>{channelLabels[channel]}: </b>
-      {links[channel] ? <>evenement {links[channel]}{item.id !== currentItem.id && currentLinks[channel] && <em>{links[channel] === currentLinks[channel] ? " · dezelfde koppeling" : " · andere koppeling"}</em>}</> : "geen evenementkoppeling bekend"}
-    </span>)}
-  </div>;
+  return (
+    <div className="marketingDuplicateIdentity">
+      <span>
+        {isExternalEvent(item) ? "Externe bron" : "Horeca OS"} ·{" "}
+        {statusFor(item, distributionFor(item)).label} ·{" "}
+        <span title={String(item.id)}>Kenmerk {eventReference(item)}</span>
+      </span>
+      {["website", "facebook"].map((channel) => (
+        <span key={channel}>
+          <b>{channelLabels[channel]}: </b>
+          {links[channel] ? (
+            <>
+              evenement {links[channel]}
+              {item.id !== currentItem.id && currentLinks[channel] && (
+                <em>
+                  {links[channel] === currentLinks[channel]
+                    ? " · dezelfde koppeling"
+                    : " · andere koppeling"}
+                </em>
+              )}
+            </>
+          ) : (
+            "geen evenementkoppeling bekend"
+          )}
+        </span>
+      ))}
+    </div>
+  );
 }
 
-function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMerge, busy }) {
-  const others = [...new Map([...candidates, ...(matchItem ? [matchItem] : [])].filter(candidate => candidate.id !== item.id).map(candidate => [candidate.id, candidate])).values()];
+function DuplicateEventReview({
+  item,
+  matchItem,
+  candidates,
+  onChooseMatch,
+  onMerge,
+  busy,
+}) {
+  const others = [
+    ...new Map(
+      [...candidates, ...(matchItem ? [matchItem] : [])]
+        .filter((candidate) => candidate.id !== item.id)
+        .map((candidate) => [candidate.id, candidate]),
+    ).values(),
+  ];
   const [mergeTitle, setMergeTitle] = useState(eventText(item));
-  const [mergeDescription, setMergeDescription] = useState(descriptionFor(item));
+  const [mergeDescription, setMergeDescription] = useState(
+    descriptionFor(item),
+  );
   const [textChoice, setTextChoice] = useState("current");
   const comparisonPanel = useRef(null);
   const [comparisonRequest, setComparisonRequest] = useState(null);
   useEffect(() => {
-    if (!comparisonRequest || comparisonRequest.id !== matchItem?.id || !comparisonPanel.current) return;
+    if (
+      !comparisonRequest ||
+      comparisonRequest.id !== matchItem?.id ||
+      !comparisonPanel.current
+    )
+      return;
     comparisonPanel.current.open = true;
     const heading = comparisonPanel.current.querySelector("summary");
     heading?.focus({ preventScroll: true });
@@ -593,59 +1718,234 @@ function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMe
   }, [item.id, matchItem?.id]);
   function chooseText(choice) {
     setTextChoice(choice);
-    setMergeTitle(choice === "current" ? eventText(item) : choice === "match" ? eventText(matchItem) : `${eventText(item)} / ${eventText(matchItem)}`);
-    setMergeDescription(choice === "current" ? descriptionFor(item) : choice === "match" ? descriptionFor(matchItem) : `${descriptionFor(item)}\n\n${descriptionFor(matchItem)}`);
+    setMergeTitle(
+      choice === "current"
+        ? eventText(item)
+        : choice === "match"
+          ? eventText(matchItem)
+          : `${eventText(item)} / ${eventText(matchItem)}`,
+    );
+    setMergeDescription(
+      choice === "current"
+        ? descriptionFor(item)
+        : choice === "match"
+          ? descriptionFor(matchItem)
+          : `${descriptionFor(item)}\n\n${descriptionFor(matchItem)}`,
+    );
   }
-  return <details className="marketingDetailFold marketingDuplicateReview">
-    <summary>Mogelijke dubbele evenementen controleren <span className="marketingDuplicateCount">{others.length + 1} agendapunten op deze datum</span></summary>
-    <p className="marketingDuplicateHelp">Dit zijn aparte agendapunten bij dezelfde vestiging en datum, niet automatisch dubbele publicaties. Vergelijk de koppelingen: hetzelfde evenementnummer verwijst naar hetzelfde evenement. Geen bekende koppeling bewijst niet dat er niets online staat.</p>
-    <div className="marketingDuplicateRecords">
-      <section className="marketingDuplicateRecord current" aria-label="Dit agendapunt">
-        <span className="marketingDuplicateLabel">Dit agendapunt</span>
-        <strong>{eventText(item)}</strong>
-        <DuplicateRecordIdentity item={item} currentItem={item} />
-      </section>
-      {others.map(candidate => <section className={`marketingDuplicateRecord ${matchItem?.id === candidate.id ? "selected" : ""}`} key={candidate.id} aria-label={`Agendapunt ${eventReference(candidate)}`}>
-        <span className="marketingDuplicateLabel">{externalTitlesMatch(eventText(item), eventText(candidate)) ? "Mogelijk dubbel · vergelijkbare titel" : "Ander agendapunt op dezelfde datum"}</span>
-        <strong>{eventText(candidate)}</strong>
-        <DuplicateRecordIdentity item={candidate} currentItem={item} />
-        {matchItem?.id === candidate.id && <small>Geselecteerd voor vergelijking</small>}
-        <button type="button" className="secondaryButton" aria-controls={`duplicate-texts-${item.id}`} disabled={busy || !onChooseMatch} onClick={() => compareCandidate(candidate)}>Vergelijk teksten</button>
-      </section>)}
-    </div>
-    {matchItem && <>
-      <details key={matchItem.id} id={`duplicate-texts-${item.id}`} ref={comparisonPanel} className="marketingDetailFold marketingDuplicateTexts"><summary>Teksten naast elkaar bekijken</summary>
-        <p>Je vergelijkt dit agendapunt ({eventReference(item)}) met het gekozen agendapunt ({eventReference(matchItem)}). Alleen kijken en kiezen wijzigt niets.</p>
-        <div className="marketingComparisonGrid">
-          <ComparisonCard label={`Dit agendapunt · ${eventReference(item)}`} item={item} />
-          <ComparisonCard label={`Gekozen agendapunt · ${eventReference(matchItem)}`} item={matchItem} />
-        </div>
-      </details>
-      <section className="marketingMergeContent" aria-label="Samenvoegvoorstel">
-        <h4>Welke tekst wil je behouden?</h4>
-        <p>Je bewerkt hieronder alleen het voorstel. Samenvoegen bewaart de gekozen tekst en brengt deze twee agendapunten samen in Horeca OS. Website en Facebook blijven ongewijzigd. Website bijwerken doe je daarna apart.</p>
-        <div className="marketingMergeChoices">
-          <button type="button" className="secondaryButton" aria-pressed={textChoice === "current"} disabled={busy} onClick={() => chooseText("current")}>Tekst van dit agendapunt</button>
-          <button type="button" className="secondaryButton" aria-pressed={textChoice === "match"} disabled={busy} onClick={() => chooseText("match")}>Tekst van gekozen agendapunt</button>
-          <button type="button" className="secondaryButton" aria-pressed={textChoice === "combined"} disabled={busy} onClick={() => chooseText("combined")}>Teksten combineren</button>
-        </div>
-        <label>Titel<input value={mergeTitle} disabled={busy} onChange={event => { setMergeTitle(event.target.value); setTextChoice("custom"); }} /></label>
-        <label>Omschrijving<textarea rows={5} value={mergeDescription} disabled={busy} onChange={event => { setMergeDescription(event.target.value); setTextChoice("custom"); }} /></label>
-        <button type="button" className="primaryButton" disabled={busy || !onMerge || !mergeTitle.trim()} onClick={() => onMerge({ title: mergeTitle, description: mergeDescription })}>{busy ? "Even geduld…" : "Samenvoegen in Horeca OS"}</button>
-      </section>
-    </>}
-  </details>;
+  return (
+    <details className="marketingDetailFold marketingDuplicateReview">
+      <summary>
+        Mogelijke dubbele evenementen controleren{" "}
+        <span className="marketingDuplicateCount">
+          {others.length + 1} agendapunten op deze datum
+        </span>
+      </summary>
+      <p className="marketingDuplicateHelp">
+        Dit zijn aparte agendapunten bij dezelfde vestiging en datum, niet
+        automatisch dubbele publicaties. Vergelijk de koppelingen: hetzelfde
+        evenementnummer verwijst naar hetzelfde evenement. Geen bekende
+        koppeling bewijst niet dat er niets online staat.
+      </p>
+      <div className="marketingDuplicateRecords">
+        <section
+          className="marketingDuplicateRecord current"
+          aria-label="Dit agendapunt"
+        >
+          <span className="marketingDuplicateLabel">Dit agendapunt</span>
+          <strong>{eventText(item)}</strong>
+          <DuplicateRecordIdentity item={item} currentItem={item} />
+        </section>
+        {others.map((candidate) => (
+          <section
+            className={`marketingDuplicateRecord ${matchItem?.id === candidate.id ? "selected" : ""}`}
+            key={candidate.id}
+            aria-label={`Agendapunt ${eventReference(candidate)}`}
+          >
+            <span className="marketingDuplicateLabel">
+              {externalTitlesMatch(eventText(item), eventText(candidate))
+                ? "Mogelijk dubbel · vergelijkbare titel"
+                : "Ander agendapunt op dezelfde datum"}
+            </span>
+            <strong>{eventText(candidate)}</strong>
+            <DuplicateRecordIdentity item={candidate} currentItem={item} />
+            {matchItem?.id === candidate.id && (
+              <small>Geselecteerd voor vergelijking</small>
+            )}
+            <button
+              type="button"
+              className="secondaryButton"
+              aria-controls={`duplicate-texts-${item.id}`}
+              disabled={busy || !onChooseMatch}
+              onClick={() => compareCandidate(candidate)}
+            >
+              Vergelijk teksten
+            </button>
+          </section>
+        ))}
+      </div>
+      {matchItem && (
+        <>
+          <details
+            key={matchItem.id}
+            id={`duplicate-texts-${item.id}`}
+            ref={comparisonPanel}
+            className="marketingDetailFold marketingDuplicateTexts"
+          >
+            <summary>Teksten naast elkaar bekijken</summary>
+            <p>
+              Je vergelijkt dit agendapunt ({eventReference(item)}) met het
+              gekozen agendapunt ({eventReference(matchItem)}). Alleen kijken en
+              kiezen wijzigt niets.
+            </p>
+            <div className="marketingComparisonGrid">
+              <ComparisonCard
+                label={`Dit agendapunt · ${eventReference(item)}`}
+                item={item}
+              />
+              <ComparisonCard
+                label={`Gekozen agendapunt · ${eventReference(matchItem)}`}
+                item={matchItem}
+              />
+            </div>
+          </details>
+          <section
+            className="marketingMergeContent"
+            aria-label="Samenvoegvoorstel"
+          >
+            <h4>Welke tekst wil je behouden?</h4>
+            <p>
+              Je bewerkt hieronder alleen het voorstel. Samenvoegen bewaart de
+              gekozen tekst en brengt deze twee agendapunten samen in Horeca OS.
+              Website en Facebook blijven ongewijzigd. Website bijwerken doe je
+              daarna apart.
+            </p>
+            <div className="marketingMergeChoices">
+              <button
+                type="button"
+                className="secondaryButton"
+                aria-pressed={textChoice === "current"}
+                disabled={busy}
+                onClick={() => chooseText("current")}
+              >
+                Tekst van dit agendapunt
+              </button>
+              <button
+                type="button"
+                className="secondaryButton"
+                aria-pressed={textChoice === "match"}
+                disabled={busy}
+                onClick={() => chooseText("match")}
+              >
+                Tekst van gekozen agendapunt
+              </button>
+              <button
+                type="button"
+                className="secondaryButton"
+                aria-pressed={textChoice === "combined"}
+                disabled={busy}
+                onClick={() => chooseText("combined")}
+              >
+                Teksten combineren
+              </button>
+            </div>
+            <label>
+              Titel
+              <input
+                value={mergeTitle}
+                disabled={busy}
+                onChange={(event) => {
+                  setMergeTitle(event.target.value);
+                  setTextChoice("custom");
+                }}
+              />
+            </label>
+            <label>
+              Omschrijving
+              <textarea
+                rows={5}
+                value={mergeDescription}
+                disabled={busy}
+                onChange={(event) => {
+                  setMergeDescription(event.target.value);
+                  setTextChoice("custom");
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="primaryButton"
+              disabled={busy || !onMerge || !mergeTitle.trim()}
+              onClick={() =>
+                onMerge({ title: mergeTitle, description: mergeDescription })
+              }
+            >
+              {busy ? "Even geduld…" : "Samenvoegen in Horeca OS"}
+            </button>
+          </section>
+        </>
+      )}
+    </details>
+  );
 }
 
-
-export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPredisSaved, onWhatsappSaved, onCalendarSaved, onSeriesSaved, onPhotoSaved, onSeriesOpen, onInstagramPublished, item, matchItem, sameDayItems = [], sourceComparisonItems = [], sourceComparisonCheck = "idle", business, onClose, onLink, onLinkExisting, onChooseMatch, onSyncContent, onUpdateWebsite, facebookLinkCheck, onConfirmFacebook, onCompareSources, comparing, linking, syncError, mergeNotice, contentSaveNotice }) {
-  const distribution = withVerifiedFacebookEvent(distributionFor(item), sourceComparisonItems); const status = statusFor(item, distribution); const firstEventinPlacement = eventinPublishedAt(item, distribution); const external = isExternalEvent(item); const externalLabel = distribution.external_source === "multiple" ? "Extern Eventin + Facebook" : distribution.external_source === "eventin" ? "Extern Eventin-evenement" : "Extern Facebook-event"; const start = itemStart(item); const end = distribution.common?.end;
+export function EventDetails({
+  workspaceId,
+  session,
+  onPredisLibrarySaved,
+  onPredisSaved,
+  onWhatsappSaved,
+  onCalendarSaved,
+  onSeriesSaved,
+  onPhotoSaved,
+  onSeriesOpen,
+  onInstagramPublished,
+  item,
+  matchItem,
+  sameDayItems = [],
+  sourceComparisonItems = [],
+  sourceComparisonCheck = "idle",
+  business,
+  onClose,
+  onLink,
+  onLinkExisting,
+  onChooseMatch,
+  onSyncContent,
+  onUpdateWebsite,
+  onOpenEventinForCampaign,
+  facebookLinkCheck,
+  onConfirmFacebook,
+  onCompareSources,
+  comparing,
+  linking,
+  syncError,
+  mergeNotice,
+  contentSaveNotice,
+}) {
+  const distribution = withVerifiedFacebookEvent(
+    distributionFor(item),
+    sourceComparisonItems,
+  );
+  const status = statusFor(item, distribution);
+  const firstEventinPlacement = eventinPublishedAt(item, distribution);
+  const external = isExternalEvent(item);
+  const externalLabel =
+    distribution.external_source === "multiple"
+      ? "Extern Eventin + Facebook"
+      : distribution.external_source === "eventin"
+        ? "Extern Eventin-evenement"
+        : "Extern Facebook-event";
+  const start = itemStart(item);
+  const end = distribution.common?.end;
   const checkedAt = distribution.verification?.checked_at;
   const mergeNoticePanel = useRef(null);
   useEffect(() => {
     if (!mergeNotice || !mergeNoticePanel.current) return;
     mergeNoticePanel.current.focus({ preventScroll: true });
-    mergeNoticePanel.current.scrollIntoView({ block: "start", inline: "nearest" });
+    mergeNoticePanel.current.scrollIntoView({
+      block: "start",
+      inline: "nearest",
+    });
   }, [mergeNotice]);
   const channelPanels = useRef({});
   const [openChannels, setOpenChannels] = useState({});
@@ -656,16 +1956,40 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
   const [baseUnsaved, setBaseUnsaved] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   function closeDetails() {
-    if ((!photoBusy && !contentDirty && !baseUnsaved && !predisUnsaved && !calendarUnsaved && !seriesUnsaved) || window.confirm("Je voorbereiding is nog niet bewaard of wordt verwerkt. Wil je toch sluiten?")) {
+    if (
+      (!photoBusy &&
+        !contentDirty &&
+        !baseUnsaved &&
+        !predisUnsaved &&
+        !calendarUnsaved &&
+        !seriesUnsaved) ||
+      window.confirm(
+        "Je voorbereiding is nog niet bewaard of wordt verwerkt. Wil je toch sluiten?",
+      )
+    ) {
       if (external) dismissedExternalItemIds.add(String(item.id));
       onClose();
     }
   }
-  function openSeriesOccurrence(row) { if ((!baseUnsaved && !predisUnsaved && !calendarUnsaved) || window.confirm('Je kanaalvoorbereiding is nog niet bewaard. Toch een andere uitvoering openen?')) onSeriesOpen?.(row); }
-  useEffect(() => { setMetaUnsaved(false); }, [item.id]);
-  useEffect(() => { setOpenChannels({}); }, [item.id]);
+  function openSeriesOccurrence(row) {
+    if (
+      (!baseUnsaved && !predisUnsaved && !calendarUnsaved) ||
+      window.confirm(
+        "Je kanaalvoorbereiding is nog niet bewaard. Toch een andere uitvoering openen?",
+      )
+    )
+      onSeriesOpen?.(row);
+  }
+  useEffect(() => {
+    setMetaUnsaved(false);
+  }, [item.id]);
+  useEffect(() => {
+    setOpenChannels({});
+  }, [item.id]);
   function trackChannel(channel, open) {
-    setOpenChannels(current => current[channel] === open ? current : { ...current, [channel]: open });
+    setOpenChannels((current) =>
+      current[channel] === open ? current : { ...current, [channel]: open },
+    );
   }
   function openChannel(channel) {
     const panel = channelPanels.current[channel];
@@ -677,34 +2001,75 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
     // "nearest" can leave only the heading visible at the bottom of the modal.
     // Align its start so the opened form and confirmation button come into view.
     summary?.scrollIntoView({ block: "start", inline: "nearest" });
-    if (channel === "facebook" && !facebookEventId(distribution)) onCompareSources?.();
+    if (channel === "facebook" && !facebookEventId(distribution))
+      onCompareSources?.();
   }
   useEffect(() => {
-    if (["facebook", "predis"].includes(item.requestedChannel)) openChannel(item.requestedChannel);
+    if (["facebook", "predis"].includes(item.requestedChannel))
+      openChannel(item.requestedChannel);
   }, [item.id, item.requestedChannel]);
   const [chosenContent, setChosenContent] = useState(null);
-  useEffect(() => { setChosenContent(null); }, [item.id]);
+  useEffect(() => {
+    setChosenContent(null);
+  }, [item.id]);
   const canChoose = !external && !baseUnsaved && Boolean(onSyncContent);
   const savedContent = eventContent(distribution);
-  const contentDirty = baseUnsaved || Boolean(chosenContent && ["title", "description", "start", "end", "location"].some((key) => chosenContent[key] !== savedContent[key]));
-  const visibleSaveNotice = contentSaveNotice?.itemId === item.id && chosenContent
-    && ["title", "description", "start", "end", "location"].every((key) => !Object.hasOwn(contentSaveNotice, key) || contentSaveNotice[key] === chosenContent[key])
-    ? contentSaveNotice : null;
+  const contentDirty =
+    baseUnsaved ||
+    Boolean(
+      chosenContent &&
+      ["title", "description", "start", "end", "location"].some(
+        (key) => chosenContent[key] !== savedContent[key],
+      ),
+    );
+  const visibleSaveNotice =
+    contentSaveNotice?.itemId === item.id &&
+    chosenContent &&
+    ["title", "description", "start", "end", "location"].every(
+      (key) =>
+        !Object.hasOwn(contentSaveNotice, key) ||
+        contentSaveNotice[key] === chosenContent[key],
+    )
+      ? contentSaveNotice
+      : null;
   function saveChosenDetails() {
-    const content = { title: chosenContent.title, description: chosenContent.description };
-    for (const key of ["start", "end", "location"]) if (chosenContent[key] !== savedContent[key]) content[key] = chosenContent[key];
+    const content = {
+      title: chosenContent.title,
+      description: chosenContent.description,
+    };
+    for (const key of ["start", "end", "location"])
+      if (chosenContent[key] !== savedContent[key])
+        content[key] = chosenContent[key];
     onSyncContent(content);
   }
-  const sources = [{ label: "Horeca OS", item }, ...sourceComparisonItems.filter(source => source.label !== "Horeca OS")];
-  const comparisonState = sourceComparisonStatus(item, sources, comparing ? "pending" : sourceComparisonCheck);
+  const sources = [
+    { label: "Horeca OS", item },
+    ...sourceComparisonItems.filter((source) => source.label !== "Horeca OS"),
+  ];
+  const comparisonState = sourceComparisonStatus(
+    item,
+    sources,
+    comparing ? "pending" : sourceComparisonCheck,
+  );
   useEffect(() => {
-    if (comparisonState.key !== "incomplete" || typeof document === "undefined") return;
-    document.querySelector?.('[aria-label="Controle op tekstverschillen"]')?.scrollIntoView?.({ block: "start", inline: "nearest", behavior: "smooth" });
+    if (comparisonState.key !== "incomplete" || typeof document === "undefined")
+      return;
+    document
+      .querySelector?.('[aria-label="Controle op tekstverschillen"]')
+      ?.scrollIntoView?.({
+        block: "start",
+        inline: "nearest",
+        behavior: "smooth",
+      });
   }, [comparisonState.key, item.id]);
   function chooseSource(source) {
     const sourceDistribution = distributionFor(source.item);
     const common = sourceDistribution.common || {};
-    const description = String(common.description ?? common.short_description ?? source.item.body ?? "").replace(/\s*\{\s*["']@context[\s\S]*$/i, "").trim();
+    const description = String(
+      common.description ?? common.short_description ?? source.item.body ?? "",
+    )
+      .replace(/\s*\{\s*["']@context[\s\S]*$/i, "")
+      .trim();
     const current = eventContent(distribution);
     setChosenContent({
       label: source.label,
@@ -716,12 +2081,32 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
     });
   }
   const websitePhoto = distribution.event_photo_import;
-  const websiteNeedsPhotoUpdate = websitePhoto?.url === distribution.common?.image_url && Boolean(websitePhoto?.hash) && !(distribution.event_photo_website?.status === "updated" && distribution.event_photo_website?.hash === websitePhoto.hash && distribution.event_photo_website?.targetId === String(distribution.eventin_event_id || distribution.external_ids?.eventin || ""));
-  const websiteNeedsTextUpdate = comparisonState.differences?.some(source => source.source === "Website (Eventin)");
-  const websiteNeedsUpdate = Boolean(websiteNeedsTextUpdate || websiteNeedsPhotoUpdate);
-  const channelNeedsAction = (channel) => ["concept", "warning", "error", "unchecked"].includes(channelStatus(item, channel, comparisonState).key);
+  const websiteNeedsPhotoUpdate =
+    websitePhoto?.url === distribution.common?.image_url &&
+    Boolean(websitePhoto?.hash) &&
+    !(
+      distribution.event_photo_website?.status === "updated" &&
+      distribution.event_photo_website?.hash === websitePhoto.hash &&
+      distribution.event_photo_website?.targetId ===
+        String(
+          distribution.eventin_event_id ||
+            distribution.external_ids?.eventin ||
+            "",
+        )
+    );
+  const websiteNeedsTextUpdate = comparisonState.differences?.some(
+    (source) => source.source === "Website (Eventin)",
+  );
+  const websiteNeedsUpdate = Boolean(
+    websiteNeedsTextUpdate || websiteNeedsPhotoUpdate,
+  );
+  const channelNeedsAction = (channel) =>
+    ["concept", "warning", "error", "unchecked"].includes(
+      channelStatus(item, channel, comparisonState).key,
+    );
+  const eventinFirst = !external && Boolean(onOpenEventinForCampaign);
   const channelActions = {
-    website: websiteNeedsUpdate,
+    website: eventinFirst || websiteNeedsUpdate,
     facebook: channelNeedsAction("facebook"),
     facebook_giveaway: true,
     whatsapp: true,
@@ -731,113 +2116,1118 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
     predis: (() => {
       const saved = distribution.manual_predis;
       const entries = saved?.draft?.entries || [];
-      return !entries.length || entries.some(entry => !["scheduled", "published"].includes(saved.confirmations?.[entry.key]?.state));
+      return (
+        !entries.length ||
+        entries.some(
+          (entry) =>
+            !["scheduled", "published"].includes(
+              saved.confirmations?.[entry.key]?.state,
+            ),
+        )
+      );
     })(),
   };
-  const sourcePanelNeeded = ["different", "incomplete", "unlinked", "pending", "queued"].includes(comparisonState.key);
-  const websitePanel = !external && websiteNeedsUpdate && <details hidden={!openChannels.website} key={`website-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-website-${item.id}`} ref={node => { channelPanels.current.website = node; }} onToggle={event => trackChannel("website", event.currentTarget.open)}><summary>Website afzonderlijk bijwerken</summary><section className="marketingChosenContent" aria-label="Website afzonderlijk bijwerken"><h4>Website bijwerken</h4><p><strong>Te plaatsen titel: </strong>{savedContent.title}</p><p>Alleen deze actie wijzigt het bestaande website-evenement met de tekst die in Horeca OS is opgeslagen. Facebook blijft ongewijzigd.</p><strong>{contentDeliveryStatus(distribution, "website").key === "updating" ? "Website wordt bijgewerkt en gecontroleerd…" : contentDeliveryStatus(distribution, "website").key === "failed" ? contentDeliveryStatus(distribution, "website").label : channelStatus(item, "website", comparisonState).label}</strong>{contentDirty && <p>Bewaar eerst je gekozen tekst in Horeca OS.</p>}<button type="button" className="secondaryButton" disabled={contentDirty || (linking || photoBusy) || comparing || !/^\d+$/.test(contentSnapshot(distribution, "website").event_id)} onClick={onUpdateWebsite}>Website bijwerken</button></section><EventPhotoSync mode="website" workspaceId={workspaceId} session={session} item={item} busy={linking || photoBusy || comparing || baseUnsaved || calendarUnsaved || predisUnsaved || seriesUnsaved || contentDirty} onBusyChange={setPhotoBusy} onSaved={onPhotoSaved} /></details>;
-  const chosenEditor = canChoose && chosenContent ? <section className="marketingChosenContent" aria-label="Voorbeeld gekozen tekst" aria-live="polite"><h4>Gekozen bron: {chosenContent.label}</h4><label>Titel aanpassen<input value={chosenContent.title} disabled={linking || photoBusy} onChange={event => setChosenContent(current => ({ ...current, title: event.target.value }))} /></label><label>Tekst aanpassen<textarea rows={6} value={chosenContent.description} disabled={linking || photoBusy} onChange={event => setChosenContent(current => ({ ...current, description: event.target.value }))} /></label><div className="marketingChosenEventFacts"><span><strong>Begin:</strong> {chosenContent.start?.replace("T", " ") || "Niet opgegeven"}</span><span><strong>Einde:</strong> {chosenContent.end?.replace("T", " ") || "Niet opgegeven"}</span><span><strong>Locatie:</strong> {chosenContent.location || "Niet opgegeven"}</span></div><small>{contentDirty ? "Bewaar eerst deze gegevens; daarna kun je de foto gebruiken. " : ""}Tijden en locatie gaan mee wanneer ze van deze bron verschillen. Website en Facebook werk je daarna afzonderlijk bij.</small><button type="button" className="primaryButton" disabled={!chosenContent.title.trim() || linking || photoBusy} onClick={saveChosenDetails}>{(linking || photoBusy) ? "Even geduld… bewaren" : "Tekst bewaren in Horeca OS"}</button><EventContentSaveNotice notice={visibleSaveNotice} /><SourceDifferenceActions state={comparisonState} itemId={item.id} dirty={contentDirty} busy={(linking || photoBusy) || comparing} onOpen={openChannel} /></section> : null;
+  const sourcePanelNeeded =
+    !eventinFirst &&
+    ["different", "incomplete", "unlinked", "pending", "queued"].includes(
+      comparisonState.key,
+    );
+  const websitePanel = !eventinFirst && !external && websiteNeedsUpdate && (
+    <details
+      hidden={!openChannels.website}
+      key={`website-edit:${item.id}`}
+      className="marketingDetailFold"
+      id={`event-channel-website-${item.id}`}
+      ref={(node) => {
+        channelPanels.current.website = node;
+      }}
+      onToggle={(event) => trackChannel("website", event.currentTarget.open)}
+    >
+      <summary>Website afzonderlijk bijwerken</summary>
+      <section
+        className="marketingChosenContent"
+        aria-label="Website afzonderlijk bijwerken"
+      >
+        <h4>Website bijwerken</h4>
+        <p>
+          <strong>Te plaatsen titel: </strong>
+          {savedContent.title}
+        </p>
+        <p>
+          Alleen deze actie wijzigt het bestaande website-evenement met de tekst
+          die in Horeca OS is opgeslagen. Facebook blijft ongewijzigd.
+        </p>
+        <strong>
+          {contentDeliveryStatus(distribution, "website").key === "updating"
+            ? "Website wordt bijgewerkt en gecontroleerd…"
+            : contentDeliveryStatus(distribution, "website").key === "failed"
+              ? contentDeliveryStatus(distribution, "website").label
+              : channelStatus(item, "website", comparisonState).label}
+        </strong>
+        {contentDirty && <p>Bewaar eerst je gekozen tekst in Horeca OS.</p>}
+        <button
+          type="button"
+          className="secondaryButton"
+          disabled={
+            contentDirty ||
+            linking ||
+            photoBusy ||
+            comparing ||
+            !/^\d+$/.test(contentSnapshot(distribution, "website").event_id)
+          }
+          onClick={onUpdateWebsite}
+        >
+          Website bijwerken
+        </button>
+      </section>
+      <EventPhotoSync
+        mode="website"
+        workspaceId={workspaceId}
+        session={session}
+        item={item}
+        busy={
+          linking ||
+          photoBusy ||
+          comparing ||
+          baseUnsaved ||
+          calendarUnsaved ||
+          predisUnsaved ||
+          seriesUnsaved ||
+          contentDirty
+        }
+        onBusyChange={setPhotoBusy}
+        onSaved={onPhotoSaved}
+        onOpenWebsite={() => openChannel("website")}
+      />
+    </details>
+  );
+  const chosenEditor =
+    canChoose && chosenContent ? (
+      <section
+        className="marketingChosenContent"
+        aria-label="Voorbeeld gekozen tekst"
+        aria-live="polite"
+      >
+        <h4>Gekozen bron: {chosenContent.label}</h4>
+        <label>
+          Titel aanpassen
+          <input
+            value={chosenContent.title}
+            disabled={linking || photoBusy}
+            onChange={(event) =>
+              setChosenContent((current) => ({
+                ...current,
+                title: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          Tekst aanpassen
+          <textarea
+            rows={6}
+            value={chosenContent.description}
+            disabled={linking || photoBusy}
+            onChange={(event) =>
+              setChosenContent((current) => ({
+                ...current,
+                description: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <div className="marketingChosenEventFacts">
+          <span>
+            <strong>Begin:</strong>{" "}
+            {chosenContent.start?.replace("T", " ") || "Niet opgegeven"}
+          </span>
+          <span>
+            <strong>Einde:</strong>{" "}
+            {chosenContent.end?.replace("T", " ") || "Niet opgegeven"}
+          </span>
+          <span>
+            <strong>Locatie:</strong>{" "}
+            {chosenContent.location || "Niet opgegeven"}
+          </span>
+        </div>
+        <small>
+          {contentDirty
+            ? "Bewaar eerst deze gegevens; daarna kun je de foto gebruiken. "
+            : ""}
+          Tijden en locatie gaan mee wanneer ze van deze bron verschillen.
+          Website en Facebook werk je daarna afzonderlijk bij.
+        </small>
+        <button
+          type="button"
+          className="primaryButton"
+          disabled={!chosenContent.title.trim() || linking || photoBusy}
+          onClick={saveChosenDetails}
+        >
+          {linking || photoBusy
+            ? "Even geduld… bewaren"
+            : "Tekst bewaren in Horeca OS"}
+        </button>
+        <EventContentSaveNotice notice={visibleSaveNotice} />
+        <SourceDifferenceActions
+          state={comparisonState}
+          itemId={item.id}
+          dirty={contentDirty}
+          busy={linking || photoBusy || comparing}
+          onOpen={openChannel}
+        />
+      </section>
+    ) : null;
   const uploadEventImage = async ({ file, role }) => {
-    if (!workspaceId) throw new Error('De werkruimte ontbreekt; sluit dit evenement en open het opnieuw.');
-    const safeName = String(file?.name || 'afbeelding').toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
-    const path = `${workspaceId}/${item.business_id || business?.id || 'algemeen'}/${role}-${Date.now()}-${safeName}`;
-    const { error } = await supabase.storage.from('marketing-assets').upload(path, file, { cacheControl: '31536000', contentType: file.type, upsert: false });
+    if (!workspaceId)
+      throw new Error(
+        "De werkruimte ontbreekt; sluit dit evenement en open het opnieuw.",
+      );
+    const safeName = String(file?.name || "afbeelding")
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-");
+    const path = `${workspaceId}/${item.business_id || business?.id || "algemeen"}/${role}-${Date.now()}-${safeName}`;
+    const { error } = await supabase.storage
+      .from("marketing-assets")
+      .upload(path, file, {
+        cacheControl: "31536000",
+        contentType: file.type,
+        upsert: false,
+      });
     if (error) throw error;
-    const { data } = supabase.storage.from('marketing-assets').getPublicUrl(path);
+    const { data } = supabase.storage
+      .from("marketing-assets")
+      .getPublicUrl(path);
     return { url: data.publicUrl, path };
   };
-  return <div className="marketingEventModalBackdrop" role="dialog" aria-modal="true" aria-label={`Details van ${eventText(item)}`} onMouseDown={(event) => event.target === event.currentTarget && closeDetails()}><article className={`marketingEventDetails ${external ? "externalFacebookDetails" : ""}`} onMouseDown={(event) => event.stopPropagation()}>{((linking || photoBusy) || comparing) && <div className="marketingLinkingNotice" role="status" aria-live="polite"><span className="marketingLoadingSpinner" aria-hidden="true" />{comparing ? "Even geduld… Eventin en Facebook worden naast elkaar gelegd." : "Even geduld… de wijziging wordt verwerkt."}</div>}{mergeNotice && <div className={`marketingMergeNotice ${mergeNotice.kind}`} ref={mergeNoticePanel} tabIndex={-1} role={mergeNotice.kind === "error" ? "alert" : "status"}><strong>{mergeNotice.message}</strong></div>}<div className="marketingEventHeading"><div><p className="eyebrow">EVENEMENTDETAILS</p><h3>{eventText(item)}</h3><p aria-label="Evenementdatum"><strong>{formatDate(start, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong>{start && <span aria-label="Begintijd"> · {formatDate(start, { timeStyle: "short" })}</span>}</p><p>{business?.name || "Onbekende vestiging"} · <span className={`marketingDetailStatus ${status.key}`}>{status.key === "published" && firstEventinPlacement ? `Geplaatst op ${formatDate(firstEventinPlacement, { day: "numeric", month: "long", year: "numeric" })}` : status.label}</span>{external && <span className="marketingExternalBadge">{externalLabel}</span>}</p></div><div className="marketingDetailActions">{external && <button type="button" className="primaryButton" onClick={onLink} disabled={(linking || photoBusy) || comparing}>{(linking || photoBusy) ? "Even geduld… koppeling wordt verwerkt" : "Als nieuw evenement toevoegen"}</button>}<button type="button" className="secondaryButton" onClick={closeDetails}>Evenement sluiten</button></div></div><section className="marketingEventFacts" aria-label="Evenementgegevens"><p><strong>Locatie: </strong>{distribution.common?.location?.trim() || business?.name || "Locatie nog niet bekend"}{end && <span> · Tot {formatDate(end, { timeStyle: "short" })}</span>}</p></section><section className="marketingChannelStatus" aria-label="Publicatiestatus per kanaal"><h4>Publicatiestatus per kanaal</h4>{checkedAt && <p className="marketingLastChecked">Laatste controle: {formatDate(checkedAt, { dateStyle: "medium", timeStyle: "short" })}</p>}<div>{[...(!external ? ["horeca_os"] : []), "website", "facebook", ...(!external ? ["facebook_giveaway", "whatsapp"] : []), "instagram", ...(!external ? ["meta", "calendar"] : []), ...(!external ? ["predis"] : []), "other"].map((channel) => { const state = channelStatus(item, channel, comparisonState); if (!external && channelActions[channel]) return <button type="button" className={`marketingChannelRow ${state.key}`} key={channel} aria-label={`${channelLabels[channel]} openen: ${state.label}`} aria-controls={`event-channel-${channel}-${item.id}`} aria-expanded={Boolean(openChannels[channel])} onClick={() => openChannel(channel)}><strong>{channelLabels[channel]}{channel === "meta" && <small>Facebook + Instagram</small>}</strong><span>{state.label}</span><small>Openen →</small></button>; return <div className={`marketingChannelRow ${state.key}`} key={channel}><strong>{channelLabels[channel]}</strong><span>{state.label}</span></div>; })}</div></section><details className="marketingDetailFold"><summary>{external ? "Volledige omschrijving bekijken" : "Evenement bekijken en bewerken"}</summary>{external ? <p className="marketingFullDescription">{descriptionFor(item)}</p> : <EventEditor key={item.id} item={item} sources={sourceComparisonItems} checking={comparing || ["queued", "pending"].includes(sourceComparisonCheck)} onRefresh={onCompareSources} busy={(linking || photoBusy) || calendarUnsaved || predisUnsaved || seriesUnsaved} onUnsavedChange={setBaseUnsaved} onOpenChannel={openChannel} onImageUpload={uploadEventImage} onSave={async (base, draft) => { const saved = await saveEventEdit(supabase, workspaceId, base, draft); setChosenContent(null); onSeriesSaved?.([saved]); return saved; }} />}</details>{!external && <details hidden={!channelActions.facebook_giveaway || !openChannels.facebook_giveaway} className="marketingDetailFold" id={`event-channel-facebook_giveaway-${item.id}`} ref={node => { channelPanels.current.facebook_giveaway = node; }} onToggle={event => trackChannel("facebook_giveaway", event.currentTarget.open)}><summary>Facebook winactie</summary><EventGiveaway item={item} distribution={distribution} businessName={business?.name} workspaceId={workspaceId} session={session} onPublished={(saved) => onSeriesSaved?.([saved])} /></details>}{!external && comparisonState.key !== "equal" && <section hidden={["pending", "queued"].includes(comparisonState.key)} className={`marketingComparisonSummary ${comparisonState.key}`} aria-label="Controle op tekstverschillen" role="status" aria-live="polite" aria-atomic="true" aria-busy={comparisonState.key === "pending"}><div className="marketingComparisonProgress">{comparisonState.key === "pending" && <span className="marketingLoadingSpinner" aria-hidden="true" />}<strong>{comparisonState.title}</strong></div><p>{comparisonState.detail}</p><SourceComparisonDifferences state={comparisonState} /><SourceDifferenceActions state={comparisonState} itemId={item.id} dirty={contentDirty} busy={(linking || photoBusy) || comparing} onOpen={openChannel} />{comparisonState.key === "incomplete" && onCompareSources && <button type="button" className="secondaryButton" onClick={onCompareSources} disabled={(linking || photoBusy) || comparing}>Controle opnieuw proberen</button>}</section>}{websitePanel}{(sameDayItems.length > 0 || matchItem) && <DuplicateEventReview key={`duplicates:${item.id}`} item={item} matchItem={matchItem} candidates={sameDayItems} onChooseMatch={onChooseMatch} onMerge={onLinkExisting} busy={(linking || photoBusy) || comparing} />}<details hidden={!sourcePanelNeeded} className="marketingDetailFold" id={`event-channel-sources-${item.id}`} ref={node => { channelPanels.current.sources = node; }} onToggle={event => trackChannel("sources", event.currentTarget.open)}><summary>Bronnen vergelijken — tekst en foto kiezen</summary><p>Kies de tekst en foto bij de bron die je wilt gebruiken. Bewaar je tekst in Horeca OS; ‘Deze foto gebruiken’ bewaart de foto direct. Daarna kun je via ‘Website’ bovenaan de opgeslagen tekst en foto op je website zetten.</p>{!external && onCompareSources && <button type="button" className="secondaryButton" onClick={onCompareSources} disabled={(linking || photoBusy) || comparing}>{comparing ? "Bronnen vergelijken…" : "Bronnen opnieuw vergelijken"}</button>}{(canChoose || sources.length > 1) && <section className="marketingComparisonGrid"><div className="marketingComparisonDifference"><strong>{external ? "Opgehaalde bronnen" : comparisonState.title}</strong><span>{external ? comparisonDifference(sources) : comparisonState.detail}{canChoose && " Kies hieronder de titel en tekst die je wilt gebruiken."}</span></div>{sources.map((source) => <ComparisonCard key={source.label} label={source.label} item={source.item} onChoose={canChoose ? () => chooseSource(source) : undefined} selected={chosenContent?.label === source.label} disabled={(linking || photoBusy) || comparing}>
-{chosenContent?.label === source.label && chosenEditor}
-{!external && source.label === "Facebook" && <EventPhotoSync mode="facebook" workspaceId={workspaceId} session={session} item={item} busy={linking || photoBusy || comparing || baseUnsaved || calendarUnsaved || predisUnsaved || seriesUnsaved || contentDirty} onBusyChange={setPhotoBusy} onSaved={onPhotoSaved} onOpenWebsite={() => openChannel("website")} />}
-{source.label === "Horeca OS" && <section aria-label="Bewaarde hoofdfoto"><h4>Hoofdfoto in Horeca OS</h4><EventPhoto url={distribution.common?.image_url} label="Bewaarde hoofdfoto in Horeca OS" /></section>}
-</ComparisonCard>)}</section>}{chosenContent && !sources.some(source => source.label === chosenContent.label) && chosenEditor}
-{!external && !sources.some(source => source.label === "Facebook") && <EventPhotoSync mode="facebook" workspaceId={workspaceId} session={session} item={item} busy={linking || photoBusy || comparing || baseUnsaved || calendarUnsaved || predisUnsaved || seriesUnsaved || contentDirty} onBusyChange={setPhotoBusy} onSaved={onPhotoSaved} onOpenWebsite={() => openChannel("website")} />}
-</details>{!external && <details hidden={!distribution.series} className="marketingDetailFold" onToggle={event => trackChannel("series", event.currentTarget.open)}><summary>{distribution.series ? "Reeks bekijken en wijzigen" : "Dit evenement herhalen — reeks maken"}</summary><EventSeries key={item.id} enabled={Boolean(openChannels.series)} item={item} workspaceId={workspaceId} session={session} onSaved={onSeriesSaved} onOpen={openSeriesOccurrence} onUnsavedChange={setSeriesUnsaved} /></details>}{!external && <details hidden={!channelActions.facebook || !openChannels.facebook} key={`facebook-edit:${item.id}`} className="marketingDetailFold" data-facebook-editor id={`event-channel-facebook-${item.id}`} ref={node => { channelPanels.current.facebook = node; }} onToggle={event => trackChannel("facebook", event.currentTarget.open)}><summary>Facebook handmatig bijwerken</summary><button type="button" className="secondaryButton" onClick={() => openChannel("sources")}>Tekst en foto van Facebook kiezen</button><ManualFacebookUpdate textMatches={Boolean(comparisonState.matchingSources?.includes("Facebook"))} key={item.id} distribution={distribution} dirty={contentDirty} busy={(linking || photoBusy) || comparing} onConfirm={onConfirmFacebook} linkCheck={comparing ? "pending" : facebookLinkCheck} draftContent={chosenContent} sources={canChoose ? sources : []} onChooseSource={chooseSource} onSave={onSyncContent} saveNotice={visibleSaveNotice} /></details>}{!external && <details hidden={!channelActions.instagram || !openChannels.instagram} key={`instagram-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-instagram-${item.id}`} ref={node => { channelPanels.current.instagram = node; }} onToggle={event => trackChannel("instagram", event.currentTarget.open)}><summary>Instagram plaatsen</summary><InstagramEventPublisher key={item.id} linkedSources={sourceComparisonItems} mediaLoading={["queued", "pending"].includes(sourceComparisonCheck) || comparing} item={item} workspaceId={workspaceId} session={session} businessName={business?.name} onPublished={onInstagramPublished} /></details>}{!external && <details hidden={!channelActions.meta || !openChannels.meta} key={`meta-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-meta-${item.id}`} ref={node => { channelPanels.current.meta = node; }} onToggle={event => trackChannel("meta", event.currentTarget.open)}><summary>Meta-campagne — Facebook en Instagram</summary><MetaCampaignEditor key={item.id} onDirty={setMetaUnsaved} enabled={Boolean(openChannels.meta)} workspaceId={workspaceId} session={session} item={item} distribution={distribution} business={business} onSaved={(saved) => onSeriesSaved?.([saved])} /></details>}{!external && <details hidden={!channelActions.calendar || !openChannels.calendar} key={`calendar-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-calendar-${item.id}`} ref={node => { channelPanels.current.calendar = node; }} onToggle={event => trackChannel("calendar", event.currentTarget.open)}><summary>Agenda info@leclubbbq.nl — inplannen en controleren</summary><EventCalendar sources={sourceComparisonItems} sourcesLoading={comparing || ["queued", "pending"].includes(sourceComparisonCheck)} onRefreshSources={onCompareSources} key={item.id} enabled={Boolean(openChannels.calendar)} item={item} workspaceId={workspaceId} session={session} onSaved={onCalendarSaved} onUnsavedChange={setCalendarUnsaved} /></details>}{!external && <details hidden={!channelActions.predis || !openChannels.predis} key={`predis-edit:${item.id}`} className="marketingDetailFold" id={`event-channel-predis-${item.id}`} ref={node => { channelPanels.current.predis = node; }} onToggle={event => trackChannel("predis", event.currentTarget.open)}><summary>Predis — content maken en planning</summary><ManualPredis key={item.id} enabled={Boolean(openChannels.predis)} item={item} linkedSources={sourceComparisonItems} workspaceId={workspaceId} session={session} businessName={business?.name} onSaved={onPredisSaved} onScheduled={() => { const panel = channelPanels.current.predis; if (panel) panel.open = false; trackChannel("predis", false); }} onLibrarySaved={onPredisLibrarySaved} onUnsavedChange={setPredisUnsaved} /></details>}{!external && <WhatsappShare key={`whatsapp:${item.id}`} item={item} distribution={distribution} workspaceId={workspaceId} session={session} hidden={!channelActions.whatsapp || !openChannels.whatsapp} id={`event-channel-whatsapp-${item.id}`} panelRef={node => { channelPanels.current.whatsapp = node; }} onToggle={event => trackChannel("whatsapp", event.currentTarget.open)} onPublished={onWhatsappSaved} />}{syncError && <p role="alert">{syncError}</p>}</article></div>;
+  return (
+    <div
+      className="marketingEventModalBackdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Details van ${eventText(item)}`}
+      onMouseDown={(event) =>
+        event.target === event.currentTarget && closeDetails()
+      }
+    >
+      <article
+        className={`marketingEventDetails ${external ? "externalFacebookDetails" : ""}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {(linking || photoBusy || comparing) && (
+          <div
+            className="marketingLinkingNotice"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="marketingLoadingSpinner" aria-hidden="true" />
+            {comparing
+              ? "Even geduld… Eventin en Facebook worden naast elkaar gelegd."
+              : "Even geduld… de wijziging wordt verwerkt."}
+          </div>
+        )}
+        {mergeNotice && (
+          <div
+            className={`marketingMergeNotice ${mergeNotice.kind}`}
+            ref={mergeNoticePanel}
+            tabIndex={-1}
+            role={mergeNotice.kind === "error" ? "alert" : "status"}
+          >
+            <strong>{mergeNotice.message}</strong>
+          </div>
+        )}
+        <div className="marketingEventHeading">
+          <div>
+            <p className="eyebrow">EVENEMENTDETAILS</p>
+            <h3>{eventText(item)}</h3>
+            <p aria-label="Evenementdatum">
+              <strong>
+                {formatDate(start, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </strong>
+              {start && (
+                <span aria-label="Begintijd">
+                  {" "}
+                  · {formatDate(start, { timeStyle: "short" })}
+                </span>
+              )}
+            </p>
+            <p>
+              {business?.name || "Onbekende vestiging"} ·{" "}
+              <span className={`marketingDetailStatus ${status.key}`}>
+                {status.key === "published" && firstEventinPlacement
+                  ? `Geplaatst op ${formatDate(firstEventinPlacement, { day: "numeric", month: "long", year: "numeric" })}`
+                  : status.label}
+              </span>
+              {external && (
+                <span className="marketingExternalBadge">{externalLabel}</span>
+              )}
+            </p>
+          </div>
+          <div className="marketingDetailActions">
+            {external && (
+              <button
+                type="button"
+                className="primaryButton"
+                onClick={onLink}
+                disabled={linking || photoBusy || comparing}
+              >
+                {linking || photoBusy
+                  ? "Even geduld… koppeling wordt verwerkt"
+                  : "Als nieuw evenement toevoegen"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="secondaryButton"
+              onClick={closeDetails}
+            >
+              Evenement sluiten
+            </button>
+          </div>
+        </div>
+        <section className="marketingEventFacts" aria-label="Evenementgegevens">
+          <p>
+            <strong>Locatie: </strong>
+            {distribution.common?.location?.trim() ||
+              business?.name ||
+              "Locatie nog niet bekend"}
+            {end && (
+              <span> · Tot {formatDate(end, { timeStyle: "short" })}</span>
+            )}
+          </p>
+        </section>
+        <section
+          className="marketingChannelStatus"
+          aria-label="Publicatiestatus per kanaal"
+        >
+          <h4>Publicatiestatus per kanaal</h4>
+          {checkedAt && (
+            <p className="marketingLastChecked">
+              Laatste controle:{" "}
+              {formatDate(checkedAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </p>
+          )}
+          <div>
+            {[
+              ...(!external ? ["horeca_os"] : []),
+              "website",
+              "facebook",
+              ...(!external ? ["facebook_giveaway", "whatsapp"] : []),
+              "instagram",
+              ...(!external ? ["meta", "calendar"] : []),
+              ...(!external ? ["predis"] : []),
+              "other",
+            ].map((channel) => {
+              const state = channelStatus(item, channel, comparisonState);
+              if (!external && channelActions[channel])
+                return (
+                  <button
+                    type="button"
+                    className={`marketingChannelRow ${state.key}`}
+                    key={channel}
+                    aria-label={`${channelLabels[channel]} openen: ${state.label}`}
+                    aria-controls={
+                      channel === "website" && eventinFirst
+                        ? undefined
+                        : `event-channel-${channel}-${item.id}`
+                    }
+                    aria-expanded={
+                      channel === "website" && eventinFirst
+                        ? undefined
+                        : Boolean(openChannels[channel])
+                    }
+                    onClick={() =>
+                      channel === "website" && eventinFirst
+                        ? onOpenEventinForCampaign(item)
+                        : openChannel(channel)
+                    }
+                  >
+                    <strong>
+                      {channelLabels[channel]}
+                      {channel === "meta" && (
+                        <small>Facebook + Instagram</small>
+                      )}
+                    </strong>
+                    <span>{state.label}</span>
+                    <small>Openen →</small>
+                  </button>
+                );
+              return (
+                <div
+                  className={`marketingChannelRow ${state.key}`}
+                  key={channel}
+                >
+                  <strong>{channelLabels[channel]}</strong>
+                  <span>{state.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        {eventinFirst ? (
+          <section className="marketingEventinStart">
+            <div>
+              <p className="eyebrow">STAP 1</p>
+              <h4>Eerst Eventin invullen en plaatsen</h4>
+              <p>
+                Hierna zie je alle gegevens die Eventin nodig heeft: titel,
+                datum en tijden, locatie, tekst, tickets, organisator en
+                afbeeldingen. De andere kanalen volgen daarna weer afzonderlijk.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primaryButton"
+              onClick={() => onOpenEventinForCampaign(item)}
+            >
+              Eventin openen →
+            </button>
+          </section>
+        ) : (
+          <details className="marketingDetailFold">
+            <summary>
+              {external
+                ? "Volledige omschrijving bekijken"
+                : "Evenement bekijken en bewerken"}
+            </summary>
+            {external ? (
+              <p className="marketingFullDescription">
+                {descriptionFor(item)}
+              </p>
+            ) : (
+              <EventEditor
+                key={item.id}
+                item={item}
+                sources={sourceComparisonItems}
+                checking={
+                  comparing ||
+                  ["queued", "pending"].includes(sourceComparisonCheck)
+                }
+                onRefresh={onCompareSources}
+                busy={
+                  linking ||
+                  photoBusy ||
+                  calendarUnsaved ||
+                  predisUnsaved ||
+                  seriesUnsaved
+                }
+                onUnsavedChange={setBaseUnsaved}
+                onOpenChannel={openChannel}
+                onImageUpload={uploadEventImage}
+                onSave={async (base, draft) => {
+                  const saved = await saveEventEdit(
+                    supabase,
+                    workspaceId,
+                    base,
+                    draft,
+                  );
+                  setChosenContent(null);
+                  onSeriesSaved?.([saved]);
+                  return saved;
+                }}
+              />
+            )}
+          </details>
+        )}
+        {!external && (
+          <details
+            hidden={
+              !channelActions.facebook_giveaway ||
+              !openChannels.facebook_giveaway
+            }
+            className="marketingDetailFold"
+            id={`event-channel-facebook_giveaway-${item.id}`}
+            ref={(node) => {
+              channelPanels.current.facebook_giveaway = node;
+            }}
+            onToggle={(event) =>
+              trackChannel("facebook_giveaway", event.currentTarget.open)
+            }
+          >
+            <summary>Facebook winactie</summary>
+            <EventGiveaway
+              item={item}
+              distribution={distribution}
+              businessName={business?.name}
+              workspaceId={workspaceId}
+              session={session}
+              onPublished={(saved) => onSeriesSaved?.([saved])}
+            />
+          </details>
+        )}
+        {!eventinFirst && !external && comparisonState.key !== "equal" && (
+          <section
+            hidden={["pending", "queued"].includes(comparisonState.key)}
+            className={`marketingComparisonSummary ${comparisonState.key}`}
+            aria-label="Controle op tekstverschillen"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-busy={comparisonState.key === "pending"}
+          >
+            <div className="marketingComparisonProgress">
+              {comparisonState.key === "pending" && (
+                <span className="marketingLoadingSpinner" aria-hidden="true" />
+              )}
+              <strong>{comparisonState.title}</strong>
+            </div>
+            <p>{comparisonState.detail}</p>
+            <SourceComparisonDifferences state={comparisonState} />
+            <SourceDifferenceActions
+              state={comparisonState}
+              itemId={item.id}
+              dirty={contentDirty}
+              busy={linking || photoBusy || comparing}
+              onOpen={openChannel}
+            />
+            {comparisonState.key === "incomplete" && onCompareSources && (
+              <button
+                type="button"
+                className="secondaryButton"
+                onClick={onCompareSources}
+                disabled={linking || photoBusy || comparing}
+              >
+                Controle opnieuw proberen
+              </button>
+            )}
+          </section>
+        )}
+        {websitePanel}
+        {(sameDayItems.length > 0 || matchItem) && (
+          <DuplicateEventReview
+            key={`duplicates:${item.id}`}
+            item={item}
+            matchItem={matchItem}
+            candidates={sameDayItems}
+            onChooseMatch={onChooseMatch}
+            onMerge={onLinkExisting}
+            busy={linking || photoBusy || comparing}
+          />
+        )}
+        <details
+          hidden={!sourcePanelNeeded}
+          className="marketingDetailFold"
+          id={`event-channel-sources-${item.id}`}
+          ref={(node) => {
+            channelPanels.current.sources = node;
+          }}
+          onToggle={(event) =>
+            trackChannel("sources", event.currentTarget.open)
+          }
+        >
+          <summary>Bronnen vergelijken — tekst en foto kiezen</summary>
+          <p>
+            Kies de tekst en foto bij de bron die je wilt gebruiken. Bewaar je
+            tekst in Horeca OS; ‘Deze foto gebruiken’ bewaart de foto direct.
+            Daarna kun je via ‘Website’ bovenaan de opgeslagen tekst en foto op
+            je website zetten.
+          </p>
+          {!external && onCompareSources && (
+            <button
+              type="button"
+              className="secondaryButton"
+              onClick={onCompareSources}
+              disabled={linking || photoBusy || comparing}
+            >
+              {comparing
+                ? "Bronnen vergelijken…"
+                : "Bronnen opnieuw vergelijken"}
+            </button>
+          )}
+          {(canChoose || sources.length > 1) && (
+            <section className="marketingComparisonGrid">
+              <div className="marketingComparisonDifference">
+                <strong>
+                  {external ? "Opgehaalde bronnen" : comparisonState.title}
+                </strong>
+                <span>
+                  {external
+                    ? comparisonDifference(sources)
+                    : comparisonState.detail}
+                  {canChoose &&
+                    " Kies hieronder de titel en tekst die je wilt gebruiken."}
+                </span>
+              </div>
+              {sources.map((source) => (
+                <ComparisonCard
+                  key={source.label}
+                  label={source.label}
+                  item={source.item}
+                  onChoose={canChoose ? () => chooseSource(source) : undefined}
+                  selected={chosenContent?.label === source.label}
+                  disabled={linking || photoBusy || comparing}
+                >
+                  {chosenContent?.label === source.label && chosenEditor}
+                  {!external && source.label === "Facebook" && (
+                    <EventPhotoSync
+                      mode="facebook"
+                      workspaceId={workspaceId}
+                      session={session}
+                      item={item}
+                      busy={
+                        linking ||
+                        photoBusy ||
+                        comparing ||
+                        baseUnsaved ||
+                        calendarUnsaved ||
+                        predisUnsaved ||
+                        seriesUnsaved ||
+                        contentDirty
+                      }
+                      onBusyChange={setPhotoBusy}
+                      onSaved={onPhotoSaved}
+                      onOpenWebsite={() => openChannel("website")}
+                    />
+                  )}
+                  {source.label === "Horeca OS" && (
+                    <section aria-label="Bewaarde hoofdfoto">
+                      <h4>Hoofdfoto in Horeca OS</h4>
+                      <EventPhoto
+                        url={distribution.common?.image_url}
+                        label="Bewaarde hoofdfoto in Horeca OS"
+                      />
+                    </section>
+                  )}
+                </ComparisonCard>
+              ))}
+            </section>
+          )}
+          {chosenContent &&
+            !sources.some((source) => source.label === chosenContent.label) &&
+            chosenEditor}
+          {!external &&
+            !sources.some((source) => source.label === "Facebook") && (
+              <EventPhotoSync
+                mode="facebook"
+                workspaceId={workspaceId}
+                session={session}
+                item={item}
+                busy={
+                  linking ||
+                  photoBusy ||
+                  comparing ||
+                  baseUnsaved ||
+                  calendarUnsaved ||
+                  predisUnsaved ||
+                  seriesUnsaved ||
+                  contentDirty
+                }
+                onBusyChange={setPhotoBusy}
+                onSaved={onPhotoSaved}
+                onOpenWebsite={() => openChannel("website")}
+              />
+            )}
+        </details>
+        {!external && (
+          <details
+            hidden={!distribution.series}
+            className="marketingDetailFold"
+            onToggle={(event) =>
+              trackChannel("series", event.currentTarget.open)
+            }
+          >
+            <summary>
+              {distribution.series
+                ? "Reeks bekijken en wijzigen"
+                : "Dit evenement herhalen — reeks maken"}
+            </summary>
+            <EventSeries
+              key={item.id}
+              enabled={Boolean(openChannels.series)}
+              item={item}
+              workspaceId={workspaceId}
+              session={session}
+              onSaved={onSeriesSaved}
+              onOpen={openSeriesOccurrence}
+              onUnsavedChange={setSeriesUnsaved}
+            />
+          </details>
+        )}
+        {!external && (
+          <details
+            hidden={!channelActions.facebook || !openChannels.facebook}
+            key={`facebook-edit:${item.id}`}
+            className="marketingDetailFold"
+            data-facebook-editor
+            id={`event-channel-facebook-${item.id}`}
+            ref={(node) => {
+              channelPanels.current.facebook = node;
+            }}
+            onToggle={(event) =>
+              trackChannel("facebook", event.currentTarget.open)
+            }
+          >
+            <summary>Facebook handmatig bijwerken</summary>
+            <button
+              type="button"
+              className="secondaryButton"
+              onClick={() => openChannel("sources")}
+            >
+              Tekst en foto van Facebook kiezen
+            </button>
+            <ManualFacebookUpdate
+              textMatches={Boolean(
+                comparisonState.matchingSources?.includes("Facebook"),
+              )}
+              key={item.id}
+              distribution={distribution}
+              dirty={contentDirty}
+              busy={linking || photoBusy || comparing}
+              onConfirm={onConfirmFacebook}
+              linkCheck={comparing ? "pending" : facebookLinkCheck}
+              draftContent={chosenContent}
+              sources={canChoose ? sources : []}
+              onChooseSource={chooseSource}
+              onSave={onSyncContent}
+              saveNotice={visibleSaveNotice}
+            />
+          </details>
+        )}
+        {!external && (
+          <details
+            hidden={!channelActions.instagram || !openChannels.instagram}
+            key={`instagram-edit:${item.id}`}
+            className="marketingDetailFold"
+            id={`event-channel-instagram-${item.id}`}
+            ref={(node) => {
+              channelPanels.current.instagram = node;
+            }}
+            onToggle={(event) =>
+              trackChannel("instagram", event.currentTarget.open)
+            }
+          >
+            <summary>Instagram plaatsen</summary>
+            <InstagramEventPublisher
+              key={item.id}
+              linkedSources={sourceComparisonItems}
+              mediaLoading={
+                ["queued", "pending"].includes(sourceComparisonCheck) ||
+                comparing
+              }
+              item={item}
+              workspaceId={workspaceId}
+              session={session}
+              businessName={business?.name}
+              onPublished={onInstagramPublished}
+            />
+          </details>
+        )}
+        {!external && (
+          <details
+            hidden={!channelActions.meta || !openChannels.meta}
+            key={`meta-edit:${item.id}`}
+            className="marketingDetailFold"
+            id={`event-channel-meta-${item.id}`}
+            ref={(node) => {
+              channelPanels.current.meta = node;
+            }}
+            onToggle={(event) => trackChannel("meta", event.currentTarget.open)}
+          >
+            <summary>Meta-campagne — Facebook en Instagram</summary>
+            <MetaCampaignEditor
+              key={item.id}
+              onDirty={setMetaUnsaved}
+              enabled={Boolean(openChannels.meta)}
+              workspaceId={workspaceId}
+              session={session}
+              item={item}
+              distribution={distribution}
+              business={business}
+              onSaved={(saved) => onSeriesSaved?.([saved])}
+            />
+          </details>
+        )}
+        {!external && (
+          <details
+            hidden={!channelActions.calendar || !openChannels.calendar}
+            key={`calendar-edit:${item.id}`}
+            className="marketingDetailFold"
+            id={`event-channel-calendar-${item.id}`}
+            ref={(node) => {
+              channelPanels.current.calendar = node;
+            }}
+            onToggle={(event) =>
+              trackChannel("calendar", event.currentTarget.open)
+            }
+          >
+            <summary>
+              Agenda info@leclubbbq.nl — inplannen en controleren
+            </summary>
+            <EventCalendar
+              sources={sourceComparisonItems}
+              sourcesLoading={
+                comparing ||
+                ["queued", "pending"].includes(sourceComparisonCheck)
+              }
+              onRefreshSources={onCompareSources}
+              key={item.id}
+              enabled={Boolean(openChannels.calendar)}
+              item={item}
+              workspaceId={workspaceId}
+              session={session}
+              onSaved={onCalendarSaved}
+              onUnsavedChange={setCalendarUnsaved}
+            />
+          </details>
+        )}
+        {!external && (
+          <details
+            hidden={!channelActions.predis || !openChannels.predis}
+            key={`predis-edit:${item.id}`}
+            className="marketingDetailFold"
+            id={`event-channel-predis-${item.id}`}
+            ref={(node) => {
+              channelPanels.current.predis = node;
+            }}
+            onToggle={(event) =>
+              trackChannel("predis", event.currentTarget.open)
+            }
+          >
+            <summary>Predis — content maken en planning</summary>
+            <ManualPredis
+              key={item.id}
+              enabled={Boolean(openChannels.predis)}
+              item={item}
+              linkedSources={sourceComparisonItems}
+              workspaceId={workspaceId}
+              session={session}
+              businessName={business?.name}
+              onSaved={onPredisSaved}
+              onScheduled={() => {
+                const panel = channelPanels.current.predis;
+                if (panel) panel.open = false;
+                trackChannel("predis", false);
+              }}
+              onLibrarySaved={onPredisLibrarySaved}
+              onUnsavedChange={setPredisUnsaved}
+            />
+          </details>
+        )}
+        {!external && (
+          <WhatsappShare
+            key={`whatsapp:${item.id}`}
+            item={item}
+            distribution={distribution}
+            workspaceId={workspaceId}
+            session={session}
+            hidden={!channelActions.whatsapp || !openChannels.whatsapp}
+            id={`event-channel-whatsapp-${item.id}`}
+            panelRef={(node) => {
+              channelPanels.current.whatsapp = node;
+            }}
+            onToggle={(event) =>
+              trackChannel("whatsapp", event.currentTarget.open)
+            }
+            onPublished={onWhatsappSaved}
+          />
+        )}
+        {syncError && <p role="alert">{syncError}</p>}
+      </article>
+    </div>
+  );
 }
 
 export function CalendarContentSelector({ value, onChange }) {
-  return <div>
-    <div className="marketingCalendarToolbar"><div className="marketingCalendarViews" role="group" aria-label="Agenda-inhoud kiezen">
-      {Object.entries(CALENDAR_CONTENT_VIEWS).map(([key, option]) => <button type="button" key={key} className={value === key ? 'active' : ''} aria-pressed={value === key} onClick={() => onChange(key)}>{option.label}</button>)}
-    </div></div>
-    <p role="status">{CALENDAR_CONTENT_VIEWS[value].description}</p>
-  </div>;
+  return (
+    <div>
+      <div className="marketingCalendarToolbar">
+        <div
+          className="marketingCalendarViews"
+          role="group"
+          aria-label="Agenda-inhoud kiezen"
+        >
+          {Object.entries(CALENDAR_CONTENT_VIEWS).map(([key, option]) => (
+            <button
+              type="button"
+              key={key}
+              className={value === key ? "active" : ""}
+              aria-pressed={value === key}
+              onClick={() => onChange(key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p role="status">{CALENDAR_CONTENT_VIEWS[value].description}</p>
+    </div>
+  );
 }
 
-export default function MarketingOverview({ workspaceId, businesses, session, onPlanDate, refreshToken = 0 }) {
-  const [contentView, setContentView] = useState('events');
+export default function MarketingOverview({
+  workspaceId,
+  businesses,
+  session,
+  onPlanDate,
+  refreshToken = 0,
+  onOpenEventinForCampaign,
+}) {
+  const [contentView, setContentView] = useState("events");
   const [mergeNotice, setMergeNotice] = useState(null);
   const [contentSaveNotice, setContentSaveNotice] = useState(null);
   const mergeSaveRef = useRef(false);
-  const [items, setItems] = useState([]); const [busy, setBusy] = useState(true); const [autoChecking, setAutoChecking] = useState(false); const [linkingId, setLinkingId] = useState(""); const [error, setError] = useState(""); const [view, setView] = useState("month"); const [anchor, setAnchor] = useState(() => new Date()); const [refreshKey, setRefreshKey] = useState(0); const [calendarLayout, setCalendarLayout] = useState("two"); const [selectedItem, setSelectedItem] = useState(null); const [sourceComparisons, setSourceComparisons] = useState({}); const comparisonTargetRef = useRef(""); const contentSyncRef = useRef(false);
-  const [showInfoCalendar, setShowInfoCalendar] = useState(false); const [infoCalendarItems, setInfoCalendarItems] = useState([]); const [infoCalendarLoading, setInfoCalendarLoading] = useState(false); const [infoCalendarError, setInfoCalendarError] = useState("");
-  const sessionRef = useRef(session); sessionRef.current = session;
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(true);
+  const [autoChecking, setAutoChecking] = useState(false);
+  const [linkingId, setLinkingId] = useState("");
+  const [error, setError] = useState("");
+  const [view, setView] = useState("month");
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [calendarLayout, setCalendarLayout] = useState("two");
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [sourceComparisons, setSourceComparisons] = useState({});
+  const comparisonTargetRef = useRef("");
+  const contentSyncRef = useRef(false);
+  const [showInfoCalendar, setShowInfoCalendar] = useState(false);
+  const [infoCalendarItems, setInfoCalendarItems] = useState([]);
+  const [infoCalendarLoading, setInfoCalendarLoading] = useState(false);
+  const [infoCalendarError, setInfoCalendarError] = useState("");
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const [facebookLinkChecks, setFacebookLinkChecks] = useState({});
   const [sourceComparisonChecks, setSourceComparisonChecks] = useState({});
   const comparisonJobs = useRef(new Map());
-  const venueBusinesses = useMemo(() => (businesses || []).map((business, index) => ({ ...business, color: index % 2 ? "venueB" : "venueA" })), [businesses]);
-  const businessById = useMemo(() => new Map(venueBusinesses.map((business) => [String(business.id), business])), [venueBusinesses]);
-  const publicationItems = useMemo(() => publicationCalendarItems(items, businessById), [items, businessById]);
-  const infoCalendarRange = useMemo(() => calendarViewRange(anchor, view), [anchor, view]);
+  const venueBusinesses = useMemo(
+    () =>
+      (businesses || []).map((business, index) => ({
+        ...business,
+        color: index % 2 ? "venueB" : "venueA",
+      })),
+    [businesses],
+  );
+  const businessById = useMemo(
+    () =>
+      new Map(
+        venueBusinesses.map((business) => [String(business.id), business]),
+      ),
+    [venueBusinesses],
+  );
+  const publicationItems = useMemo(
+    () => publicationCalendarItems(items, businessById),
+    [items, businessById],
+  );
+  const infoCalendarRange = useMemo(
+    () => calendarViewRange(anchor, view),
+    [anchor, view],
+  );
 
   useEffect(() => {
-    if (!showInfoCalendar) { setInfoCalendarItems([]); setInfoCalendarError(""); return; }
+    if (!showInfoCalendar) {
+      setInfoCalendarItems([]);
+      setInfoCalendarError("");
+      return;
+    }
     if (!workspaceId || !session?.access_token) return;
     let active = true;
     async function loadInfoCalendar() {
-      setInfoCalendarLoading(true); setInfoCalendarError("");
+      setInfoCalendarLoading(true);
+      setInfoCalendarError("");
       try {
-        const params = new URLSearchParams({ workspaceId, start: infoCalendarRange.start.toISOString(), end: infoCalendarRange.end.toISOString() });
-        const response = await fetch(`/api/integrations/microsoft/calendar?${params}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+        const params = new URLSearchParams({
+          workspaceId,
+          start: infoCalendarRange.start.toISOString(),
+          end: infoCalendarRange.end.toISOString(),
+        });
+        const response = await fetch(
+          `/api/integrations/microsoft/calendar?${params}`,
+          {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            cache: "no-store",
+          },
+        );
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "De agenda van info@leclubbbq.nl kon niet worden geladen.");
-        const account = (result.accounts || []).find((candidate) => String(candidate.mailbox || "").toLowerCase() === "info@leclubbbq.nl");
-        if (!account) throw new Error("Koppel info@leclubbbq.nl eerst via Agenda om deze extra agenda te tonen.");
+        if (!response.ok)
+          throw new Error(
+            result.error ||
+              "De agenda van info@leclubbbq.nl kon niet worden geladen.",
+          );
+        const account = (result.accounts || []).find(
+          (candidate) =>
+            String(candidate.mailbox || "").toLowerCase() ===
+            "info@leclubbbq.nl",
+        );
+        if (!account)
+          throw new Error(
+            "Koppel info@leclubbbq.nl eerst via Agenda om deze extra agenda te tonen.",
+          );
         if (account.error) throw new Error(account.error);
-        if (active) setInfoCalendarItems((account.events || []).map(infoCalendarItem));
+        if (active)
+          setInfoCalendarItems((account.events || []).map(infoCalendarItem));
       } catch (loadError) {
-        if (active) { setInfoCalendarItems([]); setInfoCalendarError(loadError.message || "De extra agenda kon niet worden geladen."); }
-      } finally { if (active) setInfoCalendarLoading(false); }
+        if (active) {
+          setInfoCalendarItems([]);
+          setInfoCalendarError(
+            loadError.message || "De extra agenda kon niet worden geladen.",
+          );
+        }
+      } finally {
+        if (active) setInfoCalendarLoading(false);
+      }
     }
     loadInfoCalendar();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [showInfoCalendar, workspaceId, session?.access_token, infoCalendarRange]);
 
   async function fetchSourceComparison(item, signal) {
     const distribution = distributionFor(item);
     const result = [{ label: "Horeca OS", item }];
     const business = businessById.get(String(item.business_id));
-    const eventinId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
-    const facebookId = String(distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook || "").trim();
+    const eventinId = String(
+      distribution.eventin_event_id || distribution.external_ids?.eventin || "",
+    ).trim();
+    const facebookId = String(
+      distribution.facebook_event_delivery?.external_id ||
+        distribution.provider_delivery?.facebook?.external_id ||
+        distribution.external_ids?.facebook ||
+        "",
+    ).trim();
     const sourceRequests = [];
-    if (/^\d+$/.test(eventinId) && business) sourceRequests.push((async () => {
-      const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), site: siteForBusiness(business), eventId: eventinId, campaignId: String(item.id), importEvent: "1", sourceComparison: "1" });
-      const response = await fetch(`/api/marketing/website-events/create?${params}`, { signal, headers: { Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}` }, keepalive: true });
-      const payload = await response.json().catch(() => ({}));
-      return response.ok && payload.event ? { label: "Eventin", item: { id: `compare:eventin:${eventinId}`, business_id: item.business_id, scheduled_for: payload.event.start, media: [{ kind: "campaign_distribution", source_type: "eventin_event", common: { title: payload.event.title, start: payload.event.start, end: payload.event.end, location: payload.event.location, description: payload.event.description, website_url: payload.event.url || "", image_url: payload.event.imageUrl || "" } }] } } : null;
-    })());
-    if (facebookId && business) sourceRequests.push((async () => {
-      const params = new URLSearchParams({ workspaceId, businessId: String(item.business_id), includePast: "true" });
-      const response = await fetch(`/api/integrations/facebook/events?${params}`, { signal, headers: { Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}` }, keepalive: true });
-      const payload = await response.json().catch(() => ({}));
-      const event = (payload.events || []).find((candidate) => String(candidate.id) === facebookId);
-      return response.ok && event ? { label: "Facebook", item: { id: `compare:facebook:${facebookId}`, business_id: item.business_id, scheduled_for: event.startDate, media: [{ kind: "campaign_distribution", source_type: "facebook_event", common: { title: event.title, start: event.startDate, end: event.endDate, location: event.location, description: event.description, image_url: event.image || "" } }] } } : null;
-    })());
+    if (/^\d+$/.test(eventinId) && business)
+      sourceRequests.push(
+        (async () => {
+          const params = new URLSearchParams({
+            workspaceId,
+            businessId: String(item.business_id),
+            site: siteForBusiness(business),
+            eventId: eventinId,
+            campaignId: String(item.id),
+            importEvent: "1",
+            sourceComparison: "1",
+          });
+          const response = await fetch(
+            `/api/marketing/website-events/create?${params}`,
+            {
+              signal,
+              headers: {
+                Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}`,
+              },
+              keepalive: true,
+            },
+          );
+          const payload = await response.json().catch(() => ({}));
+          return response.ok && payload.event
+            ? {
+                label: "Eventin",
+                item: {
+                  id: `compare:eventin:${eventinId}`,
+                  business_id: item.business_id,
+                  scheduled_for: payload.event.start,
+                  media: [
+                    {
+                      kind: "campaign_distribution",
+                      source_type: "eventin_event",
+                      common: {
+                        title: payload.event.title,
+                        start: payload.event.start,
+                        end: payload.event.end,
+                        location: payload.event.location,
+                        description: payload.event.description,
+                        website_url: payload.event.url || "",
+                        image_url: payload.event.imageUrl || "",
+                      },
+                    },
+                  ],
+                },
+              }
+            : null;
+        })(),
+      );
+    if (facebookId && business)
+      sourceRequests.push(
+        (async () => {
+          const params = new URLSearchParams({
+            workspaceId,
+            businessId: String(item.business_id),
+            includePast: "true",
+          });
+          const response = await fetch(
+            `/api/integrations/facebook/events?${params}`,
+            {
+              signal,
+              headers: {
+                Authorization: `Bearer ${sessionRef.current?.access_token || session?.access_token}`,
+              },
+              keepalive: true,
+            },
+          );
+          const payload = await response.json().catch(() => ({}));
+          const event = (payload.events || []).find(
+            (candidate) => String(candidate.id) === facebookId,
+          );
+          return response.ok && event
+            ? {
+                label: "Facebook",
+                item: {
+                  id: `compare:facebook:${facebookId}`,
+                  business_id: item.business_id,
+                  scheduled_for: event.startDate,
+                  media: [
+                    {
+                      kind: "campaign_distribution",
+                      source_type: "facebook_event",
+                      common: {
+                        title: event.title,
+                        start: event.startDate,
+                        end: event.endDate,
+                        location: event.location,
+                        description: event.description,
+                        image_url: event.image || "",
+                      },
+                    },
+                  ],
+                },
+              }
+            : null;
+        })(),
+      );
     const sources = await Promise.all(sourceRequests);
     result.push(...sources.filter(Boolean));
     return result.length > 1 ? result : null;
   }
 
   async function findFacebookMatches(item) {
-    if (!item || isExternalEvent(item) || facebookEventId(distributionFor(item)) || !sessionRef.current?.access_token) return [];
+    if (
+      !item ||
+      isExternalEvent(item) ||
+      facebookEventId(distributionFor(item)) ||
+      !sessionRef.current?.access_token
+    )
+      return [];
     const business = businessById.get(String(item.business_id));
     if (!business) return [];
-    const response = await fetch(`/api/integrations/facebook/events?${new URLSearchParams({ workspaceId, businessId: String(item.business_id), includePast: "true" })}`, { headers: { Authorization: `Bearer ${sessionRef.current.access_token}` } });
+    const response = await fetch(
+      `/api/integrations/facebook/events?${new URLSearchParams({ workspaceId, businessId: String(item.business_id), includePast: "true" })}`,
+      {
+        headers: { Authorization: `Bearer ${sessionRef.current.access_token}` },
+      },
+    );
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || "Facebook-evenementen konden niet worden gecontroleerd.");
+    if (!response.ok)
+      throw new Error(
+        payload.error ||
+          "Facebook-evenementen konden niet worden gecontroleerd.",
+      );
     const matches = facebookEventCandidates(item, payload.events || []);
-    const exactMatches = matches.filter(event => normalizeEventTitle(event.title) === normalizeEventTitle(eventText(item)));
-    if (exactMatches.length === 1) await linkFacebookEvent(item, { ...exactMatches[0], pageName: payload.pageName || business.name || "" });
+    const exactMatches = matches.filter(
+      (event) =>
+        normalizeEventTitle(event.title) ===
+        normalizeEventTitle(eventText(item)),
+    );
+    if (exactMatches.length === 1)
+      await linkFacebookEvent(item, {
+        ...exactMatches[0],
+        pageName: payload.pageName || business.name || "",
+      });
     return matches;
   }
 
@@ -847,22 +3237,47 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     const existing = jobs.get(id);
     // Opening, reopening and the background queue share the same check.
     if (existing && (!force || !existing.settled)) return existing.promise;
-    const job = { controller: new AbortController(), settled: false, timedOut: false };
+    const job = {
+      controller: new AbortController(),
+      settled: false,
+      timedOut: false,
+    };
     jobs.set(id, job);
-    const current = () => comparisonJobs.current === jobs && jobs.get(id) === job;
-    setSourceComparisonChecks(previous => ({ ...previous, [id]: "pending" }));
+    const current = () =>
+      comparisonJobs.current === jobs && jobs.get(id) === job;
+    setSourceComparisonChecks((previous) => ({ ...previous, [id]: "pending" }));
     job.promise = (async () => {
       try {
-        const comparison = await withRequestTimeout(fetchSourceComparison(item, job.controller.signal), "Een bron reageerde niet binnen 45 seconden.", () => { job.timedOut = true; job.controller.abort(); }, SOURCE_COMPARISON_TIMEOUT_MS);
+        const comparison = await withRequestTimeout(
+          fetchSourceComparison(item, job.controller.signal),
+          "Een bron reageerde niet binnen 45 seconden.",
+          () => {
+            job.timedOut = true;
+            job.controller.abort();
+          },
+          SOURCE_COMPARISON_TIMEOUT_MS,
+        );
         if (current()) {
-          setSourceComparisons(previous => ({ ...previous, [id]: comparison || [] }));
-          setSourceComparisonChecks(previous => ({ ...previous, [id]: comparison ? "done" : "error" }));
+          setSourceComparisons((previous) => ({
+            ...previous,
+            [id]: comparison || [],
+          }));
+          setSourceComparisonChecks((previous) => ({
+            ...previous,
+            [id]: comparison ? "done" : "error",
+          }));
         }
         return comparison;
       } catch (error) {
-        if (current()) setSourceComparisonChecks(previous => ({ ...previous, [id]: job.timedOut ? "timeout" : "error" }));
+        if (current())
+          setSourceComparisonChecks((previous) => ({
+            ...previous,
+            [id]: job.timedOut ? "timeout" : "error",
+          }));
         throw error;
-      } finally { job.settled = true; }
+      } finally {
+        job.settled = true;
+      }
     })();
     return job.promise;
   }
@@ -873,57 +3288,142 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     comparisonJobs.current = jobs;
     async function load() {
       if (!workspaceId) return;
-      setBusy(true); setAutoChecking(false); setError(""); setMergeNotice(null);
-      const { data, error: queryError } = await supabase.from("social_content_items").select("id,business_id,body,media,status,workflow_status,scheduled_for,published_at,created_at").eq("workspace_id", workspaceId).filter("media", "cs", JSON.stringify([{ kind: "campaign_distribution" }])).order("created_at", { ascending: false }).range(0, 499);
+      setBusy(true);
+      setAutoChecking(false);
+      setError("");
+      setMergeNotice(null);
+      const { data, error: queryError } = await supabase
+        .from("social_content_items")
+        .select(
+          "id,business_id,body,media,status,workflow_status,scheduled_for,published_at,created_at",
+        )
+        .eq("workspace_id", workspaceId)
+        .filter(
+          "media",
+          "cs",
+          JSON.stringify([{ kind: "campaign_distribution" }]),
+        )
+        .order("created_at", { ascending: false })
+        .range(0, 499);
       if (!active) return;
-      if (queryError) { setError("De marketingagenda kon niet worden geladen."); setBusy(false); return; }
+      if (queryError) {
+        setError("De marketingagenda kon niet worden geladen.");
+        setBusy(false);
+        return;
+      }
       const campaigns = data || [];
       setSourceComparisons({});
       setSourceComparisonChecks({});
-      setFacebookLinkChecks(Object.fromEntries(campaigns.slice(0, 100).map(item => [String(item.id), "pending"])));
+      setFacebookLinkChecks(
+        Object.fromEntries(
+          campaigns.slice(0, 100).map((item) => [String(item.id), "pending"]),
+        ),
+      );
       setItems(campaigns);
       setBusy(false);
       const accessToken = sessionRef.current?.access_token;
-      if (!accessToken) { setFacebookLinkChecks({}); return; }
+      if (!accessToken) {
+        setFacebookLinkChecks({});
+        return;
+      }
       setAutoChecking(true);
-      const [verifiedCampaigns, facebookItems, eventinItems] = await Promise.all([
-        mapWithConcurrency(campaigns.slice(0, 100), 4, async (item) => {
-          if (!active) return item;
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 45000);
-          try {
-            const response = await fetch("/api/marketing/publication-status", { method: "POST", signal: controller.signal, headers: { Authorization: `Bearer ${sessionRef.current?.access_token || accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, campaignId: item.id }) });
-            const payload = await response.json().catch(() => ({}));
-            const updated = response.ok ? { ...item, media: payload.media || item.media } : item;
-            if (active) {
-              const check = distributionFor(updated).verification?.channels?.facebook;
-              setFacebookLinkChecks(current => ({ ...current, [String(item.id)]: response.ok && check && check.status !== "unreachable" ? "done" : "error" }));
-              // Do not wait for the other campaigns; keep a newer user edit intact.
-              const updateUnchanged = current => current?.id === item.id && JSON.stringify(current.media) === JSON.stringify(item.media) ? { ...current, media: updated.media } : current;
-              setItems(current => current.map(updateUnchanged));
-              setSelectedItem(updateUnchanged);
+      const [verifiedCampaigns, facebookItems, eventinItems] =
+        await Promise.all([
+          mapWithConcurrency(campaigns.slice(0, 100), 4, async (item) => {
+            if (!active) return item;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 45000);
+            try {
+              const response = await fetch(
+                "/api/marketing/publication-status",
+                {
+                  method: "POST",
+                  signal: controller.signal,
+                  headers: {
+                    Authorization: `Bearer ${sessionRef.current?.access_token || accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ workspaceId, campaignId: item.id }),
+                },
+              );
+              const payload = await response.json().catch(() => ({}));
+              const updated = response.ok
+                ? { ...item, media: payload.media || item.media }
+                : item;
+              if (active) {
+                const check =
+                  distributionFor(updated).verification?.channels?.facebook;
+                setFacebookLinkChecks((current) => ({
+                  ...current,
+                  [String(item.id)]:
+                    response.ok && check && check.status !== "unreachable"
+                      ? "done"
+                      : "error",
+                }));
+                // Do not wait for the other campaigns; keep a newer user edit intact.
+                const updateUnchanged = (current) =>
+                  current?.id === item.id &&
+                  JSON.stringify(current.media) === JSON.stringify(item.media)
+                    ? { ...current, media: updated.media }
+                    : current;
+                setItems((current) => current.map(updateUnchanged));
+                setSelectedItem(updateUnchanged);
+              }
+              return updated;
+            } catch {
+              if (active)
+                setFacebookLinkChecks((current) => ({
+                  ...current,
+                  [String(item.id)]: "error",
+                }));
+              return item;
+            } finally {
+              clearTimeout(timeout);
             }
-            return updated;
-          } catch {
-            if (active) setFacebookLinkChecks(current => ({ ...current, [String(item.id)]: "error" }));
-            return item;
-          } finally { clearTimeout(timeout); }
-        }),
-        loadFacebookItems({ workspaceId, businesses: venueBusinesses, token: accessToken, campaigns }),
-        loadEventinItems({ workspaceId, businesses: venueBusinesses, token: accessToken, campaigns }),
-      ]);
+          }),
+          loadFacebookItems({
+            workspaceId,
+            businesses: venueBusinesses,
+            token: accessToken,
+            campaigns,
+          }),
+          loadEventinItems({
+            workspaceId,
+            businesses: venueBusinesses,
+            token: accessToken,
+            campaigns,
+          }),
+        ]);
       if (!active) return;
-      const merged = suggestPotentialMatches(deduplicateCalendarItems([...verifiedCampaigns, ...facebookItems, ...eventinItems]));
-      setItems(current => {
-        const latest = new Map(current.map(item => [String(item.id), item]));
+      const merged = suggestPotentialMatches(
+        deduplicateCalendarItems([
+          ...verifiedCampaigns,
+          ...facebookItems,
+          ...eventinItems,
+        ]),
+      );
+      setItems((current) => {
+        const latest = new Map(current.map((item) => [String(item.id), item]));
         // Verification was already applied progressively; preserve any subsequent edits
         // and campaigns outside the capped verification batch.
-        return suggestPotentialMatches(deduplicateCalendarItems([...campaigns.map(item => latest.get(String(item.id)) || item), ...facebookItems, ...eventinItems]));
+        return suggestPotentialMatches(
+          deduplicateCalendarItems([
+            ...campaigns.map((item) => latest.get(String(item.id)) || item),
+            ...facebookItems,
+            ...eventinItems,
+          ]),
+        );
       });
       setAutoChecking(false);
       const managedItems = merged.filter((item) => {
         const distribution = distributionFor(item);
-        return Boolean(distribution.eventin_event_id || distribution.external_ids?.eventin || distribution.facebook_event_delivery?.external_id || distribution.provider_delivery?.facebook?.external_id || distribution.external_ids?.facebook);
+        return Boolean(
+          distribution.eventin_event_id ||
+          distribution.external_ids?.eventin ||
+          distribution.facebook_event_delivery?.external_id ||
+          distribution.provider_delivery?.facebook?.external_id ||
+          distribution.external_ids?.facebook,
+        );
       });
       mapWithConcurrency(managedItems.slice(0, 100), 4, async (item) => {
         if (!active || comparisonTargetRef.current === String(item.id)) return;
@@ -938,91 +3438,373 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
       if (comparisonJobs.current === jobs) comparisonJobs.current = new Map();
       for (const job of jobs.values()) if (!job.settled) job.controller.abort();
     };
-  }, [workspaceId, refreshKey, refreshToken, session?.user?.id, venueBusinesses]);
+  }, [
+    workspaceId,
+    refreshKey,
+    refreshToken,
+    session?.user?.id,
+    venueBusinesses,
+  ]);
 
   useEffect(() => {
-    if (busy || !selectedItem || isExternalEvent(selectedItem) || !sessionRef.current?.access_token) return;
+    if (
+      busy ||
+      !selectedItem ||
+      isExternalEvent(selectedItem) ||
+      !sessionRef.current?.access_token
+    )
+      return;
     // Do not make the open event wait for every publication/import request.
     checkSourceComparison(selectedItem, refreshToken > 0).catch(() => {});
     findFacebookMatches(selectedItem).catch(() => {});
   }, [selectedItem?.id, workspaceId, refreshKey, refreshToken, busy]);
 
-  function move(step) { const next = new Date(anchor); if (view === "day") next.setDate(next.getDate() + step); if (view === "week") next.setDate(next.getDate() + step * 7); if (view === "month") next.setMonth(next.getMonth() + step); if (view === "year") next.setFullYear(next.getFullYear() + step); setAnchor(next); }
-  const title = view === "day" ? formatDate(anchor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : view === "week" ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}` : view === "year" ? String(anchor.getFullYear()) : formatDate(anchor, { month: "long", year: "numeric" });
+  function move(step) {
+    const next = new Date(anchor);
+    if (view === "day") next.setDate(next.getDate() + step);
+    if (view === "week") next.setDate(next.getDate() + step * 7);
+    if (view === "month") next.setMonth(next.getMonth() + step);
+    if (view === "year") next.setFullYear(next.getFullYear() + step);
+    setAnchor(next);
+  }
+  const title =
+    view === "day"
+      ? formatDate(anchor, {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })
+      : view === "week"
+        ? `Week van ${formatDate(startOfWeek(anchor), { day: "numeric", month: "long", year: "numeric" })}`
+        : view === "year"
+          ? String(anchor.getFullYear())
+          : formatDate(anchor, { month: "long", year: "numeric" });
   // Local duplicate hints must not wait for the remote publication checks.
   const activeFromToday = todayStart();
-  const eventItems = suggestPotentialMatches(visibleCalendarItems(items, businessById, activeFromToday));
-  const visibleItems = calendarContentItems(eventItems, publicationItems, contentView)
-    .sort((left, right) => new Date(itemStart(left)) - new Date(itemStart(right)) || String(left.id).localeCompare(String(right.id)));
-  const displayedItems = showInfoCalendar ? [...visibleItems, ...infoCalendarItems].sort((left, right) => new Date(itemStart(left)) - new Date(itemStart(right)) || String(left.id).localeCompare(String(right.id))) : visibleItems;
-  const dayItems = displayedItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor));
-  const externalItems = visibleItems.filter(isExternalEvent).sort((left, right) => new Date(itemStart(right) || 0) - new Date(itemStart(left) || 0));
+  const eventItems = suggestPotentialMatches(
+    visibleCalendarItems(items, businessById, activeFromToday),
+  );
+  const visibleItems = calendarContentItems(
+    eventItems,
+    publicationItems,
+    contentView,
+  ).sort(
+    (left, right) =>
+      new Date(itemStart(left)) - new Date(itemStart(right)) ||
+      String(left.id).localeCompare(String(right.id)),
+  );
+  const displayedItems = showInfoCalendar
+    ? [...visibleItems, ...infoCalendarItems].sort(
+        (left, right) =>
+          new Date(itemStart(left)) - new Date(itemStart(right)) ||
+          String(left.id).localeCompare(String(right.id)),
+      )
+    : visibleItems;
+  const dayItems = displayedItems.filter((item) =>
+    sameDay(dateOnly(itemStart(item)), anchor),
+  );
+  const externalItems = visibleItems
+    .filter(isExternalEvent)
+    .sort(
+      (left, right) =>
+        new Date(itemStart(right) || 0) - new Date(itemStart(left) || 0),
+    );
   useEffect(() => {
     const next = nextExternalItem(externalItems);
     if (busy || autoChecking || selectedItem || !next) return;
     setSelectedItem(next);
   }, [busy, autoChecking, selectedItem, externalItems]);
 
-  const itemsForBusiness = (businessId) => visibleItems.filter((item) => String(item.business_id) === String(businessId));
-  async function syncExternalEventContent(distribution, businessId, content = {}) {
-    if (!sessionRef.current?.access_token) throw new Error("Je sessie is verlopen. Log opnieuw in.");
+  const itemsForBusiness = (businessId) =>
+    visibleItems.filter(
+      (item) => String(item.business_id) === String(businessId),
+    );
+  async function syncExternalEventContent(
+    distribution,
+    businessId,
+    content = {},
+  ) {
+    if (!sessionRef.current?.access_token)
+      throw new Error("Je sessie is verlopen. Log opnieuw in.");
     const common = distribution.common || {};
-    const payload = { workspaceId, businessId, title: content.title ?? common.title ?? "", description: content.description ?? common.description ?? "", start: common.start || "", end: common.end || "", location: common.location || "" };
-    const eventinId = String(distribution.eventin_event_id || distribution.external_ids?.eventin || "").trim();
+    const payload = {
+      workspaceId,
+      businessId,
+      title: content.title ?? common.title ?? "",
+      description: content.description ?? common.description ?? "",
+      start: common.start || "",
+      end: common.end || "",
+      location: common.location || "",
+    };
+    const eventinId = String(
+      distribution.eventin_event_id || distribution.external_ids?.eventin || "",
+    ).trim();
     const requests = [];
-    if (/^\d+$/.test(eventinId)) requests.push(fetch("/api/marketing/website-events/create", { method: "PATCH", headers: { Authorization: `Bearer ${sessionRef.current.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, site: siteForBusiness(businessById.get(String(businessId))), eventId: eventinId, allowLinked: true, action: "sync-content" }) }));
+    if (/^\d+$/.test(eventinId))
+      requests.push(
+        fetch("/api/marketing/website-events/create", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${sessionRef.current.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...payload,
+            site: siteForBusiness(businessById.get(String(businessId))),
+            eventId: eventinId,
+            allowLinked: true,
+            action: "sync-content",
+          }),
+        }),
+      );
     const responses = await Promise.all(requests);
     const failures = [];
-    for (const response of responses) { if (!response.ok) { const result = await response.json().catch(() => ({})); failures.push(result.error || `Publicatiebron gaf status ${response.status}.`); } }
-    if (failures.length) throw new Error(`De website kon niet worden bijgewerkt: ${failures.join(" ")}`);
+    for (const response of responses) {
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        failures.push(
+          result.error || `Publicatiebron gaf status ${response.status}.`,
+        );
+      }
+    }
+    if (failures.length)
+      throw new Error(
+        `De website kon niet worden bijgewerkt: ${failures.join(" ")}`,
+      );
     return /^\d+$/.test(eventinId);
   }
   async function linkExternalEvent(item, existingItem = null, content = {}) {
     if (!session?.access_token || linkingId || mergeSaveRef.current) return;
-    const distribution = distributionFor(item); const businessId = String(item.business_id); const business = businessById.get(businessId); if (!business) return;
+    const distribution = distributionFor(item);
+    const businessId = String(item.business_id);
+    const business = businessById.get(businessId);
+    if (!business) return;
     mergeSaveRef.current = true;
-    setLinkingId(String(selectedItem?.id || item.id)); setError(""); setMergeNotice(null);
+    setLinkingId(String(selectedItem?.id || item.id));
+    setError("");
+    setMergeNotice(null);
     try {
-      let event = { title: distribution.common?.title, description: distribution.common?.description || "", start: distribution.common?.start, end: distribution.common?.end, location: distribution.common?.location || "", url: distribution.source_url || distribution.common?.website_url || "" };
+      let event = {
+        title: distribution.common?.title,
+        description: distribution.common?.description || "",
+        start: distribution.common?.start,
+        end: distribution.common?.end,
+        location: distribution.common?.location || "",
+        url: distribution.source_url || distribution.common?.website_url || "",
+      };
       if (existingItem) {
         const existingDistribution = distributionFor(existingItem);
-        const linkedDistribution = { ...existingDistribution, linked_to_horeca_os: true, common: { ...(existingDistribution.common || {}), ...(content.title ? { title: content.title } : {}), ...(content.description ? { description: content.description } : {}) }, external_sources: [...new Set([...(existingDistribution.external_sources || []), ...(distribution.external_sources || [distribution.external_source])].filter(Boolean))], external_ids: { ...(existingDistribution.external_ids || {}), ...(distribution.external_ids || {}), ...(distribution.external_source && distribution.external_id ? { [distribution.external_source]: String(distribution.external_id) } : {}) }, provider_delivery: { ...(existingDistribution.provider_delivery || {}), ...(distribution.provider_delivery || {}) }, verification: { ...(existingDistribution.verification || {}), ...(distribution.verification || {}) }, target_channels: [...new Set([...(existingDistribution.target_channels || []), ...(distribution.target_channels || [])])] };
-        if (String(existingItem.business_id) !== businessId) throw new Error("De vestigingen verschillen.");
-        const updated = await saveEventContent(supabase, workspaceId, existingItem, linkedDistribution);
-        setItems(current => current.filter(entry => entry.id !== item.id).map(entry => entry.id === existingItem.id ? updated : entry));
+        const linkedDistribution = {
+          ...existingDistribution,
+          linked_to_horeca_os: true,
+          common: {
+            ...(existingDistribution.common || {}),
+            ...(content.title ? { title: content.title } : {}),
+            ...(content.description
+              ? { description: content.description }
+              : {}),
+          },
+          external_sources: [
+            ...new Set(
+              [
+                ...(existingDistribution.external_sources || []),
+                ...(distribution.external_sources || [
+                  distribution.external_source,
+                ]),
+              ].filter(Boolean),
+            ),
+          ],
+          external_ids: {
+            ...(existingDistribution.external_ids || {}),
+            ...(distribution.external_ids || {}),
+            ...(distribution.external_source && distribution.external_id
+              ? {
+                  [distribution.external_source]: String(
+                    distribution.external_id,
+                  ),
+                }
+              : {}),
+          },
+          provider_delivery: {
+            ...(existingDistribution.provider_delivery || {}),
+            ...(distribution.provider_delivery || {}),
+          },
+          verification: {
+            ...(existingDistribution.verification || {}),
+            ...(distribution.verification || {}),
+          },
+          target_channels: [
+            ...new Set([
+              ...(existingDistribution.target_channels || []),
+              ...(distribution.target_channels || []),
+            ]),
+          ],
+        };
+        if (String(existingItem.business_id) !== businessId)
+          throw new Error("De vestigingen verschillen.");
+        const updated = await saveEventContent(
+          supabase,
+          workspaceId,
+          existingItem,
+          linkedDistribution,
+        );
+        setItems((current) =>
+          current
+            .filter((entry) => entry.id !== item.id)
+            .map((entry) => (entry.id === existingItem.id ? updated : entry)),
+        );
         setSelectedItem({ ...updated, potentialMatch: undefined });
-        setMergeNotice({ kind: "success", itemId: existingItem.id, message: "Gekoppeld en opgeslagen in Horeca OS. Website en Facebook zijn niet gewijzigd. Je kunt de website afzonderlijk bijwerken." });
+        setMergeNotice({
+          kind: "success",
+          itemId: existingItem.id,
+          message:
+            "Gekoppeld en opgeslagen in Horeca OS. Website en Facebook zijn niet gewijzigd. Je kunt de website afzonderlijk bijwerken.",
+        });
         return;
       }
-      const { data: account, error: accountError } = await supabase.from("integration_accounts").select("id").eq("workspace_id", workspaceId).eq("business_id", businessId).in("provider", ["marketing", "meta"]).limit(1).maybeSingle();
-      if (accountError || !account?.id) throw new Error("De interne marketingkoppeling ontbreekt voor deze vestiging.");
-      const hasEventinSource = distribution.external_source === "eventin" || distribution.external_sources?.includes("eventin");
-      const hasFacebookSource = distribution.external_source === "facebook" || distribution.external_sources?.includes("facebook");
-      const linkedDistribution = { ...distribution, linked_to_horeca_os: true, source_type: hasEventinSource ? "website_event" : "facebook_event", common: { ...distribution.common, title: event.title, description: event.description, start: event.start, end: event.end, location: event.location, website_url: event.url }, source_url: event.url || distribution.source_url, eventin_event_id: hasEventinSource ? String(distribution.external_ids?.eventin || distribution.external_id || "") : distribution.eventin_event_id, provider_delivery: hasFacebookSource ? { ...(distribution.provider_delivery || {}), facebook: distribution.provider_delivery?.facebook || { status: "confirmed", external_id: String(distribution.external_ids?.facebook || distribution.external_id), permalink: distribution.source_url } } : (distribution.provider_delivery || {}), target_channels: [ ...(hasEventinSource ? ["website"] : []), ...(hasFacebookSource ? ["facebook"] : []) ] };
-      const { data: inserted, error: insertError } = await supabase.from("social_content_items").insert({ workspace_id: workspaceId, business_id: businessId, account_id: account.id, content_type: "post", direction: "outbound", body: event.description || event.title || "Extern evenement", media: [{ ...linkedDistribution, external_source: distribution.external_source }], status: "draft", workflow_status: "new", scheduled_for: event.start || null, created_by: session.user.id }).select("id,business_id,body,media,status,workflow_status,scheduled_for,published_at,created_at").single();
+      const { data: account, error: accountError } = await supabase
+        .from("integration_accounts")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("business_id", businessId)
+        .in("provider", ["marketing", "meta"])
+        .limit(1)
+        .maybeSingle();
+      if (accountError || !account?.id)
+        throw new Error(
+          "De interne marketingkoppeling ontbreekt voor deze vestiging.",
+        );
+      const hasEventinSource =
+        distribution.external_source === "eventin" ||
+        distribution.external_sources?.includes("eventin");
+      const hasFacebookSource =
+        distribution.external_source === "facebook" ||
+        distribution.external_sources?.includes("facebook");
+      const linkedDistribution = {
+        ...distribution,
+        linked_to_horeca_os: true,
+        source_type: hasEventinSource ? "website_event" : "facebook_event",
+        common: {
+          ...distribution.common,
+          title: event.title,
+          description: event.description,
+          start: event.start,
+          end: event.end,
+          location: event.location,
+          website_url: event.url,
+        },
+        source_url: event.url || distribution.source_url,
+        eventin_event_id: hasEventinSource
+          ? String(
+              distribution.external_ids?.eventin ||
+                distribution.external_id ||
+                "",
+            )
+          : distribution.eventin_event_id,
+        provider_delivery: hasFacebookSource
+          ? {
+              ...(distribution.provider_delivery || {}),
+              facebook: distribution.provider_delivery?.facebook || {
+                status: "confirmed",
+                external_id: String(
+                  distribution.external_ids?.facebook ||
+                    distribution.external_id,
+                ),
+                permalink: distribution.source_url,
+              },
+            }
+          : distribution.provider_delivery || {},
+        target_channels: [
+          ...(hasEventinSource ? ["website"] : []),
+          ...(hasFacebookSource ? ["facebook"] : []),
+        ],
+      };
+      const { data: inserted, error: insertError } = await supabase
+        .from("social_content_items")
+        .insert({
+          workspace_id: workspaceId,
+          business_id: businessId,
+          account_id: account.id,
+          content_type: "post",
+          direction: "outbound",
+          body: event.description || event.title || "Extern evenement",
+          media: [
+            {
+              ...linkedDistribution,
+              external_source: distribution.external_source,
+            },
+          ],
+          status: "draft",
+          workflow_status: "new",
+          scheduled_for: event.start || null,
+          created_by: session.user.id,
+        })
+        .select(
+          "id,business_id,body,media,status,workflow_status,scheduled_for,published_at,created_at",
+        )
+        .single();
       if (insertError) throw insertError;
-      setItems((current) => current.map((entry) => entry.id === item.id ? inserted : entry)); setSelectedItem(null);
+      setItems((current) =>
+        current.map((entry) => (entry.id === item.id ? inserted : entry)),
+      );
+      setSelectedItem(null);
     } catch (linkError) {
-      if (existingItem) setMergeNotice({ kind: "error", itemId: selectedItem?.id || item.id, message: "Koppelen in Horeca OS kon niet worden bevestigd. Controleer de agenda voordat je opnieuw probeert. Website en Facebook zijn niet gewijzigd." });
-      else setError(linkError.message || "Het externe evenement kon niet worden gekoppeld.");
+      if (existingItem)
+        setMergeNotice({
+          kind: "error",
+          itemId: selectedItem?.id || item.id,
+          message:
+            "Koppelen in Horeca OS kon niet worden bevestigd. Controleer de agenda voordat je opnieuw probeert. Website en Facebook zijn niet gewijzigd.",
+        });
+      else
+        setError(
+          linkError.message ||
+            "Het externe evenement kon niet worden gekoppeld.",
+        );
+    } finally {
+      setLinkingId("");
+      mergeSaveRef.current = false;
     }
-    finally { setLinkingId(""); mergeSaveRef.current = false; }
   }
   function refreshWebsiteComparison(item) {
     const id = String(item.id);
     comparisonJobs.current.get(id)?.controller.abort();
     comparisonJobs.current.delete(id);
-    setSourceComparisons(current => ({ ...current, [id]: (current[id] || []).filter(source => source.label !== "Eventin") }));
+    setSourceComparisons((current) => ({
+      ...current,
+      [id]: (current[id] || []).filter((source) => source.label !== "Eventin"),
+    }));
     return checkSourceComparison(item, true);
   }
   function showSavedContent(updated) {
-    setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry));
-    const updateSources = (sources) => (sources || []).map((source) => source.label === "Horeca OS" ? { ...source, item: updated } : source);
-    setSelectedItem((current) => current?.id === updated.id ? { ...current, ...updated, sourceComparisonItems: updateSources(current.sourceComparisonItems) } : current);
-    setSourceComparisons((current) => ({ ...current, [String(updated.id)]: updateSources(current[String(updated.id)]) }));
+    setItems((current) =>
+      current.map((entry) => (entry.id === updated.id ? updated : entry)),
+    );
+    const updateSources = (sources) =>
+      (sources || []).map((source) =>
+        source.label === "Horeca OS" ? { ...source, item: updated } : source,
+      );
+    setSelectedItem((current) =>
+      current?.id === updated.id
+        ? {
+            ...current,
+            ...updated,
+            sourceComparisonItems: updateSources(current.sourceComparisonItems),
+          }
+        : current,
+    );
+    setSourceComparisons((current) => ({
+      ...current,
+      [String(updated.id)]: updateSources(current[String(updated.id)]),
+    }));
     const oldPhoto = distributionFor(selectedItem).event_photo_website;
     const newPhoto = distributionFor(updated).event_photo_website;
-    if (selectedItem?.id === updated.id && newPhoto?.status === "updated" && newPhoto.checked_at !== oldPhoto?.checked_at) {
+    if (
+      selectedItem?.id === updated.id &&
+      newPhoto?.status === "updated" &&
+      newPhoto.checked_at !== oldPhoto?.checked_at
+    ) {
       // Invalidate even an in-flight comparison; it may still contain the old
       // website image. Refresh shared sources without changing Instagram drafts.
       refreshWebsiteComparison(updated).catch(() => {});
@@ -1030,84 +3812,224 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
   }
   async function saveChosenEventContent(item, content) {
     const comparisonKey = `compare:${String(item?.id)}`;
-    if (!item || (linkingId && linkingId !== comparisonKey) || contentSyncRef.current) return;
-    const notice = { itemId: item.id, title: content?.title, description: content?.description };
-    if (!sessionRef.current?.access_token || !content?.title?.trim() || typeof content.description !== "string") {
-      setContentSaveNotice({ ...notice, kind: "error", message: "Kies eerst een titel en tekst en controleer of je bent ingelogd." }); return;
+    if (
+      !item ||
+      (linkingId && linkingId !== comparisonKey) ||
+      contentSyncRef.current
+    )
+      return;
+    const notice = {
+      itemId: item.id,
+      title: content?.title,
+      description: content?.description,
+    };
+    if (
+      !sessionRef.current?.access_token ||
+      !content?.title?.trim() ||
+      typeof content.description !== "string"
+    ) {
+      setContentSaveNotice({
+        ...notice,
+        kind: "error",
+        message:
+          "Kies eerst een titel en tekst en controleer of je bent ingelogd.",
+      });
+      return;
     }
     contentSyncRef.current = true;
-    setLinkingId(String(item.id)); setError("");
-    setContentSaveNotice({ ...notice, kind: "pending", message: "Tekst bewaren in Horeca OS…" });
+    setLinkingId(String(item.id));
+    setError("");
+    setContentSaveNotice({
+      ...notice,
+      kind: "pending",
+      message: "Tekst bewaren in Horeca OS…",
+    });
     try {
-      const linkedDistribution = withVerifiedFacebookEvent(distributionFor(item), item.sourceComparisonItems || sourceComparisons[String(item.id)] || []);
-      const nextDistribution = prepareContent(linkedDistribution, content, new Date().toISOString());
-      const updated = await saveEventContent(supabase, workspaceId, item, nextDistribution, content.description);
+      const linkedDistribution = withVerifiedFacebookEvent(
+        distributionFor(item),
+        item.sourceComparisonItems || sourceComparisons[String(item.id)] || [],
+      );
+      const nextDistribution = prepareContent(
+        linkedDistribution,
+        content,
+        new Date().toISOString(),
+      );
+      const updated = await saveEventContent(
+        supabase,
+        workspaceId,
+        item,
+        nextDistribution,
+        content.description,
+      );
       showSavedContent(updated);
-      setContentSaveNotice({ ...notice, kind: "success", message: "Tekst bewaard in Horeca OS. De vergelijking is bijgewerkt. Website en Facebook zijn niet gewijzigd." });
+      setContentSaveNotice({
+        ...notice,
+        kind: "success",
+        message:
+          "Tekst bewaard in Horeca OS. De vergelijking is bijgewerkt. Website en Facebook zijn niet gewijzigd.",
+      });
       // Saving prepares the manual Facebook workflow, but never writes a website.
-    } catch (saveError) { setContentSaveNotice({ ...notice, kind: "error", message: saveError.message || "De gekozen evenementtekst kon niet worden opgeslagen. Je keuze blijft staan." }); }
-    finally { contentSyncRef.current = false; setLinkingId(current => current === String(item.id) ? "" : current); }
+    } catch (saveError) {
+      setContentSaveNotice({
+        ...notice,
+        kind: "error",
+        message:
+          saveError.message ||
+          "De gekozen evenementtekst kon niet worden opgeslagen. Je keuze blijft staan.",
+      });
+    } finally {
+      contentSyncRef.current = false;
+      setLinkingId((current) => (current === String(item.id) ? "" : current));
+    }
   }
   async function updateWebsiteContent(item) {
-    if (!item || linkingId || contentSyncRef.current || !sessionRef.current?.access_token) return;
+    if (
+      !item ||
+      linkingId ||
+      contentSyncRef.current ||
+      !sessionRef.current?.access_token
+    )
+      return;
     setMergeNotice(null);
     const distribution = distributionFor(item);
     const snapshot = contentSnapshot(distribution, "website");
     if (!/^\d+$/.test(snapshot.event_id) || !snapshot.title.trim()) {
-      setError("Er is geen bestaand website-evenement gekoppeld of de opgeslagen titel ontbreekt."); return;
+      setError(
+        "Er is geen bestaand website-evenement gekoppeld of de opgeslagen titel ontbreekt.",
+      );
+      return;
     }
     contentSyncRef.current = true;
-    setLinkingId(String(item.id)); setError("");
+    setLinkingId(String(item.id));
+    setError("");
     try {
-      const nextDistribution = { ...distribution, event_content_delivery: { ...distribution.event_content_delivery,
-        website: { mode: "automatic", status: "updating", snapshot, started_at: new Date().toISOString() }
-      } };
+      const nextDistribution = {
+        ...distribution,
+        event_content_delivery: {
+          ...distribution.event_content_delivery,
+          website: {
+            mode: "automatic",
+            status: "updating",
+            snapshot,
+            started_at: new Date().toISOString(),
+          },
+        },
+      };
       // Check the stored version before any external write. Preserve Facebook's status.
-      const updated = await saveEventContent(supabase, workspaceId, item, nextDistribution);
+      const updated = await saveEventContent(
+        supabase,
+        workspaceId,
+        item,
+        nextDistribution,
+      );
       showSavedContent(updated);
       let websiteUpdated = false;
       let websiteError;
-      try { websiteUpdated = await syncExternalEventContent(nextDistribution, String(item.business_id), eventContent(distribution)); }
-      catch (error) { websiteError = error; }
+      try {
+        websiteUpdated = await syncExternalEventContent(
+          nextDistribution,
+          String(item.business_id),
+          eventContent(distribution),
+        );
+      } catch (error) {
+        websiteError = error;
+      }
       if (websiteUpdated || websiteError) {
         let deliveryStatus = "failed";
         if (websiteUpdated) {
           // An accepted write is not proof that the published text matches.
           // Drop stale/in-flight sources, then read back before claiming success.
-          const sources = await refreshWebsiteComparison(updated).catch(() => null);
-          const website = sources?.find(source => source.label === "Eventin");
-          deliveryStatus = !website ? "unconfirmed" :
-            eventText(website.item).trim() === snapshot.title.trim() &&
-            websiteComparableText(descriptionFor(website.item)) === websiteComparableText(snapshot.description)
-              ? "updated" : "different";
+          const sources = await refreshWebsiteComparison(updated).catch(
+            () => null,
+          );
+          const website = sources?.find((source) => source.label === "Eventin");
+          deliveryStatus = !website
+            ? "unconfirmed"
+            : eventText(website.item).trim() === snapshot.title.trim() &&
+                websiteComparableText(descriptionFor(website.item)) ===
+                  websiteComparableText(snapshot.description)
+              ? "updated"
+              : "different";
         }
         const savedDistribution = distributionFor(updated);
-        const finished = { ...savedDistribution, event_content_delivery: { ...savedDistribution.event_content_delivery,
-          website: { mode: "automatic", status: deliveryStatus, snapshot: contentSnapshot(nextDistribution, "website"), updated_at: new Date().toISOString() }
-        } };
-        const saved = await saveEventContent(supabase, workspaceId, updated, finished);
+        const finished = {
+          ...savedDistribution,
+          event_content_delivery: {
+            ...savedDistribution.event_content_delivery,
+            website: {
+              mode: "automatic",
+              status: deliveryStatus,
+              snapshot: contentSnapshot(nextDistribution, "website"),
+              updated_at: new Date().toISOString(),
+            },
+          },
+        };
+        const saved = await saveEventContent(
+          supabase,
+          workspaceId,
+          updated,
+          finished,
+        );
         showSavedContent(saved);
       }
-      if (websiteError) throw new Error(websiteError.message + " De opgeslagen tekst en Facebook-status blijven behouden.");
+      if (websiteError)
+        throw new Error(
+          websiteError.message +
+            " De opgeslagen tekst en Facebook-status blijven behouden.",
+        );
       // Keep the dialog open for copying/confirmation; no full calendar reload.
-    } catch (syncError) { setError(syncError.message || "De website-update kon niet worden afgerond. Controleer de website voordat je opnieuw probeert."); }
-    finally { contentSyncRef.current = false; setLinkingId(""); }
+    } catch (syncError) {
+      setError(
+        syncError.message ||
+          "De website-update kon niet worden afgerond. Controleer de website voordat je opnieuw probeert.",
+      );
+    } finally {
+      contentSyncRef.current = false;
+      setLinkingId("");
+    }
   }
   async function confirmFacebook(item, expectedSnapshot) {
-    if (!item || linkingId || contentSyncRef.current || !sessionRef.current?.user?.id) return;
+    if (
+      !item ||
+      linkingId ||
+      contentSyncRef.current ||
+      !sessionRef.current?.user?.id
+    )
+      return;
     contentSyncRef.current = true;
-    setLinkingId(String(item.id)); setError("");
+    setLinkingId(String(item.id));
+    setError("");
     try {
-      const next = confirmFacebookContent(distributionFor(item), expectedSnapshot, sessionRef.current.user.id, new Date().toISOString());
+      const next = confirmFacebookContent(
+        distributionFor(item),
+        expectedSnapshot,
+        sessionRef.current.user.id,
+        new Date().toISOString(),
+      );
       const updated = await saveEventContent(supabase, workspaceId, item, next);
       showSavedContent(updated);
-    } catch (confirmError) { setError(confirmError.message || "De handmatige bevestiging kon niet worden opgeslagen."); }
-    finally { contentSyncRef.current = false; setLinkingId(""); }
+    } catch (confirmError) {
+      setError(
+        confirmError.message ||
+          "De handmatige bevestiging kon niet worden opgeslagen.",
+      );
+    } finally {
+      contentSyncRef.current = false;
+      setLinkingId("");
+    }
   }
   async function linkFacebookEvent(item, event) {
-    if (!item || !event?.id || (linkingId && linkingId !== `compare:${String(item.id)}`) || contentSyncRef.current || !sessionRef.current?.access_token) return;
+    if (
+      !item ||
+      !event?.id ||
+      (linkingId && linkingId !== `compare:${String(item.id)}`) ||
+      contentSyncRef.current ||
+      !sessionRef.current?.access_token
+    )
+      return;
     contentSyncRef.current = true;
-    setLinkingId(String(item.id)); setError("");
+    setLinkingId(String(item.id));
+    setError("");
     try {
       const distribution = distributionFor(item);
       const eventId = String(event.id);
@@ -1116,7 +4038,8 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
         facebook_event_delivery: {
           status: "confirmed",
           external_id: eventId,
-          permalink: event.sourceUrl || `https://www.facebook.com/events/${eventId}/`,
+          permalink:
+            event.sourceUrl || `https://www.facebook.com/events/${eventId}/`,
           business_id: String(item.business_id),
           page_name: event.pageName || "",
           confirmed_at: new Date().toISOString(),
@@ -1125,118 +4048,2524 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
       const updated = await saveEventContent(supabase, workspaceId, item, next);
       showSavedContent(updated);
       await checkSourceComparison(updated, true);
-    } catch (linkError) { setError(linkError.message || "Het gevonden Facebook-evenement kon niet worden gekoppeld."); }
-    finally { contentSyncRef.current = false; setLinkingId(""); }
+    } catch (linkError) {
+      setError(
+        linkError.message ||
+          "Het gevonden Facebook-evenement kon niet worden gekoppeld.",
+      );
+    } finally {
+      contentSyncRef.current = false;
+      setLinkingId("");
+    }
   }
   async function compareSources(item) {
-    const retryAfterTimeout = sourceComparisonChecks[String(item?.id)] === "timeout";
-    if (!item || comparisonTargetRef.current || (linkingId && !retryAfterTimeout)) return;
+    const retryAfterTimeout =
+      sourceComparisonChecks[String(item?.id)] === "timeout";
+    if (
+      !item ||
+      comparisonTargetRef.current ||
+      (linkingId && !retryAfterTimeout)
+    )
+      return;
     const comparisonKey = `compare:${String(item.id)}`;
     comparisonTargetRef.current = String(item.id);
-    setLinkingId(comparisonKey); setError("");
+    setLinkingId(comparisonKey);
+    setError("");
     try {
       await checkSourceComparison(item, true);
       await findFacebookMatches(item);
-    } catch (compareError) { setError(compareError.message || "De bronnen konden niet opnieuw worden vergeleken."); }
-    finally { comparisonTargetRef.current = ""; setLinkingId(current => current === comparisonKey ? "" : current); }
+    } catch (compareError) {
+      setError(
+        compareError.message ||
+          "De bronnen konden niet opnieuw worden vergeleken.",
+      );
+    } finally {
+      comparisonTargetRef.current = "";
+      setLinkingId((current) => (current === comparisonKey ? "" : current));
+    }
   }
   async function mergeManagedDuplicate(item, matchingItem, content = {}) {
-    if (!matchingItem || linkingId || mergeSaveRef.current || mergeNotice?.kind === "error") return;
-    if (distributionFor(item).series || distributionFor(matchingItem).series) { setError('Een uitvoering van een reeks kan niet met een ander agendapunt worden samengevoegd. Controleer de koppelingen per uitvoering.'); return; }
+    if (
+      !matchingItem ||
+      linkingId ||
+      mergeSaveRef.current ||
+      mergeNotice?.kind === "error"
+    )
+      return;
+    if (distributionFor(item).series || distributionFor(matchingItem).series) {
+      setError(
+        "Een uitvoering van een reeks kan niet met een ander agendapunt worden samengevoegd. Controleer de koppelingen per uitvoering.",
+      );
+      return;
+    }
     mergeSaveRef.current = true;
-    const keep = statusRank(item) >= statusRank(matchingItem) ? item : matchingItem;
+    const keep =
+      statusRank(item) >= statusRank(matchingItem) ? item : matchingItem;
     const duplicate = keep.id === item.id ? matchingItem : item;
-    setLinkingId(String(item.id)); setError(""); setMergeNotice(null);
+    setLinkingId(String(item.id));
+    setError("");
+    setMergeNotice(null);
     try {
-      const keepDistribution = distributionFor(keep); const duplicateDistribution = distributionFor(duplicate);
-      const { duplicate_of: _ignoredDuplicateOf, ...cleanKeepDistribution } = keepDistribution;
-      const keptDistribution = { ...cleanKeepDistribution, source_url: keepDistribution.source_url || duplicateDistribution.source_url, eventin_event_id: keepDistribution.eventin_event_id || duplicateDistribution.eventin_event_id, external_sources: [...new Set([...(keepDistribution.external_sources || []), ...(duplicateDistribution.external_sources || [])].filter(Boolean))], external_ids: { ...(duplicateDistribution.external_ids || {}), ...(keepDistribution.external_ids || {}) }, provider_delivery: { ...(duplicateDistribution.provider_delivery || {}), ...(keepDistribution.provider_delivery || {}) }, target_channels: [...new Set([...(keepDistribution.target_channels || []), ...(duplicateDistribution.target_channels || [])])], common: { ...(duplicateDistribution.common || {}), ...(keepDistribution.common || {}), ...(content.title ? { title: content.title } : {}), ...(content.description ? { description: content.description } : {}) } };
-      const updated = await saveLocalEventMerge(supabase, workspaceId, keep, duplicate, keptDistribution);
-      setItems(current => current.map(entry => entry.id === keep.id ? updated : entry.id === duplicate.id ? { ...entry, media: entry.media.map(part => part?.kind === "campaign_distribution" ? { ...part, duplicate_of: keep.id } : part) } : entry));
+      const keepDistribution = distributionFor(keep);
+      const duplicateDistribution = distributionFor(duplicate);
+      const { duplicate_of: _ignoredDuplicateOf, ...cleanKeepDistribution } =
+        keepDistribution;
+      const keptDistribution = {
+        ...cleanKeepDistribution,
+        source_url:
+          keepDistribution.source_url || duplicateDistribution.source_url,
+        eventin_event_id:
+          keepDistribution.eventin_event_id ||
+          duplicateDistribution.eventin_event_id,
+        external_sources: [
+          ...new Set(
+            [
+              ...(keepDistribution.external_sources || []),
+              ...(duplicateDistribution.external_sources || []),
+            ].filter(Boolean),
+          ),
+        ],
+        external_ids: {
+          ...(duplicateDistribution.external_ids || {}),
+          ...(keepDistribution.external_ids || {}),
+        },
+        provider_delivery: {
+          ...(duplicateDistribution.provider_delivery || {}),
+          ...(keepDistribution.provider_delivery || {}),
+        },
+        target_channels: [
+          ...new Set([
+            ...(keepDistribution.target_channels || []),
+            ...(duplicateDistribution.target_channels || []),
+          ]),
+        ],
+        common: {
+          ...(duplicateDistribution.common || {}),
+          ...(keepDistribution.common || {}),
+          ...(content.title ? { title: content.title } : {}),
+          ...(content.description ? { description: content.description } : {}),
+        },
+      };
+      const updated = await saveLocalEventMerge(
+        supabase,
+        workspaceId,
+        keep,
+        duplicate,
+        keptDistribution,
+      );
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === keep.id
+            ? updated
+            : entry.id === duplicate.id
+              ? {
+                  ...entry,
+                  media: entry.media.map((part) =>
+                    part?.kind === "campaign_distribution"
+                      ? { ...part, duplicate_of: keep.id }
+                      : part,
+                  ),
+                }
+              : entry,
+        ),
+      );
       setSelectedItem({ ...updated, potentialMatch: undefined });
-      setMergeNotice({ kind: "success", itemId: keep.id, message: "Samengevoegd in Horeca OS. De gekozen tekst is opgeslagen. Website en Facebook zijn niet gewijzigd. Je kunt de website afzonderlijk bijwerken." });
+      setMergeNotice({
+        kind: "success",
+        itemId: keep.id,
+        message:
+          "Samengevoegd in Horeca OS. De gekozen tekst is opgeslagen. Website en Facebook zijn niet gewijzigd. Je kunt de website afzonderlijk bijwerken.",
+      });
     } catch (mergeError) {
       if (mergeError.savedItem) showSavedContent(mergeError.savedItem);
-      setMergeNotice({ kind: "error", itemId: item.id, message: mergeError.message || "Samenvoegen kon niet worden bevestigd. Controleer de agenda voordat je opnieuw probeert. Website en Facebook zijn niet gewijzigd." });
-    } finally { setLinkingId(""); mergeSaveRef.current = false; }
+      setMergeNotice({
+        kind: "error",
+        itemId: item.id,
+        message:
+          mergeError.message ||
+          "Samenvoegen kon niet worden bevestigd. Controleer de agenda voordat je opnieuw probeert. Website en Facebook zijn niet gewijzigd.",
+      });
+    } finally {
+      setLinkingId("");
+      mergeSaveRef.current = false;
+    }
   }
   function mergeSelectedRecords(content) {
     if (mergeNotice?.kind === "error") return;
-    const candidate = items.find(entry => entry.id === selectedItem?.potentialMatch?.id);
+    const candidate = items.find(
+      (entry) => entry.id === selectedItem?.potentialMatch?.id,
+    );
     if (!selectedItem || !candidate) return;
-    if (isExternalEvent(selectedItem) && !isExternalEvent(candidate)) return linkExternalEvent(selectedItem, candidate, content);
-    if (!isExternalEvent(selectedItem) && isExternalEvent(candidate)) return linkExternalEvent(candidate, selectedItem, content);
+    if (isExternalEvent(selectedItem) && !isExternalEvent(candidate))
+      return linkExternalEvent(selectedItem, candidate, content);
+    if (!isExternalEvent(selectedItem) && isExternalEvent(candidate))
+      return linkExternalEvent(candidate, selectedItem, content);
     if (isExternalEvent(selectedItem)) return;
     return mergeManagedDuplicate(selectedItem, candidate, content);
   }
   function sameDateCandidates(item) {
     const itemDate = dateOnly(itemStart(item));
-    return items.filter((candidate) => candidate.id !== item.id && !distributionFor(candidate).duplicate_of && String(candidate.business_id) === String(item.business_id) && sameDay(dateOnly(itemStart(candidate)), itemDate));
+    return items.filter(
+      (candidate) =>
+        candidate.id !== item.id &&
+        !distributionFor(candidate).duplicate_of &&
+        String(candidate.business_id) === String(item.business_id) &&
+        sameDay(dateOnly(itemStart(candidate)), itemDate),
+    );
   }
   function chooseSameDateMatch(candidate) {
     if (!selectedItem) return;
-    setSelectedItem((current) => current ? { ...current, potentialMatch: { id: candidate.id, title: eventText(candidate), status: statusFor(candidate, distributionFor(candidate)).label, external: isExternalEvent(candidate) } } : current);
+    setSelectedItem((current) =>
+      current
+        ? {
+            ...current,
+            potentialMatch: {
+              id: candidate.id,
+              title: eventText(candidate),
+              status: statusFor(candidate, distributionFor(candidate)).label,
+              external: isExternalEvent(candidate),
+            },
+          }
+        : current,
+    );
   }
-  const renderBusinessCalendar = (business) => { const businessItems = itemsForBusiness(business.id); const businessDayItems = businessItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor)); return <article className="marketingVenueCalendar" key={business.id}><header><span className={`marketingVenueDot ${business.color}`} /><h3>{business.name}</h3></header>{view === "month" && <MonthCalendar anchor={anchor} items={businessItems} businessById={businessById} onSelectEvent={setSelectedItem} onPlanDate={day => onPlanDate?.(day, business.id)} />}{view === "week" && <WeekCalendar anchor={anchor} items={businessItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "day" && <div className="marketingDayAgenda">{businessDayItems.length ? businessDayItems.map((item) => <CalendarEvent key={item.id} item={item} business={business} onSelectEvent={setSelectedItem} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={businessItems} onSelectEvent={setSelectedItem} />}</article>; };
-  const renderInfoCalendar = () => { const infoDayItems = infoCalendarItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor)); return <article className="marketingVenueCalendar marketingInfoCalendar"><header><span className="marketingVenueDot infoCalendarLegend" /><h3>Agenda info@leclubbbq.nl</h3></header>{view === "month" && <MonthCalendar anchor={anchor} items={infoCalendarItems} businessById={businessById} />}{view === "week" && <WeekCalendar anchor={anchor} items={infoCalendarItems} businessById={businessById} />}{view === "day" && <div className="marketingDayAgenda">{infoDayItems.length ? infoDayItems.map((item) => <CalendarEvent key={item.id} item={item} />) : <p>Geen afspraken in de info-agenda.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={infoCalendarItems} />}</article>; };
+  const renderBusinessCalendar = (business) => {
+    const businessItems = itemsForBusiness(business.id);
+    const businessDayItems = businessItems.filter((item) =>
+      sameDay(dateOnly(itemStart(item)), anchor),
+    );
+    return (
+      <article className="marketingVenueCalendar" key={business.id}>
+        <header>
+          <span className={`marketingVenueDot ${business.color}`} />
+          <h3>{business.name}</h3>
+        </header>
+        {view === "month" && (
+          <MonthCalendar
+            anchor={anchor}
+            items={businessItems}
+            businessById={businessById}
+            onSelectEvent={setSelectedItem}
+            onPlanDate={(day) => onPlanDate?.(day, business.id)}
+          />
+        )}
+        {view === "week" && (
+          <WeekCalendar
+            anchor={anchor}
+            items={businessItems}
+            businessById={businessById}
+            onSelectEvent={setSelectedItem}
+          />
+        )}
+        {view === "day" && (
+          <div className="marketingDayAgenda">
+            {businessDayItems.length ? (
+              businessDayItems.map((item) => (
+                <CalendarEvent
+                  key={item.id}
+                  item={item}
+                  business={business}
+                  onSelectEvent={setSelectedItem}
+                />
+              ))
+            ) : (
+              <p>Geen geplande items voor deze dag.</p>
+            )}
+          </div>
+        )}
+        {view === "year" && (
+          <YearCalendar
+            anchor={anchor}
+            items={businessItems}
+            onSelectEvent={setSelectedItem}
+          />
+        )}
+      </article>
+    );
+  };
+  const renderInfoCalendar = () => {
+    const infoDayItems = infoCalendarItems.filter((item) =>
+      sameDay(dateOnly(itemStart(item)), anchor),
+    );
+    return (
+      <article className="marketingVenueCalendar marketingInfoCalendar">
+        <header>
+          <span className="marketingVenueDot infoCalendarLegend" />
+          <h3>Agenda info@leclubbbq.nl</h3>
+        </header>
+        {view === "month" && (
+          <MonthCalendar
+            anchor={anchor}
+            items={infoCalendarItems}
+            businessById={businessById}
+          />
+        )}
+        {view === "week" && (
+          <WeekCalendar
+            anchor={anchor}
+            items={infoCalendarItems}
+            businessById={businessById}
+          />
+        )}
+        {view === "day" && (
+          <div className="marketingDayAgenda">
+            {infoDayItems.length ? (
+              infoDayItems.map((item) => (
+                <CalendarEvent key={item.id} item={item} />
+              ))
+            ) : (
+              <p>Geen afspraken in de info-agenda.</p>
+            )}
+          </div>
+        )}
+        {view === "year" && (
+          <YearCalendar anchor={anchor} items={infoCalendarItems} />
+        )}
+      </article>
+    );
+  };
 
-  const currentChannelStatus = (item, channel) => channelStatus(item, channel, sourceComparisonStatus(
-    item,
-    sourceComparisons[String(item.id)] || item.sourceComparisonItems || [],
-    linkingId === `compare:${String(item.id)}` ? "pending" : sourceComparisonChecks[String(item.id)] || (autoChecking ? "queued" : "idle"),
-  ));
-  return <ChannelStatusContext.Provider value={currentChannelStatus}><section className="panel marketingCalendarPanel"><div className="panelHead marketingCalendarHead"><div><p className="eyebrow">MARKETINGAGENDA</p><h2>{title}</h2><p>Bekijk de planning van beide vestigingen naast elkaar. Zo zie je direct wanneer evenementen op dezelfde dag vallen.</p></div><button type="button" className="secondaryButton" onClick={() => setRefreshKey((value) => value + 1)} disabled={busy}>{busy ? "Agenda laden…" : "Agenda verversen"}</button></div>
-    <CalendarContentSelector value={contentView} onChange={setContentView} />
-    <MarketingWorklist items={marketingWorklistItems(items, businessById)} businesses={businessById} onOpen={setSelectedItem} getStatus={currentChannelStatus} />
-    <div className="marketingCalendarToolbar"><div className="marketingCalendarViews">{Object.entries(viewLabels).map(([key, label]) => <button type="button" className={view === key ? "active" : ""} onClick={() => setView(key)} key={key}>{label}</button>)}</div><div className="marketingCalendarNav" aria-label="Agenda navigatie"><button type="button" aria-label="Vorige periode" onClick={() => move(-1)}>‹</button><strong className="marketingCalendarPeriod" aria-live="polite">{title}</strong><button type="button" aria-label="Volgende periode" onClick={() => move(1)}>›</button><button type="button" className="marketingCalendarToday" onClick={() => setAnchor(new Date())}>Vandaag</button></div><div className="marketingCalendarLayout"><button type="button" className={calendarLayout === "two" ? "active" : ""} onClick={() => setCalendarLayout("two")}>Twee agenda's</button><button type="button" className={calendarLayout === "combined" ? "active" : ""} onClick={() => setCalendarLayout("combined")}>Over elkaar leggen</button><button type="button" className={showInfoCalendar ? "active" : ""} aria-pressed={showInfoCalendar} onClick={() => setShowInfoCalendar(current => !current)}>{showInfoCalendar ? "Info-agenda verbergen" : "Info-agenda tonen"}</button></div></div>
-    <div className="marketingCalendarLegend">{venueBusinesses.map((business) => <span key={business.id}><i className={business.color} />{business.name}</span>)}{showInfoCalendar && <span><i className="infoCalendarLegend" />Agenda info@leclubbbq.nl</span>}<span><i className="externalLegend" />Extern evenement — nog niet gekoppeld</span><span>Publicatiekaart = bewaard publicatiemoment · tijden in Nederland</span></div>
-    {showInfoCalendar && <p className="marketingInfoCalendarNotice" role="status">{infoCalendarLoading ? "Agenda info@leclubbbq.nl laden…" : infoCalendarError || `${infoCalendarItems.length} agendapunt${infoCalendarItems.length === 1 ? "" : "en"} uit info@leclubbbq.nl worden getoond.`}</p>}
-    {autoChecking && <div className="marketingAutoNotice">Marketingagenda geladen. Publicaties en externe evenementen worden automatisch gecontroleerd…</div>}
-    {!autoChecking && externalItems.length > 0 && <div className="marketingExternalQueueNotice">{externalItems.length} extern {externalItems.length === 1 ? "evenement wacht" : "evenementen wachten"} op koppeling. Het nieuwste wordt automatisch geopend.</div>}
-    {!selectedItem && mergeNotice && <div className={`marketingMergeNotice ${mergeNotice.kind}`} role={mergeNotice.kind === "error" ? "alert" : "status"}><strong>{mergeNotice.message}</strong></div>}{error && <div className="eventResult error"><strong>{error}</strong></div>}{calendarLayout === "two" ? <div className="marketingTwoCalendars">{venueBusinesses.map(renderBusinessCalendar)}{showInfoCalendar && renderInfoCalendar()}</div> : <div className="marketingCombinedCalendar">{view === "month" && <MonthCalendar anchor={anchor} items={displayedItems} businessById={businessById} onSelectEvent={setSelectedItem} onPlanDate={day => onPlanDate?.(day, venueBusinesses.length === 1 ? venueBusinesses[0].id : "")} />}{view === "week" && <WeekCalendar anchor={anchor} items={displayedItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "day" && <div className="marketingDayAgenda"><h3>{formatDate(anchor, { weekday: "long", day: "numeric", month: "long" })}</h3>{dayItems.length ? dayItems.map((item) => <CalendarEvent key={item.id} item={item} business={businessById.get(String(item.business_id))} onSelectEvent={setSelectedItem} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={displayedItems} onSelectEvent={setSelectedItem} />}</div>}
-    {selectedItem && <EventDetails workspaceId={workspaceId} session={session} onSeriesOpen={setSelectedItem} onSeriesSaved={rows => { const byId = new Map(rows.map(row => [row.id, row])); setSelectedItem(current => byId.get(current?.id) || current); setItems(current => [...current.map(row => byId.get(row.id) || row), ...rows.filter(row => !current.some(old => old.id === row.id))]); }} onCalendarSaved={saved => { const id = selectedItem.id; const apply = current => !current || current.id !== id ? current : { ...current, media: (current.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, calendar_channel: saved } : entry) }; setSelectedItem(apply); setItems(current => current.map(apply)); }} onPredisLibrarySaved={saved => { const id = selectedItem.id; const apply = current => !current || current.id !== id ? current : { ...current, media: (current.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, predis_library: saved } : entry) }; setSelectedItem(apply); setItems(current => current.map(apply)); }} onPredisSaved={saved => { const id = selectedItem.id; const apply = current => !current || current.id !== id ? current : { ...current, media: (current.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, manual_predis: saved } : entry) }; setSelectedItem(apply); setItems(current => current.map(apply)); }} onWhatsappSaved={saved => { const id = selectedItem.id; const apply = current => !current || current.id !== id ? current : { ...current, media: (current.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, manual_whatsapp: saved } : entry) }; setSelectedItem(apply); setItems(current => current.map(apply)); }} onInstagramPublished={(format, job) => { const apply = current => { if (!current || current.id !== selectedItem.id) return current; return { ...current, media: (current.media || []).map(entry => entry?.kind === "campaign_distribution" ? { ...entry, instagram_publications: { ...entry.instagram_publications, [format]: job } } : entry) }; }; setSelectedItem(apply); setItems(current => current.map(apply)); }} mergeNotice={mergeNotice?.itemId === selectedItem.id ? mergeNotice : null} item={selectedItem} matchItem={items.find((entry) => entry.id === selectedItem.potentialMatch?.id)} sameDayItems={sameDateCandidates(selectedItem)} sourceComparisonItems={sourceComparisons[String(selectedItem.id)] || selectedItem.sourceComparisonItems || []} sourceComparisonCheck={sourceComparisonChecks[String(selectedItem.id)] || (autoChecking ? "queued" : "idle")} facebookLinkCheck={facebookLinkChecks[String(selectedItem.id)] || "idle"} business={businessById.get(String(selectedItem.business_id))} onClose={() => setSelectedItem(null)} onLink={() => linkExternalEvent(selectedItem)} onCompareSources={() => compareSources(selectedItem)} onPhotoSaved={showSavedContent} onSyncContent={(content) => saveChosenEventContent(selectedItem, content)} onUpdateWebsite={() => updateWebsiteContent(selectedItem)} onConfirmFacebook={(snapshot) => confirmFacebook(selectedItem, snapshot)} syncError={error} contentSaveNotice={contentSaveNotice} onLinkExisting={mergeNotice?.kind === "error" ? undefined : mergeSelectedRecords} onChooseMatch={chooseSameDateMatch} comparing={linkingId === `compare:${String(selectedItem.id)}`} linking={linkingId === String(selectedItem.id)} />}
-    {!busy && !displayedItems.length && <div className="marketingCalendarEmptyState"><strong>{CALENDAR_CONTENT_VIEWS[contentView].empty}</strong></div>}
-    <style jsx>{`.marketingChosenEventFacts{display:grid;gap:5px;padding:10px 12px;border:1px solid #cbdfe5;border-radius:8px;background:#f6fafb;color:#405866;font-size:13px}.marketingChosenEventFacts span{display:block}.marketingCalendarPanel{margin-bottom:24px}.marketingCalendarHead{align-items:flex-start}.marketingCalendarHead p:not(.eyebrow){max-width:780px}.marketingCalendarToolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:18px 0 10px;flex-wrap:wrap}.marketingCalendarViews,.marketingCalendarNav{display:flex;gap:6px}.marketingCalendarViews button,.marketingCalendarNav button{border:1px solid #25889b;border-radius:8px;padding:9px 13px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.marketingCalendarViews button.active,.marketingCalendarNav button:first-child{background:#25889b;color:#fff}.marketingCalendarLegend{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 14px;color:#405866;font-size:13px;font-weight:800}.marketingCalendarLegend span{display:flex;align-items:center;gap:6px}.marketingCalendarLegend i{width:11px;height:11px;border-radius:50%;display:inline-block}.venueA{background:#25889b}.venueB{background:#d27928}.marketingCalendarEvent{display:grid;gap:2px;width:100%;padding:6px 7px;border:0;border-left:4px solid;border-radius:6px;background:#eef7f9;color:#173552;text-align:left;cursor:pointer}.marketingCalendarEvent.venueA{border-left-color:#25889b}.marketingCalendarEvent.venueB{border-left-color:#d27928;background:#fff5e9}.marketingCalendarEvent strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.marketingCalendarEvent span{font-size:11px;color:#5c7285}.marketingWeekdayRow{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}.marketingWeekdayRow strong{padding:8px;background:#173b5c;color:#fff;text-align:center}.marketingMonthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:#c6d5df;border:1px solid #c6d5df}.marketingDayCell{min-height:126px;padding:7px;background:#fff}.marketingDayCell.outside{background:#f1f4f6;color:#91a0aa}.marketingDayCell>strong{display:block;margin-bottom:6px}.marketingDayCell>div,.marketingWeekColumn{display:grid;gap:5px}.marketingEmptyDay{display:block;width:100%;border:0;color:inherit;text-align:left;font:inherit;cursor:pointer}.marketingEmptyDay:hover,.marketingEmptyDay:focus-visible{background:#e5f4f6;outline:2px solid #25889b;outline-offset:-2px}.marketingEmptyDay span{display:block;color:#25889b;font-size:12px;font-weight:800}.marketingWeekCalendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:#c6d5df;border:1px solid #c6d5df}.marketingWeekColumn{min-height:280px;padding:9px;background:#fff}.marketingWeekColumn>strong{padding-bottom:8px;border-bottom:1px solid #d5e0e7}.marketingCalendarEmpty{color:#91a0aa;font-size:12px}.marketingDayAgenda{display:grid;gap:10px;max-width:720px}.marketingDayAgenda h3{margin:0}.marketingDayAgenda>p,.marketingCalendarEmptyState{padding:16px;border-radius:10px;background:#f5f8fa;color:#5c7285}.marketingYearGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.marketingMiniMonth{padding:12px;border:1px solid #c6d5df;border-radius:10px;background:#fff}.marketingMiniMonth h4{margin:0 0 9px;text-transform:capitalize}.marketingMiniDays{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.marketingMiniDays span{padding:5px 0;border-radius:4px;text-align:center;font-size:11px;background:#f4f7f9}.marketingMiniDays span.hasEvent{background:#dceff2;color:#176d7f;font-weight:800}.marketingMiniMonth small{display:block;margin-top:8px;color:#5c7285}.marketingCalendarEmptyState{margin-top:14px}.marketingCalendarEmptyState p{margin:6px 0 0}@media(max-width:760px){.marketingCalendarHead{display:block}.marketingCalendarHead button{width:100%;margin-top:12px}.marketingDayCell{min-height:94px;padding:5px}.marketingCalendarEvent{padding:4px}.marketingCalendarEvent strong{font-size:10px}.marketingCalendarEvent span{display:none}.marketingWeekColumn{min-height:220px;padding:5px}.marketingWeekColumn .marketingCalendarEvent strong{white-space:normal}.marketingYearGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
-    <style jsx global>{`.marketingCalendarPanel{background:#fff}.marketingCalendarPanel .marketingWeekdayRow{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid #d7dfe4}.marketingCalendarPanel .marketingWeekdayRow strong{display:block!important;padding:11px 8px!important;background:#fff!important;color:#536b7c!important;font-size:11px!important;letter-spacing:.08em;text-align:left}.marketingCalendarPanel .marketingMonthGrid{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr));gap:0!important;background:#d7dfe4!important;border:0!important;border-top:1px solid #d7dfe4}.marketingCalendarPanel .marketingDayCell{display:block!important;min-height:142px!important;padding:10px!important;background:#fff!important;border-right:1px solid #d7dfe4;border-bottom:1px solid #d7dfe4;color:#173552}.marketingCalendarPanel .marketingDayCell.outside{background:#f7f8f9!important;color:#9aa7af}.marketingCalendarPanel .marketingDayCell>strong{display:block!important;margin-bottom:8px;font-size:12px}.marketingCalendarPanel .marketingDayCell>div{display:grid!important;gap:5px}.marketingCalendarPanel .marketingCalendarEvent{display:grid!important;gap:2px!important;width:100%!important;min-width:0;padding:6px 8px!important;border:0!important;border-left:3px solid!important;border-radius:2px!important;box-shadow:none!important}.marketingCalendarPanel .marketingCalendarEvent strong{display:block!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px!important}.marketingCalendarPanel .marketingCalendarEvent span{display:block!important;font-size:10px!important}.marketingCalendarPanel .marketingCalendarEvent.venueA{background:#eef7f9!important;border-left-color:#25889b!important}.marketingCalendarPanel .marketingCalendarEvent.venueB{background:#fff4e8!important;border-left-color:#d27928!important}.marketingCalendarPanel .marketingCalendarToolbar{border-top:1px solid #d7dfe4;border-bottom:1px solid #d7dfe4;padding:14px 0}.marketingCalendarPanel .marketingCalendarViews button,.marketingCalendarPanel .marketingCalendarNav button{border-radius:0!important}.marketingCalendarPanel .marketingCalendarViews button.active{background:#173b5c!important;color:#fff!important}.marketingCalendarPanel .marketingCalendarNav button:first-child{background:#173b5c!important;color:#fff!important}.marketingCalendarPanel .marketingCalendarLegend{margin:12px 0 16px}.marketingCalendarPanel .marketingYearGrid{display:grid!important}.marketingCalendarPanel .marketingMiniMonth{min-height:150px}.marketingCalendarPanel .marketingDayAgenda{border-top:1px solid #d7dfe4;padding-top:16px}.marketingCalendarPanel .marketingCalendarEmptyState{border-radius:0;border:1px solid #d7dfe4;background:#f7f8f9}@media(max-width:760px){.marketingCalendarPanel .marketingDayCell{min-height:92px!important;padding:6px!important}.marketingCalendarPanel .marketingCalendarEvent strong{font-size:10px!important}.marketingCalendarPanel .marketingCalendarEvent span{display:none!important}}`}</style>
-    <style jsx global>{`.marketingTwoCalendars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.marketingVenueCalendar{min-width:0;border:1px solid #d7dfe4;background:#fff}.marketingVenueCalendar>header{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #d7dfe4}.marketingVenueCalendar>header h3{margin:0;font-size:18px}.marketingVenueDot{width:12px;height:12px;border-radius:50%;display:inline-block}.marketingVenueCalendar .marketingDayCell{min-height:116px!important;padding:8px!important}.marketingCalendarLayout{display:flex;gap:6px;margin-left:auto}.marketingCalendarLayout button{border:1px solid #25889b;border-radius:8px;padding:9px 12px;background:#fff;color:#176d7f;font:inherit;font-weight:800;cursor:pointer}.marketingCalendarLayout button.active{background:#25889b;color:#fff}.marketingCombinedCalendar{width:100%}@media(max-width:760px){.marketingTwoCalendars{grid-template-columns:1fr}.marketingCalendarLayout{width:100%;margin-left:0}.marketingCalendarLayout button{flex:1}}`}</style>
-    <style jsx global>{`.marketingCalendarPanel .marketingWeekCalendar{display:block!important;border:0!important;background:transparent!important}.marketingCalendarPanel .marketingWeekHeader,.marketingCalendarPanel .marketingWeekColumns{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))}.marketingCalendarPanel .marketingWeekHeader{border-top:1px solid #d7dfe4;border-bottom:1px solid #d7dfe4}.marketingCalendarPanel .marketingWeekHeader strong{padding:12px 10px;color:#536b7c;font-size:11px;letter-spacing:.06em;text-transform:uppercase}.marketingCalendarPanel .marketingWeekColumns{background:#d7dfe4;gap:1px}.marketingCalendarPanel .marketingWeekColumn{display:grid!important;align-content:start;gap:8px;min-height:340px;padding:10px;background:#fff}.marketingCalendarPanel .marketingWeekColumn:has(.marketingCalendarEvent){background:#fff}.marketingCalendarPanel .marketingWeekColumn .marketingCalendarEmpty{padding-top:4px;color:#9aa7af;font-size:12px}.marketingCalendarPanel .marketingYearGrid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.marketingCalendarPanel .marketingMiniMonth{min-height:220px;padding:14px!important;border:1px solid #d7dfe4;border-radius:0;background:#fff}.marketingCalendarPanel .marketingMiniMonth h4{padding-bottom:10px;border-bottom:1px solid #d7dfe4;font-size:16px;color:#173b5c}.marketingCalendarPanel .marketingMiniWeekdays,.marketingCalendarPanel .marketingMiniDays{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.marketingCalendarPanel .marketingMiniWeekdays span{padding:3px 0;color:#8a99a3;font-size:10px;font-weight:800;text-align:center}.marketingCalendarPanel .marketingMiniDays{margin-top:3px}.marketingCalendarPanel .marketingMiniDays span{position:relative;min-height:22px;padding:4px 0;border-radius:3px;background:#f5f7f8;color:#173552;font-size:11px;text-align:center}.marketingCalendarPanel .marketingMiniDays span.outside{background:transparent;color:#b3bdc3}.marketingCalendarPanel .marketingMiniDays span.hasEvent{background:#dceff2;color:#176d7f;font-weight:800}.marketingCalendarPanel .marketingMiniDays span.hasEvent:after{content:"";position:absolute;right:3px;bottom:2px;width:4px;height:4px;border-radius:50%;background:#25889b}.marketingCalendarPanel .marketingMiniMonth small{display:block;margin-top:12px;padding-top:9px;border-top:1px solid #edf1f3;color:#5c7285;font-size:11px}@media(max-width:760px){.marketingCalendarPanel .marketingWeekHeader strong{padding:8px 3px;font-size:9px}.marketingCalendarPanel .marketingWeekColumn{min-height:230px;padding:5px}.marketingCalendarPanel .marketingYearGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.marketingCalendarPanel .marketingMiniMonth{min-height:180px;padding:9px!important}.marketingCalendarPanel .marketingMiniDays span{min-height:18px;padding:2px 0;font-size:10px}}`}</style>
-    <style jsx global>{`.marketingCalendarPanel .marketingMiniDays button{position:relative;min-height:22px;padding:4px 0;border:0;border-radius:3px;background:#f5f7f8;color:#173552;font:inherit;font-size:11px;text-align:center;cursor:pointer}.marketingCalendarPanel .marketingMiniDays button.outside{background:transparent;color:#b3bdc3}.marketingCalendarPanel .marketingMiniDays button.hasEvent{background:#dceff2;color:#176d7f;font-weight:800}.marketingCalendarPanel .marketingMiniDays button.hasEvent:after{content:"";position:absolute;right:3px;bottom:2px;width:4px;height:4px;border-radius:50%;background:#25889b}.marketingEventDetails{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 20px;margin-top:18px;padding:18px;border:2px solid #25889b;border-radius:10px;background:#eef7f9}.marketingEventDetails h3{margin:3px 0 4px}.marketingEventDetails p{margin:0;color:#5c7285}.marketingEventDetails dl{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0}.marketingEventDetails dl>div{padding:11px;background:#fff;border-radius:7px}.marketingEventDetails dt{font-size:11px;font-weight:800;color:#536b7c;text-transform:uppercase}.marketingEventDetails dd{margin:5px 0 0;color:#173552;white-space:pre-wrap}.marketingDetailStatus{font-weight:800;color:#176d7f}.marketingDetailStatus.cancelled{color:#a12f2f}.marketingDetailStatus.published,.marketingDetailStatus.approved{color:#24723b}@media(max-width:760px){.marketingEventDetails{display:block}.marketingEventDetails .secondaryButton{width:100%;margin-top:12px}.marketingEventDetails dl{display:grid;grid-template-columns:1fr;margin-top:14px}}`}</style>
-    <style jsx global>{`.marketingChannelMini{display:flex;gap:3px;margin-top:2px}.marketingChannelMini i{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#e6ecef;color:#6b7e8d;font-size:9px;font-style:normal;font-weight:800}.marketingChannelMini i.placed{background:#dcefe2;color:#24723b}.marketingChannelMini i.scheduled{background:#e4efff;color:#145dbf}.marketingChannelMini i.concept{background:#fff0ca;color:#815b00}.marketingChannelMini i.warning,.marketingChannelMini i.error{background:#f8dddd;color:#a12f2f}.marketingChannelStatus{grid-column:1/-1;padding-top:14px;border-top:1px solid #d7dfe4}.marketingChannelStatus h4{margin:0 0 10px}.marketingChannelStatus>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.marketingChannelRow{display:grid;gap:6px;padding:10px;border-radius:7px;background:#fff;border-left:4px solid #c6d5df}.marketingChannelRow strong{font-size:12px}.marketingChannelRow span{font-size:12px;font-weight:800;color:#5c7285}.marketingChannelRow.placed{border-left-color:#3a9455;background:#f1faf4}.marketingChannelRow.placed span{color:#24723b}.marketingChannelRow.scheduled{border-left-color:#4a90d9;background:#f1f6fd}.marketingChannelRow.scheduled span{color:#145dbf}.marketingChannelRow.concept{border-left-color:#d99b16;background:#fffaf0}.marketingChannelRow.concept span{color:#815b00}.marketingChannelRow.warning,.marketingChannelRow.error{border-left-color:#c95d5d;background:#fff5f5}.marketingChannelRow.warning span,.marketingChannelRow.error span{color:#a12f2f}.marketingChannelRow.not_active span{color:#8a99a3}@media(max-width:760px){.marketingChannelStatus>div{grid-template-columns:repeat(2,minmax(0,1fr))}.marketingChannelStatus>div .marketingChannelRow:last-child{grid-column:1/-1}}`}</style>
-    <style jsx global>{`.marketingDetailActions{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}.marketingLinkingNotice{display:flex;align-items:center;gap:9px;grid-column:1/-1;padding:11px 13px;border-left:4px solid #25889b;border-radius:6px;background:#eaf6f8;color:#176d7f;font-size:13px;font-weight:800}.marketingLoadingSpinner{width:15px;height:15px;flex:0 0 15px;border:2px solid #b9dbe2;border-top-color:#25889b;border-radius:50%;animation:marketingSpin .8s linear infinite}@keyframes marketingSpin{to{transform:rotate(360deg)}}.marketingAutoCheck{padding:9px 0;color:#24723b;font-size:12px;font-weight:800}.marketingAutoNotice{margin:0 0 14px;padding:10px 12px;border-left:4px solid #25889b;background:#eef7f9;color:#176d7f;font-size:13px;font-weight:800}.marketingExternalQueueNotice{margin:0 0 14px;padding:11px 13px;border-left:4px solid #d88900;background:#fff7df;color:#815b00;font-size:13px;font-weight:800}.externalLegend{background:#d88900!important}.marketingExternalBadge{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:#fff0ca;color:#815b00;font-size:11px;font-weight:800}.marketingCalendarEvent.externalFacebookEvent{background:#fff0ca!important;border-left-color:#d88900!important}.marketingCalendarEvent.externalFacebookEvent span{color:#815b00;font-weight:800}.externalFacebookDetails{border-color:#d88900!important;background:#fffaf0!important}.marketingMatchSuggestion{display:grid;gap:4px;width:100%;padding:10px 12px;border-left:4px solid #d88900;border-radius:7px;background:#fff7df;color:#815b00}.marketingMatchSuggestion span{font-size:12px}.marketingMatchSuggestion button{justify-self:start}.marketingSameDayMatches{display:grid;grid-column:1/-1;gap:8px;padding:12px;border-left:4px solid #25889b;background:#eef7f9}.marketingSameDayMatches>span{color:#5c7285;font-size:12px}.marketingSameDayMatch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;background:#fff;border:1px solid #d7dfe4;border-radius:7px}.marketingSameDayMatch div{min-width:0}.marketingSameDayMatch b{display:block;overflow-wrap:anywhere;color:#173552}.marketingSameDayMatch small{display:block;margin-top:3px;color:#5c7285}.marketingComparisonGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;grid-column:1/-1;margin:4px 0 2px}.marketingComparisonDifference{grid-column:1/-1;display:grid;gap:4px;padding:10px 12px;border-left:4px solid #d88900;background:#fff7df;color:#815b00;font-size:13px}.marketingComparisonDifference strong{font-size:12px}.marketingComparisonCard{min-width:0;padding:14px;border:1px solid #d7dfe4;border-radius:9px;background:#fff}.marketingComparisonTitle{display:grid;gap:4px;margin:7px 0 12px;padding:10px;border-radius:6px;background:#f7f9fa}.marketingComparisonTitle span,.marketingComparisonDescription>span{font-size:10px;font-weight:800;color:#536b7c;text-transform:uppercase;letter-spacing:.05em}.marketingComparisonTitle strong{overflow-wrap:anywhere;color:#173552}.marketingComparisonCard dl{display:grid;gap:8px;margin:0}.marketingComparisonCard dl>div{padding-bottom:7px;border-bottom:1px solid #edf1f3}.marketingComparisonCard dt{font-size:10px;font-weight:800;color:#536b7c;text-transform:uppercase}.marketingComparisonCard dd{margin:3px 0 0;overflow-wrap:anywhere;color:#173552}.marketingComparisonDescription{max-height:180px;margin:12px 0 0;overflow:auto;color:#405866;font-size:13px;line-height:1.45}.marketingComparisonDescription p{margin:6px 0 0;white-space:pre-wrap}.marketingEventModalBackdrop{position:fixed;z-index:50;inset:0;display:grid;place-items:center;padding:24px;background:rgba(10,35,53,.58)}.marketingEventModalBackdrop .marketingEventDetails{width:min(1100px,100%);max-height:calc(100vh - 48px);margin:0;overflow:auto;box-shadow:0 20px 70px rgba(10,35,53,.28)}.marketingLastChecked{margin:0 0 10px;color:#5c7285;font-size:12px}.marketingChannelRow span{display:block}@media(max-width:760px){.marketingComparisonGrid{grid-template-columns:1fr}.marketingSameDayMatch{display:grid}.marketingSameDayMatch .secondaryButton{width:100%}.marketingEventModalBackdrop{padding:12px}.marketingEventModalBackdrop .marketingEventDetails{max-height:calc(100vh - 24px)}}`}</style>
-    <style jsx global>{`.marketingCalendarPanel .marketingDayCell.today{background:#fff8df!important;box-shadow:inset 0 0 0 2px #d99b16}.marketingCalendarPanel .marketingDayCell.today>strong{color:#815b00}.marketingCalendarPanel .marketingWeekHeader strong.today{background:#fff0ca;color:#815b00}.marketingCalendarPanel .marketingWeekColumn.today{background:#fff8df;border-top:3px solid #d99b16}.marketingCalendarPanel .marketingMiniMonth.currentMonth{border:2px solid #d99b16}.marketingCalendarPanel .marketingMiniMonth.currentMonth h4{color:#815b00}.marketingCalendarPanel .marketingMiniDays button.today{background:#d99b16;color:#fff;font-weight:900}.marketingCalendarPanel .marketingMiniDays button.today.hasEvent:after{background:#fff}.marketingCalendarPanel .marketingDayAgenda{border-left:4px solid #d99b16;padding-left:14px;background:#fff8df}`}</style>
-    <style jsx global>{`.infoCalendarLegend{background:#6d5bd0!important}.marketingCalendarPanel .marketingCalendarEvent.infoCalendarEvent{border-left-color:#6d5bd0!important;background:#f3f0ff!important;color:#30286c!important;text-decoration:none;cursor:pointer}.marketingCalendarPanel .marketingCalendarEvent.infoCalendarEvent span{color:#514794!important}.marketingInfoCalendar{grid-column:1/-1}.marketingInfoCalendarNotice{margin:0 0 14px;padding:10px 12px;border-left:4px solid #6d5bd0;background:#f3f0ff;color:#514794;font-size:13px;font-weight:800}.marketingCalendarLayout button[aria-pressed="true"]{background:#6d5bd0!important;border-color:#6d5bd0!important;color:#fff!important}@media(max-width:760px){.marketingInfoCalendar{grid-column:auto}}
-`}</style>
-    <style jsx global>{`.marketingDuplicateReview>summary{line-height:1.6}
-.marketingMergeNotice{padding:12px 14px;margin-bottom:14px;border-left:4px solid #3a9455;border-radius:8px;background:#f1faf4;font-size:13px;line-height:1.5}
-.marketingMergeNotice.error{border-color:#cf5555;background:#fff3f3}
-.marketingDuplicateCount{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;background:#fff3cf;color:#785500;font-size:11px;font-weight:600}
-.marketingDuplicateHelp{margin:0 0 14px!important;font-size:13px;line-height:1.6;color:#496477}
-.marketingDuplicateRecords{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}
-.marketingDuplicateRecord{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:14px;border:1px solid #cbdde5;border-radius:8px;background:#fff;overflow-wrap:anywhere}
-.marketingDuplicateRecord.current{background:#eef7f9;border-color:#25889b}
-.marketingDuplicateRecord.selected{box-shadow:inset 0 0 0 1px #25889b}
-.marketingDuplicateRecord>strong{font-size:14px;line-height:1.5}
-.marketingDuplicateLabel{font-size:11px;font-weight:800;color:#176d7f}
-.marketingDuplicateIdentity{display:grid;gap:8px;font-size:12px;line-height:1.5;color:#405866}
-.marketingDuplicateIdentity em{font-style:normal;font-weight:700}
-.marketingDuplicateRecord>button{margin:8px 0 0!important;align-self:flex-start;white-space:normal;text-align:left}
-.marketingDuplicateTexts{margin-top:14px}
-.marketingDuplicateReview .marketingMergeContent{display:grid;gap:12px;min-width:0;margin:16px 0 0;padding-top:16px;border-top:1px solid #d7dfe4}
-.marketingMergeContent h4,.marketingMergeContent p{margin:0}
-.marketingMergeContent p{font-size:13px;line-height:1.5;color:#496477}
-.marketingMergeChoices{display:flex;flex-wrap:wrap;gap:8px}
-.marketingMergeChoices button{margin:0!important;white-space:normal;text-align:left}
-.marketingMergeChoices button[aria-pressed=true]{background:#e7f4f7;box-shadow:inset 0 0 0 1px #176d7f}
-.marketingMergeContent label{display:grid;gap:6px;min-width:0;font-size:13px;font-weight:700}
-.marketingMergeContent input,.marketingMergeContent textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:10px 12px;border:1px solid #aec7d4;border-radius:7px;background:#fff;color:#173552;font:inherit;font-weight:400;line-height:1.5}
-.marketingMergeContent textarea{min-height:140px;resize:vertical}
-.marketingMergeContent>.primaryButton{justify-self:start;margin:0;white-space:normal;min-height:42px;padding:10px 15px;border:1px solid #176d7f;border-radius:8px;background:#176d7f;color:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
-.marketingMergeContent>.primaryButton:disabled{opacity:.55;cursor:not-allowed}
-.marketingCalendarEvent .marketingCalendarDuplicate{display:block;font-size:10px;line-height:1.4;margin:4px 0;padding:2px 4px;border-radius:4px;background:#fff3cf;color:#785500;white-space:normal}`}</style>
-    <style jsx global>{`.marketingEventDetails{display:block!important}.marketingChannelStatus button.marketingChannelRow{width:100%;margin:0;border-top:0;border-right:0;border-bottom:0;text-align:left;font:inherit;cursor:pointer;color:inherit}.marketingChannelStatus button.marketingChannelRow:hover{box-shadow:0 0 0 2px #25889b}.marketingChannelStatus button.marketingChannelRow:focus-visible{outline:2px solid #176d7f;outline-offset:3px}.marketingChannelRow small{font-size:11px;color:#176d7f;font-weight:700}.marketingEventDetails>.marketingLinkingNotice{margin-bottom:16px}.marketingEventDetails>.marketingDetailActions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 0 14px;margin-bottom:16px;border-bottom:1px solid #d7dfe4}.marketingDetailActions>button{min-height:42px;padding:10px 15px;white-space:nowrap;border-radius:8px}.marketingDetailActions>.marketingAutoCheck{margin-left:auto}.marketingMergeContent{flex:1 0 100%;width:100%;margin-top:4px}.marketingComparisonGrid{display:grid;align-items:start;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:4px 0 2px}.marketingChosenContent{display:grid;gap:12px;margin:18px 0;padding:16px;border:2px solid #25889b;border-radius:9px;background:#fff}.marketingChosenContent h4,.marketingChosenContent p{margin:0}.marketingChosenContent p{white-space:pre-wrap;max-height:260px;overflow:auto;overflow-wrap:anywhere}.marketingChosenContent small{color:#405866}.marketingChosenContent label{display:grid;gap:6px;min-width:0}.marketingChosenContent input,.marketingChosenContent textarea{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid #b9ccd7;border-radius:6px;font:inherit;line-height:1.5}.marketingChosenContent textarea{resize:vertical}.marketingComparisonCard{min-width:0}.marketingChosenContent button{justify-self:start}.marketingComparisonCard{padding:16px}.marketingComparisonCard>button{margin:6px 0;min-height:40px}.marketingComparisonTitle strong{font-size:15px;line-height:1.35}.marketingComparisonDescription{max-height:240px;font-size:14px;line-height:1.55}.marketingEventDetails>dl{margin-top:18px}@media(max-width:760px){.marketingDetailActions{align-items:stretch}.marketingDetailActions>button,.marketingDetailActions>.marketingAutoCheck{width:100%;margin-left:0}.marketingComparisonGrid{grid-template-columns:1fr}}.marketingDetailFold{margin-top:10px;border:1px solid #cbdde5;border-radius:8px;background:#fff}.marketingDetailFold>summary{padding:12px 14px;cursor:pointer;font-size:13px;font-weight:800;color:#176d7f}.marketingDetailFold[open]{padding:0 14px 14px}.marketingDetailFold[open]>summary{margin:0 -14px 12px;border-bottom:1px solid #e0e9ef}.marketingEventDetails .manualFacebookUpdate button,.marketingEventDetails .manualFacebookUpdate a{width:auto;margin-top:0;min-height:34px}.marketingEventDetails .manualFacebookUpdate textarea{min-height:0}.marketingEventDetails>.marketingDetailActions{margin-bottom:8px;padding-bottom:8px}.marketingDetailFold .marketingChosenContent{margin-bottom:0}@media(max-width:760px){.marketingEventModalBackdrop .marketingEventDetails{padding:12px}.marketingEventDetails>.marketingDetailActions>button{width:auto}.marketingEventDetails .manualFacebookUpdate{padding:12px}}.marketingEventFacts{margin:6px 0 14px}.marketingEventFacts>p{margin:0;font-size:13px;color:#173552}.marketingFullDescription{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;margin:0;line-height:1.55}.marketingEventHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.marketingEventHeading>div:first-child{flex:1;min-width:200px}.marketingEventHeading .marketingDetailActions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.marketingEventHeading .marketingDetailActions>button{width:auto;margin:0}.marketingComparisonSummary{display:grid;gap:5px;margin:14px 0 10px;padding:12px 14px;border-radius:8px;border-left:4px solid #8ca6b6;background:#f5f8fa;font-size:13px}.marketingComparisonProgress{display:flex;align-items:center;gap:9px}.marketingComparisonProgress .marketingLoadingSpinner{display:inline-block}@media(prefers-reduced-motion:reduce){.marketingComparisonProgress .marketingLoadingSpinner{animation:none}}.marketingComparisonSummary.equal{border-color:#3a9455;background:#f1faf4}.marketingComparisonSummary.different{border-color:#d99b16;background:#fffaf0}.marketingComparisonSummary p{line-height:1.5}.marketingDifferenceActions{border-top:1px solid #d7dfe4;padding-top:8px;margin-top:6px}.marketingDifferenceActions>div{display:flex;gap:8px;flex-wrap:wrap}.marketingDifferenceActions p{margin:0 0 8px;font-size:13px;line-height:1.5}.marketingSourceDifferences{min-width:0;overflow-wrap:anywhere}.marketingSourceDifferences p{margin:4px 0}.marketingSourceDifferences ul{margin:6px 0;padding-left:20px}.marketingSourceDifferences li{margin:5px 0;line-height:1.5}.marketingDetailFold .manualFacebookUpdate{margin:0;border:0;padding:0}`}</style>
-    <style jsx global>{`.marketingChannelStatus{margin:18px 0;padding:16px;border:1px solid #d6e2e8;border-radius:10px;background:#fff;box-shadow:0 5px 18px rgba(22,66,86,.05)}.marketingChannelStatus h4{margin:0;color:#173552;font-size:15px}.marketingLastChecked{margin:4px 0 14px!important;color:#6a7f8e!important}.marketingChannelStatus>div{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important;gap:10px!important}.marketingChannelRow{min-height:116px;grid-template-rows:minmax(30px,auto) 1fr auto;gap:8px!important;padding:13px 12px!important;border:1px solid #e1e9ed;border-left:4px solid #c6d5df!important;border-radius:8px!important;box-shadow:0 1px 2px rgba(22,66,86,.04);transition:transform .15s ease,box-shadow .15s ease}.marketingChannelRow strong{color:#173552;font-size:12px!important;line-height:1.25}.marketingChannelRow span{align-self:center;font-size:12px!important;line-height:1.35}.marketingChannelRow small{align-self:end}.marketingChannelStatus button.marketingChannelRow:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(22,66,86,.12)!important}.marketingChannelRow.placed{border-color:#cce7d4;border-left-color:#3a9455!important}.marketingChannelRow.scheduled{border-color:#d4e4fa;border-left-color:#4a90d9!important}.marketingChannelRow.concept{border-color:#f2e2b7;border-left-color:#d99b16!important}.marketingChannelRow.warning,.marketingChannelRow.error{border-color:#f0d2d2;border-left-color:#c95d5d!important}.marketingChannelRow.not_active{background:#f8fafb}@media(max-width:760px){.marketingChannelStatus{padding:12px}.marketingChannelStatus>div{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}.marketingChannelRow{min-height:104px;padding:11px 10px!important}}`}</style>
-    <style jsx global>{`.marketingChannelRow strong small{display:block;margin-top:2px;color:#5c7285;font-size:10px;font-weight:700}.marketingMetaCampaign{display:grid;gap:12px;margin:0;padding:14px;border:1px solid #cbdde5;border-left:4px solid #1877f2;border-radius:8px;background:#f7faff}.marketingMetaCampaign p{margin:0;line-height:1.5}.marketingMetaCampaign .secondaryButton{justify-self:start;text-decoration:none}.marketingMetaCampaignFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.marketingMetaCampaignFields label{display:grid;gap:6px;min-width:0;font-size:13px;font-weight:800}.marketingMetaCampaignFields input,.marketingMetaCampaignFields select{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid #b9ccd7;border-radius:6px;background:#fff;font:inherit}.marketingMetaCampaignError{padding:9px 11px;border-left:4px solid #c95d5d;border-radius:6px;background:#fff1f1;color:#a12f2f}@media(max-width:760px){.marketingMetaCampaignFields{grid-template-columns:1fr}}`}</style>
-    <style jsx global>{`.marketingTextDifference{margin:12px 0;padding:12px;border:1px solid #e0bd55;border-radius:7px;background:#fffdf6}.marketingTextDifference>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.marketingTextDifference article{min-width:0;padding:10px;border:1px solid #e5e9ec;border-radius:6px;background:#fff}.marketingTextDifference article>strong{display:block;margin-bottom:7px;color:#173552}.marketingTextDifference pre{max-height:240px;margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#405866;font:inherit;line-height:1.5}.marketingTextDifference pre span{display:block;min-height:1.5em}.marketingTextDifference pre span.different{padding:0 3px;border-radius:2px;background:#ffe58f;color:#513b00}@media(max-width:760px){.marketingTextDifference>div{grid-template-columns:1fr}}`}</style>
-    <style jsx global>{`.marketingComparisonSummary[hidden]{display:grid!important}`}</style>
-  </section></ChannelStatusContext.Provider>;
+  const currentChannelStatus = (item, channel) =>
+    channelStatus(
+      item,
+      channel,
+      sourceComparisonStatus(
+        item,
+        sourceComparisons[String(item.id)] || item.sourceComparisonItems || [],
+        linkingId === `compare:${String(item.id)}`
+          ? "pending"
+          : sourceComparisonChecks[String(item.id)] ||
+              (autoChecking ? "queued" : "idle"),
+      ),
+    );
+  return (
+    <ChannelStatusContext.Provider value={currentChannelStatus}>
+      <section className="panel marketingCalendarPanel">
+        <div className="panelHead marketingCalendarHead">
+          <div>
+            <p className="eyebrow">MARKETINGAGENDA</p>
+            <h2>{title}</h2>
+            <p>
+              Bekijk de planning van beide vestigingen naast elkaar. Zo zie je
+              direct wanneer evenementen op dezelfde dag vallen.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="secondaryButton"
+            onClick={() => setRefreshKey((value) => value + 1)}
+            disabled={busy}
+          >
+            {busy ? "Agenda laden…" : "Agenda verversen"}
+          </button>
+        </div>
+        <CalendarContentSelector
+          value={contentView}
+          onChange={setContentView}
+        />
+        <MarketingWorklist
+          items={marketingWorklistItems(items, businessById)}
+          businesses={businessById}
+          onOpen={setSelectedItem}
+          getStatus={currentChannelStatus}
+        />
+        <div className="marketingCalendarToolbar">
+          <div className="marketingCalendarViews">
+            {Object.entries(viewLabels).map(([key, label]) => (
+              <button
+                type="button"
+                className={view === key ? "active" : ""}
+                onClick={() => setView(key)}
+                key={key}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="marketingCalendarNav" aria-label="Agenda navigatie">
+            <button
+              type="button"
+              aria-label="Vorige periode"
+              onClick={() => move(-1)}
+            >
+              ‹
+            </button>
+            <strong className="marketingCalendarPeriod" aria-live="polite">
+              {title}
+            </strong>
+            <button
+              type="button"
+              aria-label="Volgende periode"
+              onClick={() => move(1)}
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              className="marketingCalendarToday"
+              onClick={() => setAnchor(new Date())}
+            >
+              Vandaag
+            </button>
+          </div>
+          <div className="marketingCalendarLayout">
+            <button
+              type="button"
+              className={calendarLayout === "two" ? "active" : ""}
+              onClick={() => setCalendarLayout("two")}
+            >
+              Twee agenda's
+            </button>
+            <button
+              type="button"
+              className={calendarLayout === "combined" ? "active" : ""}
+              onClick={() => setCalendarLayout("combined")}
+            >
+              Over elkaar leggen
+            </button>
+            <button
+              type="button"
+              className={showInfoCalendar ? "active" : ""}
+              aria-pressed={showInfoCalendar}
+              onClick={() => setShowInfoCalendar((current) => !current)}
+            >
+              {showInfoCalendar ? "Info-agenda verbergen" : "Info-agenda tonen"}
+            </button>
+          </div>
+        </div>
+        <div className="marketingCalendarLegend">
+          {venueBusinesses.map((business) => (
+            <span key={business.id}>
+              <i className={business.color} />
+              {business.name}
+            </span>
+          ))}
+          {showInfoCalendar && (
+            <span>
+              <i className="infoCalendarLegend" />
+              Agenda info@leclubbbq.nl
+            </span>
+          )}
+          <span>
+            <i className="externalLegend" />
+            Extern evenement — nog niet gekoppeld
+          </span>
+          <span>
+            Publicatiekaart = bewaard publicatiemoment · tijden in Nederland
+          </span>
+        </div>
+        {showInfoCalendar && (
+          <p className="marketingInfoCalendarNotice" role="status">
+            {infoCalendarLoading
+              ? "Agenda info@leclubbbq.nl laden…"
+              : infoCalendarError ||
+                `${infoCalendarItems.length} agendapunt${infoCalendarItems.length === 1 ? "" : "en"} uit info@leclubbbq.nl worden getoond.`}
+          </p>
+        )}
+        {autoChecking && (
+          <div className="marketingAutoNotice">
+            Marketingagenda geladen. Publicaties en externe evenementen worden
+            automatisch gecontroleerd…
+          </div>
+        )}
+        {!autoChecking && externalItems.length > 0 && (
+          <div className="marketingExternalQueueNotice">
+            {externalItems.length} extern{" "}
+            {externalItems.length === 1
+              ? "evenement wacht"
+              : "evenementen wachten"}{" "}
+            op koppeling. Het nieuwste wordt automatisch geopend.
+          </div>
+        )}
+        {!selectedItem && mergeNotice && (
+          <div
+            className={`marketingMergeNotice ${mergeNotice.kind}`}
+            role={mergeNotice.kind === "error" ? "alert" : "status"}
+          >
+            <strong>{mergeNotice.message}</strong>
+          </div>
+        )}
+        {error && (
+          <div className="eventResult error">
+            <strong>{error}</strong>
+          </div>
+        )}
+        {calendarLayout === "two" ? (
+          <div className="marketingTwoCalendars">
+            {venueBusinesses.map(renderBusinessCalendar)}
+            {showInfoCalendar && renderInfoCalendar()}
+          </div>
+        ) : (
+          <div className="marketingCombinedCalendar">
+            {view === "month" && (
+              <MonthCalendar
+                anchor={anchor}
+                items={displayedItems}
+                businessById={businessById}
+                onSelectEvent={setSelectedItem}
+                onPlanDate={(day) =>
+                  onPlanDate?.(
+                    day,
+                    venueBusinesses.length === 1 ? venueBusinesses[0].id : "",
+                  )
+                }
+              />
+            )}
+            {view === "week" && (
+              <WeekCalendar
+                anchor={anchor}
+                items={displayedItems}
+                businessById={businessById}
+                onSelectEvent={setSelectedItem}
+              />
+            )}
+            {view === "day" && (
+              <div className="marketingDayAgenda">
+                <h3>
+                  {formatDate(anchor, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </h3>
+                {dayItems.length ? (
+                  dayItems.map((item) => (
+                    <CalendarEvent
+                      key={item.id}
+                      item={item}
+                      business={businessById.get(String(item.business_id))}
+                      onSelectEvent={setSelectedItem}
+                    />
+                  ))
+                ) : (
+                  <p>Geen geplande items voor deze dag.</p>
+                )}
+              </div>
+            )}
+            {view === "year" && (
+              <YearCalendar
+                anchor={anchor}
+                items={displayedItems}
+                onSelectEvent={setSelectedItem}
+              />
+            )}
+          </div>
+        )}
+        {selectedItem && (
+          <EventDetails
+            workspaceId={workspaceId}
+            session={session}
+            onSeriesOpen={setSelectedItem}
+            onSeriesSaved={(rows) => {
+              const byId = new Map(rows.map((row) => [row.id, row]));
+              setSelectedItem((current) => byId.get(current?.id) || current);
+              setItems((current) => [
+                ...current.map((row) => byId.get(row.id) || row),
+                ...rows.filter(
+                  (row) => !current.some((old) => old.id === row.id),
+                ),
+              ]);
+            }}
+            onCalendarSaved={(saved) => {
+              const id = selectedItem.id;
+              const apply = (current) =>
+                !current || current.id !== id
+                  ? current
+                  : {
+                      ...current,
+                      media: (current.media || []).map((entry) =>
+                        entry?.kind === "campaign_distribution"
+                          ? { ...entry, calendar_channel: saved }
+                          : entry,
+                      ),
+                    };
+              setSelectedItem(apply);
+              setItems((current) => current.map(apply));
+            }}
+            onPredisLibrarySaved={(saved) => {
+              const id = selectedItem.id;
+              const apply = (current) =>
+                !current || current.id !== id
+                  ? current
+                  : {
+                      ...current,
+                      media: (current.media || []).map((entry) =>
+                        entry?.kind === "campaign_distribution"
+                          ? { ...entry, predis_library: saved }
+                          : entry,
+                      ),
+                    };
+              setSelectedItem(apply);
+              setItems((current) => current.map(apply));
+            }}
+            onPredisSaved={(saved) => {
+              const id = selectedItem.id;
+              const apply = (current) =>
+                !current || current.id !== id
+                  ? current
+                  : {
+                      ...current,
+                      media: (current.media || []).map((entry) =>
+                        entry?.kind === "campaign_distribution"
+                          ? { ...entry, manual_predis: saved }
+                          : entry,
+                      ),
+                    };
+              setSelectedItem(apply);
+              setItems((current) => current.map(apply));
+            }}
+            onWhatsappSaved={(saved) => {
+              const id = selectedItem.id;
+              const apply = (current) =>
+                !current || current.id !== id
+                  ? current
+                  : {
+                      ...current,
+                      media: (current.media || []).map((entry) =>
+                        entry?.kind === "campaign_distribution"
+                          ? { ...entry, manual_whatsapp: saved }
+                          : entry,
+                      ),
+                    };
+              setSelectedItem(apply);
+              setItems((current) => current.map(apply));
+            }}
+            onInstagramPublished={(format, job) => {
+              const apply = (current) => {
+                if (!current || current.id !== selectedItem.id) return current;
+                return {
+                  ...current,
+                  media: (current.media || []).map((entry) =>
+                    entry?.kind === "campaign_distribution"
+                      ? {
+                          ...entry,
+                          instagram_publications: {
+                            ...entry.instagram_publications,
+                            [format]: job,
+                          },
+                        }
+                      : entry,
+                  ),
+                };
+              };
+              setSelectedItem(apply);
+              setItems((current) => current.map(apply));
+            }}
+            mergeNotice={
+              mergeNotice?.itemId === selectedItem.id ? mergeNotice : null
+            }
+            item={selectedItem}
+            matchItem={items.find(
+              (entry) => entry.id === selectedItem.potentialMatch?.id,
+            )}
+            sameDayItems={sameDateCandidates(selectedItem)}
+            sourceComparisonItems={
+              sourceComparisons[String(selectedItem.id)] ||
+              selectedItem.sourceComparisonItems ||
+              []
+            }
+            sourceComparisonCheck={
+              sourceComparisonChecks[String(selectedItem.id)] ||
+              (autoChecking ? "queued" : "idle")
+            }
+            facebookLinkCheck={
+              facebookLinkChecks[String(selectedItem.id)] || "idle"
+            }
+            business={businessById.get(String(selectedItem.business_id))}
+            onClose={() => setSelectedItem(null)}
+            onLink={() => linkExternalEvent(selectedItem)}
+            onCompareSources={() => compareSources(selectedItem)}
+            onPhotoSaved={showSavedContent}
+            onSyncContent={(content) =>
+              saveChosenEventContent(selectedItem, content)
+            }
+            onUpdateWebsite={() => updateWebsiteContent(selectedItem)}
+            onOpenEventinForCampaign={
+              onOpenEventinForCampaign
+                ? (item) => {
+                    setSelectedItem(null);
+                    onOpenEventinForCampaign(item);
+                  }
+                : undefined
+            }
+            onConfirmFacebook={(snapshot) =>
+              confirmFacebook(selectedItem, snapshot)
+            }
+            syncError={error}
+            contentSaveNotice={contentSaveNotice}
+            onLinkExisting={
+              mergeNotice?.kind === "error" ? undefined : mergeSelectedRecords
+            }
+            onChooseMatch={chooseSameDateMatch}
+            comparing={linkingId === `compare:${String(selectedItem.id)}`}
+            linking={linkingId === String(selectedItem.id)}
+          />
+        )}
+        {!busy && !displayedItems.length && (
+          <div className="marketingCalendarEmptyState">
+            <strong>{CALENDAR_CONTENT_VIEWS[contentView].empty}</strong>
+          </div>
+        )}
+        <style jsx>{`
+          .marketingChosenEventFacts {
+            display: grid;
+            gap: 5px;
+            padding: 10px 12px;
+            border: 1px solid #cbdfe5;
+            border-radius: 8px;
+            background: #f6fafb;
+            color: #405866;
+            font-size: 13px;
+          }
+          .marketingChosenEventFacts span {
+            display: block;
+          }
+          .marketingEventinStart {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            margin: 14px 0;
+            padding: 18px;
+            border: 1px solid #a9d5df;
+            border-left: 5px solid #176d7f;
+            border-radius: 10px;
+            background: #eef8fa;
+          }
+          .marketingEventinStart p,
+          .marketingEventinStart h4 {
+            margin: 0;
+          }
+          .marketingEventinStart h4 {
+            margin: 3px 0 7px;
+            color: #173552;
+          }
+          .marketingEventinStart p:not(.eyebrow) {
+            max-width: 690px;
+            color: #405866;
+            line-height: 1.5;
+          }
+          .marketingEventinStart .primaryButton {
+            flex: 0 0 auto;
+            white-space: nowrap;
+          }
+          .marketingCalendarPanel {
+            margin-bottom: 24px;
+          }
+          .marketingCalendarHead {
+            align-items: flex-start;
+          }
+          .marketingCalendarHead p:not(.eyebrow) {
+            max-width: 780px;
+          }
+          .marketingCalendarToolbar {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin: 18px 0 10px;
+            flex-wrap: wrap;
+          }
+          @media (max-width: 760px) {
+            .marketingEventinStart {
+              display: grid;
+            }
+            .marketingEventinStart .primaryButton {
+              width: 100%;
+            }
+          }
+          .marketingCalendarViews,
+          .marketingCalendarNav {
+            display: flex;
+            gap: 6px;
+          }
+          .marketingCalendarViews button,
+          .marketingCalendarNav button {
+            border: 1px solid #25889b;
+            border-radius: 8px;
+            padding: 9px 13px;
+            background: #fff;
+            color: #176d7f;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+          }
+          .marketingCalendarViews button.active,
+          .marketingCalendarNav button:first-child {
+            background: #25889b;
+            color: #fff;
+          }
+          .marketingCalendarLegend {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+            margin: 10px 0 14px;
+            color: #405866;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .marketingCalendarLegend span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .marketingCalendarLegend i {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            display: inline-block;
+          }
+          .venueA {
+            background: #25889b;
+          }
+          .venueB {
+            background: #d27928;
+          }
+          .marketingCalendarEvent {
+            display: grid;
+            gap: 2px;
+            width: 100%;
+            padding: 6px 7px;
+            border: 0;
+            border-left: 4px solid;
+            border-radius: 6px;
+            background: #eef7f9;
+            color: #173552;
+            text-align: left;
+            cursor: pointer;
+          }
+          .marketingCalendarEvent.venueA {
+            border-left-color: #25889b;
+          }
+          .marketingCalendarEvent.venueB {
+            border-left-color: #d27928;
+            background: #fff5e9;
+          }
+          .marketingCalendarEvent strong {
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .marketingCalendarEvent span {
+            font-size: 11px;
+            color: #5c7285;
+          }
+          .marketingWeekdayRow {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+          }
+          .marketingWeekdayRow strong {
+            padding: 8px;
+            background: #173b5c;
+            color: #fff;
+            text-align: center;
+          }
+          .marketingMonthGrid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 1px;
+            background: #c6d5df;
+            border: 1px solid #c6d5df;
+          }
+          .marketingDayCell {
+            min-height: 126px;
+            padding: 7px;
+            background: #fff;
+          }
+          .marketingDayCell.outside {
+            background: #f1f4f6;
+            color: #91a0aa;
+          }
+          .marketingDayCell > strong {
+            display: block;
+            margin-bottom: 6px;
+          }
+          .marketingDayCell > div,
+          .marketingWeekColumn {
+            display: grid;
+            gap: 5px;
+          }
+          .marketingEmptyDay {
+            display: block;
+            width: 100%;
+            border: 0;
+            color: inherit;
+            text-align: left;
+            font: inherit;
+            cursor: pointer;
+          }
+          .marketingEmptyDay:hover,
+          .marketingEmptyDay:focus-visible {
+            background: #e5f4f6;
+            outline: 2px solid #25889b;
+            outline-offset: -2px;
+          }
+          .marketingEmptyDay span {
+            display: block;
+            color: #25889b;
+            font-size: 12px;
+            font-weight: 800;
+          }
+          .marketingWeekCalendar {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 1px;
+            background: #c6d5df;
+            border: 1px solid #c6d5df;
+          }
+          .marketingWeekColumn {
+            min-height: 280px;
+            padding: 9px;
+            background: #fff;
+          }
+          .marketingWeekColumn > strong {
+            padding-bottom: 8px;
+            border-bottom: 1px solid #d5e0e7;
+          }
+          .marketingCalendarEmpty {
+            color: #91a0aa;
+            font-size: 12px;
+          }
+          .marketingDayAgenda {
+            display: grid;
+            gap: 10px;
+            max-width: 720px;
+          }
+          .marketingDayAgenda h3 {
+            margin: 0;
+          }
+          .marketingDayAgenda > p,
+          .marketingCalendarEmptyState {
+            padding: 16px;
+            border-radius: 10px;
+            background: #f5f8fa;
+            color: #5c7285;
+          }
+          .marketingYearGrid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+          }
+          .marketingMiniMonth {
+            padding: 12px;
+            border: 1px solid #c6d5df;
+            border-radius: 10px;
+            background: #fff;
+          }
+          .marketingMiniMonth h4 {
+            margin: 0 0 9px;
+            text-transform: capitalize;
+          }
+          .marketingMiniDays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 3px;
+          }
+          .marketingMiniDays span {
+            padding: 5px 0;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 11px;
+            background: #f4f7f9;
+          }
+          .marketingMiniDays span.hasEvent {
+            background: #dceff2;
+            color: #176d7f;
+            font-weight: 800;
+          }
+          .marketingMiniMonth small {
+            display: block;
+            margin-top: 8px;
+            color: #5c7285;
+          }
+          .marketingCalendarEmptyState {
+            margin-top: 14px;
+          }
+          .marketingCalendarEmptyState p {
+            margin: 6px 0 0;
+          }
+          @media (max-width: 760px) {
+            .marketingCalendarHead {
+              display: block;
+            }
+            .marketingCalendarHead button {
+              width: 100%;
+              margin-top: 12px;
+            }
+            .marketingDayCell {
+              min-height: 94px;
+              padding: 5px;
+            }
+            .marketingCalendarEvent {
+              padding: 4px;
+            }
+            .marketingCalendarEvent strong {
+              font-size: 10px;
+            }
+            .marketingCalendarEvent span {
+              display: none;
+            }
+            .marketingWeekColumn {
+              min-height: 220px;
+              padding: 5px;
+            }
+            .marketingWeekColumn .marketingCalendarEvent strong {
+              white-space: normal;
+            }
+            .marketingYearGrid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingCalendarPanel {
+            background: #fff;
+          }
+          .marketingCalendarPanel .marketingWeekdayRow {
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            border-top: 1px solid #d7dfe4;
+          }
+          .marketingCalendarPanel .marketingWeekdayRow strong {
+            display: block !important;
+            padding: 11px 8px !important;
+            background: #fff !important;
+            color: #536b7c !important;
+            font-size: 11px !important;
+            letter-spacing: 0.08em;
+            text-align: left;
+          }
+          .marketingCalendarPanel .marketingMonthGrid {
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 0 !important;
+            background: #d7dfe4 !important;
+            border: 0 !important;
+            border-top: 1px solid #d7dfe4;
+          }
+          .marketingCalendarPanel .marketingDayCell {
+            display: block !important;
+            min-height: 142px !important;
+            padding: 10px !important;
+            background: #fff !important;
+            border-right: 1px solid #d7dfe4;
+            border-bottom: 1px solid #d7dfe4;
+            color: #173552;
+          }
+          .marketingCalendarPanel .marketingDayCell.outside {
+            background: #f7f8f9 !important;
+            color: #9aa7af;
+          }
+          .marketingCalendarPanel .marketingDayCell > strong {
+            display: block !important;
+            margin-bottom: 8px;
+            font-size: 12px;
+          }
+          .marketingCalendarPanel .marketingDayCell > div {
+            display: grid !important;
+            gap: 5px;
+          }
+          .marketingCalendarPanel .marketingCalendarEvent {
+            display: grid !important;
+            gap: 2px !important;
+            width: 100% !important;
+            min-width: 0;
+            padding: 6px 8px !important;
+            border: 0 !important;
+            border-left: 3px solid !important;
+            border-radius: 2px !important;
+            box-shadow: none !important;
+          }
+          .marketingCalendarPanel .marketingCalendarEvent strong {
+            display: block !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12px !important;
+          }
+          .marketingCalendarPanel .marketingCalendarEvent span {
+            display: block !important;
+            font-size: 10px !important;
+          }
+          .marketingCalendarPanel .marketingCalendarEvent.venueA {
+            background: #eef7f9 !important;
+            border-left-color: #25889b !important;
+          }
+          .marketingCalendarPanel .marketingCalendarEvent.venueB {
+            background: #fff4e8 !important;
+            border-left-color: #d27928 !important;
+          }
+          .marketingCalendarPanel .marketingCalendarToolbar {
+            border-top: 1px solid #d7dfe4;
+            border-bottom: 1px solid #d7dfe4;
+            padding: 14px 0;
+          }
+          .marketingCalendarPanel .marketingCalendarViews button,
+          .marketingCalendarPanel .marketingCalendarNav button {
+            border-radius: 0 !important;
+          }
+          .marketingCalendarPanel .marketingCalendarViews button.active {
+            background: #173b5c !important;
+            color: #fff !important;
+          }
+          .marketingCalendarPanel .marketingCalendarNav button:first-child {
+            background: #173b5c !important;
+            color: #fff !important;
+          }
+          .marketingCalendarPanel .marketingCalendarLegend {
+            margin: 12px 0 16px;
+          }
+          .marketingCalendarPanel .marketingYearGrid {
+            display: grid !important;
+          }
+          .marketingCalendarPanel .marketingMiniMonth {
+            min-height: 150px;
+          }
+          .marketingCalendarPanel .marketingDayAgenda {
+            border-top: 1px solid #d7dfe4;
+            padding-top: 16px;
+          }
+          .marketingCalendarPanel .marketingCalendarEmptyState {
+            border-radius: 0;
+            border: 1px solid #d7dfe4;
+            background: #f7f8f9;
+          }
+          @media (max-width: 760px) {
+            .marketingCalendarPanel .marketingDayCell {
+              min-height: 92px !important;
+              padding: 6px !important;
+            }
+            .marketingCalendarPanel .marketingCalendarEvent strong {
+              font-size: 10px !important;
+            }
+            .marketingCalendarPanel .marketingCalendarEvent span {
+              display: none !important;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingTwoCalendars {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+          }
+          .marketingVenueCalendar {
+            min-width: 0;
+            border: 1px solid #d7dfe4;
+            background: #fff;
+          }
+          .marketingVenueCalendar > header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 16px;
+            border-bottom: 1px solid #d7dfe4;
+          }
+          .marketingVenueCalendar > header h3 {
+            margin: 0;
+            font-size: 18px;
+          }
+          .marketingVenueDot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+          }
+          .marketingVenueCalendar .marketingDayCell {
+            min-height: 116px !important;
+            padding: 8px !important;
+          }
+          .marketingCalendarLayout {
+            display: flex;
+            gap: 6px;
+            margin-left: auto;
+          }
+          .marketingCalendarLayout button {
+            border: 1px solid #25889b;
+            border-radius: 8px;
+            padding: 9px 12px;
+            background: #fff;
+            color: #176d7f;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+          }
+          .marketingCalendarLayout button.active {
+            background: #25889b;
+            color: #fff;
+          }
+          .marketingCombinedCalendar {
+            width: 100%;
+          }
+          @media (max-width: 760px) {
+            .marketingTwoCalendars {
+              grid-template-columns: 1fr;
+            }
+            .marketingCalendarLayout {
+              width: 100%;
+              margin-left: 0;
+            }
+            .marketingCalendarLayout button {
+              flex: 1;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingCalendarPanel .marketingWeekCalendar {
+            display: block !important;
+            border: 0 !important;
+            background: transparent !important;
+          }
+          .marketingCalendarPanel .marketingWeekHeader,
+          .marketingCalendarPanel .marketingWeekColumns {
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+          }
+          .marketingCalendarPanel .marketingWeekHeader {
+            border-top: 1px solid #d7dfe4;
+            border-bottom: 1px solid #d7dfe4;
+          }
+          .marketingCalendarPanel .marketingWeekHeader strong {
+            padding: 12px 10px;
+            color: #536b7c;
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+          }
+          .marketingCalendarPanel .marketingWeekColumns {
+            background: #d7dfe4;
+            gap: 1px;
+          }
+          .marketingCalendarPanel .marketingWeekColumn {
+            display: grid !important;
+            align-content: start;
+            gap: 8px;
+            min-height: 340px;
+            padding: 10px;
+            background: #fff;
+          }
+          .marketingCalendarPanel
+            .marketingWeekColumn:has(.marketingCalendarEvent) {
+            background: #fff;
+          }
+          .marketingCalendarPanel .marketingWeekColumn .marketingCalendarEmpty {
+            padding-top: 4px;
+            color: #9aa7af;
+            font-size: 12px;
+          }
+          .marketingCalendarPanel .marketingYearGrid {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
+          }
+          .marketingCalendarPanel .marketingMiniMonth {
+            min-height: 220px;
+            padding: 14px !important;
+            border: 1px solid #d7dfe4;
+            border-radius: 0;
+            background: #fff;
+          }
+          .marketingCalendarPanel .marketingMiniMonth h4 {
+            padding-bottom: 10px;
+            border-bottom: 1px solid #d7dfe4;
+            font-size: 16px;
+            color: #173b5c;
+          }
+          .marketingCalendarPanel .marketingMiniWeekdays,
+          .marketingCalendarPanel .marketingMiniDays {
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 3px;
+          }
+          .marketingCalendarPanel .marketingMiniWeekdays span {
+            padding: 3px 0;
+            color: #8a99a3;
+            font-size: 10px;
+            font-weight: 800;
+            text-align: center;
+          }
+          .marketingCalendarPanel .marketingMiniDays {
+            margin-top: 3px;
+          }
+          .marketingCalendarPanel .marketingMiniDays span {
+            position: relative;
+            min-height: 22px;
+            padding: 4px 0;
+            border-radius: 3px;
+            background: #f5f7f8;
+            color: #173552;
+            font-size: 11px;
+            text-align: center;
+          }
+          .marketingCalendarPanel .marketingMiniDays span.outside {
+            background: transparent;
+            color: #b3bdc3;
+          }
+          .marketingCalendarPanel .marketingMiniDays span.hasEvent {
+            background: #dceff2;
+            color: #176d7f;
+            font-weight: 800;
+          }
+          .marketingCalendarPanel .marketingMiniDays span.hasEvent:after {
+            content: "";
+            position: absolute;
+            right: 3px;
+            bottom: 2px;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #25889b;
+          }
+          .marketingCalendarPanel .marketingMiniMonth small {
+            display: block;
+            margin-top: 12px;
+            padding-top: 9px;
+            border-top: 1px solid #edf1f3;
+            color: #5c7285;
+            font-size: 11px;
+          }
+          @media (max-width: 760px) {
+            .marketingCalendarPanel .marketingWeekHeader strong {
+              padding: 8px 3px;
+              font-size: 9px;
+            }
+            .marketingCalendarPanel .marketingWeekColumn {
+              min-height: 230px;
+              padding: 5px;
+            }
+            .marketingCalendarPanel .marketingYearGrid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 10px;
+            }
+            .marketingCalendarPanel .marketingMiniMonth {
+              min-height: 180px;
+              padding: 9px !important;
+            }
+            .marketingCalendarPanel .marketingMiniDays span {
+              min-height: 18px;
+              padding: 2px 0;
+              font-size: 10px;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingCalendarPanel .marketingMiniDays button {
+            position: relative;
+            min-height: 22px;
+            padding: 4px 0;
+            border: 0;
+            border-radius: 3px;
+            background: #f5f7f8;
+            color: #173552;
+            font: inherit;
+            font-size: 11px;
+            text-align: center;
+            cursor: pointer;
+          }
+          .marketingCalendarPanel .marketingMiniDays button.outside {
+            background: transparent;
+            color: #b3bdc3;
+          }
+          .marketingCalendarPanel .marketingMiniDays button.hasEvent {
+            background: #dceff2;
+            color: #176d7f;
+            font-weight: 800;
+          }
+          .marketingCalendarPanel .marketingMiniDays button.hasEvent:after {
+            content: "";
+            position: absolute;
+            right: 3px;
+            bottom: 2px;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #25889b;
+          }
+          .marketingEventDetails {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 14px 20px;
+            margin-top: 18px;
+            padding: 18px;
+            border: 2px solid #25889b;
+            border-radius: 10px;
+            background: #eef7f9;
+          }
+          .marketingEventDetails h3 {
+            margin: 3px 0 4px;
+          }
+          .marketingEventDetails p {
+            margin: 0;
+            color: #5c7285;
+          }
+          .marketingEventDetails dl {
+            grid-column: 1/-1;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin: 0;
+          }
+          .marketingEventDetails dl > div {
+            padding: 11px;
+            background: #fff;
+            border-radius: 7px;
+          }
+          .marketingEventDetails dt {
+            font-size: 11px;
+            font-weight: 800;
+            color: #536b7c;
+            text-transform: uppercase;
+          }
+          .marketingEventDetails dd {
+            margin: 5px 0 0;
+            color: #173552;
+            white-space: pre-wrap;
+          }
+          .marketingDetailStatus {
+            font-weight: 800;
+            color: #176d7f;
+          }
+          .marketingDetailStatus.cancelled {
+            color: #a12f2f;
+          }
+          .marketingDetailStatus.published,
+          .marketingDetailStatus.approved {
+            color: #24723b;
+          }
+          @media (max-width: 760px) {
+            .marketingEventDetails {
+              display: block;
+            }
+            .marketingEventDetails .secondaryButton {
+              width: 100%;
+              margin-top: 12px;
+            }
+            .marketingEventDetails dl {
+              display: grid;
+              grid-template-columns: 1fr;
+              margin-top: 14px;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingChannelMini {
+            display: flex;
+            gap: 3px;
+            margin-top: 2px;
+          }
+          .marketingChannelMini i {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #e6ecef;
+            color: #6b7e8d;
+            font-size: 9px;
+            font-style: normal;
+            font-weight: 800;
+          }
+          .marketingChannelMini i.placed {
+            background: #dcefe2;
+            color: #24723b;
+          }
+          .marketingChannelMini i.scheduled {
+            background: #e4efff;
+            color: #145dbf;
+          }
+          .marketingChannelMini i.concept {
+            background: #fff0ca;
+            color: #815b00;
+          }
+          .marketingChannelMini i.warning,
+          .marketingChannelMini i.error {
+            background: #f8dddd;
+            color: #a12f2f;
+          }
+          .marketingChannelStatus {
+            grid-column: 1/-1;
+            padding-top: 14px;
+            border-top: 1px solid #d7dfe4;
+          }
+          .marketingChannelStatus h4 {
+            margin: 0 0 10px;
+          }
+          .marketingChannelStatus > div {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+          }
+          .marketingChannelRow {
+            display: grid;
+            gap: 6px;
+            padding: 10px;
+            border-radius: 7px;
+            background: #fff;
+            border-left: 4px solid #c6d5df;
+          }
+          .marketingChannelRow strong {
+            font-size: 12px;
+          }
+          .marketingChannelRow span {
+            font-size: 12px;
+            font-weight: 800;
+            color: #5c7285;
+          }
+          .marketingChannelRow.placed {
+            border-left-color: #3a9455;
+            background: #f1faf4;
+          }
+          .marketingChannelRow.placed span {
+            color: #24723b;
+          }
+          .marketingChannelRow.scheduled {
+            border-left-color: #4a90d9;
+            background: #f1f6fd;
+          }
+          .marketingChannelRow.scheduled span {
+            color: #145dbf;
+          }
+          .marketingChannelRow.concept {
+            border-left-color: #d99b16;
+            background: #fffaf0;
+          }
+          .marketingChannelRow.concept span {
+            color: #815b00;
+          }
+          .marketingChannelRow.warning,
+          .marketingChannelRow.error {
+            border-left-color: #c95d5d;
+            background: #fff5f5;
+          }
+          .marketingChannelRow.warning span,
+          .marketingChannelRow.error span {
+            color: #a12f2f;
+          }
+          .marketingChannelRow.not_active span {
+            color: #8a99a3;
+          }
+          @media (max-width: 760px) {
+            .marketingChannelStatus > div {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .marketingChannelStatus > div .marketingChannelRow:last-child {
+              grid-column: 1/-1;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingDetailActions {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          .marketingLinkingNotice {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            grid-column: 1/-1;
+            padding: 11px 13px;
+            border-left: 4px solid #25889b;
+            border-radius: 6px;
+            background: #eaf6f8;
+            color: #176d7f;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .marketingLoadingSpinner {
+            width: 15px;
+            height: 15px;
+            flex: 0 0 15px;
+            border: 2px solid #b9dbe2;
+            border-top-color: #25889b;
+            border-radius: 50%;
+            animation: marketingSpin 0.8s linear infinite;
+          }
+          @keyframes marketingSpin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+          .marketingAutoCheck {
+            padding: 9px 0;
+            color: #24723b;
+            font-size: 12px;
+            font-weight: 800;
+          }
+          .marketingAutoNotice {
+            margin: 0 0 14px;
+            padding: 10px 12px;
+            border-left: 4px solid #25889b;
+            background: #eef7f9;
+            color: #176d7f;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .marketingExternalQueueNotice {
+            margin: 0 0 14px;
+            padding: 11px 13px;
+            border-left: 4px solid #d88900;
+            background: #fff7df;
+            color: #815b00;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .externalLegend {
+            background: #d88900 !important;
+          }
+          .marketingExternalBadge {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: #fff0ca;
+            color: #815b00;
+            font-size: 11px;
+            font-weight: 800;
+          }
+          .marketingCalendarEvent.externalFacebookEvent {
+            background: #fff0ca !important;
+            border-left-color: #d88900 !important;
+          }
+          .marketingCalendarEvent.externalFacebookEvent span {
+            color: #815b00;
+            font-weight: 800;
+          }
+          .externalFacebookDetails {
+            border-color: #d88900 !important;
+            background: #fffaf0 !important;
+          }
+          .marketingMatchSuggestion {
+            display: grid;
+            gap: 4px;
+            width: 100%;
+            padding: 10px 12px;
+            border-left: 4px solid #d88900;
+            border-radius: 7px;
+            background: #fff7df;
+            color: #815b00;
+          }
+          .marketingMatchSuggestion span {
+            font-size: 12px;
+          }
+          .marketingMatchSuggestion button {
+            justify-self: start;
+          }
+          .marketingSameDayMatches {
+            display: grid;
+            grid-column: 1/-1;
+            gap: 8px;
+            padding: 12px;
+            border-left: 4px solid #25889b;
+            background: #eef7f9;
+          }
+          .marketingSameDayMatches > span {
+            color: #5c7285;
+            font-size: 12px;
+          }
+          .marketingSameDayMatch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 9px 10px;
+            background: #fff;
+            border: 1px solid #d7dfe4;
+            border-radius: 7px;
+          }
+          .marketingSameDayMatch div {
+            min-width: 0;
+          }
+          .marketingSameDayMatch b {
+            display: block;
+            overflow-wrap: anywhere;
+            color: #173552;
+          }
+          .marketingSameDayMatch small {
+            display: block;
+            margin-top: 3px;
+            color: #5c7285;
+          }
+          .marketingComparisonGrid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            grid-column: 1/-1;
+            margin: 4px 0 2px;
+          }
+          .marketingComparisonDifference {
+            grid-column: 1/-1;
+            display: grid;
+            gap: 4px;
+            padding: 10px 12px;
+            border-left: 4px solid #d88900;
+            background: #fff7df;
+            color: #815b00;
+            font-size: 13px;
+          }
+          .marketingComparisonDifference strong {
+            font-size: 12px;
+          }
+          .marketingComparisonCard {
+            min-width: 0;
+            padding: 14px;
+            border: 1px solid #d7dfe4;
+            border-radius: 9px;
+            background: #fff;
+          }
+          .marketingComparisonTitle {
+            display: grid;
+            gap: 4px;
+            margin: 7px 0 12px;
+            padding: 10px;
+            border-radius: 6px;
+            background: #f7f9fa;
+          }
+          .marketingComparisonTitle span,
+          .marketingComparisonDescription > span {
+            font-size: 10px;
+            font-weight: 800;
+            color: #536b7c;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .marketingComparisonTitle strong {
+            overflow-wrap: anywhere;
+            color: #173552;
+          }
+          .marketingComparisonCard dl {
+            display: grid;
+            gap: 8px;
+            margin: 0;
+          }
+          .marketingComparisonCard dl > div {
+            padding-bottom: 7px;
+            border-bottom: 1px solid #edf1f3;
+          }
+          .marketingComparisonCard dt {
+            font-size: 10px;
+            font-weight: 800;
+            color: #536b7c;
+            text-transform: uppercase;
+          }
+          .marketingComparisonCard dd {
+            margin: 3px 0 0;
+            overflow-wrap: anywhere;
+            color: #173552;
+          }
+          .marketingComparisonDescription {
+            max-height: 180px;
+            margin: 12px 0 0;
+            overflow: auto;
+            color: #405866;
+            font-size: 13px;
+            line-height: 1.45;
+          }
+          .marketingComparisonDescription p {
+            margin: 6px 0 0;
+            white-space: pre-wrap;
+          }
+          .marketingEventModalBackdrop {
+            position: fixed;
+            z-index: 50;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: rgba(10, 35, 53, 0.58);
+          }
+          .marketingEventModalBackdrop .marketingEventDetails {
+            width: min(1100px, 100%);
+            max-height: calc(100vh - 48px);
+            margin: 0;
+            overflow: auto;
+            box-shadow: 0 20px 70px rgba(10, 35, 53, 0.28);
+          }
+          .marketingLastChecked {
+            margin: 0 0 10px;
+            color: #5c7285;
+            font-size: 12px;
+          }
+          .marketingChannelRow span {
+            display: block;
+          }
+          @media (max-width: 760px) {
+            .marketingComparisonGrid {
+              grid-template-columns: 1fr;
+            }
+            .marketingSameDayMatch {
+              display: grid;
+            }
+            .marketingSameDayMatch .secondaryButton {
+              width: 100%;
+            }
+            .marketingEventModalBackdrop {
+              padding: 12px;
+            }
+            .marketingEventModalBackdrop .marketingEventDetails {
+              max-height: calc(100vh - 24px);
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingCalendarPanel .marketingDayCell.today {
+            background: #fff8df !important;
+            box-shadow: inset 0 0 0 2px #d99b16;
+          }
+          .marketingCalendarPanel .marketingDayCell.today > strong {
+            color: #815b00;
+          }
+          .marketingCalendarPanel .marketingWeekHeader strong.today {
+            background: #fff0ca;
+            color: #815b00;
+          }
+          .marketingCalendarPanel .marketingWeekColumn.today {
+            background: #fff8df;
+            border-top: 3px solid #d99b16;
+          }
+          .marketingCalendarPanel .marketingMiniMonth.currentMonth {
+            border: 2px solid #d99b16;
+          }
+          .marketingCalendarPanel .marketingMiniMonth.currentMonth h4 {
+            color: #815b00;
+          }
+          .marketingCalendarPanel .marketingMiniDays button.today {
+            background: #d99b16;
+            color: #fff;
+            font-weight: 900;
+          }
+          .marketingCalendarPanel
+            .marketingMiniDays
+            button.today.hasEvent:after {
+            background: #fff;
+          }
+          .marketingCalendarPanel .marketingDayAgenda {
+            border-left: 4px solid #d99b16;
+            padding-left: 14px;
+            background: #fff8df;
+          }
+        `}</style>
+        <style jsx global>{`
+          .infoCalendarLegend {
+            background: #6d5bd0 !important;
+          }
+          .marketingCalendarPanel .marketingCalendarEvent.infoCalendarEvent {
+            border-left-color: #6d5bd0 !important;
+            background: #f3f0ff !important;
+            color: #30286c !important;
+            text-decoration: none;
+            cursor: pointer;
+          }
+          .marketingCalendarPanel
+            .marketingCalendarEvent.infoCalendarEvent
+            span {
+            color: #514794 !important;
+          }
+          .marketingInfoCalendar {
+            grid-column: 1/-1;
+          }
+          .marketingInfoCalendarNotice {
+            margin: 0 0 14px;
+            padding: 10px 12px;
+            border-left: 4px solid #6d5bd0;
+            background: #f3f0ff;
+            color: #514794;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .marketingCalendarLayout button[aria-pressed="true"] {
+            background: #6d5bd0 !important;
+            border-color: #6d5bd0 !important;
+            color: #fff !important;
+          }
+          @media (max-width: 760px) {
+            .marketingInfoCalendar {
+              grid-column: auto;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingDuplicateReview > summary {
+            line-height: 1.6;
+          }
+          .marketingMergeNotice {
+            padding: 12px 14px;
+            margin-bottom: 14px;
+            border-left: 4px solid #3a9455;
+            border-radius: 8px;
+            background: #f1faf4;
+            font-size: 13px;
+            line-height: 1.5;
+          }
+          .marketingMergeNotice.error {
+            border-color: #cf5555;
+            background: #fff3f3;
+          }
+          .marketingDuplicateCount {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: #fff3cf;
+            color: #785500;
+            font-size: 11px;
+            font-weight: 600;
+          }
+          .marketingDuplicateHelp {
+            margin: 0 0 14px !important;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #496477;
+          }
+          .marketingDuplicateRecords {
+            display: grid;
+            grid-template-columns: repeat(
+              auto-fit,
+              minmax(min(100%, 240px), 1fr)
+            );
+            gap: 12px;
+          }
+          .marketingDuplicateRecord {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+            padding: 14px;
+            border: 1px solid #cbdde5;
+            border-radius: 8px;
+            background: #fff;
+            overflow-wrap: anywhere;
+          }
+          .marketingDuplicateRecord.current {
+            background: #eef7f9;
+            border-color: #25889b;
+          }
+          .marketingDuplicateRecord.selected {
+            box-shadow: inset 0 0 0 1px #25889b;
+          }
+          .marketingDuplicateRecord > strong {
+            font-size: 14px;
+            line-height: 1.5;
+          }
+          .marketingDuplicateLabel {
+            font-size: 11px;
+            font-weight: 800;
+            color: #176d7f;
+          }
+          .marketingDuplicateIdentity {
+            display: grid;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #405866;
+          }
+          .marketingDuplicateIdentity em {
+            font-style: normal;
+            font-weight: 700;
+          }
+          .marketingDuplicateRecord > button {
+            margin: 8px 0 0 !important;
+            align-self: flex-start;
+            white-space: normal;
+            text-align: left;
+          }
+          .marketingDuplicateTexts {
+            margin-top: 14px;
+          }
+          .marketingDuplicateReview .marketingMergeContent {
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+            margin: 16px 0 0;
+            padding-top: 16px;
+            border-top: 1px solid #d7dfe4;
+          }
+          .marketingMergeContent h4,
+          .marketingMergeContent p {
+            margin: 0;
+          }
+          .marketingMergeContent p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #496477;
+          }
+          .marketingMergeChoices {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+          .marketingMergeChoices button {
+            margin: 0 !important;
+            white-space: normal;
+            text-align: left;
+          }
+          .marketingMergeChoices button[aria-pressed="true"] {
+            background: #e7f4f7;
+            box-shadow: inset 0 0 0 1px #176d7f;
+          }
+          .marketingMergeContent label {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+            font-size: 13px;
+            font-weight: 700;
+          }
+          .marketingMergeContent input,
+          .marketingMergeContent textarea {
+            box-sizing: border-box;
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #aec7d4;
+            border-radius: 7px;
+            background: #fff;
+            color: #173552;
+            font: inherit;
+            font-weight: 400;
+            line-height: 1.5;
+          }
+          .marketingMergeContent textarea {
+            min-height: 140px;
+            resize: vertical;
+          }
+          .marketingMergeContent > .primaryButton {
+            justify-self: start;
+            margin: 0;
+            white-space: normal;
+            min-height: 42px;
+            padding: 10px 15px;
+            border: 1px solid #176d7f;
+            border-radius: 8px;
+            background: #176d7f;
+            color: #fff;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+          }
+          .marketingMergeContent > .primaryButton:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+          }
+          .marketingCalendarEvent .marketingCalendarDuplicate {
+            display: block;
+            font-size: 10px;
+            line-height: 1.4;
+            margin: 4px 0;
+            padding: 2px 4px;
+            border-radius: 4px;
+            background: #fff3cf;
+            color: #785500;
+            white-space: normal;
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingEventDetails {
+            display: block !important;
+          }
+          .marketingChannelStatus button.marketingChannelRow {
+            width: 100%;
+            margin: 0;
+            border-top: 0;
+            border-right: 0;
+            border-bottom: 0;
+            text-align: left;
+            font: inherit;
+            cursor: pointer;
+            color: inherit;
+          }
+          .marketingChannelStatus button.marketingChannelRow:hover {
+            box-shadow: 0 0 0 2px #25889b;
+          }
+          .marketingChannelStatus button.marketingChannelRow:focus-visible {
+            outline: 2px solid #176d7f;
+            outline-offset: 3px;
+          }
+          .marketingChannelRow small {
+            font-size: 11px;
+            color: #176d7f;
+            font-weight: 700;
+          }
+          .marketingEventDetails > .marketingLinkingNotice {
+            margin-bottom: 16px;
+          }
+          .marketingEventDetails > .marketingDetailActions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 2px 0 14px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #d7dfe4;
+          }
+          .marketingDetailActions > button {
+            min-height: 42px;
+            padding: 10px 15px;
+            white-space: nowrap;
+            border-radius: 8px;
+          }
+          .marketingDetailActions > .marketingAutoCheck {
+            margin-left: auto;
+          }
+          .marketingMergeContent {
+            flex: 1 0 100%;
+            width: 100%;
+            margin-top: 4px;
+          }
+          .marketingComparisonGrid {
+            display: grid;
+            align-items: start;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin: 4px 0 2px;
+          }
+          .marketingChosenContent {
+            display: grid;
+            gap: 12px;
+            margin: 18px 0;
+            padding: 16px;
+            border: 2px solid #25889b;
+            border-radius: 9px;
+            background: #fff;
+          }
+          .marketingChosenContent h4,
+          .marketingChosenContent p {
+            margin: 0;
+          }
+          .marketingChosenContent p {
+            white-space: pre-wrap;
+            max-height: 260px;
+            overflow: auto;
+            overflow-wrap: anywhere;
+          }
+          .marketingChosenContent small {
+            color: #405866;
+          }
+          .marketingChosenContent label {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+          }
+          .marketingChosenContent input,
+          .marketingChosenContent textarea {
+            box-sizing: border-box;
+            width: 100%;
+            min-width: 0;
+            padding: 9px;
+            border: 1px solid #b9ccd7;
+            border-radius: 6px;
+            font: inherit;
+            line-height: 1.5;
+          }
+          .marketingChosenContent textarea {
+            resize: vertical;
+          }
+          .marketingComparisonCard {
+            min-width: 0;
+          }
+          .marketingChosenContent button {
+            justify-self: start;
+          }
+          .marketingComparisonCard {
+            padding: 16px;
+          }
+          .marketingComparisonCard > button {
+            margin: 6px 0;
+            min-height: 40px;
+          }
+          .marketingComparisonTitle strong {
+            font-size: 15px;
+            line-height: 1.35;
+          }
+          .marketingComparisonDescription {
+            max-height: 240px;
+            font-size: 14px;
+            line-height: 1.55;
+          }
+          .marketingEventDetails > dl {
+            margin-top: 18px;
+          }
+          @media (max-width: 760px) {
+            .marketingDetailActions {
+              align-items: stretch;
+            }
+            .marketingDetailActions > button,
+            .marketingDetailActions > .marketingAutoCheck {
+              width: 100%;
+              margin-left: 0;
+            }
+            .marketingComparisonGrid {
+              grid-template-columns: 1fr;
+            }
+          }
+          .marketingDetailFold {
+            margin-top: 10px;
+            border: 1px solid #cbdde5;
+            border-radius: 8px;
+            background: #fff;
+          }
+          .marketingDetailFold > summary {
+            padding: 12px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            color: #176d7f;
+          }
+          .marketingDetailFold[open] {
+            padding: 0 14px 14px;
+          }
+          .marketingDetailFold[open] > summary {
+            margin: 0 -14px 12px;
+            border-bottom: 1px solid #e0e9ef;
+          }
+          .marketingEventDetails .manualFacebookUpdate button,
+          .marketingEventDetails .manualFacebookUpdate a {
+            width: auto;
+            margin-top: 0;
+            min-height: 34px;
+          }
+          .marketingEventDetails .manualFacebookUpdate textarea {
+            min-height: 0;
+          }
+          .marketingEventDetails > .marketingDetailActions {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+          }
+          .marketingDetailFold .marketingChosenContent {
+            margin-bottom: 0;
+          }
+          @media (max-width: 760px) {
+            .marketingEventModalBackdrop .marketingEventDetails {
+              padding: 12px;
+            }
+            .marketingEventDetails > .marketingDetailActions > button {
+              width: auto;
+            }
+            .marketingEventDetails .manualFacebookUpdate {
+              padding: 12px;
+            }
+          }
+          .marketingEventFacts {
+            margin: 6px 0 14px;
+          }
+          .marketingEventFacts > p {
+            margin: 0;
+            font-size: 13px;
+            color: #173552;
+          }
+          .marketingFullDescription {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            max-height: 260px;
+            overflow: auto;
+            margin: 0;
+            line-height: 1.55;
+          }
+          .marketingEventHeading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+          }
+          .marketingEventHeading > div:first-child {
+            flex: 1;
+            min-width: 200px;
+          }
+          .marketingEventHeading .marketingDetailActions {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+          .marketingEventHeading .marketingDetailActions > button {
+            width: auto;
+            margin: 0;
+          }
+          .marketingComparisonSummary {
+            display: grid;
+            gap: 5px;
+            margin: 14px 0 10px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border-left: 4px solid #8ca6b6;
+            background: #f5f8fa;
+            font-size: 13px;
+          }
+          .marketingComparisonProgress {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+          }
+          .marketingComparisonProgress .marketingLoadingSpinner {
+            display: inline-block;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .marketingComparisonProgress .marketingLoadingSpinner {
+              animation: none;
+            }
+          }
+          .marketingComparisonSummary.equal {
+            border-color: #3a9455;
+            background: #f1faf4;
+          }
+          .marketingComparisonSummary.different {
+            border-color: #d99b16;
+            background: #fffaf0;
+          }
+          .marketingComparisonSummary p {
+            line-height: 1.5;
+          }
+          .marketingDifferenceActions {
+            border-top: 1px solid #d7dfe4;
+            padding-top: 8px;
+            margin-top: 6px;
+          }
+          .marketingDifferenceActions > div {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          .marketingDifferenceActions p {
+            margin: 0 0 8px;
+            font-size: 13px;
+            line-height: 1.5;
+          }
+          .marketingSourceDifferences {
+            min-width: 0;
+            overflow-wrap: anywhere;
+          }
+          .marketingSourceDifferences p {
+            margin: 4px 0;
+          }
+          .marketingSourceDifferences ul {
+            margin: 6px 0;
+            padding-left: 20px;
+          }
+          .marketingSourceDifferences li {
+            margin: 5px 0;
+            line-height: 1.5;
+          }
+          .marketingDetailFold .manualFacebookUpdate {
+            margin: 0;
+            border: 0;
+            padding: 0;
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingChannelStatus {
+            margin: 18px 0;
+            padding: 16px;
+            border: 1px solid #d6e2e8;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 5px 18px rgba(22, 66, 86, 0.05);
+          }
+          .marketingChannelStatus h4 {
+            margin: 0;
+            color: #173552;
+            font-size: 15px;
+          }
+          .marketingLastChecked {
+            margin: 4px 0 14px !important;
+            color: #6a7f8e !important;
+          }
+          .marketingChannelStatus > div {
+            grid-template-columns: repeat(
+              auto-fit,
+              minmax(150px, 1fr)
+            ) !important;
+            gap: 10px !important;
+          }
+          .marketingChannelRow {
+            min-height: 116px;
+            grid-template-rows: minmax(30px, auto) 1fr auto;
+            gap: 8px !important;
+            padding: 13px 12px !important;
+            border: 1px solid #e1e9ed;
+            border-left: 4px solid #c6d5df !important;
+            border-radius: 8px !important;
+            box-shadow: 0 1px 2px rgba(22, 66, 86, 0.04);
+            transition:
+              transform 0.15s ease,
+              box-shadow 0.15s ease;
+          }
+          .marketingChannelRow strong {
+            color: #173552;
+            font-size: 12px !important;
+            line-height: 1.25;
+          }
+          .marketingChannelRow span {
+            align-self: center;
+            font-size: 12px !important;
+            line-height: 1.35;
+          }
+          .marketingChannelRow small {
+            align-self: end;
+          }
+          .marketingChannelStatus button.marketingChannelRow:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 14px rgba(22, 66, 86, 0.12) !important;
+          }
+          .marketingChannelRow.placed {
+            border-color: #cce7d4;
+            border-left-color: #3a9455 !important;
+          }
+          .marketingChannelRow.scheduled {
+            border-color: #d4e4fa;
+            border-left-color: #4a90d9 !important;
+          }
+          .marketingChannelRow.concept {
+            border-color: #f2e2b7;
+            border-left-color: #d99b16 !important;
+          }
+          .marketingChannelRow.warning,
+          .marketingChannelRow.error {
+            border-color: #f0d2d2;
+            border-left-color: #c95d5d !important;
+          }
+          .marketingChannelRow.not_active {
+            background: #f8fafb;
+          }
+          @media (max-width: 760px) {
+            .marketingChannelStatus {
+              padding: 12px;
+            }
+            .marketingChannelStatus > div {
+              grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+              gap: 8px !important;
+            }
+            .marketingChannelRow {
+              min-height: 104px;
+              padding: 11px 10px !important;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingChannelRow strong small {
+            display: block;
+            margin-top: 2px;
+            color: #5c7285;
+            font-size: 10px;
+            font-weight: 700;
+          }
+          .marketingMetaCampaign {
+            display: grid;
+            gap: 12px;
+            margin: 0;
+            padding: 14px;
+            border: 1px solid #cbdde5;
+            border-left: 4px solid #1877f2;
+            border-radius: 8px;
+            background: #f7faff;
+          }
+          .marketingMetaCampaign p {
+            margin: 0;
+            line-height: 1.5;
+          }
+          .marketingMetaCampaign .secondaryButton {
+            justify-self: start;
+            text-decoration: none;
+          }
+          .marketingMetaCampaignFields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+          }
+          .marketingMetaCampaignFields label {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .marketingMetaCampaignFields input,
+          .marketingMetaCampaignFields select {
+            box-sizing: border-box;
+            width: 100%;
+            min-width: 0;
+            padding: 9px;
+            border: 1px solid #b9ccd7;
+            border-radius: 6px;
+            background: #fff;
+            font: inherit;
+          }
+          .marketingMetaCampaignError {
+            padding: 9px 11px;
+            border-left: 4px solid #c95d5d;
+            border-radius: 6px;
+            background: #fff1f1;
+            color: #a12f2f;
+          }
+          @media (max-width: 760px) {
+            .marketingMetaCampaignFields {
+              grid-template-columns: 1fr;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingTextDifference {
+            margin: 12px 0;
+            padding: 12px;
+            border: 1px solid #e0bd55;
+            border-radius: 7px;
+            background: #fffdf6;
+          }
+          .marketingTextDifference > div {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+          }
+          .marketingTextDifference article {
+            min-width: 0;
+            padding: 10px;
+            border: 1px solid #e5e9ec;
+            border-radius: 6px;
+            background: #fff;
+          }
+          .marketingTextDifference article > strong {
+            display: block;
+            margin-bottom: 7px;
+            color: #173552;
+          }
+          .marketingTextDifference pre {
+            max-height: 240px;
+            margin: 0;
+            overflow: auto;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            color: #405866;
+            font: inherit;
+            line-height: 1.5;
+          }
+          .marketingTextDifference pre span {
+            display: block;
+            min-height: 1.5em;
+          }
+          .marketingTextDifference pre span.different {
+            padding: 0 3px;
+            border-radius: 2px;
+            background: #ffe58f;
+            color: #513b00;
+          }
+          @media (max-width: 760px) {
+            .marketingTextDifference > div {
+              grid-template-columns: 1fr;
+            }
+          }
+        `}</style>
+        <style jsx global>{`
+          .marketingComparisonSummary[hidden] {
+            display: grid !important;
+          }
+        `}</style>
+      </section>
+    </ChannelStatusContext.Provider>
+  );
 }

@@ -476,7 +476,7 @@ function formUiStorageKey(workspaceId, businessId) {
   return `horeca-os:marketing-ui:${workspaceId}:${businessId}`;
 }
 
-export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, onEventSaved }) {
+export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, openCampaignRequest, onEventSaved }) {
   const [form, setForm] = useState(emptyForm);
   const [creativeBrief, setCreativeBrief] = useState("");
   const [artistProgram, setArtistProgram] = useState("");
@@ -488,6 +488,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
   const handledNewEventRequestRef = useRef("");
+  const handledOpenCampaignRequestRef = useRef("");
   const facebookGroupListRef = useRef(null);
   const [eventWorkspaceView, setEventWorkspaceView] = useState("");
   const [preview, setPreview] = useState(false);
@@ -1717,6 +1718,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     // datumklik nooit onderaan bij Bestemmingen blijft hangen.
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 0);
   }, [newEventRequest?.id, newEventRequest?.date, selectedBusiness]);
+
+  useEffect(() => {
+    const request = openCampaignRequest;
+    if (!request?.id || !request.item || !selectedBusiness?.id || handledOpenCampaignRequestRef.current === request.id) return;
+    if (String(request.item.business_id || "") !== String(selectedBusiness.id)) return;
+    handledOpenCampaignRequestRef.current = request.id;
+    openCampaignConcept(request.item);
+  }, [openCampaignRequest, selectedBusiness?.id]);
 
   useEffect(() => {
     const selectedBusinessId = selectedBusiness?.id || businessId;

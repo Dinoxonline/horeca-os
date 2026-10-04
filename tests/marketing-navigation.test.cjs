@@ -14,10 +14,10 @@ async function component() {
   const module = { exports: {} }; vm.runInThisContext('(function(require,module,exports){' + code + '\n})')(require, module, module.exports); return module.exports.default;
 }
 const businesses = [{ id: 'b1', name: 'Caribbean Corner' }, { id: 'b2', name: 'Grandcafé Het Plein' }];
-function Agenda({ venues }) { const [month, setMonth] = React.useState('september'); return React.createElement('input', { 'aria-label': 'Testmaand', value: month, onChange: e => setMonth(e.target.value), 'data-venues': venues.map(v => v.id).join(',') }); }
-function Creator({ business }) { const [title, setTitle] = React.useState(''); return React.createElement('input', { 'aria-label': 'Testtitel', value: title, onChange: e => setTitle(e.target.value), 'data-business': business }); }
+function Agenda({ venues, onOpenEventin }) { const [month, setMonth] = React.useState('september'); return React.createElement(React.Fragment, null, React.createElement('input', { 'aria-label': 'Testmaand', value: month, onChange: e => setMonth(e.target.value), 'data-venues': venues.map(v => v.id).join(',') }), React.createElement('button', { type: 'button', onClick: () => onOpenEventin?.({ id: 'saved-event', business_id: 'b2', media: [] }) }, 'Eventin openen')); }
+function Creator({ business, request }) { const [title, setTitle] = React.useState(''); return React.createElement(React.Fragment, null, React.createElement('input', { 'aria-label': 'Testtitel', value: title, onChange: e => setTitle(e.target.value), 'data-business': business }), React.createElement('output', { 'aria-label': 'Geopend Eventin-evenement' }, request?.item?.id || '')); }
 function FoodMachine() { return React.createElement('div', { 'aria-label': 'Test Food Marketing Machine' }, 'Gerechten'); }
-const props = { businessId: 'all', businesses, renderAgenda: venues => React.createElement(Agenda, { venues }), renderCreator: business => React.createElement(Creator, { business }), renderFoodMachine: () => React.createElement(FoodMachine) };
+const props = { businessId: 'all', businesses, renderAgenda: (venues, onPlanDate, refreshToken, onOpenEventin) => React.createElement(Agenda, { venues, onOpenEventin }), renderCreator: (business, newEventRequest, onEventSaved, request) => React.createElement(Creator, { business, request }), renderFoodMachine: () => React.createElement(FoodMachine) };
 const click = (renderer, name) => renderer.root.findAllByType('button').find(button => button.props.children === name).props.onClick();
 const panel = (renderer, label) => renderer.root.findByProps({ 'aria-label': label });
 
@@ -66,6 +66,17 @@ test('Food Marketing Machine stays inside Marketing and does not start a campaig
     assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Testtitel' }).length, 0);
     await React.act(async () => click(renderer, 'Agenda'));
     assert.equal(panel(renderer, 'Marketingagenda').props.hidden, false);
+  } finally { await React.act(async () => renderer.unmount()); }
+});
+
+test('opening Eventin from a saved agenda event keeps its venue and sends that event to the creator', async () => {
+  const Component = await component(); let renderer;
+  await React.act(async () => { renderer = Renderer.create(React.createElement(Component, props)); });
+  try {
+    await React.act(async () => click(renderer, 'Eventin openen'));
+    assert.equal(panel(renderer, 'Marketingagenda').props.hidden, true);
+    assert.equal(panel(renderer, 'Testtitel').props['data-business'], 'b2');
+    assert.equal(panel(renderer, 'Geopend Eventin-evenement').props.children, 'saved-event');
   } finally { await React.act(async () => renderer.unmount()); }
 });
 

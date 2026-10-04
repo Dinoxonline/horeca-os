@@ -564,8 +564,8 @@ export default function HorecaOsApp() {
         {activeView === "quotes" && featureVisibility.quotes && <Quotes key={workspaceId} workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} session={session} />}
         {activeView === "marketing" && featureVisibility.marketing && <MarketingAgendaNavigation
           businessId={businessId} businesses={visibleBusinesses}
-          renderAgenda={(agendaBusinesses, onPlanDate, refreshToken) => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} onPlanDate={onPlanDate} refreshToken={refreshToken} />}
-          renderCreator={(creatorBusinessId, newEventRequest, onEventSaved) => <CentralEventCreator workspaceId={workspaceId} businessId={creatorBusinessId} businesses={visibleBusinesses} session={session} newEventRequest={newEventRequest} onEventSaved={onEventSaved} />}
+          renderAgenda={(agendaBusinesses, onPlanDate, refreshToken, onOpenEventinForCampaign) => <MarketingOverview key={businessId} workspaceId={workspaceId} businesses={agendaBusinesses} session={session} onPlanDate={onPlanDate} refreshToken={refreshToken} onOpenEventinForCampaign={onOpenEventinForCampaign} />}
+          renderCreator={(creatorBusinessId, newEventRequest, onEventSaved, openCampaignRequest) => <CentralEventCreator workspaceId={workspaceId} businessId={creatorBusinessId} businesses={visibleBusinesses} session={session} newEventRequest={newEventRequest} openCampaignRequest={openCampaignRequest} onEventSaved={onEventSaved} />}
           renderFoodMachine={() => <FoodMarketingMachine workspaceId={workspaceId} businessId={businessId} businesses={visibleBusinesses} recipes={data.recipes} session={session} canManage={isOwner || canUseFeature("marketing:manage")} />}
         />}
         {activeView === "assistant" && featureVisibility.assistant && <Assistant workspaceId={workspaceId} businessId={businessId} session={session} conversations={data.aiConversations} onRefresh={loadData} />}
