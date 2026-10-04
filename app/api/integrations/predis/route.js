@@ -52,7 +52,7 @@ export async function POST(request) {
   const businessId = String(body.businessId || "");
   const requestedBrandId = String(body.brandId || "").trim();
   const prompt = String(body.prompt || "").trim();
-  const mediaType = ["single_image", "carousel", "video"].includes(body.mediaType) ? body.mediaType : "single_image";
+  const mediaType = ["single_image", "carousel"].includes(body.mediaType) ? body.mediaType : "single_image";
   if (workspaceId !== context.workspaceId || !businessId || !requestedBrandId) return jsonError("Werkruimte, vestiging en Predis-merk ontbreken.", 400);
   if (prompt.length < 20 || prompt.split(/\s+/).length < 3) return jsonError("Beschrijf het bericht met minimaal 20 tekens en 3 woorden.", 400);
   const business = await requireBusiness(workspaceId, businessId);
@@ -72,7 +72,7 @@ export async function POST(request) {
   form.set("brand_id", brandId);
   form.set("text", prompt);
   form.set("media_type", mediaType);
-  form.set("model_version", mediaType === "video" ? "2" : "4");
+  form.set("model_version", "4");
   form.set("input_language", "dutch");
   form.set("output_language", "dutch");
   const response = await fetch(`${PREDIS_BASE_URL}/create_content/`, { method: "POST", headers: { Authorization: apiKey }, body: form, cache: "no-store" });

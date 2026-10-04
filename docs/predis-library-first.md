@@ -8,7 +8,7 @@ De gebruiker heeft verduidelijkt dat ‘maken’ voor de hoofdroute betekent: ee
 - Originele downloads behouden hun bytes en bestandstype; geen canvas, beeldbewerking of nieuwe generatie. Carrouselbestanden behouden de selectievolgorde.
 - De UI verwijst uitdrukkelijk naar ‘Heb je al een ontwerp? Uploaden en inplannen’ → ‘Upload inhoud vanaf apparaat’. De link opent het algemene Predis-keuzescherm, niet rechtstreeks een uploadformulier, en draagt geen bestanden over.
 - Rechtstreekse automatische upload naar de Predis-inhoudsbibliotheek is **nog niet aangesloten**. In de geraadpleegde officiële API-documentatie is hiervoor geen ongewijzigde-importendpoint gevonden. De gedocumenteerde create_content-route is generatie en mag niet als bestandsupload worden ingezet.
-- ‘Nieuw ontwerp met AI maken (optioneel)’ blijft apart en standaard ingeklapt beschikbaar, met de waarschuwing dat beeld/opmaak veranderen en tegoed kan worden verbruikt.
+- ‘Nieuw ontwerp met AI maken (optioneel)’ blijft apart en standaard ingeklapt beschikbaar. Sinds 2 oktober 2026 gebruikt deze route uitsluitend Predis modelversie 4: afbeelding of carrousel uit de evenementopdracht, zonder bestaande bestanden als bron.
 - Eerdere AI-aanvragen blijven apart leesbaar en controleerbaar; onzekere aanvragen worden niet opnieuw verzonden.
 
 De uploadstap in Predis blijft dus voorlopig handmatig. Geen automatische upload of voltooid extern bibliotheekitem claimen op basis van alleen de link.
@@ -17,8 +17,8 @@ De uploadstap in Predis blijft dus voorlopig handmatig. Geen automatische upload
 
 De afzonderlijke AI-route op de evenementdetailpagina, bij publicatiemomenten en bij opgeslagen dossiers onder ‘Nieuw evenement of campagne’ werkt als volgt:
 
-1. Afbeelding, carrousel of video kiezen.
-2. De overgenomen opdracht en bronfoto's controleren en expliciet toestemming geven voor Predis-tegoed.
+1. Afbeelding of carrousel kiezen.
+2. De overgenomen evenementopdracht controleren en expliciet toestemming geven voor Predis-tegoed.
 3. Eén maakopdracht naar het server-side gekoppelde Predis-merk. De bestaande beveiligde route bewaart de aanvraag vóór verzending en herhaalt geen onzekere maakopdrachten.
 4. Horeca OS haalt het resultaat automatisch op terwijl het onderdeel openstaat: normaal iedere 20 seconden, maximaal 15 minuten vanaf aanmaak. Bij fouten loopt de wachttijd op; na drie fouten pauzeert de controle. Handmatig ophalen blijft beschikbaar. Sluiten stopt de browsercontrole, niet de reeds geaccepteerde Predis-opdracht.
 5. Het ontwerp bekijken, daarna het bestaande ontwerp in de Predis-inhoudsbibliotheek openen om kanalen/datum/tijd te kiezen. Geen opnieuw uploaden of opnieuw genereren.
