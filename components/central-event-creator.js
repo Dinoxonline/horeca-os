@@ -2783,6 +2783,20 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     window.requestAnimationFrame(() => scrollToCreatorSection("campagne-basis"));
   }
 
+  function continueToChannels() {
+    setPreview(false);
+    setPreviewChannel("");
+    setEventCreationStep(3);
+    window.requestAnimationFrame(() => scrollToCreatorSection("campagne-bestemmingen"));
+  }
+
+  function returnToEventinDetails() {
+    setPreview(false);
+    setPreviewChannel("");
+    setEventCreationStep(2);
+    window.requestAnimationFrame(() => scrollToCreatorSection("campagne-basis"));
+  }
+
   const newEventFlow = isEvent && eventWorkspaceView === "new";
 
   return <section className="panel" style={{ marginBottom: 24 }}>
@@ -2881,7 +2895,23 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </div>
     </nav>
     }
-    {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
+    {isEvent && eventCreationStep === 2 && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Eventin invullen</h3><p>Voeg je gekozen tekst, tickets en afbeeldingen toe. Controleer daarna eerst het Eventin-voorbeeld.</p></div>}
+    {isEvent && eventCreationStep === 3 && <div className="eventDetailsIntro"><p className="eyebrow">STAP 3 VAN 3</p><h3>Agenda en andere kanalen</h3><p>Eventin staat klaar. Kies nu alleen de agenda en kanalen die je daarnaast wilt voorbereiden.</p><button type="button" className="secondaryButton" onClick={returnToEventinDetails}>Terug naar Eventin</button></div>}
+    {(!isEvent || eventCreationStep === 2) && <>
+    {isEvent && <fieldset className="ticketSetup creatorSection" id="campagne-tickets"><legend>Tickets voor Eventin</legend>
+      <p>Deze tickets worden rechtstreeks in Eventin aangemaakt. Geen tickets nodig? Verwijder de regel.</p>
+      {(form.ticketVariations || []).map((ticket, index) => <div className="ticketSetupEntry" key={ticket.id}>
+        <div className={`ticketSetupRow ${ticket.type === "paid" ? "paid" : "free"}`}>
+          <label>Naam ticket<input value={ticket.name} onChange={(event) => updateTicketVariation(ticket.id, "name", event.target.value)} placeholder="Bijvoorbeeld: Early Bird" /></label>
+          <label>Soort<select value={ticket.type} onChange={(event) => updateTicketVariation(ticket.id, "type", event.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option></select></label>
+          {ticket.type === "paid" && <label>Prijs<input type="number" min="0.01" step="0.01" value={ticket.price} onChange={(event) => updateTicketVariation(ticket.id, "price", event.target.value)} placeholder="Bijvoorbeeld: 12,50" /></label>}
+          <label>Aantal beschikbaar<input type="number" min="1" value={ticket.capacity} onChange={(event) => updateTicketVariation(ticket.id, "capacity", event.target.value)} placeholder="Onbeperkt" /></label>
+          <button type="button" className="removeTicket" aria-label={`Ticket ${index + 1} verwijderen`} onClick={() => removeTicketVariation(ticket.id)}>Verwijderen</button>
+        </div>
+        <details className="ticketAdvancedOptions"><summary>Meer ticketopties</summary><p>Alleen nodig wanneer dit ticket afwijkt van de standaard.</p><div className="ticketAdvancedGrid"><label className="wide">Ticketomschrijving<textarea rows={2} value={ticket.description || ""} onChange={(event) => updateTicketVariation(ticket.id, "description", event.target.value)} /></label><label>Verkoop begint<input type="datetime-local" value={ticket.salesStart || ""} onChange={(event) => updateTicketVariation(ticket.id, "salesStart", event.target.value)} /></label><label>Verkoop eindigt<input type="datetime-local" value={ticket.salesEnd || ""} onChange={(event) => updateTicketVariation(ticket.id, "salesEnd", event.target.value)} /></label><label>Minimaal per bestelling<input type="number" min="1" value={ticket.minQuantity || "1"} onChange={(event) => updateTicketVariation(ticket.id, "minQuantity", event.target.value)} /></label><label>Maximaal per bestelling<input type="number" min="1" value={ticket.maxQuantity || "10"} onChange={(event) => updateTicketVariation(ticket.id, "maxQuantity", event.target.value)} /></label></div></details>
+      </div>)}
+      <button type="button" className="addTicket" onClick={addTicketVariation}>+ Ticket toevoegen</button>
+    </fieldset>}
     {isEvent && <details className="eventWorkboardTasks creatorSection" id="werkbord-taken"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
       {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
         <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
@@ -2972,12 +3002,21 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label>Knoptekst<input value={form.ctaLabel} onChange={(e) => update("ctaLabel", e.target.value)} /></label>
       <label>Knoplink<input type="url" value={form.ctaUrl} onChange={(e) => update("ctaUrl", e.target.value)} placeholder="Leeg = de nieuwe evenementpagina" /></label>
     </div>
+    </>}
 
-    <fieldset className="eventDestinations creatorSection" id="campagne-bestemmingen"><legend>Bestemmingen</legend>
+    {isEvent && eventCreationStep === 2 && <fieldset className="eventDestinations creatorSection" id="campagne-bestemmingen"><legend>Eventin</legend>
       {isEvent && <div className="eventinDestination">
         <label className="check"><input type="checkbox" checked readOnly /> Eventin op caribbeancorner.nl</label>
         <label>Eventin-publicatie<select value={form.status} onChange={(e) => update("status", e.target.value)}><option value="draft">Eerst als concept</option><option value="publish">Direct publiceren</option></select></label>
         <small>De gekozen vestiging wordt als locatie gebruikt. Bij ‘Direct publiceren’ komt het evenement meteen openbaar in Eventin; bij ‘Eerst als concept’ kun je het daar nog controleren.</small>
+      </div>}
+    </fieldset>}
+
+    {(!isEvent || eventCreationStep >= 3) && <fieldset className="eventDestinations creatorSection" id="campagne-bestemmingen"><legend>Bestemmingen</legend>
+      {isEvent && <div className="eventinDestination">
+        <strong>Eventin is ingesteld</strong>
+        <span>{form.status === "publish" ? "Wordt direct gepubliceerd wanneer je alles opslaat." : "Wordt eerst als concept opgeslagen wanneer je alles opslaat."}</span>
+        <button type="button" className="secondaryButton" onClick={returnToEventinDetails}>Eventin aanpassen</button>
       </div>}
       {isEvent && <><label className="check"><input type="checkbox" checked={form.addToCalendar} onChange={(e) => update("addToCalendar", e.target.checked)} /> Microsoft-agenda</label>
       {form.addToCalendar && <label>Agenda-e-mailadres<input type="email" value={form.calendarMailbox} onChange={(e) => update("calendarMailbox", e.target.value)} /></label>}</>}
@@ -3018,9 +3057,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           </div>)}</div>
         </details>
       </div>}
-    </fieldset>
+    </fieldset>}
 
-    {form.preparePromotion && <div className="channelDetails">
+    {(!isEvent || eventCreationStep >= 3) && form.preparePromotion && <div className="channelDetails">
       {form.channels.brevo && <fieldset><legend>Brevo — veilig als concept</legend>
         <label>Onderwerp *<input value={form.brevoSubject} onChange={(e) => update("brevoSubject", e.target.value)} /></label>
         <label>Voorbeeldtekst<input value={form.brevoPreview} onChange={(e) => update("brevoPreview", e.target.value)} /></label>
@@ -3108,15 +3147,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     </div>}
 
     <section className="channelPreviewControls">
-      <div><strong>Controleren per kanaal</strong><p>Bekijk vooraf precies wat Eventin, de e-mail en Google Bedrijfsprofiel ontvangen. Controleren verstuurt of publiceert nog niets.</p></div>
+      <div><strong>{isEvent && eventCreationStep === 2 ? "Eventin controleren" : "Controleren per kanaal"}</strong><p>{isEvent && eventCreationStep === 2 ? "Bekijk eerst precies wat Eventin ontvangt. Controleren verstuurt of publiceert nog niets." : "Bekijk vooraf precies wat Eventin, de e-mail en Google Bedrijfsprofiel ontvangen. Controleren verstuurt of publiceert nog niets."}</p></div>
       <div className="channelPreviewButtons">
         <button type="button" className={previewChannel === "eventin" ? "active" : ""} onClick={() => showChannelPreview("eventin")}>Eventin controleren</button>
-        <button type="button" className={previewChannel === "email" ? "active" : ""} onClick={() => showChannelPreview("email")}>E-mail controleren</button>
-        <button type="button" className={previewChannel === "google" ? "active" : ""} onClick={() => showChannelPreview("google")}>Google controleren</button>
+        {(!isEvent || eventCreationStep >= 3) && <><button type="button" className={previewChannel === "email" ? "active" : ""} onClick={() => showChannelPreview("email")}>E-mail controleren</button>
+        <button type="button" className={previewChannel === "google" ? "active" : ""} onClick={() => showChannelPreview("google")}>Google controleren</button></>}
       </div>
     </section>
 
-    {previewChannel && <div className="channelSpecificPreview" id="kanaal-controle">
+    {isEvent && eventCreationStep === 2 && <div className="eventActions eventStepActions"><button type="button" onClick={continueToChannels}>Verder naar stap 3: agenda en kanalen</button></div>}
+
+    {previewChannel && (!isEvent || eventCreationStep >= 3 || previewChannel === "eventin") && <div className="channelSpecificPreview" id="kanaal-controle">
       <div className="channelSpecificPreviewHead"><strong>{previewChannel === "eventin" ? "Voorbeeld voor Eventin" : previewChannel === "email" ? "Voorbeeld van de e-mail" : "Voorbeeld voor Google Bedrijfsprofiel"}</strong><span>Alleen controleren</span></div>
       {previewChannel === "eventin" && <div className="providerPreviewCard">
         {form.eventinImage?.url ? <img src={form.eventinImage.url} alt="Eventin-voorbeeld" /> : <div className="providerPreviewPlaceholder">Nog geen Eventin-afbeelding</div>}
@@ -3136,7 +3177,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </div>}
     </div>}
 
-    {preview && !previewChannel && <div className="eventPreview">
+    {preview && !previewChannel && (!isEvent || eventCreationStep >= 3) && <div className="eventPreview">
       <strong>Controle voor opslaan</strong>
       <p><b>{campaignTypeLabel}: {form.title}</b></p>
       {isEvent && <><p>{new Date(form.start).toLocaleString("nl-NL")} - {new Date(form.end).toLocaleString("nl-NL")}</p><p>{form.location}</p></>}
@@ -3161,9 +3202,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         })}
       </div>}
     </div>}
-    {result && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
-    <div className="earlyDraftAction"><div><strong>{editingWebsiteEvent ? "Bestaand evenement bijwerken" : "Nog niet alles compleet?"}</strong><p>{editingWebsiteEvent ? "Controleer de wijzigingen en werk daarna hetzelfde Eventin-evenement en dezelfde agenda-afspraak bij." : "Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland."}</p></div><button type="button" className="secondaryButton" onClick={editingWebsiteEvent ? showPreview : saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Wijziging controleren" : "Basisconcept opslaan"}</button></div>
-    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div>
+    {result && (!isEvent || eventCreationStep >= 3) && <div className={result.ok ? "eventResult success" : "eventResult error"}><strong>{result.message}</strong>{result.steps?.map((step) => <p key={step.label}>{step.ok ? "✓" : "!"} {step.label}{step.detail ? `: ${step.detail}` : ""}</p>)}{result.url && <a href={result.url} target="_blank" rel="noreferrer">Evenement op de website openen</a>}</div>}
+    {(!isEvent || eventCreationStep >= 3) && <><div className="earlyDraftAction"><div><strong>{editingWebsiteEvent ? "Bestaand evenement bijwerken" : "Nog niet alles compleet?"}</strong><p>{editingWebsiteEvent ? "Controleer de wijzigingen en werk daarna hetzelfde Eventin-evenement en dezelfde agenda-afspraak bij." : "Sla de basis intern op. Ontbrekende kanaalgegevens krijgen de status Extra gegevens nodig. Er wordt niets gepubliceerd, verzonden of ingepland."}</p></div><button type="button" className="secondaryButton" onClick={editingWebsiteEvent ? showPreview : saveIncompleteDraft} disabled={busy}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Wijziging controleren" : "Basisconcept opslaan"}</button></div>
+    <div className="eventActions"><button type="button" className="secondaryButton" onClick={showPreview} disabled={busy}>Voorbeeld controleren</button>{preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady} title={!mediaReady ? "Vul eerst de ontbrekende media in." : ""}>{busy ? "Bezig met opslaan…" : editingWebsiteEvent ? "Evenement bijwerken" : isEvent ? (form.status === "publish" ? "Evenement publiceren" : "Evenement als concept aanmaken") : "Campagneconcept opslaan"}</button>}</div></>}
     </>}
     </>}
     {(!isEvent || eventWorkspaceView === "saved") && <div className="campaignStatus creatorSection" id="opgeslagen-campagnes"><div className="statusHead"><div><p className="eyebrow">OPGESLAGEN CONCEPTEN</p><h3>Campagnes per soort</h3></div><button type="button" className="secondaryButton" onClick={() => loadEventCampaigns()} disabled={campaignListBusy}>{campaignListBusy ? "Campagnes laden…" : "Status verversen"}</button></div>
