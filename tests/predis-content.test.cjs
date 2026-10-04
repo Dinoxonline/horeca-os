@@ -417,7 +417,7 @@ test('version 4 server request stores no source files and handles both documente
   assert.equal(invalid.calls.length, 1);
 });
 
-test('manual workspace keeps AI generation available as an optional choice', async () => {
+test('manual workspace exposes only the own-design upload route', async () => {
   const oldWindow = global.window, oldFetch = global.fetch;
   global.window = { confirm: () => true };
   global.fetch = async () => { throw new Error('Choice must not call provider'); };
@@ -429,8 +429,8 @@ test('manual workspace keeps AI generation available as an optional choice', asy
   try {
     await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, businessName: 'Caribbean Corner' })); });
     assert.equal(r.root.findAllByType('predis-generator').length, 0);
-    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'AI-afbeelding maken'), true);
-    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'AI-carrousel maken'), true);
+    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'AI-afbeelding maken'), false);
+    assert.equal(r.root.findAllByType('button').some(b => text(b) === 'AI-carrousel maken'), false);
   } finally { if (r) await React.act(async () => r.unmount()); global.window = oldWindow; global.fetch = oldFetch; }
 });
 
