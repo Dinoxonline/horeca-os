@@ -10,7 +10,7 @@ import InstagramEventPublisher from "./instagram-event-publisher";
 import ManualPredis from "./predis-workspace";
 import EventCalendar from "./event-calendar";
 import EventSeries from "./event-series";
-import EventEditor from "./event-editor";
+import EventEditor, { registerEventImageUploader } from "./event-editor";
 import EventPhotoSync, { EventPhoto } from "./event-photo-sync";
 import { saveEventEdit } from "../lib/event-editor";
 import { calendarStatus } from "../lib/event-calendar";
@@ -673,6 +673,20 @@ export function EventDetails({ workspaceId, session, onPredisLibrarySaved, onPre
     });
     return () => window.cancelAnimationFrame(frame);
   }, [external, item.id]);
+  useEffect(() => {
+    if (external) return undefined;
+    return registerEventImageUploader(item.id, async ({ file, role }) => {
+      if (!workspaceId) throw new Error('De werkruimte ontbreekt; sluit dit evenement en open het opnieuw.');
+      const safeName = String(file?.name || 'afbeelding').toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
+      const path = `${workspaceId}/${item.business_id || business?.id || 'algemeen'}/${role}-${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('marketing-assets').upload(path, file, {
+        cacheControl: '31536000', contentType: file.type, upsert: false,
+      });
+      if (uploadError) throw new Error(`De afbeelding kon niet worden opgeslagen: ${uploadError.message}`);
+      const { data } = supabase.storage.from('marketing-assets').getPublicUrl(path);
+      return { url: data.publicUrl, path };
+    });
+  }, [external, workspaceId, item.id, item.business_id, business?.id]);
   function trackChannel(channel, open) {
     setOpenChannels(current => current[channel] === open ? current : { ...current, [channel]: open });
   }
