@@ -508,7 +508,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [practicalDetails, setPracticalDetails] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [eventWorkboardTasks, setEventWorkboardTasks] = useState([]);
-  const [eventCreationStep, setEventCreationStep] = useState(1);
+  const [eventCreationStep, setEventCreationStep] = useState(2);
   const [chatGptDesignNotice, setChatGptDesignNotice] = useState("");
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
@@ -750,7 +750,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPracticalDetails("");
     setSourceText("");
     setEventWorkboardTasks([]);
-    setEventCreationStep(1);
+    setEventCreationStep(2);
     setChatGptDesignNotice("");
     setPreview(false);
     setResult({ ok: true, message: "Er staat een leeg nieuw campagneformulier klaar. Het bestaande evenement is niet gewijzigd." });
@@ -784,7 +784,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   };
   const openNewEventWorkspace = () => {
     setEventWorkspaceView("new");
-    setEventCreationStep(1);
+    setEventCreationStep(2);
   };
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const toggleFacebookPlacement = (placement) => {
@@ -1402,7 +1402,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEventWorkboardTasks([]);
     setEventWorkspaceView("new");
     const isEarlyCalendarConcept = storedType === "event" && !isWebsiteEvent && distribution.calendar_delivery?.stage === "concept";
-    setEventCreationStep(isEarlyCalendarConcept ? 1 : 2);
+    setEventCreationStep(2);
     setEarlyCalendarDelivery(isEarlyCalendarConcept ? distribution.calendar_delivery : null);
     setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url, calendarDelivery: distribution.calendar_delivery || null } : null);
     setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
@@ -1735,7 +1735,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setPracticalDetails("");
     setSourceText("");
     setEventWorkboardTasks([]);
-    setEventCreationStep(1);
+    setEventCreationStep(2);
     setChatGptDesignNotice("");
     setPreview(false);
     setResult({ ok: true, message: `Nieuw evenement klaargezet op ${newEventRequest.date}. Pas de begin- en eindtijd aan als dat nodig is.` });
@@ -2881,7 +2881,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </div>
     </nav>
     }
-    {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
+    {isEvent && <div className="eventDetailsIntro"><h3>Evenement invullen</h3><p>Maak eerst je tekst en afbeelding in ChatGPT. Plak en upload het resultaat daarna hier.</p><a className="primaryButton" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen voor tekst en afbeelding ↗</a></div>}
     {isEvent && <details className="eventWorkboardTasks creatorSection" id="werkbord-taken"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
       {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
         <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
