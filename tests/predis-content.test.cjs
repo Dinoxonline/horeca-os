@@ -81,9 +81,9 @@ test('real Supabase client sends a version-guarded update and requests confirmat
   assert.equal(update.body.media[0].predis_content.jobs[0].id, 'keep');
 });
 
-test('saved campaign panel keeps the manual route and exposes a closed compatibility check', async () => {
+test('saved campaign panel only exposes the manual upload route', async () => {
   const { SavedPredisWorkspace } = await load('components/predis-workspace.js', {
-    './predis-content': { default: props => React.createElement('predis-generator', { enabled: props.enabled, allowOwnMediaTest: props.allowOwnMediaTest }) },
+    './predis-content': { default: props => React.createElement('predis-generator', { enabled: props.enabled }) },
     './manual-predis': { default: () => null },
   });
   let r;
@@ -94,9 +94,7 @@ test('saved campaign panel keeps the manual route and exposes a closed compatibi
     assert.equal(r.root.findAllByType('a').some(a => a.props.href === 'https://app.predis.ai/app/content_calendar'), false);
     assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Bestaande post uit Predis ophalen'), false);
     assert.equal(r.root.findAllByType('button').some(b => text(b) === 'Andere werkwijze kiezen'), false);
-    assert.equal(r.root.findAllByType('predis-generator').length, 1);
-    assert.equal(r.root.findByType('predis-generator').props.allowOwnMediaTest, true);
-    assert.equal(r.root.findByType('predis-generator').props.enabled, false);
+    assert.equal(r.root.findAllByType('predis-generator').length, 0);
   } finally { if (r) await React.act(async () => r.unmount()); }
 });
 
@@ -179,13 +177,11 @@ test('automatic result checks pause after repeated errors and stop when the pane
     assert.equal(calls.length, 3);
   } finally { if (r) await React.act(async () => r.unmount()); t.mock.timers.reset(); global.window = oldWindow; global.fetch = oldFetch; }
 });
-test('version 4 can submit an existing event image for a compatibility check', async () => {
+test('version 4 accepts only AI images or carousels and never sends event files', async () => {
   const lib = await load('lib/predis-content.js');
   const input = lib.validatePredisInput({ ...draft, mediaUrls: [] }, item), form = lib.predisForm(input, 'brand');
   assert.equal(form.get('model_version'), '4'); assert.equal(form.get('media_urls'), null); assert.equal(form.get('n_posts'), '1');
-  const own = lib.validatePredisInput({ ...draft, mediaUrls: [photo], sourceMode: 'own' }, item), ownForm = lib.predisForm(own, 'brand');
-  assert.equal(own.sourceMode, 'own'); assert.deepEqual(own.sourceAssets.map(asset => asset.url), [photo]); assert.equal(ownForm.get('media_urls'), JSON.stringify([photo]));
-  for (const patch of [{ prompt: 'tiny' }, { prompt: 'a '.repeat(6000) }, { mediaUrls: ['https://example.com/not-event.png'], sourceMode: 'own' }, { mediaType: 'publish' }, { mediaType: 'video' }, { sourceMode: 'own' }]) assert.throws(() => lib.validatePredisInput({ ...draft, mediaUrls: [], ...patch }, item));
+  for (const patch of [{ prompt: 'tiny' }, { prompt: 'a '.repeat(6000) }, { mediaUrls: [photo] }, { mediaType: 'publish' }, { mediaType: 'video' }, { sourceMode: 'own' }]) assert.throws(() => lib.validatePredisInput({ ...draft, mediaUrls: [], ...patch }, item));
   assert.match(lib.predisPrompt(item), /Jamsessie/); assert.match(lib.predisPrompt(item), /18:00/);
 });
 test('result parsing accepts only exact stored post IDs and safe media URLs', async () => {
@@ -395,7 +391,7 @@ test('real Supabase client serializes the webhook JSONB predicate as JSON, not a
   assert.deepEqual(JSON.parse(predicate.slice(3)), [{ kind: 'campaign_distribution', predis_content: { jobs: [{ postIds: ['p1'] }] } }]);
 });
 
-test('version 4 server request stores selected source files and handles both documented response shapes without retry', async () => {
+test('version 4 server request stores no source files and handles both documented response shapes without retry', async () => {
   for (const creationReply of [{ post_id: 'p1', status: 'inProgress' }, { post_ids: ['p1'], post_status: 'inProgress', errors: [] }]) {
     const h = await harness({ creationReply });
     const first = await h.send({ mediaUrls: [], sourceMode: 'ai' });
@@ -411,11 +407,6 @@ test('version 4 server request stores selected source files and handles both doc
     assert.equal(refreshed.jobs[0].status, 'ready');
     assert.deepEqual(refreshed.jobs[0].sourceAssets, []);
   }
-  const own = await harness({ creationReply: { post_ids: ['p1'], post_status: 'inProgress', errors: [] } });
-  const ownResult = await own.send({ mediaUrls: [photo], sourceMode: 'own' });
-  assert.equal(ownResult.jobs[0].sourceMode, 'own');
-  assert.deepEqual(ownResult.jobs[0].sourceAssets.map(asset => asset.url), [photo]);
-  assert.equal(own.calls[0].init.body.get('media_urls'), JSON.stringify([photo]));
   const legacy = await harness();
   assert.equal((await legacy.send({ sourceMode: 'own' })).status, 400);
   assert.equal(legacy.calls.length, 0);
@@ -426,7 +417,7 @@ test('version 4 server request stores selected source files and handles both doc
   assert.equal(invalid.calls.length, 1);
 });
 
-test('manual workspace keeps AI creation hidden and exposes only a closed own-image compatibility check', async () => {
+test('manual workspace exposes only the own-design upload route', async () => {
   const oldWindow = global.window, oldFetch = global.fetch;
   global.window = { confirm: () => true };
   global.fetch = async () => { throw new Error('Choice must not call provider'); };
@@ -437,9 +428,7 @@ test('manual workspace keeps AI creation hidden and exposes only a closed own-im
   let r;
   try {
     await React.act(async () => { r = Renderer.create(React.createElement(Component, { item, businessName: 'Caribbean Corner' })); });
-    assert.equal(r.root.findAllByType('predis-generator').length, 1);
-    assert.equal(r.root.findByType('predis-generator').props.allowOwnMediaTest, true);
-    assert.equal(r.root.findByType('predis-generator').props.enabled, false);
+    assert.equal(r.root.findAllByType('predis-generator').length, 0);
     assert.equal(r.root.findAllByType('button').some(b => text(b) === 'AI-afbeelding maken'), false);
     assert.equal(r.root.findAllByType('button').some(b => text(b) === 'AI-carrousel maken'), false);
   } finally { if (r) await React.act(async () => r.unmount()); global.window = oldWindow; global.fetch = oldFetch; }

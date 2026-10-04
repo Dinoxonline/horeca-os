@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import ManualPredis from "./manual-predis";
-import PredisContent from "./predis-content";
 import styles from "./manual-predis.module.css";
 
 export function SavedPredisWorkspace(props) {
@@ -13,11 +12,9 @@ export function SavedPredisWorkspace(props) {
 }
 
 export default function PredisWorkspace(props) {
-  const [testOpen, setTestOpen] = useState(false);
   return <div className={styles.root}>
     <div className={styles.notice}><strong>Bestaand ontwerp uploaden en inplannen · {props.businessName}</strong><p>Gebruik je kant-en-klare afbeelding, carrousel of video. Bij deze uploadroute verandert Horeca OS het bestand niet en wordt geen nieuw AI-ontwerp aangevraagd.</p></div>
     <div className={styles.actions}><a className="secondaryButton" href="https://app.predis.ai/app/new_post/create" target="_blank" rel="noopener noreferrer">Nieuw bericht maken ↗</a></div>
     <ManualPredis {...props} />
-    <details onToggle={event => setTestOpen(event.currentTarget.open)}><summary>Compatibiliteitstest: eigen afbeelding via Predis V4</summary><PredisContent {...props} enabled={testOpen} allowOwnMediaTest /></details>
   </div>;
 }

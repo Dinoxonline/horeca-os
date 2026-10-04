@@ -6,11 +6,11 @@ import { PREDIS_FORMATS, PREDIS_JOB_LABELS, predisPrompt } from "../lib/predis-c
 import { nextPredisPoll, PREDIS_POLL_INTERVAL } from "../lib/predis-polling";
 import styles from "./manual-predis.module.css";
 
-export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image", historyOnly = false, allowOwnMediaTest = false }) {
+export default function PredisContent({ item, workspaceId, session, enabled, businessName, onUse, onUnsavedChange, initialFormat = "single_image", historyOnly = false }) {
   const defaultPrompt = () => predisPrompt(item);
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [format, setFormat] = useState(() => Object.hasOwn(PREDIS_FORMATS, initialFormat) ? initialFormat : "single_image");
-  const [jobs, setJobs] = useState([]), [config, setConfig] = useState(null), [loaded, setLoaded] = useState(false), [selectedAssetUrl, setSelectedAssetUrl] = useState("");
+  const [jobs, setJobs] = useState([]), [config, setConfig] = useState(null), [loaded, setLoaded] = useState(false);
   const [confirmed, setConfirmed] = useState(false), [acknowledgePending, setAcknowledgePending] = useState(false);
   const [needsCheck, setNeedsCheck] = useState(false);
   const [autoChecking, setAutoChecking] = useState(false), [autoFailures, setAutoFailures] = useState(0);
@@ -47,7 +47,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
   async function load() {
     return run(async () => {
       const data = await request(); if (!mounted.current) return;
-      setJobs(data.jobs); setConfig(data); setSelectedAssetUrl(current => current || data.assets?.[0]?.url || ""); setLoaded(true);
+      setJobs(data.jobs); setConfig(data); setLoaded(true);
       setNeedsCheck(false);
       setAutoFailures(0);
       if (requestId.current && data.jobs.some(j => j.id === requestId.current)) { requestId.current = null; setDirty(false); }
@@ -60,8 +60,7 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
     return run(async () => {
       requestId.current ||= crypto.randomUUID();
       let data;
-      const mediaUrls = allowOwnMediaTest && selectedAssetUrl ? [selectedAssetUrl] : [];
-      try { data = await request("generate", { requestId: requestId.current, prompt, mediaType: format, mediaUrls, sourceMode: mediaUrls.length ? "own" : "ai", confirmed, acknowledgePending }); }
+      try { data = await request("generate", { requestId: requestId.current, prompt, mediaType: format, mediaUrls: [], sourceMode: "ai", confirmed, acknowledgePending }); }
       catch (e) { if (mounted.current) setNeedsCheck(true); throw e; }
       if (!mounted.current) return;
       setJobs(data.jobs); setDirty(false); setConfirmed(false); setAcknowledgePending(false); requestId.current = null;
@@ -103,7 +102,6 @@ export default function PredisContent({ item, workspaceId, session, enabled, bus
       <label>Opdracht voor Predis<textarea rows={7} maxLength={10000} value={prompt} onChange={e => edit(() => setPrompt(e.target.value))} /></label>
       <button type="button" className="secondaryButton" onClick={() => { if (window.confirm("Je opdracht vervangen door de actuele evenementgegevens?")) edit(() => setPrompt(defaultPrompt())); }}>Evenementgegevens opnieuw overnemen</button>
       <label>Soort content<select value={format} onChange={e => edit(() => setFormat(e.target.value))}>{Object.entries(PREDIS_FORMATS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      {allowOwnMediaTest && <fieldset className={styles.fields}><legend>Eigen afbeelding testen</legend><p>Deze proef stuurt één bestaande afbeelding naar Predis met model 4. Er wordt niets ingepland of gepubliceerd. Predis kan hiervoor een tegoed gebruiken.</p>{(config?.assets || []).filter(asset => asset.type === "image").map((asset, index) => <label key={asset.url} className={styles.check}><input type="radio" name="predis-own-media" checked={selectedAssetUrl === asset.url} onChange={() => edit(() => setSelectedAssetUrl(asset.url))} />Afbeelding {index + 1}: {asset.label || "eigen bestand"}</label>)}{!config?.assets?.some(asset => asset.type === "image") && <small>Er is nog geen bruikbare afbeelding bij dit evenement opgeslagen.</small>}</fieldset>}
       <small>Predis kiest het beeld zelf op basis van je opdracht. De bestaande afbeeldingen van dit evenement worden niet meegestuurd en niet gewijzigd.</small>
       <label className={styles.check}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ik wil deze evenementopdracht naar Predis sturen en hiervoor Predis-tegoed gebruiken.</label>
       {pending && <label className={styles.check}><input type="checkbox" checked={acknowledgePending} onChange={e => setAcknowledgePending(e.target.checked)} />Er is nog een open of onzekere aanvraag. Ik heb die gecontroleerd en wil bewust een extra concept laten maken; dit kan opnieuw tegoed kosten.</label>}
