@@ -17,9 +17,7 @@ import InstagramEventPublisher from "./instagram-event-publisher";
 import ManualPredis from "./predis-workspace";
 import EventCalendar from "./event-calendar";
 import EventSeries from "./event-series";
-import EventEditor from "./event-editor";
 import EventPhotoSync, { EventPhoto } from "./event-photo-sync";
-import { saveEventEdit } from "../lib/event-editor";
 import { calendarStatus } from "../lib/event-calendar";
 import MarketingWorklist from "./marketing-worklist";
 import { manualSummary } from "../lib/manual-predis";
@@ -2105,6 +2103,9 @@ export function EventDetails({
       channelStatus(item, channel, comparisonState).key,
     );
   const eventinFirst = !external && Boolean(onOpenEventinForCampaign);
+  // Eventin is now the single editor for an event. The former source
+  // comparison was only useful before that complete Eventin route existed.
+  const showLegacyComparisonTools = false;
   const channelActions = {
     website: eventinFirst || websiteNeedsUpdate,
     facebook: channelNeedsAction("facebook"),
@@ -2128,11 +2129,13 @@ export function EventDetails({
     })(),
   };
   const sourcePanelNeeded =
+    showLegacyComparisonTools &&
     !eventinFirst &&
     ["different", "incomplete", "unlinked", "pending", "queued"].includes(
       comparisonState.key,
     );
-  const websitePanel = !eventinFirst && !external && websiteNeedsUpdate && (
+  const websitePanel =
+    showLegacyComparisonTools && !eventinFirst && !external && websiteNeedsUpdate && (
     <details
       hidden={!openChannels.website}
       key={`website-edit:${item.id}`}
@@ -2277,28 +2280,6 @@ export function EventDetails({
         />
       </section>
     ) : null;
-  const uploadEventImage = async ({ file, role }) => {
-    if (!workspaceId)
-      throw new Error(
-        "De werkruimte ontbreekt; sluit dit evenement en open het opnieuw.",
-      );
-    const safeName = String(file?.name || "afbeelding")
-      .toLowerCase()
-      .replace(/[^a-z0-9._-]+/g, "-");
-    const path = `${workspaceId}/${item.business_id || business?.id || "algemeen"}/${role}-${Date.now()}-${safeName}`;
-    const { error } = await supabase.storage
-      .from("marketing-assets")
-      .upload(path, file, {
-        cacheControl: "31536000",
-        contentType: file.type,
-        upsert: false,
-      });
-    if (error) throw error;
-    const { data } = supabase.storage
-      .from("marketing-assets")
-      .getPublicUrl(path);
-    return { url: data.publicUrl, path };
-  };
   return (
     <div
       className="marketingEventModalBackdrop"
@@ -2471,7 +2452,7 @@ export function EventDetails({
             })}
           </div>
         </section>
-        {eventinFirst ? (
+        {!external ? (
           <section className="marketingEventinStart">
             <div>
               <p className="eyebrow">STAP 1</p>
@@ -2486,54 +2467,15 @@ export function EventDetails({
               type="button"
               className="primaryButton"
               onClick={() => onOpenEventinForCampaign(item)}
+              disabled={!onOpenEventinForCampaign}
             >
               Eventin openen →
             </button>
           </section>
         ) : (
           <details className="marketingDetailFold">
-            <summary>
-              {external
-                ? "Volledige omschrijving bekijken"
-                : "Evenement bekijken en bewerken"}
-            </summary>
-            {external ? (
-              <p className="marketingFullDescription">
-                {descriptionFor(item)}
-              </p>
-            ) : (
-              <EventEditor
-                key={item.id}
-                item={item}
-                sources={sourceComparisonItems}
-                checking={
-                  comparing ||
-                  ["queued", "pending"].includes(sourceComparisonCheck)
-                }
-                onRefresh={onCompareSources}
-                busy={
-                  linking ||
-                  photoBusy ||
-                  calendarUnsaved ||
-                  predisUnsaved ||
-                  seriesUnsaved
-                }
-                onUnsavedChange={setBaseUnsaved}
-                onOpenChannel={openChannel}
-                onImageUpload={uploadEventImage}
-                onSave={async (base, draft) => {
-                  const saved = await saveEventEdit(
-                    supabase,
-                    workspaceId,
-                    base,
-                    draft,
-                  );
-                  setChosenContent(null);
-                  onSeriesSaved?.([saved]);
-                  return saved;
-                }}
-              />
-            )}
+            <summary>Volledige omschrijving bekijken</summary>
+            <p className="marketingFullDescription">{descriptionFor(item)}</p>
           </details>
         )}
         {!external && (
@@ -2562,7 +2504,7 @@ export function EventDetails({
             />
           </details>
         )}
-        {!eventinFirst && !external && comparisonState.key !== "equal" && (
+        {showLegacyComparisonTools && !external && comparisonState.key !== "equal" && (
           <section
             hidden={["pending", "queued"].includes(comparisonState.key)}
             className={`marketingComparisonSummary ${comparisonState.key}`}
