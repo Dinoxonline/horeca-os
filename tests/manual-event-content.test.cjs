@@ -156,6 +156,19 @@ test('native event links cannot be confused with Facebook posts or untrusted URL
   assert.equal(facebookEventId({ external_ids: { facebook: '456' } }), '456');
 });
 
+test('a manually pasted Facebook event link is stored separately from content confirmation', async () => {
+  await swc.loadBindings();
+  const m = load('lib/manual-event-content.js');
+  const distribution = base();
+  delete distribution.facebook_event_delivery;
+  const linked = m.prepareManualFacebookLink(distribution, 'https://www.facebook.com/events/987654321/?ref=share', 'user', at);
+  assert.equal(m.facebookEventId(linked), '987654321');
+  assert.equal(linked.facebook_event_delivery.permalink, 'https://www.facebook.com/events/987654321/');
+  assert.equal(m.contentDeliveryStatus(linked, 'facebook').key, 'ready');
+  assert.notEqual(linked.event_content_delivery.facebook.status, 'manual_confirmed');
+  assert.throws(() => m.prepareManualFacebookLink(linked, 'https://www.facebook.com/events/123456789/', 'user', at), /ander Facebook-evenement/);
+});
+
 function storageHarness(initial, { miss = 0, denied = false, readError = false, onMiss } = {}) {
   let row = structuredClone(initial);
   const reads = [], writes = [];

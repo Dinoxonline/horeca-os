@@ -4,10 +4,13 @@ import { useEffect, useId, useState } from "react";
 import { contentDeliveryStatus, contentSnapshot, eventContent, facebookEventId } from "../lib/manual-event-content";
 import EventContentSaveNotice from "./event-content-save-notice";
 
-export default function ManualFacebookUpdate({ distribution, dirty, busy, onConfirm, draftContent, sources = [], onChooseSource, onSave, saveNotice, linkCheck = "idle", textMatches = false }) {
+export default function ManualFacebookUpdate({ distribution, dirty, busy, onConfirm, onLinkEvent, draftContent, sources = [], onChooseSource, onSave, saveNotice, linkCheck = "idle", textMatches = false }) {
   const [checked, setChecked] = useState(false);
   const [message, setMessage] = useState("");
   const [copiedField, setCopiedField] = useState("");
+  const [eventUrl, setEventUrl] = useState("");
+  const [linkError, setLinkError] = useState("");
+  const [savingLink, setSavingLink] = useState(false);
   const fieldId = useId();
   const content = draftContent || eventContent(distribution);
   const sourceIsAlreadyStored = draftContent?.label === "Horeca OS";
@@ -15,7 +18,16 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
   const id = facebookEventId(distribution);
   const state = contentDeliveryStatus(distribution, "facebook");
   const linkMessage = linkCheck === "pending" ? "Koppeling controleren…" : linkCheck === "error" ? "Koppeling kon niet worden gecontroleerd" : linkCheck === "done" ? "Geen evenement gekoppeld" : "Koppeling nog niet gecontroleerd";
-  const confirmationHelp = busy ? "Even wachten: de controle of opslag loopt nog." : !id ? "De Facebook-koppeling moet eerst bevestigd zijn." : dirty || state.key === "needs_update" ? "Kies bij stap 1 je gegevensbron en klik op ‘Tekst bewaren in Horeca OS’. Tijden en locatie gaan daarbij mee." : state.key === "manual_confirmed" ? "Deze gegevens zijn al door jou of een collega bevestigd." : "Vink alleen aan als titel, omschrijving, tijden en locatie op Facebook zijn opgeslagen.";
+  const canConfirm = Boolean(id && !dirty && !busy && !savingLink && state.key === "ready");
+  const confirmationHelp = busy || savingLink ? "Even wachten: de controle of opslag loopt nog." : !id ? "Plak en bewaar eerst de Facebook-evenementlink bij stap 2." : dirty || state.key === "needs_update" ? "Kies bij stap 1 je gegevensbron en klik op ‘Tekst bewaren in Horeca OS’. Tijden en locatie gaan daarbij mee." : state.key === "manual_confirmed" ? "Deze gegevens zijn al door jou of een collega bevestigd." : "Vink alleen aan als titel, omschrijving, tijden en locatie op Facebook zijn opgeslagen.";
+  async function linkEvent() {
+    if (savingLink || busy || dirty || !onLinkEvent) return;
+    if (!facebookEventId({ source_url: eventUrl.trim() })) { setLinkError('Gebruik de volledige evenementlink: https://www.facebook.com/events/… Geen bericht- of deellink.'); return; }
+    setSavingLink(true); setLinkError('');
+    try { await onLinkEvent(eventUrl.trim()); }
+    catch (error) { setLinkError(error.message || 'De link kon niet worden opgeslagen. Probeer opnieuw.'); }
+    finally { setSavingLink(false); }
+  }
   useEffect(() => { setChecked(false); setMessage(""); setCopiedField(""); }, [content.title, content.description, content.start, content.end, content.location, id, dirty]);
   async function copy(text, field) {
     try { await navigator.clipboard.writeText(text); setCopiedField(field); setMessage(""); }
@@ -77,10 +89,16 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
       <p>Kopieer links. Kies op Facebook <b>Bewerken</b>, plak en sla op.</p>
       <details className="openingHelp"><summary>Naast elkaar openen</summary><p>In Chrome: rechtsklik op de evenementlink hierboven en kies ‘Link openen in gesplitste weergave’.</p><a href={`https://www.facebook.com/events/${id}/`} target="_blank" rel="noopener noreferrer" onClick={openFacebook}>Liever een los venster openen</a></details>
     </> : <>{linkCheck !== "pending" && <a className="secondaryButton" href="https://www.facebook.com/events/create/" target="_blank" rel="noopener noreferrer">Facebook-event maken</a>}<p role="status">{linkCheck === "pending" ? "De agenda controleert de Facebook-koppeling automatisch. De knop verschijnt hier zodra het bestaande evenement is gevonden; je hoeft niets opnieuw te starten." : linkCheck === "error" ? "De automatische controle is niet gelukt. Dit betekent niet dat je evenement ontbreekt. Je kunt de controle opnieuw proberen met ‘Bronnen opnieuw vergelijken’." : "Er is nog geen bevestigde Facebook-evenementkoppeling. Maak het event via de knop hierboven en koppel daarna de Facebook-link terug aan dit dossier."}</p></>}
+    {!id && onLinkEvent && <div className="eventLink">
+      <label htmlFor={`${fieldId}-event-url`}>Facebook-evenementlink<input id={`${fieldId}-event-url`} type="url" placeholder="https://www.facebook.com/events/…" value={eventUrl} onChange={event => { setEventUrl(event.target.value); setLinkError(''); }} disabled={busy || savingLink} /></label>
+      <small>Evenement al gemaakt? Plak hier de link uit de adresbalk van dat evenement. Zo hoef je het niet opnieuw te maken.</small>
+      <button type="button" className="secondaryButton" disabled={busy || savingLink || dirty || !eventUrl.trim()} onClick={linkEvent}>{savingLink ? 'Link bewaren…' : 'Facebook-link opslaan'}</button>
+      {linkError && <p role="alert">{linkError}</p>}
+    </div>}
     <div className="confirmation"><h5>3. Bevestig je wijziging</h5>
     <p id={`${fieldId}-confirmation-help`} className="confirmationHelp">{confirmationHelp}</p>
-    <label className="confirmationCheck"><input type="checkbox" aria-describedby={`${fieldId}-confirmation-help`} checked={checked} onChange={event => setChecked(event.target.checked)} disabled={dirty || busy || state.key !== "ready"} /> Ik heb deze titel, omschrijving, tijden en locatie op Facebook opgeslagen.</label>
-    <button type="button" className="primaryButton" disabled={!checked || dirty || busy || state.key !== "ready" || !onConfirm} onClick={() => onConfirm(contentSnapshot(distribution, "facebook"))}>Handmatig bijgewerkt</button>
+    <label className="confirmationCheck"><input type="checkbox" aria-describedby={`${fieldId}-confirmation-help`} checked={checked} onChange={event => setChecked(event.target.checked)} disabled={!canConfirm} /> Ik heb deze titel, omschrijving, tijden en locatie op Facebook opgeslagen.</label>
+    <button type="button" className="primaryButton" disabled={!checked || !canConfirm || !onConfirm} onClick={() => onConfirm(contentSnapshot(distribution, "facebook"))}>Handmatig bijgewerkt</button>
     </div>
     </div>
     </div>
@@ -98,7 +116,7 @@ export default function ManualFacebookUpdate({ distribution, dirty, busy, onConf
       .confirmation{border-top:1px solid #cbdfe5;padding-top:12px;margin-top:4px}.confirmationHelp{color:#405866}
       .confirmationCheck{display:flex;align-items:flex-start;gap:8px}.confirmationCheck input{flex:0 0 18px;margin:2px 0 0}
       .fieldHeading{font-size:13px;font-weight:700}.copyActions{gap:6px}.copyActions span{font-size:11px;color:#176d7f;font-weight:400}.copyActions button{padding:6px 9px;font-size:12px}
-      select{box-sizing:border-box;width:100%;max-width:100%;padding:8px;font:inherit;border:1px solid #b9ccd7;border-radius:6px}
+      .eventLink{display:grid;gap:10px}select,input[type=url]{box-sizing:border-box;width:100%;max-width:100%;padding:8px;font:inherit;border:1px solid #b9ccd7;border-radius:6px}
       textarea{box-sizing:border-box;min-width:0;width:100%;resize:vertical;white-space:pre-wrap;font:inherit;font-size:13px;line-height:1.5;padding:10px;border:1px solid #b9ccd7;border-radius:6px;background:#fafcfd;color:#173552}
       input[type=checkbox]{width:18px;height:18px} button,a{justify-self:start;max-width:100%}button:disabled{opacity:.55;cursor:not-allowed}
       .openingHelp summary{cursor:pointer;color:#176d7f;text-decoration:underline}.openingHelp p{margin:8px 0}
