@@ -9,6 +9,7 @@ import { saveCampaignDraft } from "../lib/save-campaign-draft";
 import { dossierDistribution, eventDistribution, normalizedEventImages, saveEventDossier } from "../lib/event-dossier";
 import { saveEventContent } from "../lib/manual-event-content";
 import EventDossierSummary from "./event-dossier-summary";
+import EventinSaveConfirmation from "./eventin-save-confirmation";
 import { calendarLocalTime } from "../lib/event-calendar";
 import dossierStyles from "./event-dossier.module.css";
 import WhatsappShare from "./whatsapp-share";
@@ -496,6 +497,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   const [sourceText, setSourceText] = useState("");
   const [eventWorkboardTasks, setEventWorkboardTasks] = useState([]);
   const [eventCreationStep, setEventCreationStep] = useState(1);
+  const [websiteCompleted, setWebsiteCompleted] = useState(null);
   const [chatGptDesignNotice, setChatGptDesignNotice] = useState("");
   const automaticShortTextRef = useRef("");
   const automaticFacebookTextRef = useRef("");
@@ -979,11 +981,11 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     finally { setUploadingSlot(""); }
   }
 
-  async function uploadImageToAll(file) {
-    if (!file) return;
+  async function uploadImageToAll(file, onlyEventin = false) {
+    if (!file || uploadingSlot) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return setUploadMessage({ ok: false, message: "Gebruik een JPG-, PNG- of WebP-afbeelding." });
     if (file.size > 10 * 1024 * 1024) return setUploadMessage({ ok: false, message: "De afbeelding mag maximaal 10 MB zijn." });
-    setUploadingSlot("all"); setUploadMessage(null);
+    setUploadingSlot(onlyEventin ? "eventin" : "all"); setUploadMessage(null);
     const uploadedImages = {};
     const failures = [];
 
@@ -993,6 +995,13 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       const { error: eventinUploadError } = await supabase.storage.from("marketing-assets").upload(eventinPath, file, { cacheControl: "31536000", contentType: file.type, upsert: false });
       if (eventinUploadError) throw eventinUploadError;
       const { data: eventinPublicData } = supabase.storage.from("marketing-assets").getPublicUrl(eventinPath);
+
+      if (onlyEventin) {
+        setForm(current => ({ ...current, eventinImage: { url: eventinPublicData.publicUrl, path: eventinPath, name: file.name } }));
+        setPreview(false); setResult(null);
+        setUploadMessage({ ok: true, message: "Eventin-afbeelding geüpload. Je andere fotoformaten zijn niet gewijzigd." });
+        return;
+      }
 
       for (const slot of imageSlots) {
         try {
@@ -1025,6 +1034,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
           ? `De Eventin-afbeelding is opgeslagen. ${completed} van de ${imageSlots.length} socialmediaformaten zijn gemaakt. ${failures.join(" ")}`
           : "De Eventin-afbeelding en alle vier socialmediaformaten zijn geüpload.",
       });
+    } catch (error) {
+      setUploadMessage({ ok: false, message: error.message || "Uploaden is niet gelukt. Je vorige afbeeldingen blijven behouden." });
     } finally {
       setUploadingSlot("");
     }
@@ -1299,6 +1310,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   async function openCampaignConcept(item, asCopy = false) {
+    setWebsiteCompleted(null);
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
     if (!distribution) return;
     const isWebsiteEvent = distribution.source_type === "website_event";
@@ -2766,6 +2778,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   async function continueFromChatGptDesign() {
     try {
       await persistDossier('website');
+      setWebsiteCompleted(null);
       setEventCreationStep(2);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch { /* Stay here: failed saves must never advance the workflow. */ }
@@ -2778,7 +2791,14 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
             <strong>Eventin-afbeelding</strong>
             {form.eventinImage?.url
               ? <><span>✓ Opgeslagen en klaar voor Eventin</span><small>Deze originele foto wordt bij het aanmaken van het evenement naar Eventin gestuurd. De sociale formaten hieronder staan hiervan los.</small></>
-              : <><span>Nog geen afbeelding gekozen</span><small>Kies hieronder een bronafbeelding. De originele foto wordt apart voor Eventin bewaard, ook als geen sociaal formaat kan worden gemaakt.</small></>}
+              : <><span>Nog geen afbeelding gekozen</span><small>Upload hier een foto of kies een van je opgeslagen afbeeldingen. Dit verandert de andere fotoformaten niet.</small></>}
+            <label className="uploadButton">{uploadingSlot === "eventin" ? "Eventin-afbeelding uploaden…" : form.eventinImage?.url ? "Andere Eventin-afbeelding kiezen" : "Eventin-afbeelding kiezen"}<input aria-label="Eventin-afbeelding uploaden" type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingSlot)} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; uploadImageToAll(file, true); }} /></label>
+            {imageSlots.some(slot => form.images?.[slot.key]?.url) && <label>Of gebruik een opgeslagen afbeelding
+              <select aria-label="Opgeslagen afbeelding voor Eventin" value="" disabled={Boolean(uploadingSlot)} onChange={event => { const image = form.images?.[event.target.value]; if (image?.url) { setForm(current => ({ ...current, eventinImage: { ...image } })); setPreview(false); setResult(null); setUploadMessage({ ok: true, message: "Afbeelding gekozen voor Eventin. Je andere fotoformaten zijn niet gewijzigd." }); } }}>
+                <option value="">Kies een afbeelding…</option>
+                {imageSlots.filter(slot => form.images?.[slot.key]?.url).map(slot => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
+              </select>
+            </label>}
           </div>
           {form.eventinImage?.url && <div className="eventinImagePreview">
             <img src={form.eventinImage.url} alt="Geselecteerde Eventin-afbeelding" />
@@ -2952,6 +2972,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       onEventSaved?.(saved);
       setDossierRevision(value => value + 1);
       setResult({ ok: true, message: website.warning || 'Opgeslagen in Eventin. Je kunt nu verder met Facebook.' });
+      setWebsiteCompleted({ id: saved.id, title: distribution.common.title, status: website.event.status, warning: website.warning });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       setResult({ ok: false, message: (pendingWebsiteRef.current ? 'Eventin is opgeslagen, maar de koppeling in Horeca OS nog niet. Probeer deze opslag opnieuw; er wordt geen tweede evenement gemaakt. ' : '') + error.message });
     } finally { websiteActionLock.current = false; setBusy(false); }
@@ -2981,12 +3003,17 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       </div>
     </div>}
     {(!isEvent || eventWorkspaceView === "new") && <>
-    {newEventFlow && editingCampaignId && <div className="editingNotice" role="status">
+    {newEventFlow && editingCampaignId && !(eventCreationStep === 2 && websiteCompleted) && <div className="editingNotice" role="status">
       <strong>{editingWebsiteEvent ? "Evenement bewerken" : "Concept bewerken"}</strong>
       <span>Je werkt nu in een opgeslagen evenement. Sla de wijzigingen op wanneer je klaar bent.</span>
     </div>}
-    {isEvent && <p role="status">{dossierSaveState || 'Vul een naam in om je concept te bewaren.'}</p>}
-    {isEvent && eventCreationStep === 2 && <section className="creatorSection">
+    {isEvent && !(eventCreationStep === 2 && websiteCompleted) && <p role="status">{dossierSaveState || 'Vul een naam in om je concept te bewaren.'}</p>}
+    {isEvent && eventCreationStep === 2 && websiteCompleted && <EventinSaveConfirmation
+      {...websiteCompleted} busy={busy} error={result?.ok === false ? result.message : ''}
+      onEdit={() => { setWebsiteCompleted(null); setResult(null); }}
+      onContinue={async () => { try { const saved = await persistDossier('facebook'); onContinueEvent?.(saved, 'facebook'); } catch (error) { setResult({ ok: false, message: error.message }); } }}
+    />}
+    {isEvent && eventCreationStep === 2 && !websiteCompleted && <section className="creatorSection">
       <p className="eyebrow">STAP 2 · WEBSITE (EVENTIN)</p><h3>Controleer je evenement voor de website</h3>
       <p>Hieronder staat wat in Horeca OS is opgeslagen. Alleen de knop voor Eventin verwerkt dit op de website.</p>
       <EventDossierSummary item={dossierRef.current} />

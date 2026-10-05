@@ -27,6 +27,91 @@ function loadSync(relative, mocks = {}) {
 }
 const flush = () => React.act(async () => { await new Promise(setImmediate); });
 
+test('agenda concept label is neither a title difference nor copied into chosen content', async () => {
+  const { sourceComparisonStatus, EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const local = { id: 'concept-label', business_id: 'b', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', calendar_delivery: { stage: 'concept' }, common: { title: 'Halloween', description: 'Tekst' } }] };
+  const remote = { ...local, media: [{ ...local.media[0], calendar_delivery: null }] };
+  assert.equal(sourceComparisonStatus(local, [{ label: 'Eventin', item: remote }], 'done').key, 'equal');
+  let tree, chosen;
+  try {
+    await React.act(async () => { tree = Renderer.create(React.createElement(EventDetails, { item: local, onClose() {}, onSyncContent: value => { chosen = value; } })); });
+    await React.act(async () => tree.root.findByProps({ 'aria-label': 'Tekst van Horeca OS gebruiken' }).props.onClick());
+    const editor = tree.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' });
+    assert.equal(editor.findByType('input').props.value, 'Halloween');
+    await React.act(async () => editor.findAllByType('button').find(b => b.props.children === 'Tekst bewaren in Horeca OS').props.onClick());
+    assert.equal(chosen.title, 'Halloween');
+  } finally { if (tree) await React.act(async () => tree.unmount()); }
+});
+
+test('linked website opens the three-source choice inside the event instead of redirecting to creation', async () => {
+  const manual = await load('lib/manual-event-content.js');
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} }, '../lib/manual-event-content': { ...manual, saveEventContent: async (client, w, row) => row } });
+  const local = { id: 'three-sources', business_id: 'b', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', facebook_event_delivery: { external_id: '456' }, common: { title: 'Horeca titel', description: 'Volledige tekst' } }] };
+  const remote = label => ({ label, item: { ...local, media: [{ ...local.media[0], common: { title: label + ' titel', description: label + ' tekst' } }] } });
+  let tree, redirects = 0;
+  try {
+    await React.act(async () => { tree = Renderer.create(React.createElement(EventDetails, { item: local, onClose() {}, onSyncContent() {}, onOpenDossier() { redirects++; }, sourceComparisonCheck: 'done', sourceComparisonItems: [remote('Eventin'), remote('Facebook')] }), { createNodeMock: () => ({ open: false, querySelector: () => ({ focus() {}, scrollIntoView() {} }) }) }); });
+    await React.act(async () => tree.root.findAllByType('button').find(b => b.props['aria-label']?.startsWith('Website openen:')).props.onClick());
+    assert.equal(redirects, 0);
+    const sources = tree.root.findByProps({ id: 'event-channel-sources-three-sources' });
+    assert.equal(sources.props.hidden, false);
+    assert.equal(tree.root.findByProps({ id: 'event-channel-website-three-sources' }).props.hidden, false);
+    for (const label of ['Horeca OS', 'Eventin', 'Facebook']) assert.equal(sources.findByProps({ 'aria-label': `Tekst van ${label} gebruiken` }).props.disabled, false);
+    await React.act(async () => sources.findByProps({ 'aria-label': 'Tekst van Eventin gebruiken' }).props.onClick());
+    assert.equal(tree.root.findByProps({ 'aria-label': 'Voorbeeld gekozen tekst' }).findByType('input').props.value, 'Eventin titel');
+  } finally { if (tree) await React.act(async () => tree.unmount()); }
+});
+
+test('Eventin success shows only a completion card with explicit next and edit actions', async () => {
+  const { default: Confirmation } = await load('components/eventin-save-confirmation.js');
+  let tree, next = 0, edits = 0;
+  try {
+    await React.act(async () => { tree = Renderer.create(React.createElement(Confirmation, { title: 'Halloween', status: 'publish', onContinue: () => { next++; }, onEdit: () => { edits++; } })); });
+    assert.equal(tree.root.findAllByType('select').length, 0);
+    assert.equal(tree.root.findAllByType('button').length, 2);
+    const button = title => tree.root.findAllByType('button').find(b => b.props.children === title);
+    assert.equal(button('In Eventin opslaan'), undefined);
+    await React.act(async () => button('Verder naar Facebook').props.onClick());
+    await React.act(async () => button('Websitegegevens opnieuw bewerken').props.onClick());
+    assert.equal(next, 1); assert.equal(edits, 1);
+    assert.match(JSON.stringify(tree.toJSON()), /opgeslagen op de website/);
+    await React.act(async () => tree.update(React.createElement(Confirmation, { title: 'Halloween', status: 'draft', onContinue() {}, onEdit() {} })));
+    assert.match(JSON.stringify(tree.toJSON()), /als concept opgeslagen in Eventin/);
+  } finally { if (tree) await React.act(async () => tree.unmount()); }
+  const creator = fs.readFileSync(path.join(root, 'components/central-event-creator.js'), 'utf8');
+  assert.match(creator, /eventCreationStep === 2 && websiteCompleted && <EventinSaveConfirmation/);
+  assert.match(creator, /eventCreationStep === 2 && !websiteCompleted && <section/);
+});
+
+test('a local-only concept never reports a failed comparison or offers a pointless retry', async () => {
+  const { sourceComparisonStatus, EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const item = { id: 'local-concept', business_id: 'b', status: 'draft', media: [{ kind: 'campaign_distribution', common: { campaign_type: 'event', title: 'Halloween', start: '2026-10-30T21:00:00', end: '2026-10-31T01:00:00' } }] };
+  for (const state of ['idle', 'queued', 'pending', 'error', 'timeout', 'done']) {
+    assert.equal(sourceComparisonStatus(item, [], state).key, 'unlinked', state);
+  }
+  let tree, opened;
+  try {
+    await React.act(async () => { tree = Renderer.create(React.createElement(EventDetails, {
+      item, sourceComparisonCheck: 'error', onCompareSources() { throw Error('Nothing is linked'); }, onClose() {},
+      onOpenDossier: (row, step) => { opened = { row, step }; },
+    })); });
+    assert.equal(tree.root.findAllByProps({ 'aria-label': 'Controle op tekstverschillen' }).length, 0);
+    const buttons = tree.root.findAllByType('button');
+    assert.equal(buttons.some(b => b.props.children === 'Controle opnieuw proberen'), false);
+    const next = buttons.find(b => Array.isArray(b.props.children) && b.props.children[0] === 'Verder naar ');
+    assert.equal(next.props.disabled, false);
+    await React.act(async () => next.props.onClick());
+    assert.equal(opened.row.id, item.id); assert.equal(opened.step, 'website');
+  } finally { if (tree) await React.act(async () => tree.unmount()); }
+});
+
+test('hidden comparison summaries stay hidden while visible checks can show progress', () => {
+  const source = fs.readFileSync(path.join(root, 'components/marketing-overview.js'), 'utf8');
+  assert.match(source, /\.marketingComparisonSummary\[hidden\]\{display:none!important\}/);
+  assert.doesNotMatch(source, /\.marketingComparisonSummary\[hidden\]\{display:grid/);
+  assert.match(source, /<section hidden=\{Boolean\(onOpenDossier && !openChannels\.sources\)/);
+});
+
 test('event date is visible in the heading without opening event details', async () => {
   const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
   const item = { id: 'date', created_at: '2026-09-02T09:30:00', published_at: '2026-09-02T09:30:00', media: [{ kind: 'campaign_distribution', eventin_event_id: '123', common: { title: 'Avond', start: '2026-10-01T18:00:00' } }] };

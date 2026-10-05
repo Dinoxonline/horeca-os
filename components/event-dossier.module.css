@@ -1,4 +1,9 @@
 .dossier { min-width: 0; }
+.completion { padding: 20px; border: 1px solid #9bc9ac; border-radius: 12px; background: #f0faf3; overflow-wrap: anywhere; }
+.completionActions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.completionActions button { padding: 12px 16px; border: 1px solid #25889b; border-radius: 8px; background: #25889b; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.completionActions button:first-child { background: white; color: #176d7f; }
+.completionActions button:disabled { opacity: .55; cursor: wait; }
 .dossier :global(label), .dossier :global(.chatGptDesignBody) > * { min-width: 0; }
 .dossier input, .dossier textarea, .dossier select { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .images { grid-column: 1 / -1; min-width: 0; }
@@ -7,6 +12,8 @@
 .images small { color: #5c7285; overflow-wrap: anywhere; }
 .images :global(.eventinImageStatus) { display: flex; gap: 14px; justify-content: space-between; margin: 14px 0; padding: 12px; background: white; border: 1px solid #c6d5df; border-radius: 9px; }
 .images :global(.eventinImageStatus) > div:first-child { display: grid; gap: 6px; }
+.images :global(.eventinImageStatus) label { display: grid; gap: 7px; min-width: 0; }
+.images :global(.eventinImageStatus) select { width: 100%; max-width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #b9ccd7; border-radius: 7px; font: inherit; background: white; }
 .images :global(.eventinImagePreview) img { width: 100px; height: 100px; object-fit: contain; }
 .images :global(.cropFocus) { display: grid; gap: 8px; margin: 12px 0; }
 .images :global(.imageSlotGrid) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
@@ -21,6 +28,7 @@
 .images button { padding: 9px 11px; border: 1px solid #25889b; background: white; border-radius: 7px; color: #176d7f; cursor: pointer; }
 .images :global(.imageUploadSuccess) { color: #236d46; }
 @media (max-width: 760px) {
+  .completionActions { flex-direction: column; }
   .images :global(.imageSlotGrid), .images :global(.imageSlot) { grid-template-columns: minmax(0, 1fr); }
   .images :global(.eventinImageStatus) { display: grid; }
 }
