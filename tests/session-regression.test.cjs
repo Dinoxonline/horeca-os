@@ -62,6 +62,22 @@ test('linked website opens the three-source choice inside the event instead of r
   } finally { if (tree) await React.act(async () => tree.unmount()); }
 });
 
+test('an external event with one matching Horeca OS dossier offers the complete editor without merging', async () => {
+  const { EventDetails } = await load('components/marketing-overview.js', { '../lib/supabase': { supabase: {} } });
+  const external = { id: 'external-facebook', business_id: 'b', media: [{ kind: 'campaign_distribution', source_type: 'facebook_event', external_source: 'facebook', common: { title: 'HALLOWEEN AFTERWALK PARTY', description: 'Facebook tekst', start: '2026-10-30T21:00:00' } }] };
+  const dossier = { id: 'horeca-dossier', business_id: 'b', media: [{ kind: 'campaign_distribution', calendar_delivery: { stage: 'concept' }, common: { title: 'HALLOWEEN AFTERWALK PARTY', description: 'Horeca OS tekst', start: '2026-10-30T21:00:00' } }] };
+  let requested;
+  let tree;
+  try {
+    await React.act(async () => { tree = Renderer.create(React.createElement(EventDetails, { item: external, sameDayItems: [dossier], onClose() {}, onChooseMatch: (candidate, options) => { requested = { candidate, options }; } })); });
+    const button = tree.root.findAllByType('button').find(entry => entry.props.children === 'Gegevens, tickets en afbeeldingen bewerken');
+    assert.ok(button);
+    await React.act(async () => button.props.onClick());
+    assert.equal(requested.candidate.id, dossier.id);
+    assert.deepEqual(requested.options, { openDossier: true });
+  } finally { if (tree) await React.act(async () => tree.unmount()); }
+});
+
 test('Eventin success shows only a completion card with explicit next and edit actions', async () => {
   const { default: Confirmation } = await load('components/eventin-save-confirmation.js');
   let tree, next = 0, edits = 0;

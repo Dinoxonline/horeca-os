@@ -575,6 +575,8 @@ function DuplicateRecordIdentity({ item, currentItem }) {
 
 function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMerge, busy }) {
   const others = [...new Map([...candidates, ...(matchItem ? [matchItem] : [])].filter(candidate => candidate.id !== item.id).map(candidate => [candidate.id, candidate])).values()];
+  const editableDossiers = others.filter(candidate => !isExternalEvent(candidate) && externalTitlesMatch(eventText(item), eventText(candidate)));
+  const editableDossier = editableDossiers.length === 1 ? editableDossiers[0] : null;
   const [mergeTitle, setMergeTitle] = useState(eventText(item));
   const [mergeDescription, setMergeDescription] = useState(descriptionFor(item));
   const [textChoice, setTextChoice] = useState("current");
@@ -601,7 +603,13 @@ function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMe
     setMergeTitle(choice === "current" ? eventText(item) : choice === "match" ? eventText(matchItem) : `${eventText(item)} / ${eventText(matchItem)}`);
     setMergeDescription(choice === "current" ? descriptionFor(item) : choice === "match" ? descriptionFor(matchItem) : `${descriptionFor(item)}\n\n${descriptionFor(matchItem)}`);
   }
-  return <details className="marketingDetailFold marketingDuplicateReview">
+  return <>
+    {editableDossier && onChooseMatch && <section className="marketingExistingDossierAction" aria-label="Bestaand Horeca OS-evenement" style={{ margin: '16px 0', padding: 16, border: '1px solid #9fc8d5', borderRadius: 10, background: '#eef8fa', display: 'grid', gap: 8 }}>
+      <strong>Dit evenement is al opgeslagen in Horeca OS.</strong>
+      <p>Open het bestaande dossier om alle gegevens, tickets en afbeeldingen te bewerken. Er wordt niets samengevoegd of gewijzigd.</p>
+      <button type="button" className="primaryButton" disabled={busy} onClick={() => onChooseMatch(editableDossier, { openDossier: true })}>Gegevens, tickets en afbeeldingen bewerken</button>
+    </section>}
+  <details className="marketingDetailFold marketingDuplicateReview">
     <summary>Mogelijke dubbele evenementen controleren <span className="marketingDuplicateCount">{others.length + 1} agendapunten op deze datum</span></summary>
     <p className="marketingDuplicateHelp">Dit zijn aparte agendapunten bij dezelfde vestiging en datum, niet automatisch dubbele publicaties. Vergelijk de koppelingen: hetzelfde evenementnummer verwijst naar hetzelfde evenement. Geen bekende koppeling bewijst niet dat er niets online staat.</p>
     <div className="marketingDuplicateRecords">
@@ -639,7 +647,7 @@ function DuplicateEventReview({ item, matchItem, candidates, onChooseMatch, onMe
         <button type="button" className="primaryButton" disabled={busy || !onMerge || !mergeTitle.trim()} onClick={() => onMerge({ title: mergeTitle, description: mergeDescription })}>{busy ? "Even geduld…" : "Samenvoegen in Horeca OS"}</button>
       </section>
     </>}
-  </details>;
+  </details></>;
 }
 
 
@@ -1252,8 +1260,14 @@ export default function MarketingOverview({ workspaceId, businesses, session, on
     const itemDate = dateOnly(itemStart(item));
     return items.filter((candidate) => candidate.id !== item.id && !distributionFor(candidate).duplicate_of && String(candidate.business_id) === String(item.business_id) && sameDay(dateOnly(itemStart(candidate)), itemDate));
   }
-  function chooseSameDateMatch(candidate) {
+  function chooseSameDateMatch(candidate, options = {}) {
     if (!selectedItem) return;
+    if (options.openDossier) {
+      if (!onOpenDossier || isExternalEvent(candidate)) return;
+      setSelectedItem(null);
+      onOpenDossier(candidate, 'horeca_os');
+      return;
+    }
     setSelectedItem((current) => current ? { ...current, potentialMatch: { id: candidate.id, title: eventText(candidate), status: statusFor(candidate, distributionFor(candidate)).label, external: isExternalEvent(candidate) } } : current);
   }
   const renderBusinessCalendar = (business) => { const businessItems = itemsForBusiness(business.id); const businessDayItems = businessItems.filter((item) => sameDay(dateOnly(itemStart(item)), anchor)); return <article className="marketingVenueCalendar" key={business.id}><header><span className={`marketingVenueDot ${business.color}`} /><h3>{business.name}</h3></header>{view === "month" && <MonthCalendar anchor={anchor} items={businessItems} businessById={businessById} onSelectEvent={setSelectedItem} onPlanDate={day => onPlanDate?.(day, business.id)} />}{view === "week" && <WeekCalendar anchor={anchor} items={businessItems} businessById={businessById} onSelectEvent={setSelectedItem} />}{view === "day" && <div className="marketingDayAgenda">{businessDayItems.length ? businessDayItems.map((item) => <CalendarEvent key={item.id} item={item} business={business} onSelectEvent={setSelectedItem} />) : <p>Geen geplande items voor deze dag.</p>}</div>}{view === "year" && <YearCalendar anchor={anchor} items={businessItems} onSelectEvent={setSelectedItem} />}</article>; };
