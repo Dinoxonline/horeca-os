@@ -108,3 +108,22 @@ test('opening an agenda concept passes the same record and venue to the complete
     assert.equal(received.business,'b2');assert.equal(received.request.item,item);assert.equal(received.request.step,'website');
   }finally{if(tree)await React.act(async()=>tree.unmount());}
 });
+
+test('returning from the dossier reopens the same Marketing event', async () => {
+  const C = await component(); let tree, openDossier, resumeEvent;
+  const item = { id: 'saved-event', business_id: 'b1', media: [{ kind: 'campaign_distribution', common: { title: 'Blijf zichtbaar' } }] };
+  try {
+    await React.act(async () => { tree = Renderer.create(React.createElement(C, {
+      ...props,
+      businessId: 'b1',
+      renderAgenda: (venues, onPlan, refresh, open, resume) => { openDossier = open; resumeEvent = resume; return React.createElement('p', null, 'Agenda'); },
+      renderCreator: (business, request, onSaved, openRequest, registerSave, onContinue) => React.createElement('button', { type: 'button', onClick: () => onContinue({ ...item, title: 'Bewaard dossier' }, 'horeca_os') }, 'Terug naar marketingevenement'),
+    })); });
+    await React.act(async () => openDossier(item, 'horeca_os'));
+    assert.equal(panel(tree, 'Marketingagenda').props.hidden, true);
+    await React.act(async () => click(tree, 'Terug naar marketingevenement'));
+    assert.equal(panel(tree, 'Marketingagenda').props.hidden, false);
+    assert.equal(resumeEvent.id, item.id);
+    assert.equal(resumeEvent.requestedChannel, 'horeca_os');
+  } finally { if (tree) await React.act(async () => tree.unmount()); }
+});

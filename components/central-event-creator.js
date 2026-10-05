@@ -2783,6 +2783,18 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch { /* Stay here: failed saves must never advance the workflow. */ }
   }
+  async function returnToMarketingEvent() {
+    if (!onContinueEvent || busy || uploadingSlot) return;
+    setBusy(true);
+    try {
+      const saved = await persistDossier('horeca_os');
+      onContinueEvent(saved, 'horeca_os');
+    } catch (error) {
+      setResult({ ok: false, message: error.message || 'Teruggaan naar het marketingevenement is niet gelukt. Je gegevens blijven in Horeca OS staan.' });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const eventImageFields = (<div className={dossierStyles.images}><div className="imageUploads wide creatorSection" id="campagne-afbeeldingen">
         <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload één bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
@@ -3005,7 +3017,8 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     {(!isEvent || eventWorkspaceView === "new") && <>
     {newEventFlow && editingCampaignId && !(eventCreationStep === 2 && websiteCompleted) && <div className="editingNotice" role="status">
       <strong>{editingWebsiteEvent ? "Evenement bewerken" : "Concept bewerken"}</strong>
-      <span>Je werkt nu in een opgeslagen evenement. Sla de wijzigingen op wanneer je klaar bent.</span>
+      <span>Je werkt nu in een opgeslagen evenement. Deze knop bewaart je wijzigingen alleen in Horeca OS en opent daarna hetzelfde marketingevenement opnieuw.</span>
+      {onContinueEvent && <button type="button" className="secondaryButton" disabled={busy || Boolean(uploadingSlot) || !form.title.trim()} onClick={returnToMarketingEvent}>{busy ? 'Opslaan…' : 'Terug naar marketingevenement'}</button>}
     </div>}
     {isEvent && !(eventCreationStep === 2 && websiteCompleted) && <p role="status">{dossierSaveState || 'Vul een naam in om je concept te bewaren.'}</p>}
     {isEvent && eventCreationStep === 2 && websiteCompleted && <EventinSaveConfirmation
@@ -3020,6 +3033,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       <label>Eventin-publicatie<select value={form.status} onChange={event => update("status", event.target.value)}><option value="draft">Eerst als concept in Eventin</option><option value="publish">Publiceren op de website</option></select></label>
       <div className="eventActions">
         <button type="button" className="secondaryButton" disabled={busy} onClick={async () => { try { await persistDossier('horeca_os'); setEventCreationStep(1); } catch {} }}>Terug naar Horeca OS</button>
+        {onContinueEvent && <button type="button" className="secondaryButton" disabled={busy || Boolean(uploadingSlot)} onClick={returnToMarketingEvent}>{busy ? 'Opslaan…' : 'Terug naar marketingevenement'}</button>}
         <button type="button" disabled={busy || Boolean(uploadingSlot)} onClick={publishDossierWebsite}>{busy ? 'Opslaan…' : 'In Eventin opslaan'}</button>
         {eventDistribution(dossierRef.current).eventin_event_id && <button type="button" className="secondaryButton" disabled={busy} onClick={async () => { try { const saved = await persistDossier('facebook'); onContinueEvent?.(saved, 'facebook'); } catch {} }}>Verder naar Facebook</button>}
       </div>

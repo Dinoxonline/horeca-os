@@ -1,16 +1,55 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function MarketingAgendaNavigation({ businessId, businesses, renderAgenda, renderCreator, renderFoodMachine }) {
   const [view, setView] = useState("agenda");
   const saveBeforeLeave = useRef(null);
+  const viewRef = useRef(view);
+  const dossierHistoryRef = useRef(null);
   const [openEventRequest, setOpenEventRequest] = useState(null);
   const [resumeEvent, setResumeEvent] = useState(null);
   const [savedEvent, setSavedEvent] = useState(null);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const registerSave = save => { saveBeforeLeave.current = save; };
+
+  function addDossierHistory(item, step) {
+    if (typeof window === "undefined" || window.location.pathname !== "/marketing") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("marketingDossier", String(item.id));
+    window.history.pushState({ ...(window.history.state || {}), horecaOsMarketingDossier: { id: String(item.id), step } }, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  function clearDossierHistory(item) {
+    const current = dossierHistoryRef.current;
+    dossierHistoryRef.current = null;
+    if (typeof window === "undefined" || !current || String(current.item.id) !== String(item?.id)) return;
+    const marker = window.history.state?.horecaOsMarketingDossier;
+    if (marker && String(marker.id) === String(item.id)) window.history.back();
+  }
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    function returnWithBrowserBack() {
+      const openDossier = dossierHistoryRef.current;
+      if (!openDossier || viewRef.current !== "create") return;
+      (async () => {
+        let canLeave = true;
+        try { if (saveBeforeLeave.current) canLeave = await saveBeforeLeave.current(); } catch { canLeave = false; }
+        if (!canLeave) {
+          addDossierHistory(openDossier.item, openDossier.step);
+          return;
+        }
+        dossierHistoryRef.current = null;
+        setResumeEvent({ ...openDossier.item, requestedChannel: "horeca_os", requestId: Date.now() });
+        setAgendaRefreshToken(value => value + 1);
+        setView("agenda");
+      })();
+    }
+    window.addEventListener("popstate", returnWithBrowserBack);
+    return () => window.removeEventListener("popstate", returnWithBrowserBack);
+  }, []);
   async function leaveFor(next) {
     if (view === "create" && saveBeforeLeave.current && !(await saveBeforeLeave.current())) return false;
+    if (view === "create" && next !== "create") clearDossierHistory(dossierHistoryRef.current?.item);
     setView(next); return true;
   }
   async function openDossier(item, requestedStep) {
@@ -18,11 +57,14 @@ export default function MarketingAgendaNavigation({ businessId, businesses, rend
     if (!businesses.some(business => business.id === item.business_id)) return;
     const previousStep = (item.media || []).find(entry => entry?.kind === 'campaign_distribution')?.event_workflow?.step;
     const step = requestedStep || (previousStep === 'website' ? 'website' : 'horeca_os');
+    dossierHistoryRef.current = { item, step };
+    addDossierHistory(item, step);
     setChosenBusiness(item.business_id);
     setOpenEventRequest({ item, step, id: item.id + ':' + Date.now() });
     setCreatorVisited(true); setView('create');
   }
   function continueEvent(item, channel) {
+    clearDossierHistory(item);
     setResumeEvent({ ...item, requestedChannel: channel, requestId: Date.now() });
     setAgendaRefreshToken(value => value + 1); setView('agenda');
   }
