@@ -1,0 +1,26 @@
+.dossier { min-width: 0; }
+.dossier :global(label), .dossier :global(.chatGptDesignBody) > * { min-width: 0; }
+.dossier input, .dossier textarea, .dossier select { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.images { grid-column: 1 / -1; min-width: 0; }
+.images :global(.imageUploads) { padding: 14px; border: 1px solid #c6d5df; border-radius: 12px; background: #f8fbfc; }
+.images p { margin: 5px 0; color: #5c7285; }
+.images small { color: #5c7285; overflow-wrap: anywhere; }
+.images :global(.eventinImageStatus) { display: flex; gap: 14px; justify-content: space-between; margin: 14px 0; padding: 12px; background: white; border: 1px solid #c6d5df; border-radius: 9px; }
+.images :global(.eventinImageStatus) > div:first-child { display: grid; gap: 6px; }
+.images :global(.eventinImagePreview) img { width: 100px; height: 100px; object-fit: contain; }
+.images :global(.cropFocus) { display: grid; gap: 8px; margin: 12px 0; }
+.images :global(.imageSlotGrid) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.images :global(.imageSlot) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 13px; background: white; border: 1px solid #c6d5df; border-radius: 10px; }
+.images :global(.imageSlot) > div:first-child { display: grid; align-content: start; gap: 5px; }
+.images :global(.imageSlotAll) { border-style: dashed; border-color: #25889b; background: #eef9fa; }
+.images :global(.imageDropZone) { display: grid; align-content: center; gap: 8px; text-align: center; padding: 10px; border: 1px dashed #9cbac3; border-radius: 8px; }
+.images :global(.uploadButton) { cursor: pointer; background: #25889b; color: white; border-radius: 8px; padding: 11px; display: block; }
+.images :global(.uploadButton) input { display: none; }
+.images :global(.imagePreview) { height: 150px; background-size: contain; background-position: center; background-repeat: no-repeat; background-color: #f1f6f8; border-radius: 8px; }
+.images :global(.uploadedImageActions) { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.images button { padding: 9px 11px; border: 1px solid #25889b; background: white; border-radius: 7px; color: #176d7f; cursor: pointer; }
+.images :global(.imageUploadSuccess) { color: #236d46; }
+@media (max-width: 760px) {
+  .images :global(.imageSlotGrid), .images :global(.imageSlot) { grid-template-columns: minmax(0, 1fr); }
+  .images :global(.eventinImageStatus) { display: grid; }
+}

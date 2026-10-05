@@ -3,15 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { whatsappDesktopUrl, whatsappDraft, prepareWhatsappImage } from "../lib/whatsapp-share";
 import styles from "./whatsapp-share.module.css";
+import useEventPreparation from "./use-event-preparation";
 
-export default function WhatsappShare({ item, distribution, workspaceId, session, onPublished, hidden = false, id, panelRef, onToggle }) {
+export default function WhatsappShare({ client, item, distribution, workspaceId, session, onPublished, hidden = false, id, panelRef, onToggle, onDraftSaved, registerSave }) {
   const draft = whatsappDraft(item, distribution);
-  const [text, setText] = useState(draft.text), [image, setImage] = useState(draft.images[0]?.url || "");
+  const [text, setText] = useState(distribution.channel_drafts?.whatsapp?.text ?? draft.text), [image, setImage] = useState(distribution.channel_drafts?.whatsapp?.image || draft.images[0]?.url || "");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [open, setOpen] = useState(false);
   const [placed, setPlaced] = useState(distribution.manual_whatsapp?.state === "placed"), [saving, setSaving] = useState(false);
   const request = useRef(null);
+  const preparation = useEventPreparation({ client, item, workspaceId, channel: 'whatsapp', value: { text, image }, enabled: open, onSaved: onDraftSaved, registerSave });
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => setPlaced(distribution.manual_whatsapp?.state === "placed"), [distribution.manual_whatsapp?.revision, distribution.manual_whatsapp?.state]);
   function chooseImage(url) {
@@ -51,7 +53,7 @@ export default function WhatsappShare({ item, distribution, workspaceId, session
     <summary>WhatsApp handmatig plaatsen</summary>
     {open && <div className={styles.body}>
       <p>Gebruik je eigen WhatsApp of WhatsApp Business. Kies zelf de groep en verstuur het bericht; Horeca OS plaatst niets automatisch.</p>
-      <label>Bericht voor je groep<textarea rows={8} maxLength={4000} value={text} onChange={event => { setText(event.target.value); setNotice(""); }} /><small>{text.length}/4.000 tekens · aanpassingen gelden alleen voor dit deelbericht en worden niet opgeslagen.</small></label>
+      <label>Bericht voor je groep<textarea rows={8} maxLength={4000} value={text} onChange={event => { setText(event.target.value); setNotice(""); }} /><small>{text.length}/4.000 tekens · je voorbereiding wordt in Horeca OS opgeslagen.</small></label>
       <div className={styles.actions}>
         {text.trim() && <a className="primaryButton" href={whatsappDesktopUrl(text)} onClick={() => setNotice("WhatsApp Desktop wordt geopend met de tekst. Kies zelf de groep, voeg de afbeelding toe en verzend.")}>WhatsApp Desktop openen</a>}
       </div>
@@ -62,6 +64,7 @@ export default function WhatsappShare({ item, distribution, workspaceId, session
           <button type="button" className="secondaryButton" disabled={busy} onClick={copyImage}>{busy ? "Afbeelding kopiëren…" : "Afbeelding kopiëren"}</button>
         </div>
       </> : <p>Dit dossier heeft nog geen afbeelding. Je kunt tekst en link delen, of eerst een foto aan het evenement/product toevoegen.</p>}
+      {preparation.notice && <p role="status">{preparation.notice}</p>}
       {notice && <p role="status" className={styles.notice}>{notice}</p>}
       {workspaceId && session?.access_token && <section className={placed ? styles.confirmed : styles.confirm}>
         {placed ? <><strong>✓ Geplaatst op WhatsApp</strong><small>Handmatig bevestigd. De WhatsApp-status is groen.</small></> : <><strong>Klaar met versturen?</strong><small>Bevestig pas nadat je het bericht zelf in WhatsApp hebt verzonden.</small><button type="button" className="primaryButton" disabled={saving} onClick={markPlaced}>{saving ? "Bevestigen…" : "Geplaatst op WhatsApp"}</button></>}

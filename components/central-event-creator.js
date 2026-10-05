@@ -6,6 +6,11 @@ import { SavedMetaCampaignEditor } from "./meta-campaign-editor";
 import { SavedPredisWorkspace } from "./predis-workspace";
 import { ensureEventPromotionProcess, ensureEventPromotionRun } from "../lib/event-promotion-process";
 import { saveCampaignDraft } from "../lib/save-campaign-draft";
+import { dossierDistribution, eventDistribution, normalizedEventImages, saveEventDossier } from "../lib/event-dossier";
+import { saveEventContent } from "../lib/manual-event-content";
+import EventDossierSummary from "./event-dossier-summary";
+import { calendarLocalTime } from "../lib/event-calendar";
+import dossierStyles from "./event-dossier.module.css";
 import WhatsappShare from "./whatsapp-share";
 import { supabase } from "../lib/supabase";
 
@@ -93,6 +98,7 @@ const emptyForm = {
   staggerEnabled: true, staggerMinMinutes: "15", staggerMaxMinutes: "45",
   tiktokCaption: "", tiktokPrivacy: "PUBLIC_TO_EVERYONE", tiktokComments: true,
   whatsappTemplate: "", whatsappMessage: "",
+  giveawayCards: "2", giveawayDeadline: "", giveawayAnnouncement: "", giveawayResponseHours: "12",
   googleTopic: "EVENT", predisType: "afbeelding", predisTone: "Gastvrij en energiek",
   editorialTargets: emptyEditorialTargets,
   regularPrice: "", campaignPrice: "", discountCode: "", validFrom: "", validUntil: "",
@@ -476,8 +482,14 @@ function formUiStorageKey(workspaceId, businessId) {
   return `horeca-os:marketing-ui:${workspaceId}:${businessId}`;
 }
 
-export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, onEventSaved }) {
+export default function CentralEventCreator({ workspaceId, businessId, businesses, session, newEventRequest, onEventSaved, openEventRequest, registerSave, onContinueEvent }) {
   const [form, setForm] = useState(emptyForm);
+  const dossierRef = useRef(null), dossierIdRef = useRef(null), dossierSaveRef = useRef(null), snapshotRef = useRef(null);
+  const savedSnapshotRef = useRef(''), loadedDossierRequest = useRef(null), pendingWebsiteRef = useRef(null);
+  const websiteActionLock = useRef(false);
+  const explicitSaveLock = useRef(false);
+  const [dossierSaveState, setDossierSaveState] = useState('');
+  const [dossierRevision, setDossierRevision] = useState(0);
   const [creativeBrief, setCreativeBrief] = useState("");
   const [artistProgram, setArtistProgram] = useState("");
   const [practicalDetails, setPracticalDetails] = useState("");
@@ -686,6 +698,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setResult({ ok: true, message: "De eindtijd ligt na middernacht. Horeca OS heeft de einddatum daarom op de volgende dag gezet." });
   }, [form.start, form.end]);
   useEffect(() => {
+    if (isEvent) return;
     const suggestion = suggestedPromotionCopy(form);
     if (!suggestion) return;
     setForm((current) => {
@@ -699,7 +712,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       return { ...current, shortDescription: nextShort, facebookText: nextFacebook };
     });
   }, [form.title, form.start, form.location, form.description]);
-  const startNewCampaign = () => {
+  const startNewCampaign = async () => {
+    if (snapshotRef.current?.form.title.trim()) { try { await persistDossier(); } catch { return; } }
+    dossierRef.current = null; dossierIdRef.current = null; savedSnapshotRef.current = ""; pendingWebsiteRef.current = null;
     const defaults = defaultsForBusiness(selectedBusiness);
     const draftKey = workspaceId && selectedBusiness?.id ? formDraftStorageKey(workspaceId, selectedBusiness.id) : "";
     if (draftKey) window.localStorage.removeItem(draftKey);
@@ -756,10 +771,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setEditingCampaignId(null); setEditingWebsiteEvent(null); setEarlyCalendarDelivery(null); setEditingBrevoDraftId(null); setPreview(false); setResult(null);
     setEventWorkspaceView(campaignType === "event" ? "" : "new");
   };
-  const openNewEventWorkspace = () => {
-    setEventWorkspaceView("new");
-    setEventCreationStep(1);
-  };
+  const openNewEventWorkspace = () => startNewCampaign();
   const toggleChannel = (channel) => update("channels", { ...form.channels, [channel]: !form.channels[channel] });
   const toggleFacebookPlacement = (placement) => {
     const current = form.facebookPlacements || [];
@@ -1019,8 +1031,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   async function removeImage(slotKey) {
-    const image = form.images?.[slotKey];
-    if (image?.path) await supabase.storage.from("marketing-assets").remove([image.path]);
+    // Detach only: an earlier publication or another event may still use this file.
     setForm((current) => ({ ...current, images: { ...current.images, [slotKey]: null } }));
     setPreview(false); setResult(null);
   }
@@ -1291,50 +1302,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     const distribution = (item.media || []).find((entry) => entry?.kind === "campaign_distribution");
     if (!distribution) return;
     const isWebsiteEvent = distribution.source_type === "website_event";
-    const editingBlockReason = isWebsiteEvent ? "" : campaignEditingBlockReason(item, distribution);
+    const editingBlockReason = isWebsiteEvent || distribution.common?.campaign_type === "event" || distribution.source_type === "event" ? "" : campaignEditingBlockReason(item, distribution);
     if (!asCopy && editingBlockReason) return setResult({ ok: false, message: editingBlockReason });
     let common = distribution.common || {};
-    if (isWebsiteEvent && !asCopy) {
-      setConceptBusyId(item.id);
-      setResult({ ok: true, message: "De volledige Eventin-gegevens worden geladenâ€¦" });
-      try {
-        const query = new URLSearchParams({
-          workspaceId,
-          businessId: selectedBusiness?.id || businessId || "",
-          site,
-          eventId: String(distribution.eventin_event_id || ""),
-          campaignId: String(item.id),
-        });
-        const response = await fetch(`/api/marketing/website-events/create?${query}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "De volledige Eventin-gegevens konden niet worden geladen.");
-        const event = result.event || {};
-        const hasStoredDescription = Object.prototype.hasOwnProperty.call(common, "description");
-        common = {
-          ...common,
-          title: event.title || common.title,
-          // Horeca OS is the source of truth for edited copy. Eventin's rendered
-          // description also contains generated location and ticket paragraphs.
-          // Preserve an intentionally emptied description as well.
-          description: hasStoredDescription ? common.description : event.description || "",
-          // Horeca OS keeps the requested local date/time as the source of truth.
-          // Older Eventin records can report a malformed day after an ISO-date write.
-          start: common.start || event.start,
-          end: common.end || event.end,
-          location: event.location || common.location,
-          image_url: event.imageUrl || common.image_url,
-          website_status: event.status || distribution.website_event_status || common.website_status,
-          website_url: event.url || common.website_url,
-          cta: { ...(common.cta || {}), url: event.url || common.cta?.url || distribution.source_url || "" },
-          tickets: { ...(common.tickets || {}), ...(event.tickets || {}), variations: event.ticketVariations?.length ? event.ticketVariations : common.tickets?.variations },
-        };
-      } catch (error) {
-        setResult({ ok: false, message: `${error.message || "Eventin kon niet worden geladen"} Het evenement is niet geopend, zodat bestaande gegevens niet per ongeluk worden overschreven.` });
-        return;
-      } finally {
-        setConceptBusyId(null);
-      }
-    }
     const commercial = common.commercial || {};
     const review = common.review || {};
     const payloads = distribution.channel_payloads || {};
@@ -1345,10 +1315,10 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       ...emptyForm,
       campaignType: storedType,
       status: common.website_status || distribution.website_event_status || emptyForm.status,
-      title: common.title || "", shortDescription: common.short_description || "", description: common.description || item.body || "",
-      start: common.start || "", end: common.end || "", location: common.location || emptyForm.location,
-      imageUrl: common.image_url || "", eventinImage: common.image_url ? { url: common.image_url, name: "Bestaande Eventin-afbeelding" } : null,
-      images: { ...emptyImages, ...(common.images || {}) }, videoUrl: common.video_url || "",
+      title: common.title || "", shortDescription: common.short_description || "", description: common.description ?? item.body ?? "",
+      start: calendarLocalTime(common.start), end: calendarLocalTime(common.end), location: common.location ?? emptyForm.location,
+      imageUrl: common.image_url || "", eventinImage: common.eventin_image || (common.image_url ? { url: common.image_url, name: "Bestaande Eventin-afbeelding" } : null),
+      images: { ...emptyImages, ...normalizedEventImages(common.images) }, videoUrl: common.video_url || "",
       organizer: common.organizer || emptyForm.organizer, contactEmail: common.contact_email || emptyForm.contactEmail, language: common.language || "nl",
       ctaLabel: common.cta?.label || emptyForm.ctaLabel, ctaUrl: common.cta?.url || distribution.source_url || "",
       ticketType: common.tickets?.type || "free", ticketPrice: common.tickets?.price || "0", capacity: common.tickets?.capacity || "",
@@ -1364,6 +1334,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       facebookText: payloads.facebook?.text || "", facebookPlacements: payloads.facebook?.placements || ["feed"], instagramFormat: payloads.instagram?.format || "post", instagramCaption: payloads.instagram?.caption || "",
       tiktokCaption: payloads.tiktok?.caption || "", tiktokPrivacy: payloads.tiktok?.privacy || emptyForm.tiktokPrivacy, tiktokComments: payloads.tiktok?.comments_enabled ?? true,
       whatsappTemplate: payloads.whatsapp?.template_name || "", whatsappMessage: payloads.whatsapp?.message || "",
+      giveawayCards: common.giveaway?.cards || "2", giveawayDeadline: common.giveaway?.deadline || "", giveawayAnnouncement: common.giveaway?.announcement || "", giveawayResponseHours: common.giveaway?.responseHours || "12",
       googleTopic: payloads.google?.topic_type || (storedType === "event" ? "EVENT" : storedType === "offer" ? "OFFER" : "STANDARD"),
       predisType: payloads.predis?.content_type || "afbeelding", predisTone: payloads.predis?.tone || emptyForm.predisTone,
       staggerEnabled: distribution.schedule_settings?.stagger_enabled ?? true,
@@ -1372,18 +1343,26 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       validFrom: commercial.valid_from || "", validUntil: commercial.valid_until || "", groupSize: commercial.group_size || "", pricePerPerson: commercial.price_per_person || "",
       reviewerName: review.reviewer_name || "", reviewScore: review.score || "5", reviewSource: review.source || "",
     });
-    setEditingCampaignId(item.id);
-    setEventWorkboardTasks([]);
+    dossierRef.current = asCopy ? null : item;
+    dossierIdRef.current = asCopy ? null : item.id;
+    savedSnapshotRef.current = '';
+    pendingWebsiteRef.current = null;
+    setArtistProgram(common.artist_program || '');
+    setPracticalDetails(common.practical_details || '');
+    setCreativeBrief(common.creative_brief || '');
+    setSourceText(common.source_text || '');
+    setEditingCampaignId(asCopy ? null : item.id);
+    setDossierRevision(value => value + 1);
+    setEventWorkboardTasks(distribution.event_workboard_drafts || []);
     setEventWorkspaceView("new");
-    const isEarlyCalendarConcept = storedType === "event" && !isWebsiteEvent && distribution.calendar_delivery?.stage === "concept";
-    setEventCreationStep(isEarlyCalendarConcept ? 1 : 2);
-    setEarlyCalendarDelivery(isEarlyCalendarConcept ? distribution.calendar_delivery : null);
+    setEventCreationStep(openEventRequest?.step === "website" ? 2 : 1);
+    setEarlyCalendarDelivery(distribution.calendar_delivery || null);
     setEditingWebsiteEvent(isWebsiteEvent ? { eventId: distribution.eventin_event_id, campaignId: item.id, url: distribution.source_url, calendarDelivery: distribution.calendar_delivery || null } : null);
     setEditingBrevoDraftId(distribution.provider_delivery?.brevo?.draft_id || null);
     setSelectedBrevoListIds((payloads.brevo?.list_ids || []).map(String));
     setSelectedFacebookGroupIds((payloads.facebook?.group_sharing?.groups || []).map((group) => String(group.id)));
     setPreview(false);
-    setResult({ ok: true, message: isWebsiteEvent ? "Het website-evenement is geopend voor bewerking. Opslaan werkt hetzelfde Eventin-evenement en het bestaande marketingdossier bij." : "Het campagneconcept is geopend en kan nu op dezelfde plek worden bijgewerkt." });
+    setResult({ ok: true, message: "Je opgeslagen Horeca OS-evenement is geopend. Bewaren hier publiceert niets." });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1624,6 +1603,9 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
 
   useEffect(() => {
     if (!selectedBusiness?.id) return;
+    // Opening a specific dossier/date takes precedence over the old local form.
+    // Also keeps StrictMode effect replay from replacing the just-opened record.
+    if (openEventRequest?.item?.business_id === selectedBusiness.id || newEventRequest?.date) return;
     const defaults = defaultsForBusiness(selectedBusiness);
     const draftKey = workspaceId ? formDraftStorageKey(workspaceId, selectedBusiness.id) : "";
     let savedDraft = null;
@@ -1639,6 +1621,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
       }
     }
     setRestoredDraftKey("");
+    dossierRef.current = null; dossierIdRef.current = null; savedSnapshotRef.current = "";
     setForm(savedForm ? {
       ...emptyForm,
       ...savedForm,
@@ -1683,6 +1666,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   useEffect(() => {
     if (!newEventRequest?.date || !selectedBusiness?.id || handledNewEventRequestRef.current === newEventRequest.id) return;
     handledNewEventRequestRef.current = newEventRequest.id;
+    dossierRef.current = null; dossierIdRef.current = null; savedSnapshotRef.current = ""; pendingWebsiteRef.current = null;
     const defaults = defaultsForBusiness(selectedBusiness);
     const start = `${newEventRequest.date}T18:00`;
     const end = `${newEventRequest.date}T23:00`;
@@ -1943,6 +1927,7 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         if (Number(ticket.minQuantity || 1) < 1 || Number(ticket.maxQuantity || 1) < Number(ticket.minQuantity || 1)) return `Controleer de minimale en maximale afname van ${ticket.name}.`;
       }
     }
+    if (isEvent) return "";
     if (form.campaignType === "offer" && (!form.campaignPrice || !form.validUntil)) return "Vul de actieprijs en einddatum in.";
     if (form.campaignType === "review" && !form.description.trim()) return "Vul de reviewtekst in.";
     if (form.preparePromotion && form.channels.brevo && !form.brevoSubject.trim()) return "Vul voor Brevo een onderwerpregel in.";
@@ -2016,6 +2001,41 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
   }
 
   async function saveIncompleteDraft() {
+    if (isEvent) {
+      if (explicitSaveLock.current) return;
+      explicitSaveLock.current = true; setBusy(true);
+      try {
+        let saved = await persistDossier();
+        let d = eventDistribution(saved);
+        // A name-only concept stays in Horeca OS until it has an actual time.
+        if (form.addToCalendar && form.start && form.end && form.end > form.start) {
+          const mailbox = form.calendarMailbox || 'info@leclubbbq.nl';
+          const previous = d.calendar_delivery || {};
+          const eventId = previous.status !== 'deleted' ? previous.event_id || d.calendar_channel?.event_id : '';
+          const concept = !d.eventin_event_id || d.website_event_status !== 'publish';
+          const response = await fetch('/api/integrations/microsoft/calendar/action', {
+            method: eventId ? 'PATCH' : 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId, mailbox, eventId: eventId || undefined,
+              subject: (concept ? 'CONCEPT — ' : '') + form.title.trim(), description: calendarConceptDescription(form),
+              start: form.start, end: form.end, location: form.location, attendees: [], recurrence: 'none', reminderMinutes: 60, showAs: 'busy' }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error('Het concept staat in Horeca OS; de info-agenda is niet bijgewerkt: ' + (result.error || 'probeer opnieuw.'));
+          d = { ...d, calendar_delivery: { ...previous, status: 'confirmed', stage: concept ? 'concept' : 'event', mailbox, event_id: result.event?.id || eventId, web_link: result.event?.webLink || previous.web_link || '', updated_at: new Date().toISOString() } };
+          saved = await saveEventContent(supabase, workspaceId, saved, d);
+          dossierRef.current = saved; setEarlyCalendarDelivery(d.calendar_delivery); onEventSaved?.(saved);
+        }
+        if (eventWorkboardTasks.some(task => task.title.trim())) {
+          await addEventWorkboardTasks(saved.id);
+          saved = await saveEventContent(supabase, workspaceId, saved, { ...eventDistribution(saved), event_workboard_drafts: [] });
+          dossierRef.current = saved; onEventSaved?.(saved);
+        }
+        setDossierSaveState(form.start && form.end && form.addToCalendar ? 'Opgeslagen in Horeca OS en de info-agenda. Niets gepubliceerd.' : 'Concept opgeslagen in Horeca OS. Zonder datum staat het bij Nog in te plannen.');
+        return saved;
+      } catch (error) { setDossierSaveState(error.message || 'Opslaan mislukt. Je invoer blijft staan.'); return null; }
+      finally { explicitSaveLock.current = false; setBusy(false); }
+    }
     const agendaOnlyDraft = isEvent && eventCreationStep === 1;
     if (!form.title.trim()) return setResult({ ok: false, message: `Vul minimaal een naam in voor ${campaignTypeLabel.toLowerCase()}.` });
     if (agendaOnlyDraft && (!form.start || !form.end || !form.location.trim())) return setResult({ ok: false, message: "Vul voor je agendaconcept ook datum, begin- en eindtijd en locatie in." });
@@ -2743,131 +2763,15 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     setForm((current) => ({ ...current, ...details, description: current.description || sourceText.trim() }));
     setResult({ ok: true, message: "Herkenbare gegevens zijn uit de tekst overgenomen. Controleer titel, datum, tijden en locatie voordat je ChatGPT opent." });
   }
-  function continueFromChatGptDesign() {
-    setForm((current) => current.description.trim() || !eventFactsForDescription ? current : { ...current, description: eventFactsForDescription });
-    setEventCreationStep(2);
-    window.requestAnimationFrame(() => scrollToCreatorSection("campagne-basis"));
+  async function continueFromChatGptDesign() {
+    try {
+      await persistDossier('website');
+      setEventCreationStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch { /* Stay here: failed saves must never advance the workflow. */ }
   }
 
-  const newEventFlow = isEvent && eventWorkspaceView === "new";
-
-  return <section className="panel" style={{ marginBottom: 24 }}>
-    {!newEventFlow && <>
-    <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
-    <p>Ook betaald promoten? Sla eerst je evenement of campagne op. Open daarna bij het opgeslagen dossier <b>Meta-campagne — Facebook en Instagram</b> voor doelgroep, budget, advertentie en voorbeeld. Er wordt niets automatisch gestart.</p>
-    {editingCampaignId && <div className="editingNotice"><strong>{editingWebsiteEvent ? "Website-evenement bewerken" : "Concept bewerken"}</strong><span>{editingWebsiteEvent ? "Je wijzigingen worden na bevestiging in hetzelfde Eventin-evenement en marketingdossier opgeslagen." : "Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat."}</span><button type="button" onClick={startNewCampaign}>Nieuw evenement</button></div>}
-    <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
-    {isEvent && <div className="eventWorkspaceChooser">
-      <div><p className="eyebrow">EVENEMENTEN</p><h3>Wat wil je doen?</h3><p>Kies één onderdeel. Horeca OS toont daarna alleen wat je daarvoor nodig hebt.</p></div>
-      <div className="eventWorkspaceChoices">
-        <button type="button" className={eventWorkspaceView === "new" ? "active" : ""} onClick={openNewEventWorkspace}><strong>Nieuw evenement maken</strong><span>Ontwerp eerst tekst en beelden met ChatGPT, vul daarna de gegevens in.</span></button>
-        <button type="button" className={eventWorkspaceView === "existing" ? "active" : ""} onClick={() => { setEventWorkspaceView("existing"); if (managedWebsiteEvents.length === 0) loadManagedWebsiteEvents(); }}><strong>Bestaand evenement</strong><span>Laad een Eventin-evenement en koppel het aan Horeca OS.</span></button>
-        <button type="button" className={eventWorkspaceView === "saved" ? "active" : ""} onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); }}><strong>Opgeslagen evenementen</strong><span>Bekijk, bewerk, dupliceer, publiceer of annuleer.</span></button>
-      </div>
-    </div>}
-    </>}
-    {newEventFlow && <div className="eventWorkspaceChooser">
-      <div><p className="eyebrow">EVENEMENTEN</p><h3>Wat wil je doen?</h3><p>Kies één onderdeel. Horeca OS toont daarna alleen wat je daarvoor nodig hebt.</p></div>
-      <div className="eventWorkspaceChoices">
-        <button type="button" className="active" onClick={openNewEventWorkspace}><strong>Nieuw evenement maken</strong><span>Ontwerp eerst tekst en beelden met ChatGPT, vul daarna de gegevens in.</span></button>
-        <button type="button" onClick={() => { setEventWorkspaceView("existing"); if (managedWebsiteEvents.length === 0) loadManagedWebsiteEvents(); }}><strong>Bestaand evenement</strong><span>Laad een Eventin-evenement en koppel het aan Horeca OS.</span></button>
-        <button type="button" onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); }}><strong>Opgeslagen evenementen</strong><span>Bekijk, bewerk, dupliceer, publiceer of annuleer.</span></button>
-      </div>
-    </div>}
-    {(!isEvent || eventWorkspaceView === "new") && <>
-    {newEventFlow && editingCampaignId && <div className="editingNotice" role="status">
-      <strong>{editingWebsiteEvent ? "Evenement bewerken" : "Concept bewerken"}</strong>
-      <span>Je werkt nu in een opgeslagen evenement. Sla de wijzigingen op wanneer je klaar bent.</span>
-    </div>}
-    {isEvent && eventCreationStep === 1 && <section className="chatGptDesignStep creatorSection" id="chatgpt-ontwerp">
-      <div className="chatGptDesignHead"><div><p className="eyebrow">STAP 1 VAN 3</p><h3>Ontwerp je evenement met ChatGPT</h3><p>Vul alleen de informatie in die ChatGPT moet kennen. Daarna opent ChatGPT met een complete opdracht voor tekst en beelden.</p></div></div>
-      <div className="chatGptDesignBody">
-        <label>Evenementnaam *<input value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Latin Night" /></label>
-        <label>Locatie *<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label>
-        <label>Datum *<input type="date" value={form.start.slice(0, 10)} onChange={(event) => { const date = event.target.value; update("start", date ? `${date}T${form.start.slice(11, 16) || "18:00"}` : ""); update("end", date ? `${date}T${form.end.slice(11, 16) || "23:00"}` : ""); }} /></label>
-        <label>Begint *<input type="time" value={form.start.slice(11, 16)} onChange={(event) => update("start", form.start.slice(0, 10) ? `${form.start.slice(0, 10)}T${event.target.value}` : "")} /></label>
-        <label>Einddatum *<input type="date" value={form.end.slice(0, 10)} onChange={(event) => update("end", event.target.value ? `${event.target.value}T${form.end.slice(11, 16) || "23:00"}` : "")} /></label>
-        <label>Eindigt *<input type="time" value={form.end.slice(11, 16)} onChange={(event) => update("end", form.end.slice(0, 10) ? `${form.end.slice(0, 10)}T${event.target.value}` : "")} /></label>
-        <label>Artiesten en programma<textarea rows={3} value={artistProgram} onChange={(event) => setArtistProgram(event.target.value)} placeholder="Bijvoorbeeld: liveband Rhythm Construction, DJ Marlon, diner en feest." /></label>
-        <fieldset className="ticketSetup wide">
-          <legend>Tickets</legend>
-          <p>Horeca OS maakt deze ticketsoorten rechtstreeks in Eventin aan. De prijzen en aantallen gaan ook mee in de ChatGPT-opdracht en de evenementtekst voor Facebook. Geen tickets? Verwijder de regel.</p>
-          {(form.ticketVariations || []).map((ticket, index) => <div className="ticketSetupEntry" key={ticket.id}>
-            <div className={`ticketSetupRow ${ticket.type === "paid" ? "paid" : "free"}`}>
-              <label>Naam ticket<input value={ticket.name} onChange={(event) => updateTicketVariation(ticket.id, "name", event.target.value)} placeholder="Bijvoorbeeld: Early Bird" /></label>
-              <label>Soort<select value={ticket.type} onChange={(event) => updateTicketVariation(ticket.id, "type", event.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option></select></label>
-              {ticket.type === "paid" && <label>Prijs<input type="number" min="0.01" step="0.01" value={ticket.price} onChange={(event) => updateTicketVariation(ticket.id, "price", event.target.value)} placeholder="Bijvoorbeeld: 12,50" /></label>}
-              <label>Aantal beschikbaar<input type="number" min="1" value={ticket.capacity} onChange={(event) => updateTicketVariation(ticket.id, "capacity", event.target.value)} placeholder="Onbeperkt" /></label>
-              <button type="button" className="removeTicket" aria-label={`Ticket ${index + 1} verwijderen`} onClick={() => removeTicketVariation(ticket.id)}>Verwijderen</button>
-            </div>
-            <details className="ticketAdvancedOptions">
-              <summary>Meer ticketopties</summary>
-              <p>Alleen nodig als dit ticket afwijkt van de standaard: verkoop start nu, stopt bij aanvang van het evenement, minimaal 1 en maximaal 10 tickets per bestelling.</p>
-              <div className="ticketAdvancedGrid">
-                <label className="wide">Ticketomschrijving<textarea rows={2} value={ticket.description || ""} onChange={(event) => updateTicketVariation(ticket.id, "description", event.target.value)} placeholder="Bijvoorbeeld: toegang inclusief welkomstdrankje." /></label>
-                <label>Verkoop begint<input type="datetime-local" value={ticket.salesStart || ""} onChange={(event) => updateTicketVariation(ticket.id, "salesStart", event.target.value)} /></label>
-                <label>Verkoop eindigt<input type="datetime-local" value={ticket.salesEnd || ""} onChange={(event) => updateTicketVariation(ticket.id, "salesEnd", event.target.value)} /></label>
-                <label>Minimaal per bestelling<input type="number" min="1" value={ticket.minQuantity || "1"} onChange={(event) => updateTicketVariation(ticket.id, "minQuantity", event.target.value)} /></label>
-                <label>Maximaal per bestelling<input type="number" min="1" value={ticket.maxQuantity || "10"} onChange={(event) => updateTicketVariation(ticket.id, "maxQuantity", event.target.value)} /></label>
-              </div>
-            </details>
-          </div>)}
-          <button type="button" className="addTicket" onClick={addTicketVariation}>+ Ticket toevoegen</button>
-        </fieldset>
-        <label>Praktische informatie<textarea rows={3} value={practicalDetails} onChange={(event) => setPracticalDetails(event.target.value)} placeholder="Bijvoorbeeld: 25+, gratis parkeren, diner reserveren, adres, eten en drinken." /></label>
-        <label>Sfeer en beeldwensen<textarea rows={3} value={creativeBrief} onChange={(event) => setCreativeBrief(event.target.value)} placeholder="Bijvoorbeeld: tropisch, chique, gouden details, volwassen publiek." /></label>
-        <details className="eventWorkboardTasks wide"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
-          {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
-            <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
-            <label>Deadline<input type="date" value={task.dueDate} onChange={(event) => updateEventWorkboardTask(task.id, "dueDate", event.target.value)} /></label>
-            <label>Prioriteit<select value={task.priority} onChange={(event) => updateEventWorkboardTask(task.id, "priority", event.target.value)}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
-            <button type="button" onClick={() => removeEventWorkboardTask(task.id)}>Verwijderen</button>
-          </div>)}</div>}
-          <button type="button" className="secondaryButton" onClick={addEventWorkboardTask}>+ Taak toevoegen</button>
-        </details>
-        <details className="sourceTextHelper wide"><summary>Ik heb al een bestaande evenementtekst</summary><p>Plak die hier alleen als je titel, datum, tijden en locatie daaruit wilt overnemen.</p><textarea rows={5} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Plak hier de bestaande tekst." /><button type="button" className="secondaryButton" disabled={!sourceText.trim()} onClick={useDetailsFromSourceText}>Gegevens uit deze tekst invullen</button></details>
-        <div className="chatGptDesignActions"><a className="primaryButton chatGptDesktopLink" href={chatGptDesktopUrl}>ChatGPT Desktop openen ↗</a><a className="primaryButton chatGptMobileLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen ↗</a><details className="chatGptBrowserLink"><summary>Werkt de app niet?</summary><a href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT in browser</a></details><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Concept opslaan…" : "Als concept in agenda opslaan"}</button><button type="button" className="secondaryButton" onClick={continueFromChatGptDesign}>Ik heb mijn ontwerp — ga verder</button></div>
-        {chatGptDesignNotice && <p className="chatGptDesignNotice" role="status">✓ {chatGptDesignNotice}</p>}
-        <small>ChatGPT krijgt alle hierboven ingevulde informatie mee. Kies daar de tekst en beelden die je wilt gebruiken. Daarna voeg je die hieronder toe.</small>
-      </div>
-    </section>}
-    {(!isEvent || eventCreationStep >= 2) && <>
-    {!isEvent && <nav className="creatorQuickBar" aria-label="Formuliernavigatie">
-      <div className="creatorQuickLinks">
-        {isEvent && <button type="button" onClick={() => scrollToCreatorSection("chatgpt-ontwerp")}>1. ChatGPT</button>}
-        <button type="button" onClick={() => scrollToCreatorSection("campagne-basis")}>{isEvent ? "2." : "1."} Basis</button>
-        <button type="button" onClick={() => scrollToCreatorSection("campagne-afbeeldingen")}>{isEvent ? "3." : "2."} Afbeeldingen</button>
-        {isEvent && <button type="button" onClick={() => scrollToCreatorSection("campagne-tickets")}>4. Tickets</button>}
-        <button type="button" onClick={() => scrollToCreatorSection("campagne-bestemmingen")}>{isEvent ? "5." : "3."} Bestemmingen</button>
-      </div>
-      <div className="creatorQuickActions">
-        <button type="button" className="secondaryButton" onClick={editingWebsiteEvent ? showPreview : saveIncompleteDraft} disabled={busy}>{busy ? "Bezig…" : editingWebsiteEvent ? "Wijziging controleren" : "Concept opslaan"}</button>
-        <button type="button" onClick={showPreview} disabled={busy}>Controleren</button>
-        {preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady}>{busy ? "Bezig…" : editingWebsiteEvent ? "Bijwerken" : isEvent ? form.status === "publish" ? "Publiceren" : "Aanmaken" : "Opslaan"}</button>}
-      </div>
-    </nav>
-    }
-    {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
-    {isEvent && <details className="eventWorkboardTasks creatorSection" id="werkbord-taken"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
-      {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
-        <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
-        <label>Deadline<input type="date" value={task.dueDate} onChange={(event) => updateEventWorkboardTask(task.id, "dueDate", event.target.value)} /></label>
-        <label>Prioriteit<select value={task.priority} onChange={(event) => updateEventWorkboardTask(task.id, "priority", event.target.value)}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
-        <button type="button" onClick={() => removeEventWorkboardTask(task.id)}>Verwijderen</button>
-      </div>)}</div>}
-      <button type="button" className="secondaryButton" onClick={addEventWorkboardTask}>+ Taak toevoegen</button>
-    </details>}
-    <div className="eventCreatorGrid creatorSection" id="campagne-basis">
-      <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
-      <label>{campaignTitleLabel} *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
-      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onInput={(e) => update("start", e.currentTarget.value)} onChange={(e) => update("start", e.currentTarget.value)} /></label><label>Eindigt *<input type="datetime-local" min={form.start || undefined} value={form.end} onInput={(e) => update("end", e.currentTarget.value)} onChange={(e) => update("end", e.currentTarget.value)} /><small>Kan niet vóór de begintijd liggen. Na middernacht wordt automatisch de volgende dag.</small></label><label className="wide">Locatie *<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
-      {(form.campaignType === "product" || form.campaignType === "offer") && <><label>Normale prijs<input type="number" min="0" step="0.01" value={form.regularPrice} onChange={(e) => update("regularPrice", e.target.value)} /></label><label>{form.campaignType === "offer" ? "Actieprijs *" : "Promotieprijs"}<input type="number" min="0" step="0.01" value={form.campaignPrice} onChange={(e) => update("campaignPrice", e.target.value)} /></label></>}
-      {form.campaignType === "offer" && <><label>Actiecode<input value={form.discountCode} onChange={(e) => update("discountCode", e.target.value)} /></label><label>Geldig vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Geldig tot *<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
-      {form.campaignType === "package" && <><label>Aantal personen<input type="number" min="1" value={form.groupSize} onChange={(e) => update("groupSize", e.target.value)} /></label><label>Prijs per persoon<input type="number" min="0" step="0.01" value={form.pricePerPerson} onChange={(e) => update("pricePerPerson", e.target.value)} /></label><label>Beschikbaar vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Beschikbaar tot<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
-      {form.campaignType === "review" && <><label>Naam gast<input value={form.reviewerName} onChange={(e) => update("reviewerName", e.target.value)} /></label><label>Beoordeling<select value={form.reviewScore} onChange={(e) => update("reviewScore", e.target.value)}>{[5,4,3,2,1].map((score) => <option key={score} value={score}>{score} sterren</option>)}</select></label><label className="wide">Bron of reviewlink<input type="url" value={form.reviewSource} onChange={(e) => update("reviewSource", e.target.value)} /></label></>}
-      <label className="wide">Korte promotietekst<textarea rows={3} value={form.shortDescription} onChange={(e) => update("shortDescription", e.target.value)} placeholder="De kernboodschap voor Google, WhatsApp en sociale media." /></label>
-      <label className="wide">{form.campaignType === "review" ? "Reviewtekst *" : "Volledige omschrijving"}<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-      <div className="imageUploads wide creatorSection" id="campagne-afbeeldingen">
+  const eventImageFields = (<div className={dossierStyles.images}><div className="imageUploads wide creatorSection" id="campagne-afbeeldingen">
         <div className="imageUploadHead"><strong>Afbeeldingen per kanaal</strong><p>Upload één bronafbeelding voor alle formaten, of lever per kanaal een eigen uitsnede aan.</p></div>
         <article className={`eventinImageStatus ${form.eventinImage?.url ? "ready" : "empty"}`}>
           <div>
@@ -2930,7 +2834,278 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
         })}</div>
         <p className="imageHelp">JPG, PNG of WebP · maximaal 10 MB per afbeelding.</p>
         {uploadMessage && <p className={`uploadMessage ${uploadMessage.ok ? "success" : "error"}`}>{uploadMessage.message}</p>}
+      </div></div>);
+  const newEventFlow = isEvent && eventWorkspaceView === "new";
+  const dossierSnapshot = { form, artistProgram, practicalDetails, creativeBrief, sourceText, eventWorkboardTasks, step: eventCreationStep === 2 ? 'website' : 'horeca_os' };
+  snapshotRef.current = dossierSnapshot;
+  const dossierSignature = JSON.stringify(dossierSnapshot);
+  async function persistDossier(step) {
+    if (!snapshotRef.current?.form.title.trim()) throw new Error('Vul minimaal een evenementnaam in.');
+    if (uploadingSlot) { setDossierSaveState('Wacht tot de afbeeldingen zijn geüpload.'); throw new Error('Upload loopt nog.'); }
+    while (dossierSaveRef.current) await dossierSaveRef.current;
+    const snapshot = { ...snapshotRef.current, ...(step ? { step } : {}) };
+    const signature = JSON.stringify(snapshot);
+    if (savedSnapshotRef.current === signature && dossierRef.current) return dossierRef.current;
+    const operation = (async () => {
+      setDossierSaveState('Opslaan in Horeca OS…');
+      try {
+        const integration = dossierRef.current ? null : await campaignAccountForBusiness(selectedBusiness?.id || businessId);
+        if (!dossierIdRef.current) dossierIdRef.current = crypto.randomUUID();
+        let saved = await saveEventDossier(supabase, {
+          workspaceId, businessId: selectedBusiness?.id || businessId, userId: session.user.id,
+          accountId: integration?.id, item: dossierRef.current, id: dossierIdRef.current, snapshot,
+        });
+        // A previous insert response can be lost. Use that recovered row as baseline,
+        // then save the current (possibly newer) input without creating a duplicate.
+        const desired = dossierDistribution(snapshot, eventDistribution(saved));
+        if (JSON.stringify(desired) !== JSON.stringify(eventDistribution(saved))) saved = await saveEventContent(supabase, workspaceId, saved, desired, desired.common.description || desired.common.short_description || desired.common.title);
+        dossierRef.current = saved;
+        setEditingCampaignId(saved.id);
+        savedSnapshotRef.current = signature;
+        window.localStorage.removeItem(formDraftStorageKey(workspaceId, selectedBusiness?.id || businessId));
+        setDossierSaveState('Opgeslagen in Horeca OS. Niets gepubliceerd.');
+        setDossierRevision(value => value + 1);
+        onEventSaved?.(saved);
+        return saved;
+      } catch (error) {
+        setDossierSaveState('Niet opgeslagen: ' + (error.message || 'Probeer opnieuw.'));
+        throw error;
+      }
+    })();
+    dossierSaveRef.current = operation;
+    try { return await operation; } finally { if (dossierSaveRef.current === operation) dossierSaveRef.current = null; }
+  }
+  useEffect(() => {
+    if (!newEventFlow || !form.title.trim() || uploadingSlot || busy || savedSnapshotRef.current === dossierSignature) return;
+    const timer = window.setTimeout(() => { persistDossier().catch(() => {}); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [dossierSignature, newEventFlow, uploadingSlot, busy]);
+  useEffect(() => {
+    registerSave?.(async () => {
+      if (explicitSaveLock.current || websiteActionLock.current) { setDossierSaveState('Wacht tot de lopende opslag klaar is.'); return false; }
+      if (!newEventFlow || !snapshotRef.current?.form.title.trim()) return true;
+      try {
+        await persistDossier();
+        // Edits typed during a save must also be flushed before leaving.
+        await persistDossier();
+        return true;
+      } catch { return false; }
+    });
+    return () => registerSave?.(null);
+  });
+  useEffect(() => {
+    const dirty = newEventFlow && form.title.trim() && dossierSignature !== savedSnapshotRef.current;
+    const warn = event => { event.preventDefault(); event.returnValue = ''; };
+    if (dirty) window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dossierSignature, newEventFlow, dossierRevision]);
+  useEffect(() => {
+    if (!openEventRequest?.item || openEventRequest.id === loadedDossierRequest.current || openEventRequest.item.business_id !== selectedBusiness?.id) return;
+    loadedDossierRequest.current = openEventRequest.id;
+    openCampaignConcept(openEventRequest.item);
+  }, [openEventRequest?.id, selectedBusiness?.id]);
+
+  async function publishDossierWebsite() {
+    if (busy || uploadingSlot || websiteActionLock.current) return;
+    const error = validate();
+    if (error) { setResult({ ok: false, message: error }); return; }
+    websiteActionLock.current = true;
+    setBusy(true);
+    try {
+      let saved = await persistDossier('website');
+      let distribution = eventDistribution(saved);
+      const existingId = distribution.eventin_event_id;
+      let website = pendingWebsiteRef.current;
+      const recoveryKey = 'horeca-os:eventin-result:' + saved.id;
+      if (!website) {
+        try { website = JSON.parse(window.localStorage.getItem(recoveryKey) || 'null'); } catch {}
+      }
+      if (!existingId && !website && distribution.event_workflow?.website_operation) throw new Error('Een eerdere aanvraag aan Eventin is nog niet bevestigd. Controleer eerst of het evenement daar bestaat; maak het niet opnieuw aan.');
+      if (!website) {
+        if (!existingId) {
+          distribution = { ...distribution, event_workflow: { ...distribution.event_workflow, website_operation: 'awaiting_confirmation' } };
+          saved = await saveEventContent(supabase, workspaceId, saved, distribution);
+          dossierRef.current = saved;
+        }
+        const response = await fetch('/api/marketing/website-events/create', {
+          method: existingId ? 'PATCH' : 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...form, workspaceId, businessId, site, campaignId: saved.id, eventId: existingId,
+            imageUrl: form.eventinImage?.url || form.imageUrl }),
+        });
+        website = await response.json();
+        if (!response.ok || !website.event?.id) {
+          // Keep an uncertain operation blocked. An HTTP error can follow a partial external write.
+          throw new Error(website.error || 'Eventin heeft de opslag niet bevestigd. Controleer eerst de website.');
+        }
+        pendingWebsiteRef.current = website;
+        window.localStorage.setItem(recoveryKey, JSON.stringify(website));
+      }
+      distribution = { ...distribution, source_type: 'website_event', eventin_event_id: website.event.id,
+        source_url: website.event.url, website_event_status: website.event.status,
+        common: { ...distribution.common, website_url: website.event.url, website_status: website.event.status },
+        event_workflow: { ...distribution.event_workflow, website_operation: null, step: 'website' } };
+      saved = await saveEventContent(supabase, workspaceId, saved, distribution);
+      dossierRef.current = saved;
+      pendingWebsiteRef.current = null;
+      window.localStorage.removeItem(recoveryKey);
+      onEventSaved?.(saved);
+      setDossierRevision(value => value + 1);
+      setResult({ ok: true, message: website.warning || 'Opgeslagen in Eventin. Je kunt nu verder met Facebook.' });
+    } catch (error) {
+      setResult({ ok: false, message: (pendingWebsiteRef.current ? 'Eventin is opgeslagen, maar de koppeling in Horeca OS nog niet. Probeer deze opslag opnieuw; er wordt geen tweede evenement gemaakt. ' : '') + error.message });
+    } finally { websiteActionLock.current = false; setBusy(false); }
+  }
+
+  return <section className={`panel ${dossierStyles.dossier}`} style={{ marginBottom: 24 }}>
+    {!newEventFlow && <>
+    <div className="panelHead"><div><p className="eyebrow">CAMPAGNEBOUWER</p><h2>Wat wil je promoten?</h2><p>Kies eerst het soort campagne. Horeca OS toont daarna alleen de gegevens die daarvoor nodig zijn.</p></div></div>
+    <p>Ook betaald promoten? Sla eerst je evenement of campagne op. Open daarna bij het opgeslagen dossier <b>Meta-campagne — Facebook en Instagram</b> voor doelgroep, budget, advertentie en voorbeeld. Er wordt niets automatisch gestart.</p>
+    {editingCampaignId && <div className="editingNotice"><strong>{editingWebsiteEvent ? "Website-evenement bewerken" : "Concept bewerken"}</strong><span>{editingWebsiteEvent ? "Je wijzigingen worden na bevestiging in hetzelfde Eventin-evenement en marketingdossier opgeslagen." : "Je wijzigingen vervangen dit opgeslagen concept wanneer je opnieuw opslaat."}</span><button type="button" onClick={startNewCampaign}>Nieuw evenement</button></div>}
+    <div className="campaignTypeGrid">{campaignTypes.map(([id, label, help]) => <button type="button" key={id} className={form.campaignType === id ? "active" : ""} onClick={() => selectCampaignType(id)}><strong>{label}</strong><span>{help}</span></button>)}</div>
+    {isEvent && <div className="eventWorkspaceChooser">
+      <div><p className="eyebrow">EVENEMENTEN</p><h3>Wat wil je doen?</h3><p>Kies één onderdeel. Horeca OS toont daarna alleen wat je daarvoor nodig hebt.</p></div>
+      <div className="eventWorkspaceChoices">
+        <button type="button" className={eventWorkspaceView === "new" ? "active" : ""} onClick={openNewEventWorkspace}><strong>Nieuw evenement maken</strong><span>Ontwerp eerst tekst en beelden met ChatGPT, vul daarna de gegevens in.</span></button>
+        <button type="button" className={eventWorkspaceView === "existing" ? "active" : ""} onClick={() => { setEventWorkspaceView("existing"); if (managedWebsiteEvents.length === 0) loadManagedWebsiteEvents(); }}><strong>Bestaand evenement</strong><span>Laad een Eventin-evenement en koppel het aan Horeca OS.</span></button>
+        <button type="button" className={eventWorkspaceView === "saved" ? "active" : ""} onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); }}><strong>Opgeslagen evenementen</strong><span>Bekijk, bewerk, dupliceer, publiceer of annuleer.</span></button>
       </div>
+    </div>}
+    </>}
+    {false && newEventFlow && <div className="eventWorkspaceChooser">
+      <div><p className="eyebrow">EVENEMENTEN</p><h3>Wat wil je doen?</h3><p>Kies één onderdeel. Horeca OS toont daarna alleen wat je daarvoor nodig hebt.</p></div>
+      <div className="eventWorkspaceChoices">
+        <button type="button" className="active" onClick={openNewEventWorkspace}><strong>Nieuw evenement maken</strong><span>Ontwerp eerst tekst en beelden met ChatGPT, vul daarna de gegevens in.</span></button>
+        <button type="button" onClick={() => { setEventWorkspaceView("existing"); if (managedWebsiteEvents.length === 0) loadManagedWebsiteEvents(); }}><strong>Bestaand evenement</strong><span>Laad een Eventin-evenement en koppel het aan Horeca OS.</span></button>
+        <button type="button" onClick={() => { setEventWorkspaceView("saved"); loadEventCampaigns(); }}><strong>Opgeslagen evenementen</strong><span>Bekijk, bewerk, dupliceer, publiceer of annuleer.</span></button>
+      </div>
+    </div>}
+    {(!isEvent || eventWorkspaceView === "new") && <>
+    {newEventFlow && editingCampaignId && <div className="editingNotice" role="status">
+      <strong>{editingWebsiteEvent ? "Evenement bewerken" : "Concept bewerken"}</strong>
+      <span>Je werkt nu in een opgeslagen evenement. Sla de wijzigingen op wanneer je klaar bent.</span>
+    </div>}
+    {isEvent && <p role="status">{dossierSaveState || 'Vul een naam in om je concept te bewaren.'}</p>}
+    {isEvent && eventCreationStep === 2 && <section className="creatorSection">
+      <p className="eyebrow">STAP 2 · WEBSITE (EVENTIN)</p><h3>Controleer je evenement voor de website</h3>
+      <p>Hieronder staat wat in Horeca OS is opgeslagen. Alleen de knop voor Eventin verwerkt dit op de website.</p>
+      <EventDossierSummary item={dossierRef.current} />
+      <label>Eventin-publicatie<select value={form.status} onChange={event => update("status", event.target.value)}><option value="draft">Eerst als concept in Eventin</option><option value="publish">Publiceren op de website</option></select></label>
+      <div className="eventActions">
+        <button type="button" className="secondaryButton" disabled={busy} onClick={async () => { try { await persistDossier('horeca_os'); setEventCreationStep(1); } catch {} }}>Terug naar Horeca OS</button>
+        <button type="button" disabled={busy || Boolean(uploadingSlot)} onClick={publishDossierWebsite}>{busy ? 'Opslaan…' : 'In Eventin opslaan'}</button>
+        {eventDistribution(dossierRef.current).eventin_event_id && <button type="button" className="secondaryButton" disabled={busy} onClick={async () => { try { const saved = await persistDossier('facebook'); onContinueEvent?.(saved, 'facebook'); } catch {} }}>Verder naar Facebook</button>}
+      </div>
+      {result && <p role={result.ok ? 'status' : 'alert'}>{result.message}</p>}
+    </section>}
+    {isEvent && eventCreationStep === 1 && <section className="chatGptDesignStep creatorSection" id="chatgpt-ontwerp">
+      <div className="chatGptDesignHead"><div><p className="eyebrow">STAP 1 · HORECA OS</p><h3>Mijn evenement</h3><p>Begin met alleen een naam, of vul alles al in. Je gegevens en afbeeldingen worden hier bewaard voor alle kanalen. ChatGPT is een hulpmiddel; publiceren komt pas daarna.</p></div></div>
+      <div className="chatGptDesignBody">
+        <label>Evenementnaam *<input value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="Bijvoorbeeld: Caribbean Latin Night" /></label>
+        <label>Locatie *<input value={form.location} onChange={(event) => update("location", event.target.value)} /></label>
+        <label>Datum *<input type="date" value={form.start.slice(0, 10)} onChange={(event) => { const date = event.target.value; update("start", date ? `${date}T${form.start.slice(11, 16) || "18:00"}` : ""); update("end", date ? `${date}T${form.end.slice(11, 16) || "23:00"}` : ""); }} /></label>
+        <label>Begint *<input type="time" value={form.start.slice(11, 16)} onChange={(event) => update("start", form.start.slice(0, 10) ? `${form.start.slice(0, 10)}T${event.target.value}` : "")} /></label>
+        <label>Einddatum *<input type="date" value={form.end.slice(0, 10)} onChange={(event) => update("end", event.target.value ? `${event.target.value}T${form.end.slice(11, 16) || "23:00"}` : "")} /></label>
+        <label>Eindigt *<input type="time" value={form.end.slice(11, 16)} onChange={(event) => update("end", form.end.slice(0, 10) ? `${form.end.slice(0, 10)}T${event.target.value}` : "")} /></label>
+        <label className="wide">Volledige evenementtekst<textarea rows={9} value={form.description} onChange={event => update("description", event.target.value)} placeholder="Plak hier de gekozen tekst van ChatGPT, of schrijf zelf." /></label>
+        <label>Artiesten en programma<textarea rows={3} value={artistProgram} onChange={(event) => setArtistProgram(event.target.value)} placeholder="Bijvoorbeeld: liveband Rhythm Construction, DJ Marlon, diner en feest." /></label>
+        <fieldset className="ticketSetup wide">
+          <legend>Tickets</legend>
+          <p>Horeca OS maakt deze ticketsoorten rechtstreeks in Eventin aan. De prijzen en aantallen gaan ook mee in de ChatGPT-opdracht en de evenementtekst voor Facebook. Geen tickets? Verwijder de regel.</p>
+          {(form.ticketVariations || []).map((ticket, index) => <div className="ticketSetupEntry" key={ticket.id}>
+            <div className={`ticketSetupRow ${ticket.type === "paid" ? "paid" : "free"}`}>
+              <label>Naam ticket<input value={ticket.name} onChange={(event) => updateTicketVariation(ticket.id, "name", event.target.value)} placeholder="Bijvoorbeeld: Early Bird" /></label>
+              <label>Soort<select value={ticket.type} onChange={(event) => updateTicketVariation(ticket.id, "type", event.target.value)}><option value="free">Gratis</option><option value="paid">Betaald</option></select></label>
+              {ticket.type === "paid" && <label>Prijs<input type="number" min="0.01" step="0.01" value={ticket.price} onChange={(event) => updateTicketVariation(ticket.id, "price", event.target.value)} placeholder="Bijvoorbeeld: 12,50" /></label>}
+              <label>Aantal beschikbaar<input type="number" min="1" value={ticket.capacity} onChange={(event) => updateTicketVariation(ticket.id, "capacity", event.target.value)} placeholder="Onbeperkt" /></label>
+              <button type="button" className="removeTicket" aria-label={`Ticket ${index + 1} verwijderen`} onClick={() => removeTicketVariation(ticket.id)}>Verwijderen</button>
+            </div>
+            <details className="ticketAdvancedOptions">
+              <summary>Meer ticketopties</summary>
+              <p>Alleen nodig als dit ticket afwijkt van de standaard: verkoop start nu, stopt bij aanvang van het evenement, minimaal 1 en maximaal 10 tickets per bestelling.</p>
+              <div className="ticketAdvancedGrid">
+                <label className="wide">Ticketomschrijving<textarea rows={2} value={ticket.description || ""} onChange={(event) => updateTicketVariation(ticket.id, "description", event.target.value)} placeholder="Bijvoorbeeld: toegang inclusief welkomstdrankje." /></label>
+                <label>Verkoop begint<input type="datetime-local" value={ticket.salesStart || ""} onChange={(event) => updateTicketVariation(ticket.id, "salesStart", event.target.value)} /></label>
+                <label>Verkoop eindigt<input type="datetime-local" value={ticket.salesEnd || ""} onChange={(event) => updateTicketVariation(ticket.id, "salesEnd", event.target.value)} /></label>
+                <label>Minimaal per bestelling<input type="number" min="1" value={ticket.minQuantity || "1"} onChange={(event) => updateTicketVariation(ticket.id, "minQuantity", event.target.value)} /></label>
+                <label>Maximaal per bestelling<input type="number" min="1" value={ticket.maxQuantity || "10"} onChange={(event) => updateTicketVariation(ticket.id, "maxQuantity", event.target.value)} /></label>
+              </div>
+            </details>
+          </div>)}
+          <button type="button" className="addTicket" onClick={addTicketVariation}>+ Ticket toevoegen</button>
+        </fieldset>
+        <label>Praktische informatie<textarea rows={3} value={practicalDetails} onChange={(event) => setPracticalDetails(event.target.value)} placeholder="Bijvoorbeeld: 25+, gratis parkeren, diner reserveren, adres, eten en drinken." /></label>
+        <label>Sfeer en beeldwensen<textarea rows={3} value={creativeBrief} onChange={(event) => setCreativeBrief(event.target.value)} placeholder="Bijvoorbeeld: tropisch, chique, gouden details, volwassen publiek." /></label>
+        <label>Organisator<input value={form.organizer} onChange={event => update("organizer", event.target.value)} /></label>
+        <label>Contact-e-mail<input type="email" value={form.contactEmail} onChange={event => update("contactEmail", event.target.value)} /></label>
+        {eventImageFields}
+        <details className="wide"><summary>Extra teksten per kanaal (optioneel)</summary>
+          <p>Standaard gebruik je de volledige evenementtekst. Vul alleen een afwijkende tekst in als je dat wilt.</p>
+          <label>Facebook<textarea rows={5} value={form.facebookText} onChange={event => update("facebookText", event.target.value)} /></label>
+          <label>WhatsApp<textarea rows={5} value={form.whatsappMessage} onChange={event => update("whatsappMessage", event.target.value)} /></label>
+          <label>Instagram<textarea rows={5} value={form.instagramCaption} onChange={event => update("instagramCaption", event.target.value)} /></label>
+          <label>Videolink<input type="url" value={form.videoUrl} onChange={event => update("videoUrl", event.target.value)} /></label>
+          <label>Knoplink<input type="url" value={form.ctaUrl} onChange={event => update("ctaUrl", event.target.value)} /></label>
+        </details>
+        <details className="wide"><summary>Winactie voorbereiden (optioneel)</summary>
+          <label>Aantal kaarten om weg te geven<input type="number" min="1" value={form.giveawayCards} onChange={event => update("giveawayCards", event.target.value)} /></label>
+          <label>Meedoen tot en met<input type="date" value={form.giveawayDeadline} onChange={event => update("giveawayDeadline", event.target.value)} /></label>
+          <label>Winnaar bekendmaken<input type="date" value={form.giveawayAnnouncement} onChange={event => update("giveawayAnnouncement", event.target.value)} /></label>
+          <label>Reactietermijn winnaar (uren)<input type="number" min="1" value={form.giveawayResponseHours} onChange={event => update("giveawayResponseHours", event.target.value)} /></label>
+          <p>Deze voorbereiding blijft in Horeca OS. De winactie komt pas na Facebook aan de beurt.</p>
+        </details>
+        <details className="eventWorkboardTasks wide"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
+          {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
+            <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
+            <label>Deadline<input type="date" value={task.dueDate} onChange={(event) => updateEventWorkboardTask(task.id, "dueDate", event.target.value)} /></label>
+            <label>Prioriteit<select value={task.priority} onChange={(event) => updateEventWorkboardTask(task.id, "priority", event.target.value)}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
+            <button type="button" onClick={() => removeEventWorkboardTask(task.id)}>Verwijderen</button>
+          </div>)}</div>}
+          <button type="button" className="secondaryButton" onClick={addEventWorkboardTask}>+ Taak toevoegen</button>
+        </details>
+        <details className="sourceTextHelper wide"><summary>Ik heb al een bestaande evenementtekst</summary><p>Plak die hier alleen als je titel, datum, tijden en locatie daaruit wilt overnemen.</p><textarea rows={5} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Plak hier de bestaande tekst." /><button type="button" className="secondaryButton" disabled={!sourceText.trim()} onClick={useDetailsFromSourceText}>Gegevens uit deze tekst invullen</button></details>
+        <div className="chatGptDesignActions"><a className="primaryButton chatGptDesktopLink" href={chatGptDesktopUrl}>ChatGPT Desktop openen ↗</a><a className="primaryButton chatGptMobileLink" href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">ChatGPT openen ↗</a><details className="chatGptBrowserLink"><summary>Werkt de app niet?</summary><a href={chatGptDesignUrl} target="_blank" rel="noopener noreferrer">Open ChatGPT in browser</a></details><button type="button" className="secondaryButton" onClick={saveIncompleteDraft} disabled={busy}>{busy ? "Concept opslaan…" : "Concept bewaren in Horeca OS"}</button><button type="button" className="secondaryButton" onClick={continueFromChatGptDesign} disabled={busy || Boolean(uploadingSlot) || !form.title.trim()}>Opslaan en verder naar website (Eventin)</button></div>
+        {chatGptDesignNotice && <p className="chatGptDesignNotice" role="status">✓ {chatGptDesignNotice}</p>}
+        <small>ChatGPT opent met je opdracht. Plak de gekozen tekst en upload de afbeeldingen hier. Alleen de evenementnaam is nodig om een concept te bewaren.</small>
+      </div>
+    </section>}
+    {!isEvent && <>
+    {!isEvent && <nav className="creatorQuickBar" aria-label="Formuliernavigatie">
+      <div className="creatorQuickLinks">
+        {isEvent && <button type="button" onClick={() => scrollToCreatorSection("chatgpt-ontwerp")}>1. ChatGPT</button>}
+        <button type="button" onClick={() => scrollToCreatorSection("campagne-basis")}>{isEvent ? "2." : "1."} Basis</button>
+        <button type="button" onClick={() => scrollToCreatorSection("campagne-afbeeldingen")}>{isEvent ? "3." : "2."} Afbeeldingen</button>
+        {isEvent && <button type="button" onClick={() => scrollToCreatorSection("campagne-tickets")}>4. Tickets</button>}
+        <button type="button" onClick={() => scrollToCreatorSection("campagne-bestemmingen")}>{isEvent ? "5." : "3."} Bestemmingen</button>
+      </div>
+      <div className="creatorQuickActions">
+        <button type="button" className="secondaryButton" onClick={editingWebsiteEvent ? showPreview : saveIncompleteDraft} disabled={busy}>{busy ? "Bezig…" : editingWebsiteEvent ? "Wijziging controleren" : "Concept opslaan"}</button>
+        <button type="button" onClick={showPreview} disabled={busy}>Controleren</button>
+        {preview && <button type="button" onClick={isEvent ? createEvent : createStandaloneCampaign} disabled={busy || !mediaReady}>{busy ? "Bezig…" : editingWebsiteEvent ? "Bijwerken" : isEvent ? form.status === "publish" ? "Publiceren" : "Aanmaken" : "Opslaan"}</button>}
+      </div>
+    </nav>
+    }
+    {isEvent && <div className="eventDetailsIntro"><p className="eyebrow">STAP 2 VAN 3</p><h3>Voeg je gekozen tekst en afbeeldingen toe</h3><p>De naam, datum, tijd en locatie uit stap 1 staan hier al. Plak nu de gekozen ChatGPT-tekst bij ‘Volledige omschrijving’ en voeg daarna je afbeeldingen toe.</p></div>}
+    {isEvent && <details className="eventWorkboardTasks creatorSection" id="werkbord-taken"><summary>Taken voor het Werkbord (optioneel)</summary><p>Voeg bijvoorbeeld <b>Band zoeken</b> of <b>Vergunning aanvragen</b> toe. Bij het opslaan van dit evenement komen ze direct op het Werkbord.</p>
+      {eventWorkboardTasks.length > 0 && <div className="eventWorkboardTaskList">{eventWorkboardTasks.map((task, index) => <div className="eventWorkboardTask" key={task.id}>
+        <label>Taak<input value={task.title} onChange={(event) => updateEventWorkboardTask(task.id, "title", event.target.value)} placeholder={index === 0 ? "Bijvoorbeeld: Band zoeken" : "Wat moet er gebeuren?"} /></label>
+        <label>Deadline<input type="date" value={task.dueDate} onChange={(event) => updateEventWorkboardTask(task.id, "dueDate", event.target.value)} /></label>
+        <label>Prioriteit<select value={task.priority} onChange={(event) => updateEventWorkboardTask(task.id, "priority", event.target.value)}><option value="critical">Kritiek</option><option value="high">Hoog</option><option value="medium">Normaal</option><option value="low">Laag</option></select></label>
+        <button type="button" onClick={() => removeEventWorkboardTask(task.id)}>Verwijderen</button>
+      </div>)}</div>}
+      <button type="button" className="secondaryButton" onClick={addEventWorkboardTask}>+ Taak toevoegen</button>
+    </details>}
+    <div className="eventCreatorGrid creatorSection" id="campagne-basis">
+      <label>Vestiging<select value={selectedBusiness?.id || ""} disabled><option>{selectedBusiness?.name || "Kies eerst een vestiging bovenaan"}</option></select></label>
+      <label>{campaignTitleLabel} *<input value={form.title} onChange={(e) => update("title", e.target.value)} /></label>
+      {isEvent && <><label>Begint *<input type="datetime-local" value={form.start} onInput={(e) => update("start", e.currentTarget.value)} onChange={(e) => update("start", e.currentTarget.value)} /></label><label>Eindigt *<input type="datetime-local" min={form.start || undefined} value={form.end} onInput={(e) => update("end", e.currentTarget.value)} onChange={(e) => update("end", e.currentTarget.value)} /><small>Kan niet vóór de begintijd liggen. Na middernacht wordt automatisch de volgende dag.</small></label><label className="wide">Locatie *<input value={form.location} onChange={(e) => update("location", e.target.value)} /></label></>}
+      {(form.campaignType === "product" || form.campaignType === "offer") && <><label>Normale prijs<input type="number" min="0" step="0.01" value={form.regularPrice} onChange={(e) => update("regularPrice", e.target.value)} /></label><label>{form.campaignType === "offer" ? "Actieprijs *" : "Promotieprijs"}<input type="number" min="0" step="0.01" value={form.campaignPrice} onChange={(e) => update("campaignPrice", e.target.value)} /></label></>}
+      {form.campaignType === "offer" && <><label>Actiecode<input value={form.discountCode} onChange={(e) => update("discountCode", e.target.value)} /></label><label>Geldig vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Geldig tot *<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
+      {form.campaignType === "package" && <><label>Aantal personen<input type="number" min="1" value={form.groupSize} onChange={(e) => update("groupSize", e.target.value)} /></label><label>Prijs per persoon<input type="number" min="0" step="0.01" value={form.pricePerPerson} onChange={(e) => update("pricePerPerson", e.target.value)} /></label><label>Beschikbaar vanaf<input type="date" value={form.validFrom} onChange={(e) => update("validFrom", e.target.value)} /></label><label>Beschikbaar tot<input type="date" value={form.validUntil} onChange={(e) => update("validUntil", e.target.value)} /></label></>}
+      {form.campaignType === "review" && <><label>Naam gast<input value={form.reviewerName} onChange={(e) => update("reviewerName", e.target.value)} /></label><label>Beoordeling<select value={form.reviewScore} onChange={(e) => update("reviewScore", e.target.value)}>{[5,4,3,2,1].map((score) => <option key={score} value={score}>{score} sterren</option>)}</select></label><label className="wide">Bron of reviewlink<input type="url" value={form.reviewSource} onChange={(e) => update("reviewSource", e.target.value)} /></label></>}
+      <label className="wide">Korte promotietekst<textarea rows={3} value={form.shortDescription} onChange={(e) => update("shortDescription", e.target.value)} placeholder="De kernboodschap voor Google, WhatsApp en sociale media." /></label>
+      <label className="wide">{form.campaignType === "review" ? "Reviewtekst *" : "Volledige omschrijving"}<textarea rows={6} value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
+      {eventImageFields}
       <label>Externe afbeeldingslink (optioneel)<input type="url" value={form.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="Alleen als alternatief voor upload" /></label>
       <label>Videolink<input type="url" value={form.videoUrl} onChange={(e) => update("videoUrl", e.target.value)} placeholder="Verplicht wanneer TikTok is gekozen" /></label>
       <label>Organisator<input value={form.organizer} onChange={(e) => update("organizer", e.target.value)} /></label>
@@ -3528,5 +3703,3 @@ export default function CentralEventCreator({ workspaceId, businessId, businesse
     `}</style>
   </section>;
 }
-
-

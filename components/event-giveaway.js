@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import useEventPreparation from "./use-event-preparation";
 import { instagramEventMedia } from "../lib/instagram-event-media";
 import { giveawayImageFilename, giveawayOverlayLines, renderGiveawayImage, uploadGiveawayImage } from "../lib/giveaway-image";
 
@@ -53,18 +54,18 @@ export function defaultGiveawayDraft({ item, distribution, businessName }) {
     imageUrl: common.image_url || common.images?.portrait?.url || common.images?.square?.url || common.images?.landscape?.url || "",
     facebookPageUrl: common.facebook_page_url || facebook.page_url || facebook.page_permalink || (/^\d+$/.test(pageId) ? `https://www.facebook.com/${pageId}` : "https://www.facebook.com/"),
     businessName: businessName || "",
-    cards: 2,
-    deadline: addDays(start, -6),
-    announcement: addDays(start, -3),
-    responseHours: 12,
+    cards: common.giveaway?.cards || 2,
+    deadline: common.giveaway?.deadline || addDays(start, -6),
+    announcement: common.giveaway?.announcement || addDays(start, -3),
+    responseHours: common.giveaway?.responseHours || 12,
   };
   return { ...draft, text: buildGiveawayText(draft) };
 }
 
-export default function EventGiveaway({ item, distribution, businessName, workspaceId, session, onPublished }) {
+export default function EventGiveaway({ client, item, distribution, businessName, workspaceId, session, onPublished, registerSave, enabled = true }) {
   const storageKey = giveawayDraftStorageKey(item?.id);
   const defaults = useMemo(() => defaultGiveawayDraft({ item, distribution, businessName }), [item, distribution, businessName]);
-  const [draft, setDraft] = useState(defaults);
+  const [draft, setDraft] = useState(() => ({ ...defaults, ...distribution?.channel_drafts?.facebook_giveaway }));
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
@@ -80,10 +81,10 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(storageKey);
-      setDraft(stored ? { ...defaults, ...JSON.parse(stored) } : defaults);
+      setDraft(distribution?.channel_drafts?.facebook_giveaway ? { ...defaults, ...distribution.channel_drafts.facebook_giveaway } : stored ? { ...defaults, ...JSON.parse(stored) } : defaults);
     } catch { setDraft(defaults); }
     setReady(true);
-  }, [storageKey, defaults]);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!ready) return;
@@ -94,6 +95,7 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
     if (savedGiveaway?.external_id) setPublishedPost(savedGiveaway);
   }, [savedGiveaway?.external_id, savedGiveaway?.permalink, savedGiveaway?.published_at]);
 
+  const preparation = useEventPreparation({ client, item, workspaceId, channel: 'facebook_giveaway', value: draft, enabled: ready && enabled, onSaved: onPublished, registerSave });
   function update(name, value) {
     setDraft((current) => {
       const next = { ...current, [name]: value };
@@ -165,6 +167,7 @@ export default function EventGiveaway({ item, distribution, businessName, worksp
   }
 
   return <section className="marketingGiveaway" aria-label="Winactie voorbereiden" style={{ display: "grid", gap: 14, padding: "14px 0" }}>
+    {preparation.notice && <p role="status">{preparation.notice}</p>}
     <div><h4>Winactie voorbereiden</h4><p>Horeca OS heeft de evenementgegevens ingevuld. Kies hieronder je variabelen; er wordt niets automatisch geplaatst.</p></div>
     <div className="marketingGiveawayFields" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
       <label style={{ display: "grid", gap: 5 }}>Aantal kaarten<input type="number" min="1" max="50" value={draft.cards} onChange={(event) => update("cards", event.target.value)} /></label>

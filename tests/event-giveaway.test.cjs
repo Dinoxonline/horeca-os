@@ -39,7 +39,7 @@ test("a giveaway is filled from the event and keeps its practical variables in t
   assert.equal(giveawayImageFilename("40 jaar Rhythm Construction!"), "horeca-os-winactie-40-jaar-rhythm-construction.jpg");
   const overview = fs.readFileSync(path.join(root, "components/marketing-overview.js"), "utf8");
   assert.match(overview, /facebook_giveaway: "Facebook winactie"/);
-  assert.match(overview, /\["website", "facebook", \.\.\.\(!external \? \["facebook_giveaway"\]/);
+  assert.match(overview, /"horeca_os".*"website", "facebook".*"facebook_giveaway", "whatsapp"/);
   assert.match(overview, /summary>Facebook winactie/);
   assert.doesNotMatch(overview, /onClick=\{\(\) => openChannel\("giveaway"\)\}>Winactie maken/);
   const giveawaySource = fs.readFileSync(path.join(root, "components/event-giveaway.js"), "utf8");

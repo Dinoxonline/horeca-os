@@ -81,3 +81,30 @@ test('selected venue filter never turns the agenda into a form or exposes a remo
     assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Testtitel' }).length, 0);
   } finally { await React.act(async () => renderer.unmount()); }
 });
+
+test('agenda waits for the active dossier save, and a failed save keeps the form visible', async () => {
+  const C = await component(); let tree, saves=0, fail=true;
+  function SavingCreator({ register }) {
+    React.useEffect(()=>{register(async()=>{saves++;return !fail;});return ()=>register(null);});
+    return React.createElement('p',null,'Dossier');
+  }
+  try {
+    await React.act(async()=>{tree=Renderer.create(React.createElement(C,{...props,businessId:'b1',renderCreator:(b,n,s,o,register)=>React.createElement(SavingCreator,{register})}));});
+    await React.act(async()=>click(tree,'Evenement of campagne maken'));
+    await React.act(async()=>click(tree,'Agenda'));
+    assert.equal(saves,1);assert.equal(panel(tree,'Evenement of campagne maken').props.hidden,false);
+    fail=false;
+    await React.act(async()=>click(tree,'Agenda'));
+    assert.equal(saves,2);assert.equal(panel(tree,'Marketingagenda').props.hidden,false);
+  } finally {if(tree)await React.act(async()=>tree.unmount());}
+});
+
+test('opening an agenda concept passes the same record and venue to the complete dossier',async()=>{
+  const C=await component();let tree,open,received;
+  const item={id:'existing-event',business_id:'b2',media:[{kind:'campaign_distribution',common:{title:'Keep me'}}]};
+  try{
+    await React.act(async()=>{tree=Renderer.create(React.createElement(C,{...props,renderAgenda:(b,d,r,onOpen)=>{open=onOpen;return React.createElement('p',null,'Agenda');},renderCreator:(b,n,s,request)=>{received={business:b,request};return React.createElement('p',null,'Dossier');}}));});
+    await React.act(async()=>open(item,'website'));
+    assert.equal(received.business,'b2');assert.equal(received.request.item,item);assert.equal(received.request.step,'website');
+  }finally{if(tree)await React.act(async()=>tree.unmount());}
+});
